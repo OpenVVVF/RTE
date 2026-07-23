@@ -5,6 +5,7 @@
 #include <InverterCodegen/CodeGenerator.h>
 #include <NodeAPI/Graph.h>
 #include <NodeAPI/NodeAPI.h>
+#include <NodeAPI/NodeTemplates.h>
 #include <NodeAPI/Timing.h>
 
 #include <algorithm>
@@ -229,12 +230,32 @@ bool Emitter::Run(const EmitterOptions& options) const {
     }
 
     NodeAPI::Graph graph;
+
+    // Load templates first so that graph nodes can reference template types.
+    if (!options.templatesDir.empty()) {
+        logger_.Info("Loading templates from: " + options.templatesDir.string());
+        auto templateResult = NodeAPI::LoadNodeTypesFromDirectory(graph, options.templatesDir);
+        if (!templateResult.ok) {
+            logger_.Error("Template loading failed:");
+            for (const auto& err : templateResult.errors) {
+                logger_.Error("  - " + err);
+            }
+            return false;
+        }
+        logger_.Info("Loaded " + std::to_string(templateResult.typesLoaded) +
+                     " template(s) from " + std::to_string(templateResult.filesLoaded) +
+                     " folder(s)");
+    }
+
     try {
-        graph = NodeAPI::LoadFromJson(jsonText);
+        NodeAPI::LoadIntoGraph(graph, jsonText);
     } catch (const std::exception& e) {
         logger_.Error("Failed to parse graph JSON: " + std::string(e.what()));
         return false;
     }
+
+    logger_.Debug("Graph has " + std::to_string(graph.GetNodeTypes().size()) +
+                  " node type(s) and " + std::to_string(graph.GetNodes().size()) + " node(s)");
 
     // Validate timing.
     logger_.Info("Validating timing domains");

@@ -15,6 +15,7 @@ void PrintUsage(std::string_view program) {
                  "  --base-src <dir>        Base firmware source directory (required)\n"
                  "  --graph <file>          NodeAPI graph JSON file (required)\n"
                  "  --output <dir>          Output directory (required)\n"
+                 "  --templates <dir>       Node template directory (optional)\n"
                  "  --generated-dir <name>  Generated subdirectory name (default: generated)\n"
                  "  --state-variable <name> Top-level state variable name (default: appState)\n"
                  "  --verbosity <level>     error|warning|info|debug|trace (default: info)\n"
@@ -50,6 +51,8 @@ int main(int argc, char* argv[]) {
             options.graphPath = NextArg("--graph");
         } else if (arg == "--output") {
             options.outputDir = NextArg("--output");
+        } else if (arg == "--templates") {
+            options.templatesDir = NextArg("--templates");
         } else if (arg == "--generated-dir") {
             options.generatedDirName = NextArg("--generated-dir");
         } else if (arg == "--state-variable") {

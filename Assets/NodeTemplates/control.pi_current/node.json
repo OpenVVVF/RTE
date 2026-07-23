@@ -1,0 +1,64 @@
+{
+  "id": "control.pi_current",
+  "displayName": "PI Controller (Current)",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "setpoint",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "measurement",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "output",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "kp": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "ki": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "integral": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "output_max": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "output_min": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

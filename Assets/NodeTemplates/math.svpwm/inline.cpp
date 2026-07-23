@@ -12,6 +12,6 @@ if (v_c > v_max) v_max = v_c;
 
 const float v_offset = 0.5f * (v_min + v_max);
 
-duty_abc.a = 0.5f + (v_a - v_offset);
-duty_abc.b = 0.5f + (v_b - v_offset);
-duty_abc.c = 0.5f + (v_c - v_offset);
+duty_a = 0.5f + (v_a - v_offset);
+duty_b = 0.5f + (v_b - v_offset);
+duty_c = 0.5f + (v_c - v_offset);

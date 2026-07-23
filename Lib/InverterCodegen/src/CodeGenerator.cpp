@@ -63,38 +63,6 @@ std::string Capitalize(std::string_view s) {
 }
 
 // ---------------------------------------------------------------------------
-// C++ keyword and helper whitelist
-// ---------------------------------------------------------------------------
-
-const std::unordered_set<std::string>& CppKeywords() {
-    static const std::unordered_set<std::string> kKeywords = {
-        "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
-        "bool", "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t",
-        "class", "compl", "concept", "const", "consteval", "constexpr", "constinit",
-        "const_cast", "continue", "co_await", "co_return", "co_yield", "decltype",
-        "default", "delete", "do", "double", "dynamic_cast", "else", "enum",
-        "explicit", "export", "extern", "false", "float", "for", "friend", "goto",
-        "if", "inline", "int", "long", "mutable", "namespace", "new", "noexcept",
-        "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected",
-        "public", "register", "reinterpret_cast", "requires", "return", "short",
-        "signed", "sizeof", "static", "static_assert", "static_cast", "struct",
-        "switch", "template", "this", "thread_local", "throw", "true", "try",
-        "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual",
-        "void", "volatile", "wchar_t", "while", "xor", "xor_eq"
-    };
-    return kKeywords;
-}
-
-const std::unordered_set<std::string>& BuiltinHelpers() {
-    static const std::unordered_set<std::string> kHelpers = {
-        "clamp", "min", "max", "abs", "fabs", "sin", "cos", "tan", "asin", "acos",
-        "atan", "atan2", "sqrt", "cbrt", "pow", "exp", "log", "log10", "fmod",
-        "round", "floor", "ceil", "trunc"
-    };
-    return kHelpers;
-}
-
-// ---------------------------------------------------------------------------
 // Identifier extraction
 // ---------------------------------------------------------------------------
 
@@ -112,55 +80,6 @@ std::vector<std::string> ExtractAllIdentifiers(const std::string& code) {
 std::unordered_set<std::string> UsedIdentifiers(const std::string& code) {
     auto ids = ExtractAllIdentifiers(code);
     return std::unordered_set<std::string>(ids.begin(), ids.end());
-}
-
-std::unordered_set<std::string> ExtractFunctionCallIdentifiers(const std::string& code) {
-    std::unordered_set<std::string> result;
-    // Find identifiers immediately followed by '('.
-    std::regex re(R"(\b([A-Za-z_][A-Za-z0-9_]*)\s*\()");
-    auto begin = std::sregex_iterator(code.begin(), code.end(), re);
-    auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        result.insert(it->str(1));
-    }
-    return result;
-}
-
-std::unordered_set<std::string> ExtractMemberNames(
-    const std::string& code,
-    const std::string& objectName) {
-    std::unordered_set<std::string> result;
-    // Match objectName.member or objectName->member
-    std::string pattern = R"(\b)" + objectName + R"((?:\.\s*|->\s*)([A-Za-z_][A-Za-z0-9_]*))";
-    std::regex re(pattern);
-    auto begin = std::sregex_iterator(code.begin(), code.end(), re);
-    auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        result.insert(it->str(1));
-    }
-    return result;
-}
-
-std::unordered_set<std::string> ResolveIdentifiers(
-    const std::string& code,
-    const std::string& instanceName,
-    bool isClassBased,
-    std::string& /*error*/) {
-    auto all = ExtractAllIdentifiers(code);
-    auto memberNames = isClassBased ? ExtractMemberNames(code, instanceName)
-                                    : std::unordered_set<std::string>{};
-    auto funcCalls = ExtractFunctionCallIdentifiers(code);
-
-    std::unordered_set<std::string> result;
-    for (const auto& id : all) {
-        if (CppKeywords().count(id)) continue;
-        if (BuiltinHelpers().count(id)) continue;
-        if (funcCalls.count(id)) continue;                 // function call
-        if (isClassBased && id == instanceName) continue;  // resolved separately
-        if (memberNames.count(id)) continue;               // instance.member
-        result.insert(id);
-    }
-    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,27 +303,14 @@ std::string BuildStateStruct(
             }
             source << "        " << *className << " instance;\n";
         } else {
-            // Function-style: parameters and inferred state members.
-            auto ids = ResolveIdentifiers(nodeType->inlineCode, "instance", false, error);
-            if (!error.empty()) return {};
-            auto ctorIds = ResolveIdentifiers(nodeType->constructorCode, "instance", false, error);
-            if (!error.empty()) return {};
-            ids.insert(ctorIds.begin(), ctorIds.end());
-
-            for (const auto& id : ids) {
-                bool isInput = false, isOutput = false;
-                for (const auto& p : nodeType->inputPorts) {
-                    if (p.name == id) { isInput = true; break; }
-                }
-                for (const auto& p : nodeType->outputPorts) {
-                    if (p.name == id) { isOutput = true; break; }
-                }
-                if (isInput || isOutput) continue;
-
-                auto paramType = nodeType->FindParameterType(id);
+            // Function-style: only declared parameters become persistent state
+            // members. Everything else in inlineCode/constructorCode is treated as
+            // a local variable declared by the template author.
+            for (const auto& [key, value] : node->parameters) {
+                auto paramType = nodeType->FindParameterType(key);
                 source << "        "
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless") << " "
-                       << id << ";\n";
+                       << key << ";\n";
             }
         }
 
@@ -591,22 +497,13 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                     }
                 }
             } else {
-                // Bind parameter/state refs.
-                auto ids = ResolveIdentifiers(nodeType->inlineCode, "instance", false, error);
-                if (!error.empty()) return false;
-
-                for (const auto& id : ids) {
-                    bool isInput = false, isOutput = false;
-                    for (const auto& p : nodeType->inputPorts) {
-                        if (p.name == id) { isInput = true; break; }
-                    }
-                    for (const auto& p : nodeType->outputPorts) {
-                        if (p.name == id) { isOutput = true; break; }
-                    }
-                    if (isInput || isOutput) continue;
-                    const bool isParam = node->parameters.count(id) > 0;
-                    source << "        " << (isParam ? "const " : "") << "auto& " << id
-                           << " = state." << node->id << "." << id << ";\n";
+                // Bind parameters as mutable refs (they may be updated by the
+                // inline code, e.g. an integrator). Inputs are already const.
+                for (const auto& [key, value] : node->parameters) {
+                    auto paramType = nodeType->FindParameterType(key);
+                    source << "        "
+                           << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                           << "& " << key << " = state." << node->id << "." << key << ";\n";
                 }
             }
 

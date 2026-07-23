@@ -1,0 +1,37 @@
+{
+  "id": "math.dq_pack",
+  "displayName": "DQ Pack",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "d",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "q",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "dq",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "dq",
+        "dtype": "f32"
+      }
+    }
+  ]
+}

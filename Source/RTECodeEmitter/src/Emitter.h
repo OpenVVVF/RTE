@@ -11,6 +11,7 @@ struct EmitterOptions {
     std::filesystem::path baseSrc;
     std::filesystem::path graphPath;
     std::filesystem::path outputDir;
+    std::filesystem::path templatesDir;  // If set, load node templates before the graph.
     std::string generatedDirName = "generated";
     std::string stateVariable = "appState";
     LogLevel verbosity = LogLevel::Info;

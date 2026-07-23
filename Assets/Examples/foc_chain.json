@@ -1,0 +1,441 @@
+{
+  "name": "foc_demo",
+  "nodeTypes": [
+    {
+      "id": "constant.theta",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "theta",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "theta = 0.0f;",
+      "parameterTypes": {
+        "value": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
+    },
+    {
+      "id": "constant.dq_current",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "idq",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "dq",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "idq.d = rte::Amperes(0.0f); idq.q = rte::Amperes(5.0f);"
+    },
+    {
+      "id": "constant.voltage",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "vdc",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "vdc = rte::Volts(24.0f);",
+      "parameterTypes": {
+        "value": {
+          "quantity": "voltage",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "currents",
+      "type": "hw.adc.phase_currents",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "offset_u_a": "0.0",
+        "offset_v_a": "0.0",
+        "offset_w_12bit": "0.0",
+        "scale_w_a_per_lsb": "0.001"
+      }
+    },
+    {
+      "id": "clarke",
+      "type": "math.clarke",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "park",
+      "type": "math.park",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "idq_ref",
+      "type": "constant.dq_current",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "unpack_ref",
+      "type": "math.dq_unpack",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "unpack_meas",
+      "type": "math.dq_unpack",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "pi_d",
+      "type": "control.pi_current",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "kp": "0.1",
+        "ki": "0.01",
+        "integral": "0.0",
+        "output_max": "24.0",
+        "output_min": "-24.0"
+      }
+    },
+    {
+      "id": "pi_q",
+      "type": "control.pi_current",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "kp": "0.1",
+        "ki": "0.01",
+        "integral": "0.0",
+        "output_max": "24.0",
+        "output_min": "-24.0"
+      }
+    },
+    {
+      "id": "pack_vdq",
+      "type": "math.dq_pack",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "theta",
+      "type": "constant.theta",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "value": "0.0"
+      }
+    },
+    {
+      "id": "inverse_park",
+      "type": "math.inverse_park",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "inverse_clarke",
+      "type": "math.inverse_clarke",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "vdc",
+      "type": "constant.voltage",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "value": "24.0"
+      }
+    },
+    {
+      "id": "svpwm",
+      "type": "math.svpwm",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "pwm",
+      "type": "hw.pwm.set_duty",
+      "domain": "isr_pwm",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {
+        "nodeId": "currents",
+        "portName": "i_abc"
+      },
+      "to": {
+        "nodeId": "clarke",
+        "portName": "i_abc"
+      }
+    },
+    {
+      "id": "c2",
+      "from": {
+        "nodeId": "clarke",
+        "portName": "i_alpha_beta"
+      },
+      "to": {
+        "nodeId": "park",
+        "portName": "i_alpha_beta"
+      }
+    },
+    {
+      "id": "c3",
+      "from": {
+        "nodeId": "theta",
+        "portName": "theta"
+      },
+      "to": {
+        "nodeId": "park",
+        "portName": "theta"
+      }
+    },
+    {
+      "id": "c4",
+      "from": {
+        "nodeId": "park",
+        "portName": "i_dq"
+      },
+      "to": {
+        "nodeId": "unpack_meas",
+        "portName": "dq"
+      }
+    },
+    {
+      "id": "c5",
+      "from": {
+        "nodeId": "idq_ref",
+        "portName": "idq"
+      },
+      "to": {
+        "nodeId": "unpack_ref",
+        "portName": "dq"
+      }
+    },
+    {
+      "id": "c6",
+      "from": {
+        "nodeId": "unpack_ref",
+        "portName": "d"
+      },
+      "to": {
+        "nodeId": "pi_d",
+        "portName": "setpoint"
+      }
+    },
+    {
+      "id": "c7",
+      "from": {
+        "nodeId": "unpack_ref",
+        "portName": "q"
+      },
+      "to": {
+        "nodeId": "pi_q",
+        "portName": "setpoint"
+      }
+    },
+    {
+      "id": "c8",
+      "from": {
+        "nodeId": "unpack_meas",
+        "portName": "d"
+      },
+      "to": {
+        "nodeId": "pi_d",
+        "portName": "measurement"
+      }
+    },
+    {
+      "id": "c9",
+      "from": {
+        "nodeId": "unpack_meas",
+        "portName": "q"
+      },
+      "to": {
+        "nodeId": "pi_q",
+        "portName": "measurement"
+      }
+    },
+    {
+      "id": "c10",
+      "from": {
+        "nodeId": "pi_d",
+        "portName": "output"
+      },
+      "to": {
+        "nodeId": "pack_vdq",
+        "portName": "d"
+      }
+    },
+    {
+      "id": "c11",
+      "from": {
+        "nodeId": "pi_q",
+        "portName": "output"
+      },
+      "to": {
+        "nodeId": "pack_vdq",
+        "portName": "q"
+      }
+    },
+    {
+      "id": "c12",
+      "from": {
+        "nodeId": "pack_vdq",
+        "portName": "dq"
+      },
+      "to": {
+        "nodeId": "inverse_park",
+        "portName": "v_dq"
+      }
+    },
+    {
+      "id": "c13",
+      "from": {
+        "nodeId": "theta",
+        "portName": "theta"
+      },
+      "to": {
+        "nodeId": "inverse_park",
+        "portName": "theta"
+      }
+    },
+    {
+      "id": "c14",
+      "from": {
+        "nodeId": "inverse_park",
+        "portName": "v_alpha_beta"
+      },
+      "to": {
+        "nodeId": "inverse_clarke",
+        "portName": "v_alpha_beta"
+      }
+    },
+    {
+      "id": "c15",
+      "from": {
+        "nodeId": "inverse_park",
+        "portName": "v_alpha_beta"
+      },
+      "to": {
+        "nodeId": "svpwm",
+        "portName": "v_alpha_beta"
+      }
+    },
+    {
+      "id": "c16",
+      "from": {
+        "nodeId": "vdc",
+        "portName": "vdc"
+      },
+      "to": {
+        "nodeId": "svpwm",
+        "portName": "vdc"
+      }
+    },
+    {
+      "id": "c17a",
+      "from": {
+        "nodeId": "svpwm",
+        "portName": "duty_a"
+      },
+      "to": {
+        "nodeId": "pwm",
+        "portName": "duty_a"
+      }
+    },
+    {
+      "id": "c17b",
+      "from": {
+        "nodeId": "svpwm",
+        "portName": "duty_b"
+      },
+      "to": {
+        "nodeId": "pwm",
+        "portName": "duty_b"
+      }
+    },
+    {
+      "id": "c17c",
+      "from": {
+        "nodeId": "svpwm",
+        "portName": "duty_c"
+      },
+      "to": {
+        "nodeId": "pwm",
+        "portName": "duty_c"
+      }
+    }
+  ]
+}

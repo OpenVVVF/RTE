@@ -111,7 +111,7 @@ TEST(NodeTemplates, LoadsControlBlocks) {
     const auto svpwm = graph.FindNodeType("math.svpwm");
     ASSERT_TRUE(svpwm.has_value());
     EXPECT_EQ(svpwm->inputPorts.size(), 2u);
-    EXPECT_EQ(svpwm->outputPorts.size(), 1u);
+    EXPECT_EQ(svpwm->outputPorts.size(), 3u);
 
     const auto sincos = graph.FindNodeType("math.sincos");
     ASSERT_TRUE(sincos.has_value());
@@ -120,9 +120,9 @@ TEST(NodeTemplates, LoadsControlBlocks) {
 
     const auto pwm = graph.FindNodeType("hw.pwm.set_duty");
     ASSERT_TRUE(pwm.has_value());
-    EXPECT_EQ(pwm->inputPorts.size(), 1u);
+    EXPECT_EQ(pwm->inputPorts.size(), 3u);
     EXPECT_TRUE(pwm->outputPorts.empty());
-    EXPECT_EQ(pwm->FindInputPort("duty_abc")->type.frame, Frame::Abc);
+    EXPECT_TRUE(pwm->FindInputPort("duty_a").has_value());
 
     const auto encoder = graph.FindNodeType("hw.encoder.decode");
     ASSERT_TRUE(encoder.has_value());

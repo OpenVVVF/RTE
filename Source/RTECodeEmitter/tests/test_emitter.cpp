@@ -324,3 +324,77 @@ TEST(Emitter, EmitsAuTypesForPhysicalPorts) {
 
     std::filesystem::remove_all(tempRoot);
 }
+
+TEST(Emitter, LoadsTemplatesFromDirectory) {
+    const auto tempRoot = std::filesystem::temp_directory_path() / "rte_templates_test";
+    std::filesystem::remove_all(tempRoot);
+
+    const auto baseSrc = tempRoot / "base";
+    const auto templatesDir = tempRoot / "templates";
+    const auto graphPath = tempRoot / "graph.json";
+    const auto outputDir = tempRoot / "out";
+
+    WriteFile(baseSrc / "state.h",
+              "#pragma once\n"
+              "// RTE_EMIT: app_loop state\n"
+              "struct AppState {\n"
+              "    app::AppLoopState app_loop;\n"
+              "};\n");
+
+    WriteFile(baseSrc / "main.cpp",
+              "#include \"state.h\"\n"
+              "AppState appState;\n"
+              "void loop() {\n"
+              "    // RTE_EMIT: app_loop step\n"
+              "}\n");
+
+    // Minimal folder template.
+    std::filesystem::create_directories(templatesDir / "constant.value");
+    WriteFile(templatesDir / "constant.value" / "node.json",
+              "{\n"
+              "  \"id\": \"constant.value\",\n"
+              "  \"inputPorts\": [],\n"
+              "  \"outputPorts\": [\n"
+              "    {\"name\": \"out\", \"direction\": \"output\", \"type\": {\"quantity\": \"dimensionless\", \"frame\": \"scalar\", \"dtype\": \"f32\"}}\n"
+              "  ],\n"
+              "  \"parameterTypes\": {\"value\": {\"quantity\": \"dimensionless\", \"frame\": \"scalar\", \"dtype\": \"f32\"}}\n"
+              "}\n");
+    WriteFile(templatesDir / "constant.value" / "inline.cpp", "out = value;\n");
+
+    // Graph references the template type but does not define it inline.
+    WriteFile(graphPath,
+              "{\n"
+              "  \"name\": \"template_test\",\n"
+              "  \"nodeTypes\": [],\n"
+              "  \"nodes\": [\n"
+              "    {\n"
+              "      \"id\": \"constant\",\n"
+              "      \"type\": \"constant.value\",\n"
+              "      \"domain\": \"app_loop\",\n"
+              "      \"position\": {\"x\": 0.0, \"y\": 0.0},\n"
+              "      \"parameters\": {\"value\": \"0.5\"}\n"
+              "    }\n"
+              "  ],\n"
+              "  \"connections\": []\n"
+              "}\n");
+
+    RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
+    RTECodeEmitter::Emitter emitter(logger);
+
+    RTECodeEmitter::EmitterOptions options;
+    options.baseSrc = baseSrc;
+    options.graphPath = graphPath;
+    options.outputDir = outputDir;
+    options.templatesDir = templatesDir;
+    options.verbosity = RTECodeEmitter::LogLevel::Error;
+
+    ASSERT_TRUE(emitter.Run(options));
+
+    const auto generatedSource = outputDir / "generated" / "domain_app_loop_generated.cpp";
+    ASSERT_TRUE(std::filesystem::exists(generatedSource));
+
+    const std::string sourceText = ReadFile(generatedSource);
+    EXPECT_NE(sourceText.find("Step node: constant (constant.value)"), std::string::npos);
+
+    std::filesystem::remove_all(tempRoot);
+}

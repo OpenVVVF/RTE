@@ -5,11 +5,29 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "duty_abc",
+      "name": "duty_a",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
-        "frame": "abc",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "duty_b",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "duty_c",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
         "dtype": "f32"
       }
     }

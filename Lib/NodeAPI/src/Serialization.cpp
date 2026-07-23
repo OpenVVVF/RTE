@@ -226,10 +226,15 @@ std::string SaveToJson(const Graph& graph) {
 }
 
 Graph LoadFromJson(std::string_view jsonText) {
+    Graph graph;
+    LoadIntoGraph(graph, jsonText);
+    return graph;
+}
+
+void LoadIntoGraph(Graph& graph, std::string_view jsonText) {
     const json j = json::parse(jsonText);
 
-    Graph graph;
-    graph.SetName(j.value("name", ""));
+    graph.SetName(j.value("name", graph.GetName()));
 
     for (const auto& item : j.at("nodeTypes")) {
         graph.AddNodeType(NodeTypeFromJson(item));
@@ -245,8 +250,6 @@ Graph LoadFromJson(std::string_view jsonText) {
             graph.AddBridge(BridgeFromJson(item));
         }
     }
-
-    return graph;
 }
 
 NodeType NodeTypeFromJson(std::string_view jsonText) {
