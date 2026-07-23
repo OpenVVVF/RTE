@@ -1,19 +1,22 @@
-# RTE (Real-Time Embedded) Toolchain
+# RTE
 
-This is the monorepo for the RTE toolchain: a node-graph based code generator for motor inverter firmware, plus future GUI, compiler integration, and simulator work.
+Source for the RTE motor inverter project. This repo holds the STM32 base firmware image, the node-graph toolchain libraries, and the code emitter that stitches generated control code into the firmware.
 
 ## Layout
 
 ```
 RTE/
+├── Images/
+│   └── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
 ├── Lib/
-│   ├── NodeAPI/          # Graph/node serialization and timing validation
-│   └── InverterCodegen/  # Graph -> C++ code generation engine
+│   ├── NodeAPI/            # Graph/node serialization and timing validation
+│   └── InverterCodegen/    # Graph -> C++ code generation engine
 └── Source/
-    └── RTECodeEmitter/   # CLI tool that inserts generated code into a base firmware tree
+    └── RTECodeEmitter/     # CLI tool that inserts generated code into a base firmware tree
 ```
 
-- `Lib/` contains reusable CMake libraries.
+- `Images/` contains the base firmware image that the emitter copies and modifies.
+- `Lib/` contains reusable CMake libraries used by the emitter and future GUI.
 - `Source/` contains end-user executables.
 
 ## Build
