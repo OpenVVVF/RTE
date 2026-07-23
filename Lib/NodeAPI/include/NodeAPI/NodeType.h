@@ -1,7 +1,9 @@
 #pragma once
 
 #include "NodeAPI/Port.h"
+#include "NodeAPI/WireType.h"
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,6 +21,12 @@ struct NodeType {
     std::vector<Port> inputPorts;
     std::vector<Port> outputPorts;
 
+    // Per-parameter type information. Keys are parameter names that appear in
+    // Node::parameters. Values tell the codegen which physical/unit type to use
+    // when emitting constants or state members. Parameters not listed here are
+    // treated as dimensionless floats by default.
+    std::map<std::string, WireType> parameterTypes;
+
     // Code pieces carried with the type (codegen-agnostic; the consuming project
     // decides how to interpret them).
     std::string inlineCode;        // e.g. per-step expression
@@ -33,6 +41,7 @@ struct NodeType {
 
     std::optional<Port> FindInputPort(const std::string& name) const;
     std::optional<Port> FindOutputPort(const std::string& name) const;
+    std::optional<WireType> FindParameterType(const std::string& name) const;
 
     friend bool operator==(const NodeType& lhs, const NodeType& rhs) = default;
     friend bool operator!=(const NodeType& lhs, const NodeType& rhs) = default;

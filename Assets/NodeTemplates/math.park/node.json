@@ -1,0 +1,37 @@
+{
+  "id": "math.park",
+  "displayName": "Park Transform",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "i_alpha_beta",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "alpha_beta",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "theta",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "i_dq",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "dq",
+        "dtype": "f32"
+      }
+    }
+  ]
+}

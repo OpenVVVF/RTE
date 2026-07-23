@@ -77,6 +77,14 @@ json ToJson(const NodeType& nodeType) {
         j["outputPorts"].push_back(ToJson(port));
     }
 
+    if (!nodeType.parameterTypes.empty()) {
+        auto params = json::object();
+        for (const auto& [key, type] : nodeType.parameterTypes) {
+            params[key] = ToJson(type);
+        }
+        j["parameterTypes"] = params;
+    }
+
     return j;
 }
 
@@ -97,6 +105,12 @@ NodeType NodeTypeFromJson(const json& j) {
     }
     for (const auto& item : j.at("outputPorts")) {
         nodeType.outputPorts.push_back(PortFromJson(item));
+    }
+
+    if (j.contains("parameterTypes") && j.at("parameterTypes").is_object()) {
+        for (const auto& [key, value] : j.at("parameterTypes").items()) {
+            nodeType.parameterTypes[key] = WireTypeFromJson(value);
+        }
     }
 
     return nodeType;

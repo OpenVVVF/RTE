@@ -1,0 +1,37 @@
+{
+  "id": "math.inverse_park",
+  "displayName": "Inverse Park Transform",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "v_dq",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "dq",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "theta",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "v_alpha_beta",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "alpha_beta",
+        "dtype": "f32"
+      }
+    }
+  ]
+}

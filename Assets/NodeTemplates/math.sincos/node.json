@@ -1,0 +1,37 @@
+{
+  "id": "math.sincos",
+  "displayName": "Sin/Cos",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "theta",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "sin_theta",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "cos_theta",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ]
+}

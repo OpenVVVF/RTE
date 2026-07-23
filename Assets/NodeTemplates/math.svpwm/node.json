@@ -1,0 +1,37 @@
+{
+  "id": "math.svpwm",
+  "displayName": "Space Vector PWM",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "v_alpha_beta",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "alpha_beta",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "vdc",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "duty_abc",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "abc",
+        "dtype": "f32"
+      }
+    }
+  ]
+}

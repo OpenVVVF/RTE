@@ -1,0 +1,28 @@
+{
+  "id": "math.inverse_clarke",
+  "displayName": "Inverse Clarke Transform",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "v_alpha_beta",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "alpha_beta",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "v_abc",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "abc",
+        "dtype": "f32"
+      }
+    }
+  ]
+}

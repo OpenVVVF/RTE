@@ -2,7 +2,9 @@
 
 A small C++20 code generator that turns a NodeAPI graph into embedded-friendly C++.
 
-It links against [NodeAPI](../NodeAPI) as a library, reads a node-graph JSON file, and emits one header/source pair per timing domain. The generated code is plain C++ with no dynamic allocation, no exceptions, no STL, and no templates in the output.
+It links against [NodeAPI](../NodeAPI) as a library, reads a node-graph JSON file, and emits one header/source pair per timing domain. The generated code is plain C++ with no dynamic allocation, no exceptions, and no templates in the output.
+
+Physical quantities use the [Au](https://github.com/aurora-opensource/au) units library (vendored as a single header). Currents, voltages, torques, temperatures, and angular velocities are compile-time unit-checked; dimensionless values and booleans stay as plain `float`/`bool`.
 
 ## Dependencies
 
@@ -16,12 +18,12 @@ It links against [NodeAPI](../NodeAPI) as a library, reads a node-graph JSON fil
 From the repository root:
 
 ```sh
-cd /home/aidan/Desktop/InverterCodeGen
+cd /home/aidan/Desktop/RTE
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j8
 ```
 
-The executable is `build/InverterCodegen/InverterCodegen`.
+The executable is `build/Lib/InverterCodegen/InverterCodegen`.
 
 ## How it works
 
@@ -43,10 +45,25 @@ Inside `NodeType::inlineCode` and `NodeType::constructorCode`, variable names ar
 
 | Name | Maps to |
 |---|---|
-| Input port name | `const float <name> = state.<source>.<port>;` |
-| Output port name | `float& <name> = state.<node>.<port>;` |
+| Input port name | `const <type> <name> = state.<source>.<port>;` |
+| Output port name | `<type>& <name> = state.<node>.<port>;` |
 | `instance` | The class instance (`auto& instance = state.<node>.instance;`) |
 | Other identifiers | State members (function-style) or parameter locals (class-based) |
+
+`<type>` is chosen from `InverterCodegen/RteQuantity.h` based on the port's `quantity` and `frame`.
+
+#### Parameter types
+
+`NodeType::parameterTypes` maps a parameter name to a `WireType`. The generator uses this to emit the right unit constructor, e.g.:
+
+```json
+"parameterTypes": {
+  "kp": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+  "limit": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+}
+```
+
+emits `state.node.kp = 0.5f;` and `state.node.limit = rte::Amperes(10.0f);`.
 
 #### Function-style node
 
@@ -101,10 +118,14 @@ Before generating, the tool runs `NodeAPI::Timing::Validator` on the graph. It f
 InverterCodegen/
 ├── CMakeLists.txt
 ├── README.md
+├── include/InverterCodegen/
+│   ├── CodeGenerator.h    # Public generator API
+│   └── RteQuantity.h      # Au-backed quantity aliases
 ├── src/
 │   ├── Main.cpp           # CLI entry point
-│   ├── CodeGenerator.h    # Public generator API
 │   └── CodeGenerator.cpp  # Domain-based code emission
+├── third_party/
+│   └── au/au.hh           # Vendored Au units library
 ├── examples/
 │   ├── sample_graph.json          # Function-style example
 │   └── sample_graph_class.json    # Class-based PI example

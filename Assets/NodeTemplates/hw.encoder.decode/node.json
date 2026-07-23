@@ -1,0 +1,49 @@
+{
+  "id": "hw.encoder.decode",
+  "displayName": "Encoder Decoder",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "raw_counts",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "theta",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "omega",
+      "direction": "output",
+      "type": {
+        "quantity": "angular_velocity",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "counts_per_rev": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "sample_time_s": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

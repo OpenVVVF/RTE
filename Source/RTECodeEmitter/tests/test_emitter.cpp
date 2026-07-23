@@ -236,7 +236,7 @@ TEST(Emitter, CrossDomainBridgeGeneratesAtomicBridge) {
     EXPECT_TRUE(std::filesystem::exists(timIsrSource));
 
     const std::string bridgesText = ReadFile(bridgesHeader);
-    EXPECT_NE(bridgesText.find("extern std::atomic<float> bridge_throttle_cmd;"),
+    EXPECT_NE(bridgesText.find("extern std::atomic<rte::Dimensionless> bridge_throttle_cmd;"),
               std::string::npos);
 
     const std::string appLoopText = ReadFile(appLoopSource);
@@ -244,8 +244,83 @@ TEST(Emitter, CrossDomainBridgeGeneratesAtomicBridge) {
               std::string::npos);
 
     const std::string timIsrText = ReadFile(timIsrSource);
-    EXPECT_NE(timIsrText.find("const float in = bridge_throttle_cmd.load(std::memory_order_relaxed);"),
+    EXPECT_NE(timIsrText.find(
+                  "const rte::Dimensionless in = bridge_throttle_cmd.load(std::memory_order_relaxed);"),
               std::string::npos);
+
+    std::filesystem::remove_all(tempRoot);
+}
+
+TEST(Emitter, EmitsAuTypesForPhysicalPorts) {
+    const auto tempRoot = std::filesystem::temp_directory_path() / "rte_au_types_test";
+    std::filesystem::remove_all(tempRoot);
+
+    const auto baseSrc = tempRoot / "base";
+    const auto graphPath = tempRoot / "graph.json";
+    const auto outputDir = tempRoot / "out";
+
+    WriteFile(baseSrc / "state.h",
+              "#pragma once\n"
+              "// RTE_EMIT: app_loop state\n"
+              "struct AppState {\n"
+              "    app::AppLoopState app_loop;\n"
+              "};\n");
+
+    WriteFile(baseSrc / "main.cpp",
+              "#include \"state.h\"\n"
+              "AppState appState;\n"
+              "void loop() {\n"
+              "    // RTE_EMIT: app_loop step\n"
+              "}\n");
+
+    // Graph with a single node that has current and voltage outputs (no inputs
+    // needed, so no connections are required).
+    WriteFile(graphPath,
+              "{\n"
+              "  \"name\": \"au_test\",\n"
+              "  \"nodeTypes\": [\n"
+              "    {\n"
+              "      \"id\": \"test.sources\",\n"
+              "      \"displayName\": \"Sources\",\n"
+              "      \"inputPorts\": [],\n"
+              "      \"outputPorts\": [\n"
+              "        {\"name\": \"i_out\", \"direction\": \"output\", \"type\": {\"quantity\": \"current\", \"frame\": \"scalar\", \"dtype\": \"f32\"}},\n"
+              "        {\"name\": \"v_out\", \"direction\": \"output\", \"type\": {\"quantity\": \"voltage\", \"frame\": \"scalar\", \"dtype\": \"f32\"}}\n"
+              "      ],\n"
+              "      \"inlineCode\": \"i_out = rte::Amperes(1.0f); v_out = rte::Volts(2.0f);\"\n"
+              "    }\n"
+              "  ],\n"
+              "  \"nodes\": [\n"
+              "    {\n"
+              "      \"id\": \"src\",\n"
+              "      \"type\": \"test.sources\",\n"
+              "      \"domain\": \"app_loop\",\n"
+              "      \"position\": {\"x\": 0.0, \"y\": 0.0}\n"
+              "    }\n"
+              "  ],\n"
+              "  \"connections\": []\n"
+              "}\n");
+
+    RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
+    RTECodeEmitter::Emitter emitter(logger);
+
+    RTECodeEmitter::EmitterOptions options;
+    options.baseSrc = baseSrc;
+    options.graphPath = graphPath;
+    options.outputDir = outputDir;
+    options.verbosity = RTECodeEmitter::LogLevel::Error;
+
+    ASSERT_TRUE(emitter.Run(options));
+
+    const auto generatedHeader = outputDir / "generated" / "domain_app_loop_generated.h";
+    const auto generatedSource = outputDir / "generated" / "domain_app_loop_generated.cpp";
+
+    const std::string headerText = ReadFile(generatedHeader);
+    EXPECT_NE(headerText.find("#include \"InverterCodegen/RteQuantity.h\""), std::string::npos);
+
+    const std::string sourceText = ReadFile(generatedSource);
+    EXPECT_NE(sourceText.find("rte::Current& i_out"), std::string::npos);
+    EXPECT_NE(sourceText.find("rte::Voltage& v_out"), std::string::npos);
 
     std::filesystem::remove_all(tempRoot);
 }

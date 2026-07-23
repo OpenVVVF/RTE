@@ -1,0 +1,18 @@
+{
+  "id": "hw.pwm.set_duty",
+  "displayName": "Set PWM Duty Cycles",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "duty_abc",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "abc",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": []
+}

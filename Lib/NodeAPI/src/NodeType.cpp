@@ -16,4 +16,10 @@ std::optional<Port> NodeType::FindOutputPort(const std::string& name) const {
     return std::nullopt;
 }
 
+std::optional<WireType> NodeType::FindParameterType(const std::string& name) const {
+    auto it = parameterTypes.find(name);
+    if (it != parameterTypes.end()) return it->second;
+    return std::nullopt;
+}
+
 }  // namespace NodeAPI

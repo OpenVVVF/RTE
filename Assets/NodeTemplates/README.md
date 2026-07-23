@@ -1,23 +1,50 @@
 # Node Templates
 
-This directory holds reusable `NodeAPI::NodeType` templates shipped with the RTE project. Each file is a single JSON object (or a JSON array of objects) describing one reusable node type.
+This directory holds reusable `NodeAPI::NodeType` templates shipped with the RTE project. Each node type lives in its own folder so the metadata, port definitions, and C++ code blocks are easy to read and edit by hand.
 
 The GUI and codegen tools load these automatically for new projects so users do not have to recreate common hardware and control nodes from scratch.
 
-## File convention
+## Folder convention
 
-- One node type per file is preferred; arrays are accepted.
-- File name should use the pattern `<category>.<name>.json`, e.g. `hw.phase_currents.json`.
-- Schema follows `NodeAPI::NodeType` serialization. Required fields: `id`, `inputPorts`, `outputPorts`.
+Each node type is a directory named `<category>.<name>/` containing:
 
-## Template guidelines
+| File | Purpose |
+|------|---------|
+| `node.json` | Metadata: `id`, `displayName`, `inputPorts`, `outputPorts`, `parameterTypes`, `maxInstances`, `isEntryPoint`, `domain`. |
+| `inline.cpp` | Per-step code body. Runs once per timing-domain invocation. |
+| `constructor.cpp` | Optional constructor / init body for class-based nodes. |
+| `class_header.h` | Optional C++ class declaration. |
+| `class_definition.cpp` | Optional C++ class implementation. |
+
+Only `node.json` is required. Code-block files are read only if they exist.
+
+Example layout:
+
+```
+Assets/NodeTemplates/
+  control.pi/
+    node.json
+    inline.cpp
+  hw.phase_currents/
+    node.json
+    inline.cpp
+```
+
+## Schema notes
 
 - `id`: use dotted namespaces, e.g. `hw.adc.phase_currents`.
-- `domain`: leave empty on the type; instances set their own domain.
+- `domain`: leave empty on the type; instances set their own domain, unless the type forces one.
 - `isEntryPoint`: true only for nodes that start a timing domain (e.g. an ISR vector).
 - `maxInstances`: 1 for hardware singletons, 0 for unlimited reusable math blocks.
-- Code pieces are strings interpreted by the consuming codegen project.
-- Inline code may reference `params.<name>` for per-instance parameters and port names for connected inputs.
+- `parameterTypes`: map of parameter name to `WireType`. Tells the codegen what unit/type to emit for each parameter. Parameters not listed default to dimensionless `float`.
+- Port `type` uses `{quantity, frame, dtype}`. Physical quantities use the Au-backed types emitted by `InverterCodegen` (see `Lib/InverterCodegen/include/InverterCodegen/RteQuantity.h`).
+
+## Code block conventions
+
+- Reference input/output ports by their declared names.
+- Reference parameters by their plain names (e.g. `kp`, not `params.kp`).
+- Physical ports have Au `Quantity` types; use `.in(au::<unit>)` when you need a raw `float` for math or HAL calls.
+- Framed ports (`abc`, `alpha_beta`, `dq`) are structs with named members (e.g. `i_abc.a`, `i_alpha_beta.alpha`, `v_dq.d`).
 
 ## Loading templates
 
@@ -33,4 +60,4 @@ if (!result.ok) {
 }
 ```
 
-The loader skips invalid files and continues, reporting errors instead of stopping early.
+The loader skips invalid folders and continues, reporting errors instead of stopping early.

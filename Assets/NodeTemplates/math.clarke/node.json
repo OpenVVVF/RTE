@@ -1,0 +1,28 @@
+{
+  "id": "math.clarke",
+  "displayName": "Clarke Transform",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "i_abc",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "abc",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "i_alpha_beta",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "alpha_beta",
+        "dtype": "f32"
+      }
+    }
+  ]
+}
