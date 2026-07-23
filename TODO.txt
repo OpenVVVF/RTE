@@ -1,0 +1,18 @@
+add compiler toolchain, and build a toolchain setup script that allows us to compile fw
+create simple tool that wraps those and allows us to go from node + base to full fw binary - planned for simulator too, codegen will emit into simulator base not fw base is only difference.
+
+validate by emitting and compiling full existing firmware without any changes or removng foc from base image
+
+- then, once that works and is stable, remove foc from current image, and migrate to nodes, and emit to fw, and debug + fix
+ - this involves also creating the inter- time domain bridges
+ - also, the nodes for current senses (u v w)
+ - and the nodes for like encoder and shit - these nodes are kinda tricky as they're sorta base image sorta not? hard to figure out how exactly to set this up.
+ - for now let's just have the base image record all these values but the node just accesses it from the isr data struct which has all the values already grabbed, or even have the node actually grab it from isr registers or something
+ - note: they dont ahve to be one node, since the domain locks all to that area implicitly by codegen we dont care about just having one sensor block, can be split up, they will just have the forced time domain field to say ISR or whatever we call it
+
+- in parallel, aidan can hopefulyl do the gui and migrate the gui and telemetry and stuff to the new gui and add that to this repo so we can not use old rte but just do it all in this rte
+ - node editor gui, emit output in NodeAPI format - using this library of nodeeditor
+ - command line interface to conn'd device
+ - tools for flashing over usb without breaking - like current rte
+ - graphs and stuff
+ - etc.
