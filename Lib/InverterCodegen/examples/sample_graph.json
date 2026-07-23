@@ -1,0 +1,79 @@
+{
+  "name": "simple_gain_demo",
+  "nodeTypes": [
+    {
+      "id": "constant.value",
+      "displayName": "Constant",
+      "inputPorts": [],
+      "outputPorts": [
+        {"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "inlineCode": "out = value;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    },
+    {
+      "id": "control.gain",
+      "displayName": "Gain",
+      "inputPorts": [
+        {"name": "in", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "outputPorts": [
+        {"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "inlineCode": "out = gain * in;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    },
+    {
+      "id": "sink.pwm",
+      "displayName": "PWM Output",
+      "inputPorts": [
+        {"name": "in", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "outputPorts": [],
+      "inlineCode": "platform_pwm_set(in, in, in);",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "throttle",
+      "type": "constant.value",
+      "displayName": "Throttle",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {"value": "0.5"}
+    },
+    {
+      "id": "gain",
+      "type": "control.gain",
+      "displayName": "Gain",
+      "domain": "app_loop",
+      "position": {"x": 200.0, "y": 0.0},
+      "parameters": {"gain": "2.0"}
+    },
+    {
+      "id": "pwm",
+      "type": "sink.pwm",
+      "displayName": "PWM",
+      "domain": "app_loop",
+      "position": {"x": 400.0, "y": 0.0},
+      "parameters": {}
+    }
+  ],
+  "connections": [
+    {"id": "c1", "from": {"nodeId": "throttle", "portName": "out"}, "to": {"nodeId": "gain", "portName": "in"}},
+    {"id": "c2", "from": {"nodeId": "gain", "portName": "out"}, "to": {"nodeId": "pwm", "portName": "in"}}
+  ]
+}

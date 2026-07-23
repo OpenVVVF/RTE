@@ -1,0 +1,69 @@
+#pragma once
+
+#include "NodeAPI/Node.h"
+#include "NodeAPI/NodeType.h"
+#include "NodeAPI/Port.h"
+
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace NodeAPI {
+
+struct Connection {
+    std::string id;
+    PortRef from;
+    PortRef to;
+
+    friend bool operator==(const Connection& lhs, const Connection& rhs) = default;
+    friend bool operator!=(const Connection& lhs, const Connection& rhs) = default;
+};
+
+class Graph {
+public:
+    Graph() = default;
+
+    // Node type database.
+    bool AddNodeType(NodeType nodeType);
+    bool RemoveNodeType(const std::string& typeId);
+    std::optional<NodeType> FindNodeType(const std::string& typeId) const;
+    const std::vector<NodeType>& GetNodeTypes() const { return nodeTypes_; }
+
+    // Node instances.
+    bool AddNode(Node node);
+    bool RemoveNode(const std::string& nodeId);
+    std::optional<Node> FindNode(const std::string& nodeId) const;
+    const std::vector<Node>& GetNodes() const { return nodes_; }
+
+    // Connections.
+    bool Connect(Connection connection);
+    bool Disconnect(const std::string& connectionId);
+    std::optional<Connection> FindConnection(const std::string& connectionId) const;
+    const std::vector<Connection>& GetConnections() const { return connections_; }
+
+    // Looks up the port definition from the node's type. Returns a copy so the
+    // result is safe to keep across further graph operations.
+    std::optional<Port> FindPort(const PortRef& ref) const;
+
+    // True when the connection's endpoints exist, directions are compatible,
+    // and the wire types match.
+    bool TypeCheck(const Connection& connection) const;
+
+    const std::string& GetName() const { return name_; }
+    void SetName(std::string name) { name_ = std::move(name); }
+
+private:
+    bool NodeIdTaken(const std::string& nodeId) const;
+    std::size_t CountInstances(const std::string& typeId) const;
+    bool TypeIdTaken(const std::string& typeId) const;
+    bool ConnectionIdTaken(const std::string& connectionId) const;
+    bool EndpointExists(const PortRef& ref, PortDirection expectedDirection) const;
+
+    std::string name_;
+    std::vector<NodeType> nodeTypes_;
+    std::vector<Node> nodes_;
+    std::vector<Connection> connections_;
+};
+
+}  // namespace NodeAPI

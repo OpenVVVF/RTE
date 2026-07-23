@@ -1,0 +1,147 @@
+#include "NodeAPI/Graph.h"
+
+#include <algorithm>
+
+namespace NodeAPI {
+
+bool Graph::AddNodeType(NodeType nodeType) {
+    if (nodeType.id.empty()) return false;
+    if (TypeIdTaken(nodeType.id)) return false;
+    nodeTypes_.push_back(std::move(nodeType));
+    return true;
+}
+
+bool Graph::RemoveNodeType(const std::string& typeId) {
+    for (auto it = nodeTypes_.begin(); it != nodeTypes_.end(); ++it) {
+        if (it->id == typeId) {
+            nodeTypes_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<NodeType> Graph::FindNodeType(const std::string& typeId) const {
+    for (const auto& nodeType : nodeTypes_) {
+        if (nodeType.id == typeId) return nodeType;
+    }
+    return std::nullopt;
+}
+
+bool Graph::AddNode(Node node) {
+    if (node.id.empty()) return false;
+    if (NodeIdTaken(node.id)) return false;
+
+    const auto nodeType = FindNodeType(node.type);
+    if (!nodeType.has_value()) return false;
+    if (nodeType->maxInstances > 0 && CountInstances(node.type) >= nodeType->maxInstances) return false;
+
+    nodes_.push_back(std::move(node));
+    return true;
+}
+
+bool Graph::RemoveNode(const std::string& nodeId) {
+    for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
+        if (it->id == nodeId) {
+            nodes_.erase(it);
+            connections_.erase(
+                std::remove_if(connections_.begin(), connections_.end(),
+                               [&nodeId](const Connection& c) {
+                                   return c.from.nodeId == nodeId || c.to.nodeId == nodeId;
+                               }),
+                connections_.end());
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<Node> Graph::FindNode(const std::string& nodeId) const {
+    for (const auto& node : nodes_) {
+        if (node.id == nodeId) return node;
+    }
+    return std::nullopt;
+}
+
+bool Graph::Connect(Connection connection) {
+    if (connection.id.empty()) return false;
+    if (ConnectionIdTaken(connection.id)) return false;
+    if (!EndpointExists(connection.from, PortDirection::Output)) return false;
+    if (!EndpointExists(connection.to, PortDirection::Input)) return false;
+    if (!TypeCheck(connection)) return false;
+    connections_.push_back(std::move(connection));
+    return true;
+}
+
+bool Graph::Disconnect(const std::string& connectionId) {
+    for (auto it = connections_.begin(); it != connections_.end(); ++it) {
+        if (it->id == connectionId) {
+            connections_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<Connection> Graph::FindConnection(const std::string& connectionId) const {
+    for (const auto& connection : connections_) {
+        if (connection.id == connectionId) return connection;
+    }
+    return std::nullopt;
+}
+
+std::optional<Port> Graph::FindPort(const PortRef& ref) const {
+    const auto node = FindNode(ref.nodeId);
+    if (!node) return std::nullopt;
+
+    const auto type = FindNodeType(node->type);
+    if (!type) return std::nullopt;
+
+    if (const auto port = type->FindOutputPort(ref.portName)) return *port;
+    return type->FindInputPort(ref.portName);
+}
+
+bool Graph::TypeCheck(const Connection& connection) const {
+    const auto fromPort = FindPort(connection.from);
+    const auto toPort = FindPort(connection.to);
+    if (!fromPort || !toPort) return false;
+
+    return fromPort->type == toPort->type;
+}
+
+bool Graph::NodeIdTaken(const std::string& nodeId) const {
+    for (const auto& node : nodes_) {
+        if (node.id == nodeId) return true;
+    }
+    return false;
+}
+
+std::size_t Graph::CountInstances(const std::string& typeId) const {
+    std::size_t count = 0;
+    for (const auto& node : nodes_) {
+        if (node.type == typeId) ++count;
+    }
+    return count;
+}
+
+bool Graph::TypeIdTaken(const std::string& typeId) const {
+    for (const auto& nodeType : nodeTypes_) {
+        if (nodeType.id == typeId) return true;
+    }
+    return false;
+}
+
+bool Graph::ConnectionIdTaken(const std::string& connectionId) const {
+    for (const auto& connection : connections_) {
+        if (connection.id == connectionId) return true;
+    }
+    return false;
+}
+
+bool Graph::EndpointExists(const PortRef& ref, PortDirection expectedDirection) const {
+    const auto port = FindPort(ref);
+    if (!port) return false;
+    return port->direction == expectedDirection;
+}
+
+}  // namespace NodeAPI

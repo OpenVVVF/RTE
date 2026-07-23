@@ -1,0 +1,457 @@
+#include "Emitter.h"
+
+#include "MarkerParser.h"
+
+#include <InverterCodegen/CodeGenerator.h>
+#include <NodeAPI/Graph.h>
+#include <NodeAPI/NodeAPI.h>
+#include <NodeAPI/Timing.h>
+
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace RTECodeEmitter {
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Small helpers matching InverterCodegen conventions.
+// ---------------------------------------------------------------------------
+
+std::string SanitizeIdentifier(std::string_view id) {
+    std::string out;
+    for (char c : id) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+            out += c;
+        } else {
+            out += '_';
+        }
+    }
+    if (!out.empty() && std::isdigit(static_cast<unsigned char>(out[0]))) {
+        out = "_" + out;
+    }
+    return out;
+}
+
+std::string Capitalize(std::string_view s) {
+    std::string out;
+    bool upperNext = true;
+    for (char c : s) {
+        if (c == '_' || c == ' ' || c == '-') {
+            upperNext = true;
+        } else if (upperNext) {
+            out += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            upperNext = false;
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+std::string DomainTitle(std::string_view domain) {
+    return Capitalize(SanitizeIdentifier(domain));
+}
+
+std::string DomainHeaderName(std::string_view domain) {
+    return "domain_" + SanitizeIdentifier(domain) + "_generated.h";
+}
+
+// ---------------------------------------------------------------------------
+// File/path helpers.
+// ---------------------------------------------------------------------------
+
+std::string ReadFileText(const std::filesystem::path& path, std::string& error) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        error = "Failed to open file: " + path.string();
+        return {};
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
+bool WriteFileText(const std::filesystem::path& path, const std::string& content, std::string& error) {
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        error = "Failed to write file: " + path.string();
+        return false;
+    }
+    file << content;
+    return true;
+}
+
+std::vector<std::string> SplitLines(const std::string& text) {
+    std::vector<std::string> lines;
+    std::string current;
+    for (char c : text) {
+        if (c == '\n') {
+            lines.push_back(current);
+            current.clear();
+        } else {
+            current += c;
+        }
+    }
+    lines.push_back(current);
+    return lines;
+}
+
+std::string JoinLines(const std::vector<std::string>& lines) {
+    std::string out;
+    for (const auto& line : lines) {
+        out += line;
+        out += '\n';
+    }
+    return out;
+}
+
+bool IsInsideDirectory(const std::filesystem::path& candidate, const std::filesystem::path& parent) {
+    const auto canonCandidate = std::filesystem::weakly_canonical(candidate);
+    const auto canonParent = std::filesystem::weakly_canonical(parent);
+    auto it = canonCandidate.begin();
+    auto ip = canonParent.begin();
+    for (; ip != canonParent.end(); ++ip, ++it) {
+        if (it == canonCandidate.end() || *it != *ip) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ShouldSkipDirectory(const std::filesystem::path& dir) {
+    const std::string name = dir.filename().string();
+    static const std::unordered_set<std::string> kSkip = {
+        ".git", "build", "node_modules", ".vs", "out", "__pycache__"};
+    return kSkip.count(name) > 0;
+}
+
+bool IsSourceFile(const std::filesystem::path& path) {
+    const std::string ext = path.extension().string();
+    return ext == ".c" || ext == ".cpp" || ext == ".h" || ext == ".hpp";
+}
+
+std::filesystem::path RelativePath(const std::filesystem::path& from,
+                                   const std::filesystem::path& to) {
+    return std::filesystem::relative(to, from);
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// Emitter implementation.
+// ---------------------------------------------------------------------------
+
+Emitter::Emitter(const Logger& logger) : logger_(logger) {}
+
+bool Emitter::Run(const EmitterOptions& options) const {
+    // Validate options.
+    if (!std::filesystem::exists(options.baseSrc)) {
+        logger_.Error("Base source directory does not exist: " + options.baseSrc.string());
+        return false;
+    }
+    if (!std::filesystem::is_directory(options.baseSrc)) {
+        logger_.Error("Base source path is not a directory: " + options.baseSrc.string());
+        return false;
+    }
+    if (!std::filesystem::exists(options.graphPath)) {
+        logger_.Error("Graph file does not exist: " + options.graphPath.string());
+        return false;
+    }
+    if (options.outputDir.empty()) {
+        logger_.Error("Output directory is empty");
+        return false;
+    }
+
+    const auto outCanonical = std::filesystem::weakly_canonical(options.outputDir);
+    const auto baseCanonical = std::filesystem::weakly_canonical(options.baseSrc);
+    if (outCanonical == baseCanonical || IsInsideDirectory(outCanonical, baseCanonical)) {
+        logger_.Error("Output directory cannot be the same as or inside base source directory");
+        return false;
+    }
+
+    if (options.stateVariable.empty()) {
+        logger_.Error("State variable name cannot be empty");
+        return false;
+    }
+
+    // Load graph.
+    logger_.Info("Loading graph: " + options.graphPath.string());
+    std::string loadError;
+    const std::string jsonText = ReadFileText(options.graphPath, loadError);
+    if (!loadError.empty()) {
+        logger_.Error(loadError);
+        return false;
+    }
+
+    NodeAPI::Graph graph;
+    try {
+        graph = NodeAPI::LoadFromJson(jsonText);
+    } catch (const std::exception& e) {
+        logger_.Error("Failed to parse graph JSON: " + std::string(e.what()));
+        return false;
+    }
+
+    // Validate timing.
+    logger_.Info("Validating timing domains");
+    NodeAPI::Timing::Validator validator;
+    auto timingResult = validator.Validate(graph);
+    if (!timingResult.ok) {
+        logger_.Error("Timing validation failed:");
+        for (const auto& err : timingResult.errors) {
+            logger_.Error("  - " + err);
+        }
+        return false;
+    }
+
+    // Copy base source tree.
+    logger_.Info("Copying base source tree to: " + options.outputDir.string());
+    if (!options.dryRun) {
+        std::filesystem::create_directories(options.outputDir);
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(
+                 options.baseSrc,
+                 std::filesystem::directory_options::skip_permission_denied)) {
+            if (entry.is_directory() && ShouldSkipDirectory(entry.path())) {
+                logger_.Debug("Skipping directory: " + entry.path().string());
+                continue;
+            }
+
+            const auto relative = std::filesystem::relative(entry.path(), options.baseSrc);
+            const auto dest = options.outputDir / relative;
+
+            if (entry.is_directory()) {
+                logger_.Debug("Creating directory: " + dest.string());
+                std::filesystem::create_directories(dest);
+            } else if (entry.is_regular_file()) {
+                logger_.Debug("Copying file: " + relative.string());
+                std::filesystem::create_directories(dest.parent_path());
+                std::filesystem::copy_file(
+                    entry.path(), dest,
+                    std::filesystem::copy_options::overwrite_existing);
+            }
+        }
+    } else {
+        logger_.Info("Dry run: skipping base source copy");
+    }
+
+    // Generate domain files.
+    const std::filesystem::path generatedDir = options.outputDir / options.generatedDirName;
+    logger_.Info("Generating domain files in: " + generatedDir.string());
+    if (!options.dryRun) {
+        std::filesystem::create_directories(generatedDir);
+        InverterCodegen::CodeGenerator generator(graph);
+        std::string genError;
+        if (!generator.Generate(generatedDir.string(), genError)) {
+            logger_.Error("Code generation failed: " + genError);
+            return false;
+        }
+    } else {
+        logger_.Info("Dry run: skipping code generation");
+    }
+
+    // Collect domains actually generated.
+    std::unordered_set<std::string> generatedDomains;
+    for (const auto& node : graph.GetNodes()) {
+        generatedDomains.insert(node.domain);
+    }
+
+    // Scan copied source for markers and emit.
+    logger_.Info("Scanning for RTE_EMIT markers");
+    std::string scanError;
+    bool anyError = false;
+
+    for (const auto& entry :
+         std::filesystem::recursive_directory_iterator(
+             options.outputDir,
+             std::filesystem::directory_options::skip_permission_denied)) {
+        if (!entry.is_regular_file()) continue;
+        if (!IsSourceFile(entry.path())) continue;
+
+        const auto filePath = entry.path();
+        logger_.Debug("Scanning file: " + filePath.string());
+
+        std::string readError;
+        std::string text = ReadFileText(filePath, readError);
+        if (!readError.empty()) {
+            logger_.Warning("Could not read " + filePath.string() + ": " + readError);
+            continue;
+        }
+
+        auto lines = SplitLines(text);
+        std::vector<Marker> markers;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            if (auto marker = MarkerParser::ParseLine(lines[i], i)) {
+                markers.push_back(*marker);
+            }
+        }
+
+        if (markers.empty()) continue;
+
+        logger_.Info("Found " + std::to_string(markers.size()) + " marker(s) in " +
+                     filePath.string());
+
+        // Validate domains.
+        for (const auto& marker : markers) {
+            if (generatedDomains.count(marker.domain) == 0) {
+                logger_.Error("Marker references unknown domain '" + marker.domain +
+                              "' in " + filePath.string() + ":" +
+                              std::to_string(marker.lineNumber + 1));
+                anyError = true;
+            }
+        }
+        if (anyError) continue;
+
+        // Determine required includes.
+        std::unordered_set<std::string> requiredHeaders;
+        for (const auto& marker : markers) {
+            requiredHeaders.insert(DomainHeaderName(marker.domain));
+        }
+
+        // Compute include insertion point (after last #include or #pragma once).
+        size_t includeInsertLine = 0;
+        bool hasPragmaOnce = false;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            std::string_view line = lines[i];
+            // Trim manually.
+            while (!line.empty() && std::isspace(static_cast<unsigned char>(line.front()))) {
+                line.remove_prefix(1);
+            }
+            if (line.starts_with("#pragma once")) {
+                hasPragmaOnce = true;
+                includeInsertLine = i + 1;
+            } else if (line.starts_with("#include")) {
+                includeInsertLine = i + 1;
+            }
+        }
+
+        // Check which headers are already included.
+        std::unordered_set<std::string> existingHeaders;
+        for (const auto& line : lines) {
+            std::string_view view = line;
+            while (!view.empty() && std::isspace(static_cast<unsigned char>(view.front()))) {
+                view.remove_prefix(1);
+            }
+            if (view.starts_with("#include")) {
+                // Extract the filename between quotes or brackets.
+                const size_t quoteStart = view.find('"');
+                const size_t bracketStart = view.find('<');
+                size_t start = std::string_view::npos;
+                char close = '\0';
+                if (quoteStart != std::string_view::npos &&
+                    (bracketStart == std::string_view::npos || quoteStart < bracketStart)) {
+                    start = quoteStart + 1;
+                    close = '"';
+                } else if (bracketStart != std::string_view::npos) {
+                    start = bracketStart + 1;
+                    close = '>';
+                }
+                if (start != std::string_view::npos) {
+                    const size_t end = view.find(close, start);
+                    if (end != std::string_view::npos) {
+                        existingHeaders.insert(std::string(view.substr(start, end - start)));
+                    }
+                }
+            }
+        }
+
+        // Compute relative path from file's directory to generated dir.
+        const auto fileDir = filePath.parent_path();
+        const auto relGeneratedDir = RelativePath(fileDir, generatedDir);
+
+        // Build include lines to add.
+        std::vector<std::string> includesToAdd;
+        for (const auto& header : requiredHeaders) {
+            const std::string includePath = (relGeneratedDir / header).string();
+            if (existingHeaders.count(includePath) == 0 &&
+                existingHeaders.count(header) == 0) {
+                includesToAdd.push_back("#include \"" + includePath + "\"");
+                logger_.Debug("Adding include '" + includePath + "' to " + filePath.string());
+            }
+        }
+
+        if (!options.dryRun) {
+            // Insert includes.
+            size_t linesAdded = 0;
+            if (!includesToAdd.empty()) {
+                // Ensure a blank line after #pragma once if needed.
+                if (hasPragmaOnce && includeInsertLine < lines.size() &&
+                    !lines[includeInsertLine].empty() &&
+                    !lines[includeInsertLine].starts_with("#include")) {
+                    lines.insert(lines.begin() + static_cast<long>(includeInsertLine), "");
+                    ++includeInsertLine;
+                    ++linesAdded;
+                }
+
+                for (const auto& includeLine : includesToAdd) {
+                    lines.insert(lines.begin() + static_cast<long>(includeInsertLine),
+                                 includeLine);
+                    ++includeInsertLine;
+                    ++linesAdded;
+                }
+            }
+
+            // Replace markers. All markers shift by the number of lines added above,
+            // because includes are inserted before every marker.
+            for (const auto& marker : markers) {
+                const std::string domainTitle = DomainTitle(marker.domain);
+                const std::string stateAccess = options.stateVariable + "." + marker.domain;
+
+                std::string snippet;
+                if (marker.section == "init") {
+                    snippet = "app::" + domainTitle + "Init(" + stateAccess + ");";
+                } else if (marker.section == "step") {
+                    snippet = "app::" + domainTitle + "Step(" + stateAccess + ");";
+                }
+
+                const size_t adjustedLine = marker.lineNumber + linesAdded;
+                if (adjustedLine < lines.size()) {
+                    // Preserve the indentation of the original marker line.
+                    const std::string& originalLine = lines[adjustedLine];
+                    std::string indent;
+                    for (char c : originalLine) {
+                        if (std::isspace(static_cast<unsigned char>(c))) {
+                            indent += c;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Multi-line snippets need indentation on continuation lines.
+                    if (marker.section == "state") {
+                        snippet = "namespace app {\n" + indent + "    struct " + domainTitle +
+                                  "State;\n" + indent + "}";
+                    }
+
+                    lines[adjustedLine] = indent + snippet;
+                    logger_.Debug("Replaced marker at line " +
+                                  std::to_string(marker.lineNumber + 1) + " in " +
+                                  filePath.string());
+                }
+            }
+
+            std::string writeError;
+            if (!WriteFileText(filePath, JoinLines(lines), writeError)) {
+                logger_.Error(writeError);
+                anyError = true;
+            }
+        } else {
+            logger_.Info("Dry run: would modify " + filePath.string());
+        }
+    }
+
+    if (anyError) {
+        logger_.Error("Emitter finished with errors");
+        return false;
+    }
+
+    logger_.Info("RTECodeEmitter finished successfully");
+    return true;
+}
+
+}  // namespace RTECodeEmitter

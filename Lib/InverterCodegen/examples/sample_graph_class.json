@@ -1,0 +1,79 @@
+{
+  "name": "pi_controller_demo",
+  "nodeTypes": [
+    {
+      "id": "constant.value",
+      "displayName": "Constant",
+      "inputPorts": [],
+      "outputPorts": [
+        {"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "inlineCode": "out = value;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    },
+    {
+      "id": "control.pi",
+      "displayName": "PI Controller",
+      "inputPorts": [
+        {"name": "error", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "outputPorts": [
+        {"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "inlineCode": "out = instance.update(error);",
+      "constructorCode": "instance.kp = kp; instance.ki = ki;",
+      "classHeader": "class PiController { public: float kp; float ki; float integrator; float update(float error); };",
+      "classDefinition": "float PiController::update(float error) { integrator += ki * error; return kp * error + integrator; }",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    },
+    {
+      "id": "sink.pwm",
+      "displayName": "PWM Output",
+      "inputPorts": [
+        {"name": "in", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "outputPorts": [],
+      "inlineCode": "platform_pwm_set(in, in, in);",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "setpoint",
+      "type": "constant.value",
+      "displayName": "Setpoint",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {"value": "1.0"}
+    },
+    {
+      "id": "pi",
+      "type": "control.pi",
+      "displayName": "PI",
+      "domain": "app_loop",
+      "position": {"x": 200.0, "y": 0.0},
+      "parameters": {"kp": "0.5", "ki": "0.1"}
+    },
+    {
+      "id": "pwm",
+      "type": "sink.pwm",
+      "displayName": "PWM",
+      "domain": "app_loop",
+      "position": {"x": 400.0, "y": 0.0},
+      "parameters": {}
+    }
+  ],
+  "connections": [
+    {"id": "c1", "from": {"nodeId": "setpoint", "portName": "out"}, "to": {"nodeId": "pi", "portName": "error"}},
+    {"id": "c2", "from": {"nodeId": "pi", "portName": "out"}, "to": {"nodeId": "pwm", "portName": "in"}}
+  ]
+}
