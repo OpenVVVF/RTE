@@ -15,7 +15,7 @@
 #include <stdbool.h>
 
 /* Forward declaration for the FOC ISR hook (defined in FocControlManager.cpp). */
-extern void FocControlManager_OnPwmPeriod(void);
+extern "C" void FocControlManager_OnPwmPeriod(void);
 
 /* USER CODE BEGIN 0 */
 #define TIM1_CLOCK_HZ       275000000UL

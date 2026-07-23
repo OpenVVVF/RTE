@@ -9,5 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 enable_testing()
 
 add_subdirectory(Lib/NodeAPI)
+add_subdirectory(Lib/RTELogger)
 add_subdirectory(Lib/InverterCodegen)
 add_subdirectory(Source/RTECodeEmitter)
+add_subdirectory(Source/RTEFirmwareBuilder)

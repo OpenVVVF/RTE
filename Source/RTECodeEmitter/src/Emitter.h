@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Logger.h"
+#include <RTELogger/Logger.h>
 
 #include <filesystem>
 #include <string>

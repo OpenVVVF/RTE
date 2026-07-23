@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "../src/Emitter.h"
-#include "../src/Logger.h"
+#include <RTELogger/Logger.h>
 
 #include <filesystem>
 #include <fstream>

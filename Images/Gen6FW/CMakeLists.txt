@@ -101,6 +101,18 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Sensors/MAX22530.cpp
 )
 
+# Add RTE-generated domain sources if they exist. These are produced by
+# RTECodeEmitter and live in <firmware-root>/generated/.
+file(GLOB GENERATED_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/generated/domain_*_generated.cpp
+)
+if(GENERATED_SOURCES)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${GENERATED_SOURCES})
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/generated
+    )
+endif()
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Inc/Inverter

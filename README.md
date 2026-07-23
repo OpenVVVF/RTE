@@ -38,5 +38,6 @@ ctest --test-dir build --output-on-failure
 
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the firmware, generates domain code, and inserts it at `// RTE_EMIT:` markers.
+- `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally runs `RTECodeEmitter`, and builds the STM32 firmware.
 
-See `Source/RTECodeEmitter/README.md` for usage.
+See `Source/RTECodeEmitter/README.md` and `Source/RTEFirmwareBuilder/README.md` for usage.
