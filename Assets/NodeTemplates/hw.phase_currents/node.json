@@ -3,7 +3,7 @@
   "displayName": "Phase Currents (ISR)",
   "maxInstances": 1,
   "isEntryPoint": true,
-  "domain": "isr_pwm",
+  "domain": "adc_isr",
   "inputPorts": [],
   "outputPorts": [
     {

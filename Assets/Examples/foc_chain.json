@@ -68,7 +68,7 @@
     {
       "id": "currents",
       "type": "hw.adc.phase_currents",
-      "domain": "isr_pwm",
+      "domain": "adc_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -83,7 +83,7 @@
     {
       "id": "clarke",
       "type": "math.clarke",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -92,7 +92,7 @@
     {
       "id": "park",
       "type": "math.park",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -101,7 +101,7 @@
     {
       "id": "idq_ref",
       "type": "constant.dq_current",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -110,7 +110,7 @@
     {
       "id": "unpack_ref",
       "type": "math.dq_unpack",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -119,7 +119,7 @@
     {
       "id": "unpack_meas",
       "type": "math.dq_unpack",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -128,7 +128,7 @@
     {
       "id": "pi_d",
       "type": "control.pi_current",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -144,7 +144,7 @@
     {
       "id": "pi_q",
       "type": "control.pi_current",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -160,7 +160,7 @@
     {
       "id": "pack_vdq",
       "type": "math.dq_pack",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -169,7 +169,7 @@
     {
       "id": "theta",
       "type": "constant.theta",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -181,7 +181,7 @@
     {
       "id": "inverse_park",
       "type": "math.inverse_park",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -190,7 +190,7 @@
     {
       "id": "inverse_clarke",
       "type": "math.inverse_clarke",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -199,7 +199,7 @@
     {
       "id": "vdc",
       "type": "constant.voltage",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -211,7 +211,7 @@
     {
       "id": "svpwm",
       "type": "math.svpwm",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -220,7 +220,7 @@
     {
       "id": "pwm",
       "type": "hw.pwm.set_duty",
-      "domain": "isr_pwm",
+      "domain": "tim_isr",
       "position": {
         "x": 0,
         "y": 0
@@ -228,17 +228,6 @@
     }
   ],
   "connections": [
-    {
-      "id": "c1",
-      "from": {
-        "nodeId": "currents",
-        "portName": "i_abc"
-      },
-      "to": {
-        "nodeId": "clarke",
-        "portName": "i_abc"
-      }
-    },
     {
       "id": "c2",
       "from": {
@@ -435,6 +424,24 @@
       "to": {
         "nodeId": "pwm",
         "portName": "duty_c"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "id": "i_abc_bridge",
+      "type": {
+        "quantity": "current",
+        "frame": "abc",
+        "dtype": "f32"
+      },
+      "producer": {
+        "nodeId": "currents",
+        "portName": "i_abc"
+      },
+      "consumer": {
+        "nodeId": "clarke",
+        "portName": "i_abc"
       }
     }
   ]

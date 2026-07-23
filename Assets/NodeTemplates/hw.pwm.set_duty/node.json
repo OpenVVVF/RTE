@@ -3,6 +3,7 @@
   "displayName": "Set PWM Duty Cycles",
   "maxInstances": 1,
   "isEntryPoint": false,
+  "domain": "tim_isr",
   "inputPorts": [
     {
       "name": "duty_a",

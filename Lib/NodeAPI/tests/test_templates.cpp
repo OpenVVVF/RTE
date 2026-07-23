@@ -28,7 +28,7 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     ASSERT_TRUE(type.has_value());
     EXPECT_EQ(type->displayName, "Phase Currents (ISR)");
     EXPECT_TRUE(type->isEntryPoint);
-    EXPECT_EQ(type->domain, "isr_pwm");
+    EXPECT_EQ(type->domain, "adc_isr");
     EXPECT_EQ(type->maxInstances, 1u);
     EXPECT_EQ(type->inputPorts.size(), 0u);
     EXPECT_EQ(type->outputPorts.size(), 1u);
@@ -76,12 +76,12 @@ TEST(NodeTemplates, ForcedDomainOverridesInstanceDomain) {
     ASSERT_TRUE(graph.AddNode(Node{
         .id = "currents",
         .type = "hw.adc.phase_currents",
-        .domain = "app_loop",
+        .domain = "tim_isr",
     }));
 
     const auto node = graph.FindNode("currents");
     ASSERT_TRUE(node.has_value());
-    EXPECT_EQ(node->domain, "isr_pwm");
+    EXPECT_EQ(node->domain, "adc_isr");
 }
 
 TEST(NodeTemplates, LoadsControlBlocks) {
