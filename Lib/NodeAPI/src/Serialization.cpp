@@ -157,6 +157,32 @@ Connection ConnectionFromJson(const json& j) {
     };
 }
 
+json ToJson(const Bridge& bridge) {
+    return json::object({
+        {"id", bridge.id},
+        {"type", ToJson(bridge.type)},
+        {"producer", json::object({{"nodeId", bridge.producer.nodeId},
+                                   {"portName", bridge.producer.portName}})},
+        {"consumer", json::object({{"nodeId", bridge.consumer.nodeId},
+                                   {"portName", bridge.consumer.portName}})},
+    });
+}
+
+Bridge BridgeFromJson(const json& j) {
+    return Bridge{
+        .id = j.at("id").get<std::string>(),
+        .type = WireTypeFromJson(j.at("type")),
+        .producer = PortRef{
+            .nodeId = j.at("producer").at("nodeId").get<std::string>(),
+            .portName = j.at("producer").at("portName").get<std::string>(),
+        },
+        .consumer = PortRef{
+            .nodeId = j.at("consumer").at("nodeId").get<std::string>(),
+            .portName = j.at("consumer").at("portName").get<std::string>(),
+        },
+    };
+}
+
 }  // namespace
 
 std::string SaveToJson(const Graph& graph) {
@@ -165,6 +191,7 @@ std::string SaveToJson(const Graph& graph) {
     j["nodeTypes"] = json::array();
     j["nodes"] = json::array();
     j["connections"] = json::array();
+    j["bridges"] = json::array();
 
     for (const auto& nodeType : graph.GetNodeTypes()) {
         j["nodeTypes"].push_back(ToJson(nodeType));
@@ -174,6 +201,9 @@ std::string SaveToJson(const Graph& graph) {
     }
     for (const auto& connection : graph.GetConnections()) {
         j["connections"].push_back(ToJson(connection));
+    }
+    for (const auto& bridge : graph.GetBridges()) {
+        j["bridges"].push_back(ToJson(bridge));
     }
 
     return j.dump(2);
@@ -194,8 +224,17 @@ Graph LoadFromJson(std::string_view jsonText) {
     for (const auto& item : j.at("connections")) {
         graph.Connect(ConnectionFromJson(item));
     }
+    if (j.contains("bridges")) {
+        for (const auto& item : j.at("bridges")) {
+            graph.AddBridge(BridgeFromJson(item));
+        }
+    }
 
     return graph;
+}
+
+NodeType NodeTypeFromJson(std::string_view jsonText) {
+    return NodeTypeFromJson(json::parse(jsonText));
 }
 
 }  // namespace NodeAPI

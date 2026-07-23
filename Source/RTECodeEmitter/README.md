@@ -82,6 +82,8 @@ Inside `--output`:
 <output>/
 ├── <copied base firmware files>
 └── <generated-dir>/
+    ├── bridges_generated.h          # only if the graph has cross-domain bridges
+    ├── bridges_generated.cpp
     ├── domain_app_loop_generated.h
     ├── domain_app_loop_generated.cpp
     ├── domain_tim_isr_generated.h
@@ -99,6 +101,45 @@ void AppAppLoopStep(AppAppLoopState& state);
 } // namespace app
 ```
 
+## Cross-domain bridges
+
+Direct node connections must stay inside a single timing domain. To pass data between domains, use a `Bridge` in the graph:
+
+```json
+{
+  "bridges": [
+    {
+      "id": "throttle_cmd",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+      "producer": {"nodeId": "throttle", "portName": "out"},
+      "consumer": {"nodeId": "current_ref", "portName": "in"}
+    }
+  ]
+}
+```
+
+The codegen emits a global `std::atomic<float>` for each bridge:
+
+```cpp
+namespace app {
+extern std::atomic<float> bridge_throttle_cmd;
+} // namespace app
+```
+
+The producer domain writes to it after computing its output:
+
+```cpp
+bridge_throttle_cmd.store(out, std::memory_order_relaxed);
+```
+
+The consumer domain reads it as its input:
+
+```cpp
+const float in = bridge_throttle_cmd.load(std::memory_order_relaxed);
+```
+
+Bridges are type-checked by NodeAPI against the producer and consumer port types.
+
 ## What the tool does step by step
 
 1. Validate CLI arguments (paths exist, output does not overlap base source).
@@ -106,12 +147,13 @@ void AppAppLoopStep(AppAppLoopState& state);
 3. Run `NodeAPI::Timing::Validator`; fail fast on timing errors.
 4. Recursively copy `--base-src` to `--output`, skipping `.git`, `build`, etc.
 5. Generate domain files into `output/<generated-dir>/` via `InverterCodegenLib`.
-6. Scan the copied source tree for `// RTE_EMIT:` markers.
-7. For each marker:
+6. If the graph has bridges, generate `bridges_generated.h` / `.cpp` with global atomic variables.
+7. Scan the copied source tree for `// RTE_EMIT:` markers.
+8. For each marker:
    - Replace the marker line with the matching snippet.
    - Add an `#include` for the generated domain header if it is not already present.
    - Compute the relative path from the source file to `output/<generated-dir>/`.
-8. Write the modified files.
+9. Write the modified files.
 
 ## Logging
 
@@ -148,4 +190,3 @@ cmake --build build
 ## Future ideas (not implemented yet)
 
 - Multi-line block markers (`// RTE_EMIT_BEGIN:` / `// RTE_EMIT_END:`) for inserting larger generated regions.
-- Cross-domain variables generated automatically for safe inter-domain communication.

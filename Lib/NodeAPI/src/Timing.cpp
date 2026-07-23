@@ -62,6 +62,19 @@ ValidationResult Validator::CheckDomains(const Graph& graph) const {
         }
     }
 
+    for (const auto& bridge : graph.GetBridges()) {
+        const auto producerNode = graph.FindNode(bridge.producer.nodeId);
+        const auto consumerNode = graph.FindNode(bridge.consumer.nodeId);
+        if (!producerNode || !consumerNode) continue;  // Structural problem; Graph already rejects this.
+
+        if (!producerNode->domain.empty() && !consumerNode->domain.empty() &&
+            producerNode->domain == consumerNode->domain) {
+            result.AddError("bridge '" + bridge.id + "' connects node '" + bridge.producer.nodeId +
+                            "' to node '" + bridge.consumer.nodeId + "' within domain '" +
+                            producerNode->domain + "'; use a connection for same-domain links");
+        }
+    }
+
     return result;
 }
 
@@ -74,6 +87,9 @@ ValidationResult Validator::CheckEntryPoints(const Graph& graph) const {
     }
     for (const auto& connection : graph.GetConnections()) {
         ++inDegree[connection.to.nodeId];
+    }
+    for (const auto& bridge : graph.GetBridges()) {
+        ++inDegree[bridge.consumer.nodeId];
     }
 
     for (const auto& node : graph.GetNodes()) {
@@ -102,6 +118,10 @@ ValidationResult Validator::CheckCycles(const Graph& graph) const {
     for (const auto& connection : graph.GetConnections()) {
         adjacency[connection.from.nodeId].push_back(connection.to.nodeId);
         ++inDegree[connection.to.nodeId];
+    }
+    for (const auto& bridge : graph.GetBridges()) {
+        adjacency[bridge.producer.nodeId].push_back(bridge.consumer.nodeId);
+        ++inDegree[bridge.consumer.nodeId];
     }
 
     std::queue<std::string> queue;

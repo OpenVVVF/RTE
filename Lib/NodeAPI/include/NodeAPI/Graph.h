@@ -20,6 +20,16 @@ struct Connection {
     friend bool operator!=(const Connection& lhs, const Connection& rhs) = default;
 };
 
+struct Bridge {
+    std::string id;
+    WireType type;
+    PortRef producer;
+    PortRef consumer;
+
+    friend bool operator==(const Bridge& lhs, const Bridge& rhs) = default;
+    friend bool operator!=(const Bridge& lhs, const Bridge& rhs) = default;
+};
+
 class Graph {
 public:
     Graph() = default;
@@ -42,6 +52,12 @@ public:
     std::optional<Connection> FindConnection(const std::string& connectionId) const;
     const std::vector<Connection>& GetConnections() const { return connections_; }
 
+    // Bridges (cross-domain links).
+    bool AddBridge(Bridge bridge);
+    bool RemoveBridge(const std::string& bridgeId);
+    std::optional<Bridge> FindBridge(const std::string& bridgeId) const;
+    const std::vector<Bridge>& GetBridges() const { return bridges_; }
+
     // Looks up the port definition from the node's type. Returns a copy so the
     // result is safe to keep across further graph operations.
     std::optional<Port> FindPort(const PortRef& ref) const;
@@ -58,12 +74,16 @@ private:
     std::size_t CountInstances(const std::string& typeId) const;
     bool TypeIdTaken(const std::string& typeId) const;
     bool ConnectionIdTaken(const std::string& connectionId) const;
+    bool BridgeIdTaken(const std::string& bridgeId) const;
     bool EndpointExists(const PortRef& ref, PortDirection expectedDirection) const;
+    bool ConsumerHasConnection(const PortRef& ref) const;
+    bool ConsumerHasBridge(const PortRef& ref) const;
 
     std::string name_;
     std::vector<NodeType> nodeTypes_;
     std::vector<Node> nodes_;
     std::vector<Connection> connections_;
+    std::vector<Bridge> bridges_;
 };
 
 }  // namespace NodeAPI

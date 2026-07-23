@@ -50,6 +50,12 @@ bool Graph::RemoveNode(const std::string& nodeId) {
                                    return c.from.nodeId == nodeId || c.to.nodeId == nodeId;
                                }),
                 connections_.end());
+            bridges_.erase(
+                std::remove_if(bridges_.begin(), bridges_.end(),
+                               [&nodeId](const Bridge& b) {
+                                   return b.producer.nodeId == nodeId || b.consumer.nodeId == nodeId;
+                               }),
+                bridges_.end());
             return true;
         }
     }
@@ -69,6 +75,7 @@ bool Graph::Connect(Connection connection) {
     if (!EndpointExists(connection.from, PortDirection::Output)) return false;
     if (!EndpointExists(connection.to, PortDirection::Input)) return false;
     if (!TypeCheck(connection)) return false;
+    if (ConsumerHasBridge(connection.to)) return false;
     connections_.push_back(std::move(connection));
     return true;
 }
@@ -81,6 +88,41 @@ bool Graph::Disconnect(const std::string& connectionId) {
         }
     }
     return false;
+}
+
+bool Graph::AddBridge(Bridge bridge) {
+    if (bridge.id.empty()) return false;
+    if (BridgeIdTaken(bridge.id)) return false;
+    if (!EndpointExists(bridge.producer, PortDirection::Output)) return false;
+    if (!EndpointExists(bridge.consumer, PortDirection::Input)) return false;
+
+    const auto producerPort = FindPort(bridge.producer);
+    const auto consumerPort = FindPort(bridge.consumer);
+    if (!producerPort || !consumerPort) return false;
+    if (producerPort->type != bridge.type || consumerPort->type != bridge.type) return false;
+
+    if (ConsumerHasConnection(bridge.consumer)) return false;
+    if (ConsumerHasBridge(bridge.consumer)) return false;
+
+    bridges_.push_back(std::move(bridge));
+    return true;
+}
+
+bool Graph::RemoveBridge(const std::string& bridgeId) {
+    for (auto it = bridges_.begin(); it != bridges_.end(); ++it) {
+        if (it->id == bridgeId) {
+            bridges_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<Bridge> Graph::FindBridge(const std::string& bridgeId) const {
+    for (const auto& bridge : bridges_) {
+        if (bridge.id == bridgeId) return bridge;
+    }
+    return std::nullopt;
 }
 
 std::optional<Connection> Graph::FindConnection(const std::string& connectionId) const {
@@ -138,10 +180,31 @@ bool Graph::ConnectionIdTaken(const std::string& connectionId) const {
     return false;
 }
 
+bool Graph::BridgeIdTaken(const std::string& bridgeId) const {
+    for (const auto& bridge : bridges_) {
+        if (bridge.id == bridgeId) return true;
+    }
+    return false;
+}
+
 bool Graph::EndpointExists(const PortRef& ref, PortDirection expectedDirection) const {
     const auto port = FindPort(ref);
     if (!port) return false;
     return port->direction == expectedDirection;
+}
+
+bool Graph::ConsumerHasConnection(const PortRef& ref) const {
+    for (const auto& connection : connections_) {
+        if (connection.to == ref) return true;
+    }
+    return false;
+}
+
+bool Graph::ConsumerHasBridge(const PortRef& ref) const {
+    for (const auto& bridge : bridges_) {
+        if (bridge.consumer == ref) return true;
+    }
+    return false;
 }
 
 }  // namespace NodeAPI

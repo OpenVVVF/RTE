@@ -275,3 +275,163 @@ TEST(Serialization, RoundTrip) {
     EXPECT_EQ(c->from.portName, "out");
     EXPECT_EQ(c->to.nodeId, "pi");
 }
+
+TEST(Bridge, AddAndFind) {
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    EXPECT_TRUE(graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "source", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+    EXPECT_EQ(graph.GetBridges().size(), 1u);
+
+    const auto bridge = graph.FindBridge("b1");
+    ASSERT_TRUE(bridge.has_value());
+    EXPECT_EQ(bridge->producer.nodeId, "source");
+    EXPECT_EQ(bridge->consumer.nodeId, "sink");
+    EXPECT_EQ(bridge->type, scalar);
+}
+
+TEST(Bridge, RejectBadDirection) {
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    EXPECT_FALSE(graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "sink", .portName = "in"},
+        .consumer = PortRef{.nodeId = "source", .portName = "out"},
+    }));
+}
+
+TEST(Bridge, RejectMismatchedType) {
+    Graph graph;
+    graph.AddNodeType(MakeVoltageType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "voltage", .type = "constant.voltage", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    EXPECT_FALSE(graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "voltage", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+}
+
+TEST(Bridge, RejectConsumerWithConnection) {
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    EXPECT_TRUE(graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "source", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    EXPECT_FALSE(graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "source", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+}
+
+TEST(Bridge, ConnectRejectsBridgedConsumer) {
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    EXPECT_TRUE(graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "source", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+
+    EXPECT_FALSE(graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "source", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+}
+
+TEST(Bridge, RemoveNodeCleansBridges) {
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "source", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    });
+
+    EXPECT_EQ(graph.GetBridges().size(), 1u);
+    EXPECT_TRUE(graph.RemoveNode("source"));
+    EXPECT_EQ(graph.GetBridges().size(), 0u);
+}
+
+TEST(Serialization, BridgeRoundTrip) {
+    Graph graph;
+    graph.SetName("bridged");
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "source", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    });
+
+    const std::string json = SaveToJson(graph);
+    const Graph loaded = LoadFromJson(json);
+
+    EXPECT_EQ(loaded.GetBridges().size(), 1u);
+    const auto bridge = loaded.FindBridge("b1");
+    ASSERT_TRUE(bridge.has_value());
+    EXPECT_EQ(bridge->producer.nodeId, "source");
+    EXPECT_EQ(bridge->consumer.nodeId, "sink");
+    EXPECT_EQ(bridge->type, scalar);
+}

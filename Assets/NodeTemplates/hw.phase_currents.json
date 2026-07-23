@@ -1,0 +1,33 @@
+{
+  "id": "hw.adc.phase_currents",
+  "displayName": "Phase Currents (ISR)",
+  "inlineCode": "// ADC1 injected: U signal CH4 (rank 1), V signal CH3 (rank 2)\n// ADC2 injected: U reference CH8 (rank 1), V reference CH7 (rank 2)\n// Triggered by TIM1 TRGO at PWM bottom; read in ADC ISR.\nstatic constexpr float ADC_VREF = 3.3f;\nstatic constexpr float DIVIDER = 2.0f / 3.0f;\nstatic constexpr float SENSITIVITY_VA = 1.042e-3f;  // LA37S600\nstatic constexpr float COUNTS_FULL = 65535.0f;\n\nconst float scale = (ADC_VREF / COUNTS_FULL) / (DIVIDER * SENSITIVITY_VA);\n\nconst uint32_t raw_u_sig = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);\nconst uint32_t raw_v_sig = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);\nconst uint32_t raw_u_ref = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);\nconst uint32_t raw_v_ref = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);\n\nconst float iu_raw = (static_cast<float>(raw_u_sig) - static_cast<float>(raw_u_ref)) * scale;\nconst float iv_raw = (static_cast<float>(raw_v_sig) - static_cast<float>(raw_v_ref)) * scale;\n\n// Subtract calibrated zero-current offsets.\nconst float iu_a = iu_raw - params.offset_u_a;\nconst float iv_a = iv_raw - params.offset_v_a;\n\n// Measured W from a separate 12-bit ADC sampler. Platform must provide this symbol.\nconst uint32_t raw_w_12bit = HW_ReadRawWCurrent_12bit();\nconst float iw_measured_a = (static_cast<float>(raw_w_12bit) - params.offset_w_12bit) * params.scale_w_a_per_lsb;\n\n// Calculated W assuming a balanced three-wire load.\nconst float iw_calculated_a = -(iu_a + iv_a);\n",
+  "constructorCode": "",
+  "classHeader": "",
+  "classDefinition": "",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "iu_a",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "iv_a",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "iw_measured_a",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "iw_calculated_a",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    }
+  ]
+}

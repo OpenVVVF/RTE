@@ -20,13 +20,14 @@ struct ValidationResult {
 // Timing-domain validation for NodeAPI graphs.
 //
 // Every node carries a `domain` string (e.g. "isr_pwm", "adc_sample",
-// "app_loop"). This validator enforces two rules:
+// "app_loop"). This validator enforces three rules:
 //   1. The graph is a DAG — cycles are reported as errors.
 //   2. Connections may only exist between nodes in the same timing domain.
+//   3. Bridges may only connect nodes in different timing domains.
 //
-// Cross-domain data movement is intentionally not represented by a direct
-// connection; the consuming project must model it explicitly (e.g. a global
-// variable written in one domain and read in another).
+// Cross-domain data movement is represented by a `Bridge`, not by a direct
+// `Connection`; the consuming project models explicit domain hand-offs with
+// bridges and keeps intra-domain wiring with normal connections.
 class Validator {
 public:
     ValidationResult Validate(const Graph& graph) const;

@@ -1,0 +1,62 @@
+{
+  "name": "bridge_demo",
+  "nodeTypes": [
+    {
+      "id": "constant.value",
+      "displayName": "Constant",
+      "inputPorts": [],
+      "outputPorts": [
+        {"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "inlineCode": "out = value;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    },
+    {
+      "id": "control.gain",
+      "displayName": "Gain",
+      "inputPorts": [
+        {"name": "in", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "outputPorts": [
+        {"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+      ],
+      "inlineCode": "out = gain * in;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "throttle",
+      "type": "constant.value",
+      "displayName": "Throttle",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {"value": "0.5"}
+    },
+    {
+      "id": "current_ref",
+      "type": "control.gain",
+      "displayName": "Current Reference",
+      "domain": "tim_isr",
+      "position": {"x": 200.0, "y": 0.0},
+      "parameters": {"gain": "2.0"}
+    }
+  ],
+  "connections": [],
+  "bridges": [
+    {
+      "id": "throttle_cmd",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+      "producer": {"nodeId": "throttle", "portName": "out"},
+      "consumer": {"nodeId": "current_ref", "portName": "in"}
+    }
+  ]
+}

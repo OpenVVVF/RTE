@@ -24,6 +24,7 @@ include(GoogleTest)
 
 set(NODEAPI_SOURCES
     src/Graph.cpp
+    src/NodeTemplates.cpp
     src/NodeType.cpp
     src/Serialization.cpp
     src/WireType.cpp
@@ -46,6 +47,7 @@ target_link_libraries(NodeAPI
 
 set(NODEAPI_TEST_SOURCES
     tests/test_nodeapi.cpp
+    tests/test_templates.cpp
 )
 
 if(NODEAPI_BUILD_TIMING)

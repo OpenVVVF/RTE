@@ -45,7 +45,8 @@ Then include the umbrella header:
 | `NodeAPI::NodeType` | A reusable node template in the project's node database: ports + code pieces. |
 | `NodeAPI::Node` | An instance of a `NodeType` with id, domain, and canvas position. |
 | `NodeAPI::Port` | A named port with a direction and a `WireType`. |
-| `NodeAPI::Connection` | Connects an output `PortRef` to an input `PortRef`. |
+| `NodeAPI::Connection` | Connects an output `PortRef` to an input `PortRef` within the same timing domain. |
+| `NodeAPI::Bridge` | Connects an output `PortRef` in one timing domain to an input `PortRef` in another. |
 | `NodeAPI::WireType` | `{quantity, frame, dtype}` tuple. |
 | `NodeAPI::PortRef` | `{nodeId, portName}` endpoint reference. |
 
@@ -125,12 +126,33 @@ bool ok = graph.Connect(Connection{
 // ok is true when endpoints exist, directions are correct, and WireTypes match.
 ```
 
+### Bridges (cross-domain data flow)
+
+Use a `Bridge` to move data from one timing domain into another. A bridge is a directed link from an output port (producer) to an input port (consumer) in a different domain:
+
+```cpp
+bool ok = graph.AddBridge(Bridge{
+    .id = "adc_to_app",
+    .type = scalarFloat,
+    .producer = PortRef{.nodeId = "adc_value", .portName = "out"},
+    .consumer = PortRef{.nodeId = "pi", .portName = "error"}
+});
+```
+
+Rules enforced for bridges:
+
+- `AddBridge` rejects missing endpoints, wrong directions, mismatched `WireType`, duplicate bridge ids, and empty bridge ids.
+- The producer endpoint must be an output port; the consumer must be an input port.
+- The bridge's `type` must match both the producer port type and the consumer port type.
+- A consumer port may be fed by either a bridge **or** intra-domain connections, not both.
+
 ### Rules enforced by Graph
 
 - `AddNodeType` rejects empty ids and duplicate ids.
 - `AddNode` rejects empty ids, duplicate ids, and unknown `NodeType` ids.
-- `Connect` rejects missing endpoints, wrong directions, mismatched `WireType`, duplicate connection ids, and empty connection ids.
-- `RemoveNode` deletes the node and any connections touching it.
+- `Connect` rejects missing endpoints, wrong directions, mismatched `WireType`, duplicate connection ids, empty connection ids, and ports already fed by a bridge.
+- `AddBridge` rejects missing endpoints, wrong directions, mismatched `WireType`, duplicate bridge ids, empty bridge ids, and consumers already fed by a connection or another bridge.
+- `RemoveNode` deletes the node and any connections or bridges touching it.
 - `TypeCheck(connection)` returns true only when both endpoints exist and their `WireType`s are equal.
 
 ### Timing-domain and DAG validation (optional)
@@ -153,12 +175,13 @@ if (!result.ok) {
 Rules:
 - Every node must have a non-empty `domain`.
 - Connections may only connect nodes in the same domain.
-- Entry-point node types (`isEntryPoint = true`) may not have any incoming connections.
-- The graph must be a DAG (no directed cycles).
+- Bridges may only connect nodes in different domains (use a `Connection` for same-domain links).
+- Entry-point node types (`isEntryPoint = true`) may not have any incoming connections or bridges.
+- The graph must be a DAG (no directed cycles); bridges participate in cycle detection.
 
 `NodeType::maxInstances` limits how many instances of a type can be added to the graph (`0` = unlimited).
 
-Cross-domain data movement is intentionally not a direct connection; model it explicitly in the consuming project (e.g. a global variable written in one domain and read in another).
+Cross-domain data movement is represented by a `Bridge`, not by a direct `Connection`.
 
 ### Serialization
 
@@ -167,7 +190,7 @@ std::string json = NodeAPI::SaveToJson(graph);
 Graph loaded = NodeAPI::LoadFromJson(json);
 ```
 
-JSON format stores `name`, `nodeTypes`, `nodes`, and `connections`:
+JSON format stores `name`, `nodeTypes`, `nodes`, `connections`, and `bridges`:
 
 ```json
 {
@@ -189,9 +212,35 @@ JSON format stores `name`, `nodeTypes`, `nodes`, and `connections`:
   "nodes": [
     {"id": "pi", "type": "control.pi", "displayName": "", "domain": "app_loop", "position": {"x": 0.0, "y": 0.0}, "parameters": {"kp": "1.0", "ki": "0.1"}}
   ],
-  "connections": []
+  "connections": [],
+  "bridges": [
+    {
+      "id": "adc_to_app",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+      "producer": {"nodeId": "adc_value", "portName": "out"},
+      "consumer": {"nodeId": "pi", "portName": "error"}
+    }
+  ]
 }
 ```
+
+### Loading node templates from disk
+
+Projects can ship a directory of default node types and load them at startup:
+
+```cpp
+#include <NodeAPI/NodeTemplates.h>
+
+Graph graph;
+NodeAPI::LoadResult result = NodeAPI::LoadNodeTypesFromDirectory(
+    graph, "/path/to/RTE/Assets/NodeTemplates");
+
+if (!result.ok) {
+    for (const auto& error : result.errors) { /* ... */ }
+}
+```
+
+Each `.json` file may contain one `NodeType` object or an array of objects. The loader skips invalid files and continues, reporting errors in `result.errors`.
 
 ### String conversions
 
@@ -210,8 +259,9 @@ Run all tests with:
 ctest --test-dir build/linux-debug --output-on-failure
 ```
 
-- `tests/test_nodeapi.cpp` — node types, graph operations, type checking, JSON round-trips.
-- `tests/test_timing.cpp` — timing-domain rules and DAG cycle detection.
+- `tests/test_nodeapi.cpp` — node types, graph operations, type checking, JSON round-trips, bridges.
+- `tests/test_templates.cpp` — loading node-type templates from disk.
+- `tests/test_timing.cpp` — timing-domain rules, bridges, and DAG cycle detection.
 
 ## Scope
 
