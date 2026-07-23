@@ -1,0 +1,39 @@
+{
+  "id": "math.clarke",
+  "displayName": "Clarke Transform",
+  "inlineCode": "alpha = a;\nbeta = (b - c) * 0.57735026919f;\n",
+  "constructorCode": "",
+  "classHeader": "",
+  "classDefinition": "",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "a",
+      "direction": "input",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "b",
+      "direction": "input",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "c",
+      "direction": "input",
+      "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "alpha",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "alpha_beta", "dtype": "f32"}
+    },
+    {
+      "name": "beta",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "alpha_beta", "dtype": "f32"}
+    }
+  ]
+}

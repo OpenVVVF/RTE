@@ -65,6 +65,7 @@ json ToJson(const NodeType& nodeType) {
         {"classDefinition", nodeType.classDefinition},
         {"maxInstances", nodeType.maxInstances},
         {"isEntryPoint", nodeType.isEntryPoint},
+        {"domain", nodeType.domain},
         {"inputPorts", json::array()},
         {"outputPorts", json::array()},
     });
@@ -89,6 +90,7 @@ NodeType NodeTypeFromJson(const json& j) {
     nodeType.classDefinition = j.value("classDefinition", "");
     nodeType.maxInstances = j.value("maxInstances", 0);
     nodeType.isEntryPoint = j.value("isEntryPoint", false);
+    nodeType.domain = j.value("domain", "");
 
     for (const auto& item : j.at("inputPorts")) {
         nodeType.inputPorts.push_back(PortFromJson(item));

@@ -29,6 +29,7 @@ struct NodeType {
     // Runtime/usage constraints.
     std::size_t maxInstances = 0;  // 0 = unlimited, otherwise max number of instances.
     bool isEntryPoint = false;     // True if this node starts a new timing domain.
+    std::string domain;            // If non-empty, instances are forced into this domain.
 
     std::optional<Port> FindInputPort(const std::string& name) const;
     std::optional<Port> FindOutputPort(const std::string& name) const;

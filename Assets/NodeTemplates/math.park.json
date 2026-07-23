@@ -1,0 +1,39 @@
+{
+  "id": "math.park",
+  "displayName": "Park Transform",
+  "inlineCode": "const float cos_theta = cosf(theta);\nconst float sin_theta = sinf(theta);\nd = alpha * cos_theta + beta * sin_theta;\nq = -alpha * sin_theta + beta * cos_theta;\n",
+  "constructorCode": "",
+  "classHeader": "",
+  "classDefinition": "",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "alpha",
+      "direction": "input",
+      "type": {"quantity": "current", "frame": "alpha_beta", "dtype": "f32"}
+    },
+    {
+      "name": "beta",
+      "direction": "input",
+      "type": {"quantity": "current", "frame": "alpha_beta", "dtype": "f32"}
+    },
+    {
+      "name": "theta",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "d",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "dq", "dtype": "f32"}
+    },
+    {
+      "name": "q",
+      "direction": "output",
+      "type": {"quantity": "current", "frame": "dq", "dtype": "f32"}
+    }
+  ]
+}

@@ -35,6 +35,9 @@ bool Graph::AddNode(Node node) {
     const auto nodeType = FindNodeType(node.type);
     if (!nodeType.has_value()) return false;
     if (nodeType->maxInstances > 0 && CountInstances(node.type) >= nodeType->maxInstances) return false;
+    if (!nodeType->domain.empty()) {
+        node.domain = nodeType->domain;
+    }
 
     nodes_.push_back(std::move(node));
     return true;

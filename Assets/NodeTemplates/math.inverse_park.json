@@ -1,0 +1,39 @@
+{
+  "id": "math.inverse_park",
+  "displayName": "Inverse Park Transform",
+  "inlineCode": "const float cos_theta = cosf(theta);\nconst float sin_theta = sinf(theta);\nalpha = d * cos_theta - q * sin_theta;\nbeta = d * sin_theta + q * cos_theta;\n",
+  "constructorCode": "",
+  "classHeader": "",
+  "classDefinition": "",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "d",
+      "direction": "input",
+      "type": {"quantity": "voltage", "frame": "dq", "dtype": "f32"}
+    },
+    {
+      "name": "q",
+      "direction": "input",
+      "type": {"quantity": "voltage", "frame": "dq", "dtype": "f32"}
+    },
+    {
+      "name": "theta",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "alpha",
+      "direction": "output",
+      "type": {"quantity": "voltage", "frame": "alpha_beta", "dtype": "f32"}
+    },
+    {
+      "name": "beta",
+      "direction": "output",
+      "type": {"quantity": "voltage", "frame": "alpha_beta", "dtype": "f32"}
+    }
+  ]
+}

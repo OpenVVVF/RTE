@@ -86,7 +86,15 @@ NodeType piType{
     .classHeader = "class PiController { ... };",
     .classDefinition = "float PiController::Step(float e) { ... }",
     .maxInstances = 0,   // unlimited
-    .isEntryPoint = false
+    .isEntryPoint = false,
+    .domain = ""         // instances may choose their own domain
+};
+
+NodeType adcType{
+    .id = "hw.adc.phase_currents",
+    .outputPorts = {{"iu_a", PortDirection::Output, currentFloat}},
+    .isEntryPoint = true,
+    .domain = "isr_pwm"  // instances are forced into this domain
 };
 
 Graph graph;
@@ -149,7 +157,7 @@ Rules enforced for bridges:
 ### Rules enforced by Graph
 
 - `AddNodeType` rejects empty ids and duplicate ids.
-- `AddNode` rejects empty ids, duplicate ids, and unknown `NodeType` ids.
+- `AddNode` rejects empty ids, duplicate ids, and unknown `NodeType` ids. If the `NodeType` has a non-empty `domain`, the instance is forced into that domain.
 - `Connect` rejects missing endpoints, wrong directions, mismatched `WireType`, duplicate connection ids, empty connection ids, and ports already fed by a bridge.
 - `AddBridge` rejects missing endpoints, wrong directions, mismatched `WireType`, duplicate bridge ids, empty bridge ids, and consumers already fed by a connection or another bridge.
 - `RemoveNode` deletes the node and any connections or bridges touching it.

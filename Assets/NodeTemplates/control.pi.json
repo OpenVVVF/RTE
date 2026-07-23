@@ -1,0 +1,29 @@
+{
+  "id": "control.pi",
+  "displayName": "PI Controller",
+  "inlineCode": "const float error = setpoint - measurement;\nintegral += error;\nfloat raw_output = kp * error + ki * integral;\nif (raw_output > output_max) raw_output = output_max;\nif (raw_output < output_min) raw_output = output_min;\noutput = raw_output;\n",
+  "constructorCode": "",
+  "classHeader": "",
+  "classDefinition": "",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "setpoint",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "measurement",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "output",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    }
+  ]
+}
