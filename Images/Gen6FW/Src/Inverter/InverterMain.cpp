@@ -24,9 +24,9 @@
 #include "ontime_logger.h"
 #include "Inverter/Drivers/Storage/MotorConfigStore.h"
 
-/* Global RTE codegen state variable.  Referenced by App<Domain>Init/Step calls
- * inserted at // RTE_EMIT markers. */
-struct AppState appState;
+/* Global RTE codegen state variable.  Referenced by app::<DomainTitle>Init/Step
+ * calls inserted at // RTE_EMIT markers. */
+AppState appState;
 
 namespace InverterMain {
 

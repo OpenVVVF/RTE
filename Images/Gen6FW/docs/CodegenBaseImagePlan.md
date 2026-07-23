@@ -198,3 +198,112 @@ The base image only has FDCAN error handlers.  Codegen should add:
 6. **Keep the base image buildable** after each codegen change; the existing
    FOC/SPWM examples can serve as regression tests until generated replacements
    are ready.
+
+
+## 7. RTECodeEmitter integration (added after reading README.md)
+
+The base image is now laid out for `RTECodeEmitter`.  The tool scans for single-line
+markers of the form `// RTE_EMIT: <domain> <section>` and replaces them with
+calls into generated `app::<DomainTitle>Init/Step` functions.
+
+### 7.1 Domains chosen for this firmware
+
+| Domain | Where it runs | Use case |
+|--------|---------------|----------|
+| `app_loop` | `InverterMain::loop()` (~100 Hz) | Throttle, temperature, CAN protocols, state machines, telemetry variables. |
+| `tim_isr` | `HAL_TIM_PeriodElapsedCallback()` (TIM1 update) | PWM-synchronous modulation + control law. |
+| `adc_isr` | `PhaseCurrentADC::onInjectedConversionComplete()` | PWM-synchronous current-sense processing. |
+
+Domain names are case-insensitive to the parser but must match the NodeAPI graph
+exactly.
+
+### 7.2 Marker locations
+
+| Marker | File | After codegen emits |
+|--------|------|---------------------|
+| `// RTE_EMIT: app_loop state` | `Inc/Inverter/AppState.h` | `namespace app { struct AppLoopState; }` |
+| `// RTE_EMIT: tim_isr state` | `Inc/Inverter/AppState.h` | `namespace app { struct TimIsrState; }` |
+| `// RTE_EMIT: adc_isr state` | `Inc/Inverter/AppState.h` | `namespace app { struct AdcIsrState; }` |
+| `// RTE_EMIT: app_loop init` | `Src/Inverter/InverterMain.cpp` | `app::AppLoopInit(appState.app_loop);` |
+| `// RTE_EMIT: tim_isr init` | `Src/Inverter/InverterMain.cpp` | `app::TimIsrInit(appState.tim_isr);` |
+| `// RTE_EMIT: adc_isr init` | `Src/Inverter/InverterMain.cpp` | `app::AdcIsrInit(appState.adc_isr);` |
+| `// RTE_EMIT: app_loop step` | `Src/Inverter/InverterMain.cpp` | `app::AppLoopStep(appState.app_loop);` |
+| `// RTE_EMIT: tim_isr step` | `Src/Inverter/Drivers/PWM/pwm.cpp` | `app::TimIsrStep(appState.tim_isr);` |
+| `// RTE_EMIT: adc_isr step` | `Src/Inverter/Drivers/Sensors/PhaseCurrentADC.cpp` | `app::AdcIsrStep(appState.adc_isr);` |
+
+The tool also injects `#include "<rel-path>/generated/domain_<domain>_generated.h"`
+at the top of every file that contains markers.
+
+### 7.3 New files added for the RTE contract
+
+* `Inc/Inverter/AppState.h` — top-level state container with the three domain
+  members.  Only C++ files include it.
+* `Inc/Inverter/platform_api.h` — C/C++ platform API that generated code calls
+  to talk to the base image (PWM, sensors, faults, time).
+* `Src/Inverter/platform_api.cpp` — implementation of the platform API.  Currently
+  wires existing drivers for PWM, phase currents, encoder, and Vdc; application
+  sensor getters return placeholders until a sampler is implemented.
+
+### 7.4 File changes made to support RTE
+
+* `Src/Inverter/Drivers/PWM/pwm.c` → `pwm.cpp` so the TIM1 ISR callback is a C++
+  translation unit and can include `AppState.h` / generated headers.
+* `CMakeLists.txt` updated to reference `pwm.cpp` and `platform_api.cpp`.
+
+### 7.5 How to run the emitter on this base image
+
+```bash
+RTECodeEmitter \
+    --base-src  /home/aidan/Desktop/RTE/Images/Gen6FW \
+    --graph     /path/to/gen6_graph.json \
+    --output    /path/to/gen6_output \
+    --verbosity debug
+```
+
+After running, the output tree will contain the copied firmware plus:
+
+```
+<output>/generated/
+├── domain_app_loop_generated.h
+├── domain_app_loop_generated.cpp
+├── domain_tim_isr_generated.h
+├── domain_tim_isr_generated.cpp
+├── domain_adc_isr_generated.h
+├── domain_adc_isr_generated.cpp
+└── platform_api.h          # existing, included by generated sources
+```
+
+### 7.6 What the generated code can do
+
+Because the generated domain source files include `platform_api.h`, node inline
+code can call:
+
+* `platform_pwm_set(du, dv, dw)` — raw duty output.
+* `platform_pwm_set_voltage_vector(valpha, vbeta, vdc)` — SVPWM output.
+* `platform_get_phase_currents(&iu, &iv, &iw)` — latest currents.
+* `platform_get_encoder_angle(&angle_deg)` — latest encoder angle.
+* `platform_get_dc_link_voltage()` — Vdc.
+* `platform_get_throttle_a/b()` — application throttle inputs.
+* `platform_get_motor_temperature()` / `platform_get_inverter_temperature(ch)`.
+* `platform_sample_application_sensors()` — trigger slow ADC sampling.
+* `platform_raise_fault(source, reason)` / `platform_has_critical_fault()`.
+* `platform_millis()` / `platform_micros()`.
+
+### 7.7 Next steps specific to RTE integration
+
+1. **Create a sample NodeAPI graph** (`gen6_graph.json`) using the three domains
+   above and run `RTECodeEmitter` to verify marker replacement and compilation.
+2. **Decide how `tim_isr` interacts with the base image's example FOC/SPWM code.**
+   The marker is placed at the top of `HAL_TIM_PeriodElapsedCallback`; the
+   example dispatch below it will still run unless the generated step returns
+   early or the example code is removed.  Recommended: make the generated
+   `TimIsrStep` responsible for all PWM writing, and remove/guard the example
+   body once codegen is the primary path.
+3. **Implement slow application ADC sampling** in `platform_sample_application_sensors()`
+   or in the `app_loop` generated domain, and expose the results through the
+   platform getters.
+4. **Add CAN message nodes** to the graph and extend `platform_api.h` with
+   `platform_can_tx()` / `platform_can_rx()` helpers once normal CAN messaging
+   is added to the base image.
+5. **Build the output tree** after codegen to confirm the include paths and
+   renamed `pwm.cpp` compile cleanly.
