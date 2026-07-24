@@ -63,6 +63,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/HelpCommand.cpp
     Src/Inverter/Command/Commands/ControlCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
+    Src/Inverter/Drivers/Storage/RteParamStore.cpp
     Src/Inverter/Drivers/GateDriver/gate_driver.c
     Src/Inverter/Drivers/CAN/can_display.c
     Src/Inverter/Drivers/CAN/FdcanFault.cpp

@@ -10,8 +10,10 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
+#include "Inverter/RteParams.h"
 
 #include "main.h"
 #include "spi.h"
@@ -63,9 +65,10 @@ extern "C" void CY15B102Q_FaultCallback(CY15B102Q_FaultCode code) {
  */
 static void init()
 {
-    /* Initialize F-RAM for persistent on-time logging. */
+    /* Initialize F-RAM for persistent on-time logging and parameter storage. */
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
         OnTime_Init(&g_fram);
+        Inverter::RteParamStore::init(&g_fram);
     }
 
     /* Telemetry over the MCP2221A USB-UART bridge (USART3). */
@@ -121,6 +124,21 @@ static void init()
      * generated control loop.  It does NOT start PWM at boot; use the shell
      * command 'control start' when ready. */
     Inverter::ControlSupervisor::instance().init();
+
+    /* Restore persisted parameters from FRAM into the generated state. */
+    if (Inverter::RteParamStore::isReady()) {
+        size_t loaded = 0;
+        for (size_t i = 0; i < app::g_tim_isr_param_count; ++i) {
+            float v;
+            if (Inverter::RteParamStore::get(app::g_tim_isr_params[i].name, &v)) {
+                app::g_tim_isr_params[i].set(&appState.tim_isr, v);
+                ++loaded;
+            }
+        }
+        if (loaded > 0) {
+            Telemetry::printf("[RTE] loaded %zu params from FRAM", loaded);
+        }
+    }
 }
 
 /* TIME_DOMAIN: APPLICATION_MAIN_LOOP
