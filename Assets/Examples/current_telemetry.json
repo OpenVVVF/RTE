@@ -1,5 +1,5 @@
 {
-  "name": "current_telemetry_demo",
+  "name": "sensor_telemetry_demo",
   "nodeTypes": [],
   "nodes": [
     {
@@ -86,6 +86,57 @@
       "parameters": {
         "key": "\"cg_iw_a\""
       }
+    },
+    {
+      "id": "VdcSense",
+      "type": "hw.dc_link_voltage",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VdcToDim",
+      "type": "math.voltage_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogVdc",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_vdc_v\""
+      }
+    },
+    {
+      "id": "Encoder",
+      "type": "hw.encoder_angle",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogTheta",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_theta_rad\""
+      }
     }
   ],
   "connections": [
@@ -152,6 +203,39 @@
       },
       "to": {
         "nodeId": "LogW",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c7",
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "vdc"
+      },
+      "to": {
+        "nodeId": "VdcToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c8",
+      "from": {
+        "nodeId": "VdcToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogVdc",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c9",
+      "from": {
+        "nodeId": "Encoder",
+        "portName": "theta"
+      },
+      "to": {
+        "nodeId": "LogTheta",
         "portName": "value"
       }
     }

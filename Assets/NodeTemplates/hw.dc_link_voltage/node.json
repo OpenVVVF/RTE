@@ -1,0 +1,20 @@
+{
+  "id": "hw.dc_link_voltage",
+  "displayName": "DC Link Voltage",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "domain": "app_loop",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "vdc",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}
