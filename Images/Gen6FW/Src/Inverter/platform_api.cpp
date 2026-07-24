@@ -5,6 +5,7 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Telemetry.h"
 
 #include "main.h"
 
@@ -103,6 +104,14 @@ void platform_raise_fault(uint32_t source, uint8_t reason) {
 bool platform_has_critical_fault(void) {
     return Inverter::FaultManager::instance().isSeverityActive(
         Inverter::FaultSeverity::Critical);
+}
+
+/* --------------------------------------------------------------------------
+ * Telemetry
+ * -------------------------------------------------------------------------- */
+
+void platform_telemetry_log_f32(const char* key, float value) {
+    Telemetry::log(key, value);
 }
 
 /* --------------------------------------------------------------------------

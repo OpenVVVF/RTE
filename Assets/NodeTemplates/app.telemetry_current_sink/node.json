@@ -1,0 +1,38 @@
+{
+  "id": "app.telemetry_current_sink",
+  "displayName": "Telemetry Current Sink",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "iu",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "iv",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "iw",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [],
+  "parameterTypes": {}
+}

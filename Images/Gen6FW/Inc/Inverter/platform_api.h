@@ -101,6 +101,17 @@ void platform_raise_fault(uint32_t source, uint8_t reason);
 bool platform_has_critical_fault(void);
 
 /* --------------------------------------------------------------------------
+ * Telemetry
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Log a float value to the telemetry stream.
+ * @param key   Telemetry key (max 31 chars, NUL-terminated).
+ * @param value Value to send.
+ */
+void platform_telemetry_log_f32(const char* key, float value);
+
+/* --------------------------------------------------------------------------
  * Time
  * -------------------------------------------------------------------------- */
 

@@ -1,0 +1,38 @@
+{
+  "id": "hw.phase_current_reader",
+  "displayName": "Phase Current Reader",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "domain": "app_loop",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "iu",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "iv",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "iw",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

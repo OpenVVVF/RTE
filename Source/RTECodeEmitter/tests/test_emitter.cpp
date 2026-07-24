@@ -236,16 +236,16 @@ TEST(Emitter, CrossDomainBridgeGeneratesAtomicBridge) {
     EXPECT_TRUE(std::filesystem::exists(timIsrSource));
 
     const std::string bridgesText = ReadFile(bridgesHeader);
-    EXPECT_NE(bridgesText.find("extern std::atomic<rte::Dimensionless> bridge_throttle_cmd;"),
+    EXPECT_NE(bridgesText.find("extern std::atomic<rte::Dimensionless> BridgeThrottleCmd;"),
               std::string::npos);
 
     const std::string appLoopText = ReadFile(appLoopSource);
-    EXPECT_NE(appLoopText.find("bridge_throttle_cmd.store(out, std::memory_order_relaxed);"),
+    EXPECT_NE(appLoopText.find("BridgeThrottleCmd.store(out, std::memory_order_relaxed);"),
               std::string::npos);
 
     const std::string timIsrText = ReadFile(timIsrSource);
     EXPECT_NE(timIsrText.find(
-                  "const rte::Dimensionless in = bridge_throttle_cmd.load(std::memory_order_relaxed);"),
+                  "const rte::Dimensionless in = BridgeThrottleCmd.load(std::memory_order_relaxed);"),
               std::string::npos);
 
     std::filesystem::remove_all(tempRoot);

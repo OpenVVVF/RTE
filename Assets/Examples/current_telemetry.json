@@ -1,0 +1,59 @@
+{
+  "name": "current_telemetry_demo",
+  "nodeTypes": [],
+  "nodes": [
+    {
+      "id": "CurrentReader",
+      "type": "hw.phase_current_reader",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "TelemetrySink",
+      "type": "app.telemetry_current_sink",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {
+        "nodeId": "CurrentReader",
+        "portName": "iu"
+      },
+      "to": {
+        "nodeId": "TelemetrySink",
+        "portName": "iu"
+      }
+    },
+    {
+      "id": "c2",
+      "from": {
+        "nodeId": "CurrentReader",
+        "portName": "iv"
+      },
+      "to": {
+        "nodeId": "TelemetrySink",
+        "portName": "iv"
+      }
+    },
+    {
+      "id": "c3",
+      "from": {
+        "nodeId": "CurrentReader",
+        "portName": "iw"
+      },
+      "to": {
+        "nodeId": "TelemetrySink",
+        "portName": "iw"
+      }
+    }
+  ]
+}

@@ -181,6 +181,35 @@ bool GenerateEmptyDomainFiles(const std::filesystem::path& generatedDir,
     return true;
 }
 
+bool CopySupportFiles(const std::filesystem::path& generatedDir, std::string& error) {
+    const std::filesystem::path includeDir = RTE_INVERTERCODEGEN_INCLUDE_DIR;
+    const std::filesystem::path thirdPartyDir = RTE_INVERTERCODEGEN_THIRD_PARTY_DIR;
+
+    const std::filesystem::path rteQuantitySrc = includeDir / "InverterCodegen" / "RteQuantity.h";
+    const std::filesystem::path auSrc = thirdPartyDir / "au" / "au.hh";
+
+    if (!std::filesystem::is_regular_file(rteQuantitySrc)) {
+        error = "RteQuantity.h not found at: " + rteQuantitySrc.string();
+        return false;
+    }
+    if (!std::filesystem::is_regular_file(auSrc)) {
+        error = "au.hh not found at: " + auSrc.string();
+        return false;
+    }
+
+    const std::filesystem::path rteQuantityDst = generatedDir / "InverterCodegen" / "RteQuantity.h";
+    const std::filesystem::path auDst = generatedDir / "au" / "au.hh";
+
+    std::filesystem::create_directories(rteQuantityDst.parent_path());
+    std::filesystem::create_directories(auDst.parent_path());
+
+    std::filesystem::copy_file(rteQuantitySrc, rteQuantityDst,
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(auSrc, auDst,
+                               std::filesystem::copy_options::overwrite_existing);
+    return true;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -348,6 +377,14 @@ bool Emitter::Run(const EmitterOptions& options) const {
         std::string genError;
         if (!generator.Generate(generatedDir.string(), genError)) {
             logger_.Error("Code generation failed: " + genError);
+            return false;
+        }
+
+        // Copy support headers (RteQuantity.h, au.hh) so the generated code
+        // compiles inside the firmware tree.
+        std::string supportError;
+        if (!CopySupportFiles(generatedDir, supportError)) {
+            logger_.Error("Failed to copy support files: " + supportError);
             return false;
         }
     } else {

@@ -156,7 +156,7 @@ std::optional<std::string> FindSourceExpression(
     // Check for a cross-domain bridge feeding this input.
     for (const auto& bridge : graph.GetBridges()) {
         if (bridge.consumer.nodeId == targetNodeId && bridge.consumer.portName == targetPortName) {
-            return "bridge_" + SanitizeIdentifier(bridge.id) + ".load(std::memory_order_relaxed)";
+            return "Bridge" + Capitalize(bridge.id) + ".load(std::memory_order_relaxed)";
         }
     }
     return std::nullopt;
@@ -287,7 +287,8 @@ std::string BuildStateStruct(
 
         const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
 
-        source << "    struct " << node->id << "State {\n";
+        const std::string nodeTitle = Capitalize(node->id);
+        source << "    struct " << nodeTitle << "State {\n";
 
         // Output members.
         for (const auto& port : nodeType->outputPorts) {
@@ -316,7 +317,7 @@ std::string BuildStateStruct(
 
         source << "    };\n";
         source << "\n";
-        source << "    " << node->id << "State " << node->id << ";\n";
+        source << "    " << nodeTitle << "State " << node->id << ";\n";
         source << "\n";
     }
     source << "};\n";
@@ -515,7 +516,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& port : nodeType->outputPorts) {
                 auto producerBridges = FindProducerBridges(graph_, node->id, port.name);
                 for (const auto& bridge : producerBridges) {
-                    source << "        bridge_" << SanitizeIdentifier(bridge.id)
+                    source << "        Bridge" << Capitalize(bridge.id)
                            << ".store(" << port.name << ", std::memory_order_relaxed);\n";
                 }
             }
@@ -541,8 +542,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         bridgeHeader << "#include \"InverterCodegen/RteQuantity.h\"\n\n";
         bridgeHeader << "namespace app {\n\n";
         for (const auto& bridge : graph_.GetBridges()) {
-            bridgeHeader << "extern std::atomic<" << WireTypeToCpp(bridge.type) << "> bridge_"
-                         << SanitizeIdentifier(bridge.id) << ";\n";
+            bridgeHeader << "extern std::atomic<" << WireTypeToCpp(bridge.type) << "> Bridge"
+                         << Capitalize(bridge.id) << ";\n";
         }
         bridgeHeader << "\n} // namespace app\n";
 
@@ -551,8 +552,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         bridgeSource << "#include \"bridges_generated.h\"\n\n";
         bridgeSource << "namespace app {\n\n";
         for (const auto& bridge : graph_.GetBridges()) {
-            bridgeSource << "std::atomic<" << WireTypeToCpp(bridge.type) << "> bridge_"
-                         << SanitizeIdentifier(bridge.id) << ";\n";
+            bridgeSource << "std::atomic<" << WireTypeToCpp(bridge.type) << "> Bridge"
+                         << Capitalize(bridge.id) << ";\n";
         }
         bridgeSource << "\n} // namespace app\n";
 
