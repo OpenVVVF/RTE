@@ -1506,8 +1506,8 @@
         "offset_v_a": "0.0"
       },
       "position": {
-        "x": 65.0,
-        "y": -174.0
+        "x": -57.0,
+        "y": -95.0
       },
       "type": "hw.adc.phase_currents"
     },

@@ -25,15 +25,21 @@ private slots:
     void OnSaveAs();
     void OnAutoArrange();
     void OnExit();
+    void CheckForRejectionReason();
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     void SetupMenu();
     void UpdateStatus();
     bool DoSave(const std::string& path);
+    void ConnectModelSignals();
 
     std::unique_ptr<GraphScene> graphScene_;
     QPointer<QtNodes::GraphicsView> view_;
     std::string currentPath_;
+    bool connectionCreatedThisDrag_ = false;
 };
 
 }  // namespace NodeGUI

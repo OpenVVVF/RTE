@@ -3,10 +3,12 @@
 #include <NodeAPI/Graph.h>
 
 #include <QtNodes/BasicGraphicsScene>
-#include <QtNodes/DataFlowGraphModel>
 #include <QtNodes/NodeDelegateModelRegistry>
 
+#include "NodeGraphModel.h"
+
 #include <QString>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -29,6 +31,8 @@ public:
                       const std::string& templatesDir);
 
     QtNodes::BasicGraphicsScene* Scene() const { return scene_.get(); }
+
+    NodeGraphModel* Model() const { return model_.get(); }
 
     const NodeAPI::Graph& Graph() const { return graph_; }
 
@@ -64,7 +68,7 @@ private:
 
     NodeAPI::Graph graph_;
     std::shared_ptr<QtNodes::NodeDelegateModelRegistry> registry_;
-    std::unique_ptr<QtNodes::DataFlowGraphModel> model_;
+    std::unique_ptr<NodeGraphModel> model_;
     std::unique_ptr<QtNodes::BasicGraphicsScene> scene_;
 
     // Map NodeAPI node id -> QtNodes NodeId.

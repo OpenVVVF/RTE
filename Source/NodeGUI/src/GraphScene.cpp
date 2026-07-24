@@ -10,6 +10,7 @@
 
 #include <QFile>
 #include <QJsonObject>
+#include <QObject>
 #include <QPointF>
 
 #include <algorithm>
@@ -49,7 +50,7 @@ QString MakeNodeCaption(const NodeAPI::Node& node, const NodeAPI::NodeType& node
 
 GraphScene::GraphScene()
     : registry_{std::make_shared<QtNodes::NodeDelegateModelRegistry>()}
-    , model_{std::make_unique<QtNodes::DataFlowGraphModel>(registry_)}
+    , model_{std::make_unique<NodeGraphModel>(registry_, graph_)}
     , scene_{std::make_unique<QtNodes::BasicGraphicsScene>(*model_)} {}
 
 GraphScene::~GraphScene() = default;
@@ -81,11 +82,12 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     }
 
     // Reset model/scene so each load starts fresh.
-    model_ = std::make_unique<QtNodes::DataFlowGraphModel>(registry_);
+    model_ = std::make_unique<NodeGraphModel>(registry_, graph_);
     scene_ = std::make_unique<QtNodes::BasicGraphicsScene>(*model_);
 
     RegisterNodeTypes();
     CreateNodes();
+    model_->BuildNodeIdMap(nodeIdMap_);
     CreateConnections();
     CreateBridges();
 
@@ -394,7 +396,10 @@ void GraphScene::CreateConnections() {
             continue;
         }
 
-        model_->addConnection(QtNodes::ConnectionId{fromIt->second, outPort, toIt->second, inPort});
+        const QtNodes::ConnectionId qtId{fromIt->second, outPort, toIt->second, inPort};
+        // Use the base implementation so we don't double-add to the NodeAPI graph.
+        model_->DataFlowGraphModel::addConnection(qtId);
+        model_->RegisterExistingConnection(qtId, connection.id, false);
     }
 }
 
@@ -416,7 +421,9 @@ void GraphScene::CreateBridges() {
             continue;
         }
 
-        model_->addConnection(QtNodes::ConnectionId{producerIt->second, outPort, consumerIt->second, inPort});
+        const QtNodes::ConnectionId qtId{producerIt->second, outPort, consumerIt->second, inPort};
+        model_->DataFlowGraphModel::addConnection(qtId);
+        model_->RegisterExistingConnection(qtId, bridge.id, true);
     }
 }
 

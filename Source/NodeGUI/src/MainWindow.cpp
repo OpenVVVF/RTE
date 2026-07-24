@@ -6,6 +6,8 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMetaObject>
+#include <QMouseEvent>
 #include <QScreen>
 #include <QStatusBar>
 #include <QVBoxLayout>
@@ -38,6 +40,7 @@ MainWindow::MainWindow(QWidget* parent)
     layout->setContentsMargins(0, 0, 0, 0);
 
     view_ = new QtNodes::GraphicsView(graphScene_->Scene());
+    view_->installEventFilter(this);
     layout->addWidget(view_);
     setCentralWidget(central);
 
@@ -64,6 +67,8 @@ bool MainWindow::OpenGraph(const std::string& path) {
     if (view_) {
         view_->setScene(graphScene_->Scene());
     }
+
+    ConnectModelSignals();
 
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
@@ -157,6 +162,56 @@ void MainWindow::OnAutoArrange() {
 
 void MainWindow::OnExit() {
     close();
+}
+
+void MainWindow::ConnectModelSignals() {
+    if (!graphScene_->Model()) {
+        return;
+    }
+
+    connect(graphScene_->Model(),
+            &QtNodes::AbstractGraphModel::connectionCreated,
+            this,
+            [this]() {
+                connectionCreatedThisDrag_ = true;
+                graphScene_->Model()->ClearRejectionState();
+            });
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched != view_) {
+        return QMainWindow::eventFilter(watched, event);
+    }
+
+    if (event->type() == QEvent::MouseButtonPress) {
+        connectionCreatedThisDrag_ = false;
+        if (graphScene_->Model()) {
+            graphScene_->Model()->ClearRejectionState();
+        }
+    } else if (event->type() == QEvent::MouseButtonRelease) {
+        if (!connectionCreatedThisDrag_ && graphScene_->Model()) {
+            // Defer the check until QtNodes has finished processing the release,
+            // so connectionCreated has already been emitted on success.
+            QMetaObject::invokeMethod(this,
+                                      &MainWindow::CheckForRejectionReason,
+                                      Qt::QueuedConnection);
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::CheckForRejectionReason() {
+    if (connectionCreatedThisDrag_) {
+        return;
+    }
+
+    if (NodeGraphModel* model = graphScene_->Model()) {
+        const QString reason = model->TakeLastRejectionReason();
+        if (!reason.isEmpty()) {
+            statusBar()->showMessage(reason, 4000);
+        }
+    }
 }
 
 }  // namespace NodeGUI

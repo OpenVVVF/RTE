@@ -6,6 +6,8 @@ add_executable(NodeGUI
     src/GraphScene.h
     src/NodeDataModel.cpp
     src/NodeDataModel.h
+    src/NodeGraphModel.cpp
+    src/NodeGraphModel.h
 )
 
 set_target_properties(NodeGUI PROPERTIES

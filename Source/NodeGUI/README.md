@@ -42,9 +42,16 @@ Or launch with no arguments and use `File → Open`.
 - Shows the node id, type, and timing domain in each node caption.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, with no overlaps.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
+- Interactive connection edits are validated against NodeAPI rules and persisted to JSON:
+  - Producer must be an output port and consumer must be an input port.
+  - Port types must match.
+  - An input may have either one intra-domain connection or one bridge, not both.
+  - Connections must stay within the same timing domain; bridges must cross domains.
+  - Entry-point nodes cannot have incoming connections.
+  - All edits are checked against the NodeAPI timing/DAG validator.
+  - If a drag is rejected, the reason is shown in the status bar (bottom-left) for 4 seconds.
 
 ## What it does not do yet
 
-- Editing is not persisted back to JSON.
 - Bridges are drawn as normal connections; distinct cross-domain styling is future work.
 - No parameter editing, node creation, or code generation.
