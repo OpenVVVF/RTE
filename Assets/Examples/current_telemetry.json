@@ -16,16 +16,146 @@
       }
     },
     {
-      "id": "TelemetrySink",
-      "type": "app.telemetry_current_sink",
+      "id": "Unpack",
+      "type": "math.abc_current_unpack",
       "domain": "app_loop",
       "position": {
         "x": 0,
         "y": 0
       }
+    },
+    {
+      "id": "UToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "WToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogU",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iu_a\""
+      }
+    },
+    {
+      "id": "LogV",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iv_a\""
+      }
+    },
+    {
+      "id": "LogW",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iw_a\""
+      }
     }
   ],
-  "connections": [],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {
+        "nodeId": "Unpack",
+        "portName": "a"
+      },
+      "to": {
+        "nodeId": "UToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c2",
+      "from": {
+        "nodeId": "Unpack",
+        "portName": "b"
+      },
+      "to": {
+        "nodeId": "VToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c3",
+      "from": {
+        "nodeId": "Unpack",
+        "portName": "c"
+      },
+      "to": {
+        "nodeId": "WToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c4",
+      "from": {
+        "nodeId": "UToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogU",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c5",
+      "from": {
+        "nodeId": "VToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogV",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c6",
+      "from": {
+        "nodeId": "WToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogW",
+        "portName": "value"
+      }
+    }
+  ],
   "bridges": [
     {
       "id": "i_abc_bridge",
@@ -39,7 +169,7 @@
         "portName": "i_abc"
       },
       "consumer": {
-        "nodeId": "TelemetrySink",
+        "nodeId": "Unpack",
         "portName": "i_abc"
       }
     }

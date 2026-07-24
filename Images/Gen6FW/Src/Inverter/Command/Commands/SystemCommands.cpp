@@ -1,6 +1,5 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
-#include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -12,7 +11,6 @@
 #include "pwm.h"
 #include "gate_driver.h"
 
-using Inverter::OpenLoopController;
 using Inverter::FaultManager;
 using Inverter::PhaseCurrentADC;
 using Inverter::EncoderADC;
@@ -21,7 +19,6 @@ using Inverter::MAX22530;
 using Inverter::phaseCurrentADC;
 using Inverter::encoderADC;
 using Inverter::dcLinkVoltageSensor;
-using Inverter::openLoopController;
 using Inverter::supplyMonitorPrintStatus;
 
 class ClearFaultCommand : public CommandInterface {
@@ -69,37 +66,6 @@ public:
                           fault ? "Y" : "N",
                           (bdtr >> 15) & 1UL,
                           outputs_were_enabled ? "Y" : "N");
-    }
-};
-
-class CalCommand : public CommandInterface {
-public:
-    CalCommand() : CommandInterface("cal", "Recalibrate phase-current ADC offsets") {}
-
-    void execute(const ArgValue*, CommandContext&) override {
-        if (openLoopController().isRunning()) {
-            Telemetry::printf("[SHELL] stop motor before calibrating");
-            return;
-        }
-
-        /* Use the same safe offset path as auto-cal: gate driver in reset,
-         * PWM parked at 50 %, then capture. */
-        if (!openLoopController().isInitialized()) {
-            Telemetry::printf("[SHELL] running init first");
-            if (!openLoopController().init()) {
-                Telemetry::printf("[SHELL] init failed");
-                return;
-            }
-        }
-
-        if (openLoopController().recalibrateOffsets()) {
-            PhaseCurrentADC& adc = phaseCurrentADC();
-            Telemetry::printf("[SHELL] calibrated offsets U=%.3f V=%.3f",
-                              static_cast<double>(adc.lastOffsetU()),
-                              static_cast<double>(adc.lastOffsetV()));
-        } else {
-            Telemetry::printf("[SHELL] calibration failed");
-        }
     }
 };
 
@@ -208,7 +174,6 @@ public:
 };
 
 static ClearFaultCommand   sClearFaultCmd;
-static CalCommand          sCalCmd;
 static RawCommand          sRawCmd;
 static VZeroCommand        sVZeroCmd;
 static SupplyStatusCommand sSupplyStatusCmd;
@@ -220,7 +185,6 @@ static EncBoundsCommand    sEncBoundsCmd;
 
 void registerSystemCommands(CommandManager& mgr) {
     mgr.registerCommand(&sClearFaultCmd);
-    mgr.registerCommand(&sCalCmd);
     mgr.registerCommand(&sRawCmd);
     mgr.registerCommand(&sVZeroCmd);
     mgr.registerCommand(&sSupplyStatusCmd);

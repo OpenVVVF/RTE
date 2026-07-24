@@ -14,8 +14,10 @@
 #include <math.h>
 #include <stdbool.h>
 
-/* Forward declaration for the FOC ISR hook (defined in FocControlManager.cpp). */
-extern "C" void FocControlManager_OnPwmPeriod(void);
+/* Forward declaration for the FOC ISR hook (defined in FocControlManager.cpp).
+ * Stubbed out when FOC is removed from the base image. */
+extern "C" void FocControlManager_OnPwmPeriod(void) __attribute__((weak));
+extern "C" void FocControlManager_OnPwmPeriod(void) {}
 
 /* USER CODE BEGIN 0 */
 #define TIM1_CLOCK_HZ       275000000UL

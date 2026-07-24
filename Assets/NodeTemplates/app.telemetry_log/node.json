@@ -1,0 +1,26 @@
+{
+  "id": "app.telemetry_log",
+  "displayName": "Telemetry Log",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "value",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [],
+  "parameterTypes": {
+    "key": {
+      "quantity": "string",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

@@ -2,8 +2,6 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Control/FaultManager.h"
-#include "Inverter/Control/OpenLoopController.h"
-#include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
@@ -11,18 +9,11 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
-#include "Inverter/Calibration/PoleCalibrator.h"
-#include "Inverter/Calibration/EncoderOffsetCalibrator.h"
-#include "Inverter/Calibration/ResistanceCalibrator.h"
-#include "Inverter/Calibration/InductanceCalibrator.h"
-#include "Inverter/Calibration/FluxLinkageCalibrator.h"
-#include "Inverter/Calibration/AutoCalibrationCoordinator.h"
 
 #include "main.h"
 #include "spi.h"
 #include "cy15b102q_driver.h"
 #include "ontime_logger.h"
-#include "Inverter/Drivers/Storage/MotorConfigStore.h"
 
 /* Global RTE codegen state variable.  Referenced by app::<DomainTitle>Init/Step
  * calls inserted at // RTE_EMIT markers. */
@@ -63,7 +54,7 @@ extern "C" void CY15B102Q_FaultCallback(CY15B102Q_FaultCode code) {
 
 /* TIME_DOMAIN: APPLICATION_INIT
  *   One-time setup of base-image services (storage, telemetry, gate driver,
- *   current sense, closed-loop/open-loop controllers, shell).
+ *   current sense, shell).
  * CODEGEN: Add application-specific initialization here: throttle calibration,
  *   temperature sensor setup, CAN filter/message mapping, control tuning, etc.
  */
@@ -72,9 +63,6 @@ static void init()
     /* Initialize F-RAM for persistent on-time logging. */
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
         OnTime_Init(&g_fram);
-        /* Restore the motor config (calibration + PI gains) if one was
-         * saved to F-RAM; otherwise the built-in defaults stay in effect. */
-        Inverter::MotorConfigStore::init(&g_fram);
     }
 
     /* Telemetry over the MCP2221A USB-UART bridge (USART3). */
@@ -102,19 +90,9 @@ static void init()
     /* Phase-current sensor test harness. */
     Inverter::CurrentSensorTest_Init();
 
-    /* Open-loop motor control (PWM + gate driver). Default off.
-     * This also performs the final current-sensor offset recalibration after
-     * the gate-driver power rail is up and the PWM outputs are started, matching
-     * the hardware state used by a manual `cal`. */
-    Inverter::openLoopController().init();
-
     /* DC-link current sensor: start the zero-offset capture only now, after
-     * the gate-driver/isolated rails have settled with PWM running (same
-     * reasoning as the phase-offset final recalibration above). */
+     * the gate-driver/isolated rails have settled with PWM running. */
     Inverter::dcLinkCurrentSensor().init();
-
-    /* Closed-loop FOC manager.  Does not enable outputs until `foc` command. */
-    Inverter::focControlManager().init();
 
     /* UART command shell for start/stop/freq/mod. */
     Inverter::commandShell().init();
@@ -161,23 +139,8 @@ static void loop()
      */
     if ((now_ms - s_last_ontime_ms) >= 1000U) {
         OnTime_Update();
-        Telemetry::log("inv_ontime_ms",  static_cast<float>(OnTime_GetTotalMs()));
-        Telemetry::log("inv_boot_count", static_cast<float>(OnTime_GetBootCount()));
         s_last_ontime_ms = now_ms;
     }
-
-    /* TIME_DOMAIN: SENSOR_TELEMETRY_100HZ
-     *   Reads phase currents and encoder at ~100 Hz for telemetry only.
-     *   Control loop consumes the same sensors from the PWM ISR, not here.
-     * CODEGEN: Add application sensor polling here: throttle pots, NTC/RTD temps,
-     *   hall sensors, etc.  Keep these reads fast and non-blocking.
-     */
-    static uint32_t s_last_current_ms = 0;
-    if ((now_ms - s_last_current_ms) >= 10U) {
-        Inverter::CurrentSensorTest_RunOnce();
-        s_last_current_ms = now_ms;
-    }
-    Inverter::encoderADC().diagnose();
 
     /* Isolated DC-link voltage sensor: sample on every loop so the logged
      * value is always the latest conversion from the EXTI ISR. */
@@ -186,27 +149,15 @@ static void loop()
     Inverter::supplyMonitorUpdate();
 
     /* TIME_DOMAIN: SAFETY_SUPERVISOR_100HZ
-     *   Fault logging, safety actions, command dispatch, calibration state machines.
+     *   Fault logging, safety actions, command dispatch.
      * CODEGEN: Add application-level state machine / command handlers here.
      *   The base image handles shutdown on Critical faults.
      */
     Inverter::FaultManager::instance().service();
     Inverter::commandShell().poll();
     Inverter::FaultManager::instance().executeSafetyActions();
-    Inverter::openLoopController().update();
-    Inverter::focControlManager().update();
-    Inverter::poleCalibrator().update();
-    Inverter::encoderOffsetCalibrator().update();
-    Inverter::resistanceCalibrator().update();
-    Inverter::inductanceCalibrator().update();
-    Inverter::fluxLinkageCalibrator().update();
-    Inverter::autoCalibrationCoordinator().update();
 
-    /* Telemetry for open-loop setpoints. */
-    Telemetry::log("ol_freq_hz", Inverter::openLoopController().frequencyHz());
-    Telemetry::log("ol_mod_idx", Inverter::openLoopController().modulationIndex());
-    Telemetry::log("ol_running", Inverter::openLoopController().isRunning() ? 1.0f : 0.0f);
-
+    /* Flush queued telemetry values over UART. */
     Telemetry::updateSensors();
 }
 

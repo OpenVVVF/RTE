@@ -52,42 +52,21 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/InverterMain.cpp
     Src/Inverter/platform_api.cpp
     Src/Inverter/Telemetry.cpp
-    Src/Inverter/Control/OpenLoopController.cpp
-    Src/Inverter/Control/FocController.cpp
-    Src/Inverter/Control/VectorPIController.cpp
-    Src/Inverter/Control/FocControlManager.cpp
     Src/Inverter/Control/CommandShell.cpp
     Src/Inverter/Control/FaultManager.cpp
     Src/Inverter/Control/FaultCallbacks.cpp
-    Src/Inverter/Calibration/PoleCalibrator.cpp
-    Src/Inverter/Calibration/EncoderOffsetCalibrator.cpp
-    Src/Inverter/Calibration/ResistanceCalibrator.cpp
-    Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
-    Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
-    Src/Inverter/Calibration/InductanceCalibrator.cpp
-    Src/Inverter/Calibration/FluxLinkageCalibrator.cpp
-    Src/Inverter/Calibration/MotorCalibration.cpp
-    Src/Inverter/Calibration/Common/CalibrationHardware.cpp
-    Src/Inverter/Calibration/Common/EncoderTracker.cpp
-    Src/Inverter/Calibration/Common/CurrentLimitedRamp.cpp
-    Src/Inverter/Calibration/Common/BreakawayFinder.cpp
     Src/Inverter/Command/CommandManager.cpp
     Src/Inverter/Command/CommandInitializer.cpp
-    Src/Inverter/Command/Commands/OpenLoopCommands.cpp
     Src/Inverter/Command/Commands/SystemCommands.cpp
-    Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Command/Commands/FaultCommands.cpp
     Src/Inverter/Command/Commands/SensorCommands.cpp
     Src/Inverter/Command/Commands/HelpCommand.cpp
-    Src/Inverter/Command/Commands/FocCommands.cpp
-    Src/Inverter/Command/Commands/MotorConfigCommands.cpp
     Src/Inverter/Drivers/GateDriver/gate_driver.c
     Src/Inverter/Drivers/CAN/can_display.c
     Src/Inverter/Drivers/CAN/FdcanFault.cpp
     Src/Inverter/Drivers/UART/mcp2221a_driver.c
     Src/Inverter/Drivers/Storage/cy15b102q_driver.c
     Src/Inverter/Drivers/Storage/FramStore.cpp
-    Src/Inverter/Drivers/Storage/MotorConfigStore.cpp
     Src/Inverter/Drivers/Logging/ontime_logger.c
     Src/Inverter/Drivers/Logging/SupplyMonitor.cpp
     Src/Inverter/Drivers/PWM/pwm.cpp

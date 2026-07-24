@@ -209,6 +209,8 @@ std::string WireTypeToCpp(const NodeAPI::WireType& type) {
             return "rte::Dimensionless";
         case NodeAPI::Quantity::Boolean:
             return "rte::Boolean";
+        case NodeAPI::Quantity::String:
+            return "const char*";
     }
     return "float";
 }
@@ -232,6 +234,8 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
         case NodeAPI::Quantity::Dimensionless:
         case NodeAPI::Quantity::Boolean:
             return value + "f";
+        case NodeAPI::Quantity::String:
+            return value;
     }
     // Unknown / framed: fall back to a plain float so existing templates keep
     // working, but this loses unit safety for those parameters.

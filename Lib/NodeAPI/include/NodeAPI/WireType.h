@@ -14,6 +14,7 @@ enum class Quantity {
     Temperature,
     Dimensionless,
     Boolean,
+    String,
 };
 
 enum class Frame {

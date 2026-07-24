@@ -13,6 +13,7 @@ std::string_view GetUnitLabel(Quantity quantity) {
         case Quantity::Temperature: return "degC";
         case Quantity::Dimensionless: return "";
         case Quantity::Boolean: return "";
+        case Quantity::String: return "";
     }
     return "";
 }
@@ -26,6 +27,7 @@ std::string ToString(Quantity quantity) {
         case Quantity::Temperature: return "temperature";
         case Quantity::Dimensionless: return "dimensionless";
         case Quantity::Boolean: return "boolean";
+        case Quantity::String: return "string";
     }
     return "";
 }
@@ -55,6 +57,7 @@ Quantity QuantityFromString(std::string_view value) {
     if (value == "temperature") return Quantity::Temperature;
     if (value == "dimensionless") return Quantity::Dimensionless;
     if (value == "boolean") return Quantity::Boolean;
+    if (value == "string") return Quantity::String;
     throw std::invalid_argument("unknown quantity");
 }
 
