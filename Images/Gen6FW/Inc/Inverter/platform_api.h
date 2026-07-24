@@ -52,6 +52,16 @@ uint32_t platform_adc_get_injected_u_ref(void);
 uint32_t platform_adc_get_injected_v_ref(void);
 
 /**
+ * @brief Calibrated zero-current offsets [A] from the base image startup calibration.
+ *
+ * These are the offsets subtracted by the base image's PhaseCurrentADC; generated
+ * code that reads raw injected ADC values should subtract the same offsets to match
+ * the base image's current convention.
+ */
+float platform_adc_get_offset_u_a(void);
+float platform_adc_get_offset_v_a(void);
+
+/**
  * @brief Read the latest encoder angle [deg, 0..360).
  * @return true if a new sample was available.
  */

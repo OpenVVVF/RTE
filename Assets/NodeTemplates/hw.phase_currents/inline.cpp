@@ -16,9 +16,11 @@ const uint32_t raw_v_ref = platform_adc_get_injected_v_ref();
 const rte::Current iu_raw = rte::Amperes((static_cast<float>(raw_u_sig) - static_cast<float>(raw_u_ref)) * scale);
 const rte::Current iv_raw = rte::Amperes((static_cast<float>(raw_v_sig) - static_cast<float>(raw_v_ref)) * scale);
 
-// Subtract calibrated zero-current offsets.
-const rte::Current iu_a = iu_raw - offset_u_a;
-const rte::Current iv_a = iv_raw - offset_v_a;
+// Subtract calibrated zero-current offsets from the base image's startup calibration.
+const rte::Current calibrated_offset_u = rte::Amperes(platform_adc_get_offset_u_a());
+const rte::Current calibrated_offset_v = rte::Amperes(platform_adc_get_offset_v_a());
+const rte::Current iu_a = iu_raw - calibrated_offset_u;
+const rte::Current iv_a = iv_raw - calibrated_offset_v;
 
 // W is computed from the two measured phases (three-wire balanced load).
 const rte::Current iw_a = rte::Amperes(-(iu_a.in(au::amperes) + iv_a.in(au::amperes)));

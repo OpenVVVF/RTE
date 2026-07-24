@@ -49,6 +49,14 @@ uint32_t platform_adc_get_injected_v_ref(void) {
     return HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
 }
 
+float platform_adc_get_offset_u_a(void) {
+    return Inverter::phaseCurrentADC().lastOffsetU();
+}
+
+float platform_adc_get_offset_v_a(void) {
+    return Inverter::phaseCurrentADC().lastOffsetV();
+}
+
 bool platform_get_encoder_angle(float* angle_deg) {
     if (angle_deg == nullptr) {
         return false;
