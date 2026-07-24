@@ -8,6 +8,7 @@
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
+#include "adc.h"
 
 /* --------------------------------------------------------------------------
  * PWM / gate-driver outputs
@@ -30,6 +31,22 @@ bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a) {
         return false;
     }
     return Inverter::phaseCurrentADC().latest(*iu_a, *iv_a, *iw_a);
+}
+
+uint32_t platform_adc_get_injected_u_sig(void) {
+    return HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+}
+
+uint32_t platform_adc_get_injected_v_sig(void) {
+    return HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
+}
+
+uint32_t platform_adc_get_injected_u_ref(void) {
+    return HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+}
+
+uint32_t platform_adc_get_injected_v_ref(void) {
+    return HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
 }
 
 bool platform_get_encoder_angle(float* angle_deg) {
@@ -104,6 +121,18 @@ void platform_raise_fault(uint32_t source, uint8_t reason) {
 bool platform_has_critical_fault(void) {
     return Inverter::FaultManager::instance().isSeverityActive(
         Inverter::FaultSeverity::Critical);
+}
+
+/* --------------------------------------------------------------------------
+ * Critical sections
+ * -------------------------------------------------------------------------- */
+
+void platform_critical_enter(void) {
+    __disable_irq();
+}
+
+void platform_critical_exit(void) {
+    __enable_irq();
 }
 
 /* --------------------------------------------------------------------------

@@ -26,16 +26,6 @@
       "quantity": "current",
       "frame": "scalar",
       "dtype": "f32"
-    },
-    "offset_w_12bit": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32"
-    },
-    "scale_w_a_per_lsb": {
-      "quantity": "current",
-      "frame": "scalar",
-      "dtype": "f32"
     }
   }
 }

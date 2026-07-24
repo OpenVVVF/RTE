@@ -42,6 +42,15 @@ void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc);
  */
 bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a);
 
+/* --------------------------------------------------------------------------
+ * ADC injected conversion results (valid only in ADC ISR context)
+ * -------------------------------------------------------------------------- */
+
+uint32_t platform_adc_get_injected_u_sig(void);
+uint32_t platform_adc_get_injected_v_sig(void);
+uint32_t platform_adc_get_injected_u_ref(void);
+uint32_t platform_adc_get_injected_v_ref(void);
+
 /**
  * @brief Read the latest encoder angle [deg, 0..360).
  * @return true if a new sample was available.
@@ -99,6 +108,13 @@ void platform_raise_fault(uint32_t source, uint8_t reason);
  * @brief true if a Critical-severity fault is currently active.
  */
 bool platform_has_critical_fault(void);
+
+/* --------------------------------------------------------------------------
+ * Critical sections (for cross-domain bridges)
+ * -------------------------------------------------------------------------- */
+
+void platform_critical_enter(void);
+void platform_critical_exit(void);
 
 /* --------------------------------------------------------------------------
  * Telemetry

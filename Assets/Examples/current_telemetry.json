@@ -3,12 +3,16 @@
   "nodeTypes": [],
   "nodes": [
     {
-      "id": "CurrentReader",
-      "type": "hw.phase_current_reader",
-      "domain": "app_loop",
+      "id": "Currents",
+      "type": "hw.adc.phase_currents",
+      "domain": "adc_isr",
       "position": {
         "x": 0,
         "y": 0
+      },
+      "parameters": {
+        "offset_u_a": "0.0",
+        "offset_v_a": "0.0"
       }
     },
     {
@@ -21,38 +25,22 @@
       }
     }
   ],
-  "connections": [
+  "connections": [],
+  "bridges": [
     {
-      "id": "c1",
-      "from": {
-        "nodeId": "CurrentReader",
-        "portName": "iu"
+      "id": "i_abc_bridge",
+      "type": {
+        "quantity": "current",
+        "frame": "abc",
+        "dtype": "f32"
       },
-      "to": {
-        "nodeId": "TelemetrySink",
-        "portName": "iu"
-      }
-    },
-    {
-      "id": "c2",
-      "from": {
-        "nodeId": "CurrentReader",
-        "portName": "iv"
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "i_abc"
       },
-      "to": {
+      "consumer": {
         "nodeId": "TelemetrySink",
-        "portName": "iv"
-      }
-    },
-    {
-      "id": "c3",
-      "from": {
-        "nodeId": "CurrentReader",
-        "portName": "iw"
-      },
-      "to": {
-        "nodeId": "TelemetrySink",
-        "portName": "iw"
+        "portName": "i_abc"
       }
     }
   ]
