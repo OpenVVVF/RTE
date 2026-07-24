@@ -33,6 +33,7 @@ target_compile_definitions(NodeGUI
 target_include_directories(NodeGUI
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/QtNodes/include/QtNodes/internal
 )
 
 target_link_libraries(NodeGUI

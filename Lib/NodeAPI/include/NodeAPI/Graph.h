@@ -46,6 +46,10 @@ public:
     std::optional<Node> FindNode(const std::string& nodeId) const;
     const std::vector<Node>& GetNodes() const { return nodes_; }
 
+    // Updates the stored canvas position of an existing node. Returns false if
+    // the node id is not found.
+    bool SetNodePosition(const std::string& nodeId, Position position);
+
     // Connections.
     bool Connect(Connection connection);
     bool Disconnect(const std::string& connectionId);

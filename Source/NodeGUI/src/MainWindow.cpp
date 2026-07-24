@@ -65,6 +65,7 @@ bool MainWindow::OpenGraph(const std::string& path) {
         view_->setScene(graphScene_->Scene());
     }
 
+    currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
     UpdateStatus();
     return true;
@@ -77,6 +78,14 @@ void MainWindow::SetupMenu() {
     openAction->setShortcuts(QKeySequence::Open);
     connect(openAction, &QAction::triggered, this, &MainWindow::OnOpen);
 
+    QAction* saveAction = fileMenu->addAction(QStringLiteral("&Save"));
+    saveAction->setShortcuts(QKeySequence::Save);
+    connect(saveAction, &QAction::triggered, this, &MainWindow::OnSave);
+
+    QAction* saveAsAction = fileMenu->addAction(QStringLiteral("Save &As..."));
+    saveAsAction->setShortcuts(QKeySequence::SaveAs);
+    connect(saveAsAction, &QAction::triggered, this, &MainWindow::OnSaveAs);
+
     fileMenu->addSeparator();
 
     QAction* exitAction = fileMenu->addAction(QStringLiteral("E&xit"));
@@ -88,6 +97,20 @@ void MainWindow::SetupMenu() {
     QAction* arrangeAction = viewMenu->addAction(QStringLiteral("&Auto Arrange"));
     arrangeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     connect(arrangeAction, &QAction::triggered, this, &MainWindow::OnAutoArrange);
+}
+
+bool MainWindow::DoSave(const std::string& path) {
+    graphScene_->SyncPositionsFromScene();
+
+    const QString error = graphScene_->SaveGraph(path);
+    if (!error.isEmpty()) {
+        QMessageBox::critical(this, QStringLiteral("Failed to save graph"), error);
+        return false;
+    }
+
+    currentPath_ = path;
+    setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    return true;
 }
 
 void MainWindow::UpdateStatus() {
@@ -107,6 +130,24 @@ void MainWindow::OnOpen() {
                                                           QStringLiteral("JSON (*.json)"));
     if (!fileName.isEmpty()) {
         OpenGraph(fileName.toStdString());
+    }
+}
+
+void MainWindow::OnSave() {
+    if (currentPath_.empty()) {
+        OnSaveAs();
+        return;
+    }
+    DoSave(currentPath_);
+}
+
+void MainWindow::OnSaveAs() {
+    const QString fileName = QFileDialog::getSaveFileName(this,
+                                                          QStringLiteral("Save Graph"),
+                                                          QString{},
+                                                          QStringLiteral("JSON (*.json)"));
+    if (!fileName.isEmpty()) {
+        DoSave(fileName.toStdString());
     }
 }
 

@@ -72,6 +72,16 @@ std::optional<Node> Graph::FindNode(const std::string& nodeId) const {
     return std::nullopt;
 }
 
+bool Graph::SetNodePosition(const std::string& nodeId, Position position) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.position = position;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Graph::Connect(Connection connection) {
     if (connection.id.empty()) return false;
     if (ConnectionIdTaken(connection.id)) return false;

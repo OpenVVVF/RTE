@@ -36,6 +36,13 @@ public:
     // graph topology. Nodes are spaced so they do not overlap.
     void AutoArrange();
 
+    // Write the current graph (including any moved node positions) to disk.
+    // Returns an empty string on success, otherwise an error message.
+    QString SaveGraph(const std::string& path) const;
+
+    // Copy the current scene positions back into the NodeAPI graph model.
+    void SyncPositionsFromScene();
+
 private:
     struct Adjacency {
         std::map<std::string, std::vector<std::string>> outgoing;

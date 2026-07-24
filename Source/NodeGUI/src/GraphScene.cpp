@@ -6,6 +6,7 @@
 #include <NodeAPI/Serialization.h>
 
 #include <QtNodes/Definitions>
+#include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QFile>
 #include <QJsonObject>
@@ -282,6 +283,38 @@ void GraphScene::AutoArrange() {
             }
         }
     }
+
+    SyncPositionsFromScene();
+}
+
+void GraphScene::SyncPositionsFromScene() {
+    for (const auto& [nodeId, qtId] : nodeIdMap_) {
+        QPointF pos;
+        if (auto* graphicsObject = scene_->nodeGraphicsObject(qtId)) {
+            // The graphics object holds the real on-screen position, including
+            // any manual drags that QtNodes does not push back into the model.
+            pos = graphicsObject->pos();
+        } else {
+            const QVariant posVar = model_->nodeData(qtId, QtNodes::NodeRole::Position);
+            pos = posVar.value<QPointF>();
+        }
+        graph_.SetNodePosition(nodeId, NodeAPI::Position{pos.x(), pos.y()});
+    }
+}
+
+QString GraphScene::SaveGraph(const std::string& path) const {
+    std::ofstream stream(path, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!stream) {
+        return QStringLiteral("Failed to open file for writing: %1").arg(QString::fromStdString(path));
+    }
+
+    const std::string json = NodeAPI::SaveToJson(graph_);
+    stream << json;
+    if (!stream) {
+        return QStringLiteral("Failed to write graph to: %1").arg(QString::fromStdString(path));
+    }
+
+    return QString{};
 }
 
 void GraphScene::RegisterNodeTypes() {

@@ -21,15 +21,19 @@ public:
 
 private slots:
     void OnOpen();
+    void OnSave();
+    void OnSaveAs();
     void OnAutoArrange();
     void OnExit();
 
 private:
     void SetupMenu();
     void UpdateStatus();
+    bool DoSave(const std::string& path);
 
     std::unique_ptr<GraphScene> graphScene_;
     QPointer<QtNodes::GraphicsView> view_;
+    std::string currentPath_;
 };
 
 }  // namespace NodeGUI

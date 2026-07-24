@@ -41,6 +41,7 @@ Or launch with no arguments and use `File → Open`.
 - Renders `Connection`s and `Bridge`s as QtNodes connections.
 - Shows the node id, type, and timing domain in each node caption.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, with no overlaps.
+- `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
 
 ## What it does not do yet
 
