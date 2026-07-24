@@ -159,6 +159,8 @@ bool GenerateEmptyDomainFiles(const std::filesystem::path& generatedDir,
     header << "};\n\n";
     header << "void " << domainTitle << "Init(" << domainTitle << "State& state);\n";
     header << "void " << domainTitle << "Step(" << domainTitle << "State& state);\n";
+    header << "void " << domainTitle << "Start(" << domainTitle << "State& state);\n";
+    header << "void " << domainTitle << "Stop(" << domainTitle << "State& state);\n";
     header << "\n} // namespace app\n";
 
     std::ostringstream source;
@@ -170,6 +172,12 @@ bool GenerateEmptyDomainFiles(const std::filesystem::path& generatedDir,
     source << "    (void)state;\n";
     source << "}\n\n";
     source << "void " << domainTitle << "Step(" << domainTitle << "State& state) {\n";
+    source << "    (void)state;\n";
+    source << "}\n\n";
+    source << "void " << domainTitle << "Start(" << domainTitle << "State& state) {\n";
+    source << "    (void)state;\n";
+    source << "}\n\n";
+    source << "void " << domainTitle << "Stop(" << domainTitle << "State& state) {\n";
     source << "    (void)state;\n";
     source << "}\n\n";
     source << "} // namespace app\n";
@@ -534,6 +542,10 @@ bool Emitter::Run(const EmitterOptions& options) const {
                     snippet = "app::" + domainTitle + "Init(" + stateAccess + ");";
                 } else if (marker.section == "step") {
                     snippet = "app::" + domainTitle + "Step(" + stateAccess + ");";
+                } else if (marker.section == "start") {
+                    snippet = "app::" + domainTitle + "Start(" + stateAccess + ");";
+                } else if (marker.section == "stop") {
+                    snippet = "app::" + domainTitle + "Stop(" + stateAccess + ");";
                 }
 
                 const size_t adjustedLine = marker.lineNumber + linesAdded;

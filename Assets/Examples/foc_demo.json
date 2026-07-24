@@ -33,8 +33,9 @@
         "y": 0
       },
       "parameters": {
-        "offset_rad": "1.1868",
-        "pole_pairs": "5.0"
+        "offset_rad": "5.934",
+        "pole_pairs": "5.0",
+        "encoder_sign": "-1.0"
       }
     },
     {
@@ -101,7 +102,8 @@
         "ki": "10.0",
         "integral": "0.0",
         "output_max": "50.0",
-        "output_min": "-50.0"
+        "output_min": "-50.0",
+        "dt_s": "0.0002"
       }
     },
     {
@@ -117,7 +119,8 @@
         "ki": "10.0",
         "integral": "0.0",
         "output_max": "50.0",
-        "output_min": "-50.0"
+        "output_min": "-50.0",
+        "dt_s": "0.0002"
       }
     },
     {
@@ -286,6 +289,126 @@
       },
       "parameters": {
         "key": "\"cg_vdc_v\""
+      }
+    },
+    {
+      "id": "IdMeasToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "IqMeasToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VdOutToDim",
+      "type": "math.voltage_to_dimensionless",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VqOutToDim",
+      "type": "math.voltage_to_dimensionless",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogId",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_id_a\""
+      }
+    },
+    {
+      "id": "LogIq",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iq_a\""
+      }
+    },
+    {
+      "id": "LogVd",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_vd_v\""
+      }
+    },
+    {
+      "id": "LogVq",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_vq_v\""
+      }
+    },
+    {
+      "id": "LogDu",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_du\""
+      }
+    },
+    {
+      "id": "LogDv",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_dv\""
+      }
+    },
+    {
+      "id": "LogDw",
+      "type": "app.telemetry_log",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_dw\""
       }
     }
   ],
@@ -573,6 +696,127 @@
       },
       "to": {
         "nodeId": "LogVdc",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c27",
+      "from": {
+        "nodeId": "DqUnpack",
+        "portName": "d"
+      },
+      "to": {
+        "nodeId": "IdMeasToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c28",
+      "from": {
+        "nodeId": "DqUnpack",
+        "portName": "q"
+      },
+      "to": {
+        "nodeId": "IqMeasToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c29",
+      "from": {
+        "nodeId": "PiD",
+        "portName": "output"
+      },
+      "to": {
+        "nodeId": "VdOutToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c30",
+      "from": {
+        "nodeId": "PiQ",
+        "portName": "output"
+      },
+      "to": {
+        "nodeId": "VqOutToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c31",
+      "from": {
+        "nodeId": "IdMeasToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogId",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c32",
+      "from": {
+        "nodeId": "IqMeasToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogIq",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c33",
+      "from": {
+        "nodeId": "VdOutToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogVd",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c34",
+      "from": {
+        "nodeId": "VqOutToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogVq",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c35",
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "duty_a"
+      },
+      "to": {
+        "nodeId": "LogDu",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c36",
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "duty_b"
+      },
+      "to": {
+        "nodeId": "LogDv",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c37",
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "duty_c"
+      },
+      "to": {
+        "nodeId": "LogDw",
         "portName": "value"
       }
     }

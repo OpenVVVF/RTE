@@ -5,6 +5,7 @@ void registerSystemCommands(CommandManager& mgr);
 void registerFaultCommands(CommandManager& mgr);
 void registerSensorCommands(CommandManager& mgr);
 void registerHelpCommand(CommandManager& mgr);
+void registerControlCommands(CommandManager& mgr);
 
 /* TIME_DOMAIN: APPLICATION_COMMAND_REGISTRATION
  *   Registers all shell commands at boot.  Commands execute in main-loop context.
@@ -18,4 +19,5 @@ void initializeCommands() {
     registerFaultCommands(mgr);
     registerSensorCommands(mgr);
     registerHelpCommand(mgr);
+    registerControlCommands(mgr);
 }

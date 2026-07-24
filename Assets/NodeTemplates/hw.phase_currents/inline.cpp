@@ -25,6 +25,9 @@ const rte::Current iv_a = iv_raw - calibrated_offset_v;
 // W is computed from the two measured phases (three-wire balanced load).
 const rte::Current iw_a = rte::Amperes(-(iu_a.in(au::amperes) + iv_a.in(au::amperes)));
 
-i_abc.a = iu_a;
-i_abc.b = iv_a;
-i_abc.c = iw_a;
+/* The phase-current sensors on this hardware are wired with inverted polarity
+ * relative to the FOC convention.  Negate all three so downstream transforms
+ * see the correct sign (matches base-image FocControlManager). */
+i_abc.a = -iu_a;
+i_abc.b = -iv_a;
+i_abc.c = -iw_a;

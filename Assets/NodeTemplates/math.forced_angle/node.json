@@ -1,20 +1,10 @@
 {
-  "id": "math.encoder_elec_angle",
-  "displayName": "Encoder Electrical Angle",
+  "id": "math.forced_angle",
+  "displayName": "Forced Electrical Angle",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",
-  "inputPorts": [
-    {
-      "name": "theta_mech",
-      "direction": "input",
-      "type": {
-        "quantity": "dimensionless",
-        "frame": "scalar",
-        "dtype": "f32"
-      }
-    }
-  ],
+  "inputPorts": [],
   "outputPorts": [
     {
       "name": "theta_elec",
@@ -27,17 +17,17 @@
     }
   ],
   "parameterTypes": {
-    "offset_rad": {
+    "rate_rad_per_s": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "pole_pairs": {
+    "dt_s": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "encoder_sign": {
+    "angle": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

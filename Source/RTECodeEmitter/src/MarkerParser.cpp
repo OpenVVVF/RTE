@@ -31,7 +31,8 @@ std::string MarkerParser::ToLower(std::string_view s) {
 
 bool MarkerParser::IsValidSection(std::string_view section) {
     const std::string lower = ToLower(section);
-    return lower == "state" || lower == "init" || lower == "step";
+    return lower == "state" || lower == "init" || lower == "step" ||
+           lower == "start" || lower == "stop";
 }
 
 std::optional<Marker> MarkerParser::ParseLine(std::string_view line, size_t lineNumber) {

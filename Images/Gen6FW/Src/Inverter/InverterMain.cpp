@@ -3,12 +3,15 @@
 #include "Inverter/Telemetry.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/CommandShell.h"
+#include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
+#include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/GateDriver/gate_driver.h"
 
 #include "main.h"
 #include "spi.h"
@@ -113,6 +116,11 @@ static void init()
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
+
+    /* The supervisor owns gate-driver sequencing and PWM start/stop for the
+     * generated control loop.  It does NOT start PWM at boot; use the shell
+     * command 'control start' when ready. */
+    Inverter::ControlSupervisor::instance().init();
 }
 
 /* TIME_DOMAIN: APPLICATION_MAIN_LOOP
@@ -153,6 +161,7 @@ static void loop()
      * CODEGEN: Add application-level state machine / command handlers here.
      *   The base image handles shutdown on Critical faults.
      */
+    Inverter::ControlSupervisor::instance().service();
     Inverter::FaultManager::instance().service();
     Inverter::commandShell().poll();
     Inverter::FaultManager::instance().executeSafetyActions();

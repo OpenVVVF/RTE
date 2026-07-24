@@ -127,9 +127,10 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart3_tx);
 
     /* USART3 interrupt Init */
-    /* Lower priority than motor-control ISRs (ADC=4, TIM1_UP=5) so telemetry /
-     * shell traffic can never preempt the FOC loop or current ADC sampling. */
-    HAL_NVIC_SetPriority(USART3_IRQn, 7, 0);
+    /* Priority 4: above TIM1_UP (5) so shell RX bytes are not starved by the
+     * PWM ISR.  The UART ISR is only a few instructions (reads one byte into
+     * a ring buffer), so it adds negligible jitter to the FOC loop. */
+    HAL_NVIC_SetPriority(USART3_IRQn, 4, 0);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE BEGIN USART3_MspInit 1 */
 
