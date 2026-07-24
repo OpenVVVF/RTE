@@ -1,0 +1,614 @@
+{
+  "name": "foc_demo",
+  "nodeTypes": [],
+  "nodes": [
+    {
+      "id": "Currents",
+      "type": "hw.adc.phase_currents",
+      "domain": "adc_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "offset_u_a": "0.0",
+        "offset_v_a": "0.0"
+      }
+    },
+    {
+      "id": "Encoder",
+      "type": "hw.encoder_angle",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "ElecAngle",
+      "type": "math.encoder_elec_angle",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "offset_rad": "1.1868",
+        "pole_pairs": "5.0"
+      }
+    },
+    {
+      "id": "Clarke",
+      "type": "math.clarke",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "Park",
+      "type": "math.park",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "DqUnpack",
+      "type": "math.dq_unpack",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "IdRef",
+      "type": "constant.current",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "amps": "0.0"
+      }
+    },
+    {
+      "id": "IqRef",
+      "type": "constant.current",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "amps": "10.0"
+      }
+    },
+    {
+      "id": "PiD",
+      "type": "control.pi_current",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "kp": "0.03",
+        "ki": "10.0",
+        "integral": "0.0",
+        "output_max": "50.0",
+        "output_min": "-50.0"
+      }
+    },
+    {
+      "id": "PiQ",
+      "type": "control.pi_current",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "kp": "0.03",
+        "ki": "10.0",
+        "integral": "0.0",
+        "output_max": "50.0",
+        "output_min": "-50.0"
+      }
+    },
+    {
+      "id": "DqPack",
+      "type": "math.dq_pack",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "InvPark",
+      "type": "math.inverse_park",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VdcSense",
+      "type": "hw.dc_link_voltage",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "Svpwm",
+      "type": "math.svpwm",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "PwmOut",
+      "type": "hw.pwm.set_duty",
+      "domain": "tim_isr",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "Unpack",
+      "type": "math.abc_current_unpack",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "UToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "WToDim",
+      "type": "math.current_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogU",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iu_a\""
+      }
+    },
+    {
+      "id": "LogV",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iv_a\""
+      }
+    },
+    {
+      "id": "LogW",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_iw_a\""
+      }
+    },
+    {
+      "id": "EncoderApp",
+      "type": "hw.encoder_angle",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogTheta",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_theta_rad\""
+      }
+    },
+    {
+      "id": "VdcApp",
+      "type": "hw.dc_link_voltage",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "VdcToDim",
+      "type": "math.voltage_to_dimensionless",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "LogVdc",
+      "type": "app.telemetry_log",
+      "domain": "app_loop",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parameters": {
+        "key": "\"cg_vdc_v\""
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {
+        "nodeId": "Encoder",
+        "portName": "theta"
+      },
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "theta_mech"
+      }
+    },
+    {
+      "id": "c2",
+      "from": {
+        "nodeId": "ElecAngle",
+        "portName": "theta_elec"
+      },
+      "to": {
+        "nodeId": "Park",
+        "portName": "theta"
+      }
+    },
+    {
+      "id": "c3",
+      "from": {
+        "nodeId": "ElecAngle",
+        "portName": "theta_elec"
+      },
+      "to": {
+        "nodeId": "InvPark",
+        "portName": "theta"
+      }
+    },
+    {
+      "id": "c4",
+      "from": {
+        "nodeId": "Clarke",
+        "portName": "i_alpha_beta"
+      },
+      "to": {
+        "nodeId": "Park",
+        "portName": "i_alpha_beta"
+      }
+    },
+    {
+      "id": "c5",
+      "from": {
+        "nodeId": "Park",
+        "portName": "i_dq"
+      },
+      "to": {
+        "nodeId": "DqUnpack",
+        "portName": "dq"
+      }
+    },
+    {
+      "id": "c6",
+      "from": {
+        "nodeId": "IdRef",
+        "portName": "value"
+      },
+      "to": {
+        "nodeId": "PiD",
+        "portName": "setpoint"
+      }
+    },
+    {
+      "id": "c7",
+      "from": {
+        "nodeId": "DqUnpack",
+        "portName": "d"
+      },
+      "to": {
+        "nodeId": "PiD",
+        "portName": "measurement"
+      }
+    },
+    {
+      "id": "c8",
+      "from": {
+        "nodeId": "IqRef",
+        "portName": "value"
+      },
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "setpoint"
+      }
+    },
+    {
+      "id": "c9",
+      "from": {
+        "nodeId": "DqUnpack",
+        "portName": "q"
+      },
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "measurement"
+      }
+    },
+    {
+      "id": "c10",
+      "from": {
+        "nodeId": "PiD",
+        "portName": "output"
+      },
+      "to": {
+        "nodeId": "DqPack",
+        "portName": "d"
+      }
+    },
+    {
+      "id": "c11",
+      "from": {
+        "nodeId": "PiQ",
+        "portName": "output"
+      },
+      "to": {
+        "nodeId": "DqPack",
+        "portName": "q"
+      }
+    },
+    {
+      "id": "c12",
+      "from": {
+        "nodeId": "DqPack",
+        "portName": "dq"
+      },
+      "to": {
+        "nodeId": "InvPark",
+        "portName": "v_dq"
+      }
+    },
+    {
+      "id": "c13",
+      "from": {
+        "nodeId": "InvPark",
+        "portName": "v_alpha_beta"
+      },
+      "to": {
+        "nodeId": "Svpwm",
+        "portName": "v_alpha_beta"
+      }
+    },
+    {
+      "id": "c14",
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "vdc"
+      },
+      "to": {
+        "nodeId": "Svpwm",
+        "portName": "vdc"
+      }
+    },
+    {
+      "id": "c15",
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "duty_a"
+      },
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "duty_a"
+      }
+    },
+    {
+      "id": "c16",
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "duty_b"
+      },
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "duty_b"
+      }
+    },
+    {
+      "id": "c17",
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "duty_c"
+      },
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "duty_c"
+      }
+    },
+    {
+      "id": "c18",
+      "from": {
+        "nodeId": "Unpack",
+        "portName": "a"
+      },
+      "to": {
+        "nodeId": "UToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c19",
+      "from": {
+        "nodeId": "Unpack",
+        "portName": "b"
+      },
+      "to": {
+        "nodeId": "VToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c20",
+      "from": {
+        "nodeId": "Unpack",
+        "portName": "c"
+      },
+      "to": {
+        "nodeId": "WToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c21",
+      "from": {
+        "nodeId": "UToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogU",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c22",
+      "from": {
+        "nodeId": "VToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogV",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c23",
+      "from": {
+        "nodeId": "WToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogW",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c24",
+      "from": {
+        "nodeId": "EncoderApp",
+        "portName": "theta"
+      },
+      "to": {
+        "nodeId": "LogTheta",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c25",
+      "from": {
+        "nodeId": "VdcApp",
+        "portName": "vdc"
+      },
+      "to": {
+        "nodeId": "VdcToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "c26",
+      "from": {
+        "nodeId": "VdcToDim",
+        "portName": "result"
+      },
+      "to": {
+        "nodeId": "LogVdc",
+        "portName": "value"
+      }
+    }
+  ],
+  "bridges": [
+    {
+      "id": "i_abc_bridge",
+      "type": {
+        "quantity": "current",
+        "frame": "abc",
+        "dtype": "f32"
+      },
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "i_abc"
+      },
+      "consumer": {
+        "nodeId": "Clarke",
+        "portName": "i_abc"
+      }
+    },
+    {
+      "id": "i_abc_app_bridge",
+      "type": {
+        "quantity": "current",
+        "frame": "abc",
+        "dtype": "f32"
+      },
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "i_abc"
+      },
+      "consumer": {
+        "nodeId": "Unpack",
+        "portName": "i_abc"
+      }
+    }
+  ]
+}

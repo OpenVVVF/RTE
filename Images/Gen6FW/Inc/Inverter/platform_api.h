@@ -68,6 +68,15 @@ float platform_adc_get_offset_v_a(void);
 bool platform_get_encoder_angle(float* angle_deg);
 
 /**
+ * @brief Non-destructive read of the latest encoder angle [deg, 0..360).
+ *
+ * Unlike platform_get_encoder_angle(), this does not clear the new-data flag,
+ * so multiple domains can read the same sample.  Returns the last computed
+ * angle (0 if none yet).
+ */
+float platform_get_encoder_angle_latest(void);
+
+/**
  * @brief Latest DC-link voltage [V].
  */
 float platform_get_dc_link_voltage(void);

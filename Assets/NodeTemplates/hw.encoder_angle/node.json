@@ -1,9 +1,9 @@
 {
   "id": "hw.encoder_angle",
   "displayName": "Encoder Angle",
-  "maxInstances": 1,
+  "maxInstances": 0,
   "isEntryPoint": true,
-  "domain": "app_loop",
+  "domain": "",
   "inputPorts": [],
   "outputPorts": [
     {

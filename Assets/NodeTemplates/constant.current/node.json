@@ -1,0 +1,26 @@
+{
+  "id": "constant.current",
+  "displayName": "Constant Current",
+  "maxInstances": 0,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "value",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "amps": {
+      "quantity": "current",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

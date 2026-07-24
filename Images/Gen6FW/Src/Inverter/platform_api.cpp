@@ -64,6 +64,10 @@ bool platform_get_encoder_angle(float* angle_deg) {
     return Inverter::encoderADC().sample(*angle_deg);
 }
 
+float platform_get_encoder_angle_latest(void) {
+    return Inverter::encoderADC().lastAngle();
+}
+
 float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }
