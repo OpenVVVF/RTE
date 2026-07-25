@@ -553,12 +553,13 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 // Bind parameters as mutable refs (they may be updated by the
                 // inline code, e.g. an integrator). Inputs are already const.
                 for (const auto& [key, value] : node->parameters) {
-                    /* Skip parameters that are shadowed by an optional unconnected
-                     * input port with the same name. */
+                    /* Skip parameters shadowed by a same-named input port: the
+                     * port path already binds that name (from the wire when
+                     * connected, or as a const ref to this parameter when the
+                     * port is optional and unconnected). */
                     bool shadowed = false;
                     for (const auto& port : nodeType->inputPorts) {
-                        if (port.optional && port.name == key &&
-                            !FindSourceExpression(graph_, node->id, port.name)) {
+                        if (port.name == key) {
                             shadowed = true;
                             break;
                         }

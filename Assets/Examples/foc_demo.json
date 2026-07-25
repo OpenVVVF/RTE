@@ -471,6 +471,39 @@
         "nodeId": "Svpwm",
         "portName": "v_beta"
       }
+    },
+    {
+      "id": "c40",
+      "from": {
+        "nodeId": "CfgEncSign",
+        "portName": "value"
+      },
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "encoder_sign"
+      }
+    },
+    {
+      "id": "c41",
+      "from": {
+        "nodeId": "CfgEncOffset",
+        "portName": "value"
+      },
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "offset_rad"
+      }
+    },
+    {
+      "id": "c42",
+      "from": {
+        "nodeId": "CfgPolePairs",
+        "portName": "value"
+      },
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "pole_pairs"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1353,6 +1386,36 @@
             "frame": "scalar",
             "quantity": "dimensionless"
           }
+        },
+        {
+          "direction": "input",
+          "name": "offset_rad",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        },
+        {
+          "direction": "input",
+          "name": "encoder_sign",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        },
+        {
+          "direction": "input",
+          "name": "pole_pairs",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
         }
       ],
       "isEntryPoint": false,
@@ -1415,6 +1478,44 @@
           "quantity": "current"
         }
       }
+    },
+    {
+      "id": "config.value",
+      "displayName": "Config Value",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "value",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "key": {
+          "quantity": "string",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "default_value": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "cached": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "constructorCode": "cached = platform_config_load(key, default_value);\n",
+      "inlineCode": "value = cached;\n"
     }
   ],
   "nodes": [
@@ -1531,7 +1632,7 @@
       "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
-        "amps": "10.0"
+        "amps": "20.0"
       },
       "position": {
         "x": 0.0,
@@ -1851,6 +1952,51 @@
         "y": 450.0
       },
       "type": "math.current_to_dimensionless"
+    },
+    {
+      "displayName": "CfgEncSign",
+      "domain": "tim_isr",
+      "id": "CfgEncSign",
+      "parameters": {
+        "cached": "0.0",
+        "default_value": "1.0",
+        "key": "\"Enc.Sign\""
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "CfgEncOffset",
+      "domain": "tim_isr",
+      "id": "CfgEncOffset",
+      "parameters": {
+        "cached": "0.0",
+        "default_value": "1.1868",
+        "key": "\"Enc.OffsetRad\""
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "CfgPolePairs",
+      "domain": "tim_isr",
+      "id": "CfgPolePairs",
+      "parameters": {
+        "cached": "0.0",
+        "default_value": "5.0",
+        "key": "\"Motor.PolePairs\""
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
     }
   ]
 }

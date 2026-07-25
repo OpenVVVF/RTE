@@ -33,6 +33,16 @@
         "dtype": "f32"
       },
       "optional": true
+    },
+    {
+      "name": "pole_pairs",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
     }
   ],
   "outputPorts": [
