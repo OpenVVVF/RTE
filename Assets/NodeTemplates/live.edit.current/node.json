@@ -1,0 +1,42 @@
+{
+  "id": "live.edit.current",
+  "displayName": "Live Edit Current",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "in",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "out",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "name": {
+      "quantity": "string",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "in": {
+      "quantity": "current",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

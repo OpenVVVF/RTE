@@ -569,7 +569,7 @@
       "displayName": "Phase Currents (ISR)",
       "domain": "adc_isr",
       "id": "hw.adc.phase_currents",
-      "inlineCode": "// ADC1 injected: U signal CH4 (rank 1), V signal CH3 (rank 2)\n// ADC2 injected: U reference CH8 (rank 1), V reference CH7 (rank 2)\n// Triggered by TIM1 TRGO at PWM bottom; read in ADC ISR.\nstatic constexpr float ADC_VREF = 3.3f;\nstatic constexpr float DIVIDER = 2.0f / 3.0f;\nstatic constexpr float SENSITIVITY_VA = 1.042e-3f;  // LA37S600\nstatic constexpr float COUNTS_FULL = 65535.0f;\n\nconst float scale = (ADC_VREF / COUNTS_FULL) / (DIVIDER * SENSITIVITY_VA);\n\nconst uint32_t raw_u_sig = platform_adc_get_injected_u_sig();\nconst uint32_t raw_v_sig = platform_adc_get_injected_v_sig();\nconst uint32_t raw_u_ref = platform_adc_get_injected_u_ref();\nconst uint32_t raw_v_ref = platform_adc_get_injected_v_ref();\n\nconst rte::Current iu_raw = rte::Amperes((static_cast<float>(raw_u_sig) - static_cast<float>(raw_u_ref)) * scale);\nconst rte::Current iv_raw = rte::Amperes((static_cast<float>(raw_v_sig) - static_cast<float>(raw_v_ref)) * scale);\n\n// Subtract calibrated zero-current offsets from the base image's startup calibration.\nconst rte::Current calibrated_offset_u = rte::Amperes(platform_adc_get_offset_u_a());\nconst rte::Current calibrated_offset_v = rte::Amperes(platform_adc_get_offset_v_a());\nconst rte::Current iu_a = iu_raw - calibrated_offset_u;\nconst rte::Current iv_a = iv_raw - calibrated_offset_v;\n\n// W is computed from the two measured phases (three-wire balanced load).\nconst rte::Current iw_a = rte::Amperes(-(iu_a.in(au::amperes) + iv_a.in(au::amperes)));\n\ni_abc.a = iu_a;\ni_abc.b = iv_a;\ni_abc.c = iw_a;\n",
+      "inlineCode": "// ADC1 injected: U signal CH4 (rank 1), V signal CH3 (rank 2)\n// ADC2 injected: U reference CH8 (rank 1), V reference CH7 (rank 2)\n// Triggered by TIM1 TRGO at PWM bottom; read in ADC ISR.\nstatic constexpr float ADC_VREF = 3.3f;\nstatic constexpr float DIVIDER = 2.0f / 3.0f;\nstatic constexpr float SENSITIVITY_VA = 1.042e-3f;  // LA37S600\nstatic constexpr float COUNTS_FULL = 65535.0f;\n\nconst float scale = (ADC_VREF / COUNTS_FULL) / (DIVIDER * SENSITIVITY_VA);\n\nconst uint32_t raw_u_sig = platform_adc_get_injected_u_sig();\nconst uint32_t raw_v_sig = platform_adc_get_injected_v_sig();\nconst uint32_t raw_u_ref = platform_adc_get_injected_u_ref();\nconst uint32_t raw_v_ref = platform_adc_get_injected_v_ref();\n\nconst rte::Current iu_raw = rte::Amperes((static_cast<float>(raw_u_sig) - static_cast<float>(raw_u_ref)) * scale);\nconst rte::Current iv_raw = rte::Amperes((static_cast<float>(raw_v_sig) - static_cast<float>(raw_v_ref)) * scale);\n\n// Subtract calibrated zero-current offsets from the base image's startup calibration.\nconst rte::Current calibrated_offset_u = rte::Amperes(platform_adc_get_offset_u_a());\nconst rte::Current calibrated_offset_v = rte::Amperes(platform_adc_get_offset_v_a());\nconst rte::Current iu_a = iu_raw - calibrated_offset_u;\nconst rte::Current iv_a = iv_raw - calibrated_offset_v;\n\n// W is computed from the two measured phases (three-wire balanced load).\nconst rte::Current iw_a = rte::Amperes(-(iu_a.in(au::amperes) + iv_a.in(au::amperes)));\n\n/* The phase-current sensors on this hardware are wired with inverted polarity\n * relative to the FOC convention.  Negate all three so downstream transforms\n * see the correct sign (matches base-image FocControlManager). */\ni_abc.a = -iu_a;\ni_abc.b = -iv_a;\ni_abc.c = -iw_a;\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
@@ -837,7 +837,7 @@
       "displayName": "Space Vector PWM",
       "domain": "",
       "id": "math.svpwm",
-      "inlineCode": "const float v_a = v_alpha_beta.beta.in(au::volts) / vdc.in(au::volts);\nconst float v_b = (-0.5f * v_alpha_beta.beta + 0.86602540378f * v_alpha_beta.alpha).in(au::volts) / vdc.in(au::volts);\nconst float v_c = (-0.5f * v_alpha_beta.beta - 0.86602540378f * v_alpha_beta.alpha).in(au::volts) / vdc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\nduty_a = 0.5f + (v_a - v_offset);\nduty_b = 0.5f + (v_b - v_offset);\nduty_c = 0.5f + (v_c - v_offset);\n",
+      "inlineCode": "const float sqrt3 = 1.7320508075688772f;\nconst float valpha = v_alpha_beta.alpha.in(au::volts);\nconst float vbeta  = v_alpha_beta.beta.in(au::volts);\nconst float vdc_v  = vdc.in(au::volts);\n\nif (vdc_v <= 1.0f) {\n    duty_a = 50.0f;\n    duty_b = 50.0f;\n    duty_c = 50.0f;\n} else {\n    // Clamp to the SVPWM linear modulation limit (Vdc / sqrt3) with a 5% margin.\n    const float v_max_linear = (vdc_v / sqrt3) * 0.95f;\n    float va = valpha;\n    float vb = vbeta;\n    const float v_albe_sq = va * va + vb * vb;\n    if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n        const float scale = v_max_linear / sqrtf(v_albe_sq);\n        va *= scale;\n        vb *= scale;\n    }\n\n    // Inverse Clarke: alpha/beta -> A/B/C.\n    const float v_a = va;\n    const float v_b = -0.5f * va + 0.5f * sqrt3 * vb;\n    const float v_c = -0.5f * va - 0.5f * sqrt3 * vb;\n\n    // Min-max zero-sequence injection.\n    float v_min = v_a;\n    if (v_b < v_min) v_min = v_b;\n    if (v_c < v_min) v_min = v_c;\n    float v_max = v_a;\n    if (v_b > v_max) v_max = v_b;\n    if (v_c > v_max) v_max = v_c;\n    const float v_offset = 0.5f * (v_min + v_max);\n\n    duty_a = 50.0f + 50.0f * (v_a - v_offset) / vdc_v;\n    duty_b = 50.0f + 50.0f * (v_b - v_offset) / vdc_v;\n    duty_c = 50.0f + 50.0f * (v_c - v_offset) / vdc_v;\n}\n",
       "inputPorts": [
         {
           "direction": "input",
@@ -981,7 +981,7 @@
       "displayName": "PI Controller (Current)",
       "domain": "",
       "id": "control.pi_current",
-      "inlineCode": "const float error = (setpoint - measurement).in(au::amperes);\nintegral += error;\nfloat raw_output = kp * error + ki * integral;\nif (raw_output > output_max) raw_output = output_max;\nif (raw_output < output_min) raw_output = output_min;\noutput = rte::Volts(raw_output);\n",
+      "inlineCode": "const float error = (setpoint - measurement).in(au::amperes);\nintegral += error * dt_s;\n\nfloat raw_output = kp * error + ki * integral;\n\n/* Dynamic voltage limit derived from DC-link voltage, matching the base\n * image's VectorPIController convention: max = Vdc * 0.5 * MaxModulation. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 0.5f * 0.9f;\nconst float max_limit = (dynamic_max < output_max) ? dynamic_max : output_max;\nconst float min_limit = (-dynamic_max > output_min) ? -dynamic_max : output_min;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup (matches base-image VectorPIController). */\nif (ki > 0.0001f && kp > 0.0001f) {\n    const float excess = raw_output - limited_output;\n    integral -= excess * dt_s / (kp * ki);\n}\n\noutput = rte::Volts(limited_output);\n",
       "inputPorts": [
         {
           "direction": "input",
@@ -1016,6 +1016,11 @@
         }
       ],
       "parameterTypes": {
+        "dt_s": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
         "integral": {
           "dtype": "f32",
           "frame": "scalar",
@@ -1307,7 +1312,7 @@
       "displayName": "Encoder Electrical Angle",
       "domain": "",
       "id": "math.encoder_elec_angle",
-      "inlineCode": "theta_elec = (theta_mech - offset_rad) * pole_pairs;\n",
+      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(theta_mech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset + sign * encoder_angle * pole_pairs.\n * Matches the base-image FocController convention. */\nfloat elec = offset_rad + encoder_sign * theta * pole_pairs;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\ntheta_elec = elec;\n",
       "inputPorts": [
         {
           "direction": "input",
@@ -1333,6 +1338,11 @@
         }
       ],
       "parameterTypes": {
+        "encoder_sign": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
         "offset_rad": {
           "dtype": "f32",
           "frame": "scalar",
@@ -1429,9 +1439,9 @@
       "domain": "tim_isr",
       "id": "ElecAngle",
       "parameters": {
-        "pole_pairs": "5.0",
-        "offset_rad": "30.0",
-        "encoder_sign": "1.0"
+        "encoder_sign": "1.0",
+        "offset_rad": "1.1868",
+        "pole_pairs": "5.0"
       },
       "position": {
         "x": 300.0,
@@ -1512,7 +1522,7 @@
       "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
-        "amps": "0.0"
+        "amps": "10.0"
       },
       "position": {
         "x": 0.0,
