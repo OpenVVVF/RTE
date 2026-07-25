@@ -35,7 +35,7 @@
       "optional": true
     },
     {
-      "name": "pole_pairs",
+      "name": "poles",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -62,12 +62,12 @@
       "frame": "scalar",
       "dtype": "f32"
     },
-    "pole_pairs": {
+    "encoder_sign": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "encoder_sign": {
+    "poles": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

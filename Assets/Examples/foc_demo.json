@@ -497,12 +497,12 @@
     {
       "id": "c42",
       "from": {
-        "nodeId": "CfgPolePairs",
+        "nodeId": "CfgPoles",
         "portName": "value"
       },
       "to": {
         "nodeId": "ElecAngle",
-        "portName": "pole_pairs"
+        "portName": "poles"
       }
     }
   ],
@@ -1376,7 +1376,7 @@
       "displayName": "Encoder Electrical Angle",
       "domain": "",
       "id": "math.encoder_elec_angle",
-      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(theta_mech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset + sign * encoder_angle * pole_pairs.\n * Matches the base-image FocController convention. */\nfloat elec = offset_rad + encoder_sign * theta * pole_pairs;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\ntheta_elec = elec;\n",
+      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(theta_mech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset + sign * encoder_angle * (poles / 2).\n * Matches the base-image FocController convention. */\nfloat elec = offset_rad + encoder_sign * theta * poles * 0.5f;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\ntheta_elec = elec;\n",
       "inputPorts": [
         {
           "direction": "input",
@@ -1409,7 +1409,7 @@
         },
         {
           "direction": "input",
-          "name": "pole_pairs",
+          "name": "poles",
           "type": {
             "quantity": "dimensionless",
             "frame": "scalar",
@@ -1442,7 +1442,7 @@
           "frame": "scalar",
           "quantity": "dimensionless"
         },
-        "pole_pairs": {
+        "poles": {
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -1551,7 +1551,7 @@
       "parameters": {
         "encoder_sign": "1.0",
         "offset_rad": "1.1868",
-        "pole_pairs": "5.0"
+        "poles": "10.0"
       },
       "position": {
         "x": 300.0,
@@ -1984,13 +1984,13 @@
       "type": "config.value"
     },
     {
-      "displayName": "CfgPolePairs",
+      "displayName": "CfgPoles",
       "domain": "tim_isr",
-      "id": "CfgPolePairs",
+      "id": "CfgPoles",
       "parameters": {
         "cached": "0.0",
-        "default_value": "5.0",
-        "key": "\"Motor.PolePairs\""
+        "default_value": "10.0",
+        "key": "\"Motor.Poles\""
       },
       "position": {
         "x": 0.0,
