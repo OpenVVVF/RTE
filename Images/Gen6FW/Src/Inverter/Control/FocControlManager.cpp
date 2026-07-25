@@ -127,8 +127,8 @@ void FocControlManager::applySetpointLimits() {
 }
 
 bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
-    if (!m_initialized) {
-        Telemetry::printf("[FOC] ERROR: not initialized");
+    if (!m_initialized && !init()) {
+        Telemetry::printf("[FOC] ERROR: init failed");
         return false;
     }
 
