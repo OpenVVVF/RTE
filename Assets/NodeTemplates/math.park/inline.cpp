@@ -1,4 +1,4 @@
-const float cos_theta = cosf(theta);
-const float sin_theta = sinf(theta);
-id = i_alpha * cos_theta + i_beta * sin_theta;
-iq = -i_alpha * sin_theta + i_beta * cos_theta;
+const float cos_theta = cosf(Theta);
+const float sin_theta = sinf(Theta);
+I_D = I_Alpha * cos_theta + I_Beta * sin_theta;
+I_Q = -I_Alpha * sin_theta + I_Beta * cos_theta;

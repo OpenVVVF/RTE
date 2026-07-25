@@ -5,7 +5,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "vd",
+      "name": "V_D",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -14,7 +14,7 @@
       }
     },
     {
-      "name": "vq",
+      "name": "V_Q",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -23,7 +23,7 @@
       }
     },
     {
-      "name": "theta",
+      "name": "Theta",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -34,7 +34,7 @@
   ],
   "outputPorts": [
     {
-      "name": "v_alpha",
+      "name": "V_Alpha",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -43,7 +43,7 @@
       }
     },
     {
-      "name": "v_beta",
+      "name": "V_Beta",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -51,5 +51,6 @@
         "dtype": "f32"
       }
     }
-  ]
+  ],
+  "parameterTypes": {}
 }

@@ -7,7 +7,7 @@
   "inputPorts": [],
   "outputPorts": [
     {
-      "name": "value",
+      "name": "Value",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -17,17 +17,17 @@
     }
   ],
   "parameterTypes": {
-    "key": {
+    "Key": {
       "quantity": "string",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "default_value": {
+    "DefaultValue": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "cached": {
+    "Cached": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

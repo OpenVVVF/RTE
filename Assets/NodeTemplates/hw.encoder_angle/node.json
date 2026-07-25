@@ -7,7 +7,7 @@
   "inputPorts": [],
   "outputPorts": [
     {
-      "name": "theta",
+      "name": "Theta",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

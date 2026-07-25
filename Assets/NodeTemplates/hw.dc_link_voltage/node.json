@@ -7,7 +7,7 @@
   "inputPorts": [],
   "outputPorts": [
     {
-      "name": "vdc",
+      "name": "V_Dc",
       "direction": "output",
       "type": {
         "quantity": "voltage",

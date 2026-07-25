@@ -6,7 +6,7 @@
   "domain": "tim_isr",
   "inputPorts": [
     {
-      "name": "duty_a",
+      "name": "Duty_A",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -15,7 +15,7 @@
       }
     },
     {
-      "name": "duty_b",
+      "name": "Duty_B",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -24,7 +24,7 @@
       }
     },
     {
-      "name": "duty_c",
+      "name": "Duty_C",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -33,5 +33,6 @@
       }
     }
   ],
-  "outputPorts": []
+  "outputPorts": [],
+  "parameterTypes": {}
 }

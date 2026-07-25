@@ -6,7 +6,7 @@
   "domain": "",
   "inputPorts": [
     {
-      "name": "value",
+      "name": "Value",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -17,7 +17,7 @@
   ],
   "outputPorts": [
     {
-      "name": "result",
+      "name": "Result",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

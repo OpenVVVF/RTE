@@ -6,7 +6,7 @@
       "inputPorts": [],
       "outputPorts": [
         {
-          "name": "theta",
+          "name": "Theta",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -15,9 +15,9 @@
           }
         }
       ],
-      "inlineCode": "theta = 0.0f;",
+      "inlineCode": "Theta = 0.0f;",
       "parameterTypes": {
-        "value": {
+        "Value": {
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
@@ -29,7 +29,7 @@
       "inputPorts": [],
       "outputPorts": [
         {
-          "name": "id",
+          "name": "I_D",
           "direction": "output",
           "type": {
             "quantity": "current",
@@ -38,7 +38,7 @@
           }
         },
         {
-          "name": "iq",
+          "name": "I_Q",
           "direction": "output",
           "type": {
             "quantity": "current",
@@ -47,14 +47,15 @@
           }
         }
       ],
-      "inlineCode": "id = rte::Amperes(0.0f); iq = rte::Amperes(5.0f);"
+      "inlineCode": "I_D = rte::Amperes(0.0f); I_Q = rte::Amperes(5.0f);",
+      "parameterTypes": {}
     },
     {
       "id": "constant.voltage",
       "inputPorts": [],
       "outputPorts": [
         {
-          "name": "vdc",
+          "name": "V_Dc",
           "direction": "output",
           "type": {
             "quantity": "voltage",
@@ -63,9 +64,9 @@
           }
         }
       ],
-      "inlineCode": "vdc = rte::Volts(24.0f);",
+      "inlineCode": "V_Dc = rte::Volts(24.0f);",
       "parameterTypes": {
-        "value": {
+        "Value": {
           "quantity": "voltage",
           "frame": "scalar",
           "dtype": "f32"
@@ -83,8 +84,8 @@
         "y": 0
       },
       "parameters": {
-        "offset_u_a": "0.0",
-        "offset_v_a": "0.0",
+        "OffsetU": "0.0",
+        "OffsetV": "0.0",
         "offset_w_12bit": "0.0",
         "scale_w_a_per_lsb": "0.001"
       }
@@ -96,7 +97,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "park",
@@ -105,7 +107,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "idq_ref",
@@ -114,7 +117,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "pi_d",
@@ -125,11 +129,11 @@
         "y": 0
       },
       "parameters": {
-        "kp": "0.1",
-        "ki": "0.01",
-        "integral": "0.0",
-        "output_max": "24.0",
-        "output_min": "-24.0"
+        "Kp": "0.1",
+        "Ki": "0.01",
+        "Integral": "0.0",
+        "OutputMax": "24.0",
+        "OutputMin": "-24.0"
       }
     },
     {
@@ -141,11 +145,11 @@
         "y": 0
       },
       "parameters": {
-        "kp": "0.1",
-        "ki": "0.01",
-        "integral": "0.0",
-        "output_max": "24.0",
-        "output_min": "-24.0"
+        "Kp": "0.1",
+        "Ki": "0.01",
+        "Integral": "0.0",
+        "OutputMax": "24.0",
+        "OutputMin": "-24.0"
       }
     },
     {
@@ -157,7 +161,7 @@
         "y": 0
       },
       "parameters": {
-        "value": "0.0"
+        "Value": "0.0"
       }
     },
     {
@@ -167,7 +171,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "inverse_clarke",
@@ -176,7 +181,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "vdc",
@@ -187,7 +193,7 @@
         "y": 0
       },
       "parameters": {
-        "value": "24.0"
+        "Value": "24.0"
       }
     },
     {
@@ -197,7 +203,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "pwm",
@@ -206,7 +213,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     }
   ],
   "connections": [
@@ -214,198 +222,198 @@
       "id": "c2",
       "from": {
         "nodeId": "clarke",
-        "portName": "i_alpha"
+        "portName": "I_Alpha"
       },
       "to": {
         "nodeId": "park",
-        "portName": "i_alpha"
+        "portName": "I_Alpha"
       }
     },
     {
       "id": "c3",
       "from": {
         "nodeId": "theta",
-        "portName": "theta"
+        "portName": "Theta"
       },
       "to": {
         "nodeId": "park",
-        "portName": "theta"
+        "portName": "Theta"
       }
     },
     {
       "id": "c10",
       "from": {
         "nodeId": "pi_d",
-        "portName": "output"
+        "portName": "Output"
       },
       "to": {
         "nodeId": "inverse_park",
-        "portName": "vd"
+        "portName": "V_D"
       }
     },
     {
       "id": "c11",
       "from": {
         "nodeId": "pi_q",
-        "portName": "output"
+        "portName": "Output"
       },
       "to": {
         "nodeId": "inverse_park",
-        "portName": "vq"
+        "portName": "V_Q"
       }
     },
     {
       "id": "c13",
       "from": {
         "nodeId": "theta",
-        "portName": "theta"
+        "portName": "Theta"
       },
       "to": {
         "nodeId": "inverse_park",
-        "portName": "theta"
+        "portName": "Theta"
       }
     },
     {
       "id": "c14",
       "from": {
         "nodeId": "inverse_park",
-        "portName": "v_alpha"
+        "portName": "V_Alpha"
       },
       "to": {
         "nodeId": "inverse_clarke",
-        "portName": "v_alpha"
+        "portName": "V_Alpha"
       }
     },
     {
       "id": "c15",
       "from": {
         "nodeId": "inverse_park",
-        "portName": "v_alpha"
+        "portName": "V_Alpha"
       },
       "to": {
         "nodeId": "svpwm",
-        "portName": "v_alpha"
+        "portName": "V_Alpha"
       }
     },
     {
       "id": "c16",
       "from": {
         "nodeId": "vdc",
-        "portName": "vdc"
+        "portName": "V_Dc"
       },
       "to": {
         "nodeId": "svpwm",
-        "portName": "vdc"
+        "portName": "V_Dc"
       }
     },
     {
       "id": "c17a",
       "from": {
         "nodeId": "svpwm",
-        "portName": "duty_a"
+        "portName": "Duty_A"
       },
       "to": {
         "nodeId": "pwm",
-        "portName": "duty_a"
+        "portName": "Duty_A"
       }
     },
     {
       "id": "c17b",
       "from": {
         "nodeId": "svpwm",
-        "portName": "duty_b"
+        "portName": "Duty_B"
       },
       "to": {
         "nodeId": "pwm",
-        "portName": "duty_b"
+        "portName": "Duty_B"
       }
     },
     {
       "id": "c17c",
       "from": {
         "nodeId": "svpwm",
-        "portName": "duty_c"
+        "portName": "Duty_C"
       },
       "to": {
         "nodeId": "pwm",
-        "portName": "duty_c"
+        "portName": "Duty_C"
       }
     },
     {
       "id": "c18",
       "from": {
         "nodeId": "clarke",
-        "portName": "i_beta"
+        "portName": "I_Beta"
       },
       "to": {
         "nodeId": "park",
-        "portName": "i_beta"
+        "portName": "I_Beta"
       }
     },
     {
       "id": "c19",
       "from": {
         "nodeId": "park",
-        "portName": "id"
+        "portName": "I_D"
       },
       "to": {
         "nodeId": "pi_d",
-        "portName": "measurement"
+        "portName": "Measurement"
       }
     },
     {
       "id": "c20",
       "from": {
         "nodeId": "park",
-        "portName": "iq"
+        "portName": "I_Q"
       },
       "to": {
         "nodeId": "pi_q",
-        "portName": "measurement"
+        "portName": "Measurement"
       }
     },
     {
       "id": "c21",
       "from": {
         "nodeId": "idq_ref",
-        "portName": "id"
+        "portName": "I_D"
       },
       "to": {
         "nodeId": "pi_d",
-        "portName": "setpoint"
+        "portName": "Setpoint"
       }
     },
     {
       "id": "c22",
       "from": {
         "nodeId": "idq_ref",
-        "portName": "iq"
+        "portName": "I_Q"
       },
       "to": {
         "nodeId": "pi_q",
-        "portName": "setpoint"
+        "portName": "Setpoint"
       }
     },
     {
       "id": "c23",
       "from": {
         "nodeId": "inverse_park",
-        "portName": "v_beta"
+        "portName": "V_Beta"
       },
       "to": {
         "nodeId": "inverse_clarke",
-        "portName": "v_beta"
+        "portName": "V_Beta"
       }
     },
     {
       "id": "c24",
       "from": {
         "nodeId": "inverse_park",
-        "portName": "v_beta"
+        "portName": "V_Beta"
       },
       "to": {
         "nodeId": "svpwm",
-        "portName": "v_beta"
+        "portName": "V_Beta"
       }
     }
   ],
@@ -419,11 +427,11 @@
       },
       "producer": {
         "nodeId": "currents",
-        "portName": "ia"
+        "portName": "I_A"
       },
       "consumer": {
         "nodeId": "clarke",
-        "portName": "ia"
+        "portName": "I_A"
       }
     },
     {
@@ -435,11 +443,11 @@
       },
       "producer": {
         "nodeId": "currents",
-        "portName": "ib"
+        "portName": "I_B"
       },
       "consumer": {
         "nodeId": "clarke",
-        "portName": "ib"
+        "portName": "I_B"
       }
     },
     {
@@ -451,11 +459,11 @@
       },
       "producer": {
         "nodeId": "currents",
-        "portName": "ic"
+        "portName": "I_C"
       },
       "consumer": {
         "nodeId": "clarke",
-        "portName": "ic"
+        "portName": "I_C"
       }
     }
   ]

@@ -5,7 +5,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "theta",
+      "name": "Theta",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -16,7 +16,7 @@
   ],
   "outputPorts": [
     {
-      "name": "sin_theta",
+      "name": "SinTheta",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "name": "cos_theta",
+      "name": "CosTheta",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -33,5 +33,6 @@
         "dtype": "f32"
       }
     }
-  ]
+  ],
+  "parameterTypes": {}
 }

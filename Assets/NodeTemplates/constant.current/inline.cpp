@@ -1,1 +1,1 @@
-value = amps;
+Value = Amps;

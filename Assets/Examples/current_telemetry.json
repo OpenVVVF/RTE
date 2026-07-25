@@ -11,8 +11,8 @@
         "y": 0
       },
       "parameters": {
-        "offset_u_a": "0.0",
-        "offset_v_a": "0.0"
+        "OffsetU": "0.0",
+        "OffsetV": "0.0"
       }
     },
     {
@@ -22,7 +22,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "VToDim",
@@ -31,7 +32,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "WToDim",
@@ -40,7 +42,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "LogU",
@@ -51,7 +54,7 @@
         "y": 0
       },
       "parameters": {
-        "key": "\"cg_iu_a\""
+        "Key": "\"cg_iu_a\""
       }
     },
     {
@@ -63,7 +66,7 @@
         "y": 0
       },
       "parameters": {
-        "key": "\"cg_iv_a\""
+        "Key": "\"cg_iv_a\""
       }
     },
     {
@@ -75,7 +78,7 @@
         "y": 0
       },
       "parameters": {
-        "key": "\"cg_iw_a\""
+        "Key": "\"cg_iw_a\""
       }
     },
     {
@@ -85,7 +88,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "VdcToDim",
@@ -94,7 +98,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "LogVdc",
@@ -105,7 +110,7 @@
         "y": 0
       },
       "parameters": {
-        "key": "\"cg_vdc_v\""
+        "Key": "\"cg_vdc_v\""
       }
     },
     {
@@ -115,7 +120,8 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "parameters": {}
     },
     {
       "id": "LogTheta",
@@ -126,7 +132,7 @@
         "y": 0
       },
       "parameters": {
-        "key": "\"cg_theta_rad\""
+        "Key": "\"cg_theta_rad\""
       }
     }
   ],
@@ -135,66 +141,66 @@
       "id": "c4",
       "from": {
         "nodeId": "UToDim",
-        "portName": "result"
+        "portName": "Result"
       },
       "to": {
         "nodeId": "LogU",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
       "id": "c5",
       "from": {
         "nodeId": "VToDim",
-        "portName": "result"
+        "portName": "Result"
       },
       "to": {
         "nodeId": "LogV",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
       "id": "c6",
       "from": {
         "nodeId": "WToDim",
-        "portName": "result"
+        "portName": "Result"
       },
       "to": {
         "nodeId": "LogW",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
       "id": "c7",
       "from": {
         "nodeId": "VdcSense",
-        "portName": "vdc"
+        "portName": "V_Dc"
       },
       "to": {
         "nodeId": "VdcToDim",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
       "id": "c8",
       "from": {
         "nodeId": "VdcToDim",
-        "portName": "result"
+        "portName": "Result"
       },
       "to": {
         "nodeId": "LogVdc",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
       "id": "c9",
       "from": {
         "nodeId": "Encoder",
-        "portName": "theta"
+        "portName": "Theta"
       },
       "to": {
         "nodeId": "LogTheta",
-        "portName": "value"
+        "portName": "Value"
       }
     }
   ],
@@ -208,11 +214,11 @@
       },
       "producer": {
         "nodeId": "Currents",
-        "portName": "ia"
+        "portName": "I_A"
       },
       "consumer": {
         "nodeId": "UToDim",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
@@ -224,11 +230,11 @@
       },
       "producer": {
         "nodeId": "Currents",
-        "portName": "ib"
+        "portName": "I_B"
       },
       "consumer": {
         "nodeId": "VToDim",
-        "portName": "value"
+        "portName": "Value"
       }
     },
     {
@@ -240,11 +246,11 @@
       },
       "producer": {
         "nodeId": "Currents",
-        "portName": "ic"
+        "portName": "I_C"
       },
       "consumer": {
         "nodeId": "WToDim",
-        "portName": "value"
+        "portName": "Value"
       }
     }
   ]

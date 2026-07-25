@@ -5,7 +5,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "i_alpha",
+      "name": "I_Alpha",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -14,7 +14,7 @@
       }
     },
     {
-      "name": "i_beta",
+      "name": "I_Beta",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -23,7 +23,7 @@
       }
     },
     {
-      "name": "theta",
+      "name": "Theta",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -34,7 +34,7 @@
   ],
   "outputPorts": [
     {
-      "name": "id",
+      "name": "I_D",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -43,7 +43,7 @@
       }
     },
     {
-      "name": "iq",
+      "name": "I_Q",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -51,5 +51,6 @@
         "dtype": "f32"
       }
     }
-  ]
+  ],
+  "parameterTypes": {}
 }

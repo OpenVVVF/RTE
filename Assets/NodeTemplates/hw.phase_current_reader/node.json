@@ -7,7 +7,7 @@
   "inputPorts": [],
   "outputPorts": [
     {
-      "name": "iu",
+      "name": "I_U",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -16,7 +16,7 @@
       }
     },
     {
-      "name": "iv",
+      "name": "I_V",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "name": "iw",
+      "name": "I_W",
       "direction": "output",
       "type": {
         "quantity": "current",

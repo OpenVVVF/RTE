@@ -1,2 +1,2 @@
-i_alpha = ia;
-i_beta = (ib - ic) * 0.57735026919f;
+I_Alpha = I_A;
+I_Beta = (I_B - I_C) * 0.57735026919f;

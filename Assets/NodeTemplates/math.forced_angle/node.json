@@ -7,7 +7,7 @@
   "inputPorts": [],
   "outputPorts": [
     {
-      "name": "theta_elec",
+      "name": "ThetaElec",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -17,17 +17,17 @@
     }
   ],
   "parameterTypes": {
-    "rate_rad_per_s": {
+    "RateRadPerS": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "dt_s": {
+    "Dt": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "angle": {
+    "Angle": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

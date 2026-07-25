@@ -5,7 +5,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "v_alpha",
+      "name": "V_Alpha",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -14,7 +14,7 @@
       }
     },
     {
-      "name": "v_beta",
+      "name": "V_Beta",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -23,7 +23,7 @@
       }
     },
     {
-      "name": "vdc",
+      "name": "V_Dc",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -34,7 +34,7 @@
   ],
   "outputPorts": [
     {
-      "name": "duty_a",
+      "name": "Duty_A",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -43,7 +43,7 @@
       }
     },
     {
-      "name": "duty_b",
+      "name": "Duty_B",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -52,7 +52,7 @@
       }
     },
     {
-      "name": "duty_c",
+      "name": "Duty_C",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -60,5 +60,6 @@
         "dtype": "f32"
       }
     }
-  ]
+  ],
+  "parameterTypes": {}
 }

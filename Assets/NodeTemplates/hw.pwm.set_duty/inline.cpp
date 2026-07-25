@@ -1,1 +1,1 @@
-platform_pwm_set(duty_a, duty_b, duty_c);
+platform_pwm_set(Duty_A, Duty_B, Duty_C);

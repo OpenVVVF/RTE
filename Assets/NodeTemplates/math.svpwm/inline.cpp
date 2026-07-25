@@ -3,9 +3,9 @@
  * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation
  * boundary. */
 const float sqrt3 = 1.7320508075688772f;
-const float v_max_linear = (vdc.in(au::volts) / sqrt3) * 0.95f;
-float valpha = v_alpha.in(au::volts);
-float vbeta  = v_beta.in(au::volts);
+const float v_max_linear = (V_Dc.in(au::volts) / sqrt3) * 0.95f;
+float valpha = V_Alpha.in(au::volts);
+float vbeta  = V_Beta.in(au::volts);
 const float v_albe_sq = valpha * valpha + vbeta * vbeta;
 if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
     const float scale = v_max_linear / sqrtf(v_albe_sq);
@@ -14,9 +14,9 @@ if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
 }
 
 /* Inverse Clarke: alpha/beta -> A/B/C. */
-const float v_a = valpha / vdc.in(au::volts);
-const float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / vdc.in(au::volts);
-const float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / vdc.in(au::volts);
+const float v_a = valpha / V_Dc.in(au::volts);
+const float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);
+const float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);
 
 float v_min = v_a;
 if (v_b < v_min) v_min = v_b;
@@ -38,6 +38,6 @@ if (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_p
 if (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;
 if (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;
 
-duty_a = duty_a_pct;
-duty_b = duty_b_pct;
-duty_c = duty_c_pct;
+Duty_A = duty_a_pct;
+Duty_B = duty_b_pct;
+Duty_C = duty_c_pct;

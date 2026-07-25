@@ -5,7 +5,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "setpoint",
+      "name": "Setpoint",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -14,7 +14,7 @@
       }
     },
     {
-      "name": "measurement",
+      "name": "Measurement",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -25,7 +25,7 @@
   ],
   "outputPorts": [
     {
-      "name": "output",
+      "name": "Output",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -35,22 +35,22 @@
     }
   ],
   "parameterTypes": {
-    "kp": {
+    "Kp": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "ki": {
+    "Ki": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "output_max": {
+    "OutputMax": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "output_min": {
+    "OutputMin": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

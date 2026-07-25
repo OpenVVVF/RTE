@@ -1,2 +1,2 @@
-sin_theta = sinf(theta);
-cos_theta = cosf(theta);
+SinTheta = sinf(Theta);
+CosTheta = cosf(Theta);

@@ -6,7 +6,7 @@
   "domain": "",
   "inputPorts": [
     {
-      "name": "theta_mech",
+      "name": "ThetaMech",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -15,7 +15,7 @@
       }
     },
     {
-      "name": "offset_rad",
+      "name": "OffsetRad",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -25,7 +25,7 @@
       "optional": true
     },
     {
-      "name": "encoder_sign",
+      "name": "EncoderSign",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -35,7 +35,7 @@
       "optional": true
     },
     {
-      "name": "poles",
+      "name": "Poles",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -47,7 +47,7 @@
   ],
   "outputPorts": [
     {
-      "name": "theta_elec",
+      "name": "ThetaElec",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -57,17 +57,17 @@
     }
   ],
   "parameterTypes": {
-    "offset_rad": {
+    "OffsetRad": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "encoder_sign": {
+    "EncoderSign": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
-    "poles": {
+    "Poles": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

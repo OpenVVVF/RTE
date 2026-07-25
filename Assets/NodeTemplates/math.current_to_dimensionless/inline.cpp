@@ -1,1 +1,1 @@
-result = value.in(au::amperes);
+Result = Value.in(au::amperes);

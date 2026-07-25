@@ -33,19 +33,19 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_EQ(type->inputPorts.size(), 0u);
     EXPECT_EQ(type->outputPorts.size(), 3u);
 
-    const auto ia = type->FindOutputPort("ia");
+    const auto ia = type->FindOutputPort("I_A");
     ASSERT_TRUE(ia.has_value());
     EXPECT_EQ(ia->type.quantity, Quantity::Current);
     EXPECT_EQ(ia->type.frame, Frame::Scalar);
     EXPECT_EQ(ia->type.dtype, DType::F32);
 
-    const auto ib = type->FindOutputPort("ib");
+    const auto ib = type->FindOutputPort("I_B");
     ASSERT_TRUE(ib.has_value());
     EXPECT_EQ(ib->type.quantity, Quantity::Current);
     EXPECT_EQ(ib->type.frame, Frame::Scalar);
     EXPECT_EQ(ib->type.dtype, DType::F32);
 
-    const auto ic = type->FindOutputPort("ic");
+    const auto ic = type->FindOutputPort("I_C");
     ASSERT_TRUE(ic.has_value());
     EXPECT_EQ(ic->type.quantity, Quantity::Current);
     EXPECT_EQ(ic->type.frame, Frame::Scalar);
@@ -53,9 +53,9 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
 
     EXPECT_FALSE(type->inlineCode.empty());
     EXPECT_NE(type->inlineCode.find("ADC_VREF"), std::string::npos);
-    EXPECT_NE(type->inlineCode.find("ic = -iw_a"), std::string::npos);
+    EXPECT_NE(type->inlineCode.find("I_C = -iw_a"), std::string::npos);
 
-    const auto offsetType = type->FindParameterType("offset_u_a");
+    const auto offsetType = type->FindParameterType("OffsetU");
     ASSERT_TRUE(offsetType.has_value());
     EXPECT_EQ(offsetType->quantity, Quantity::Current);
 }
@@ -67,7 +67,7 @@ TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
 
     const auto clarke = graph.FindNodeType("math.clarke");
     ASSERT_TRUE(clarke.has_value());
-    EXPECT_NE(clarke->inlineCode.find("i_alpha = ia;"), std::string::npos);
+    EXPECT_NE(clarke->inlineCode.find("I_Alpha = I_A;"), std::string::npos);
 }
 
 TEST(NodeTemplates, RejectsMissingDirectory) {
@@ -111,20 +111,20 @@ TEST(NodeTemplates, LoadsControlBlocks) {
     ASSERT_TRUE(clarke.has_value());
     EXPECT_EQ(clarke->inputPorts.size(), 3u);
     EXPECT_EQ(clarke->outputPorts.size(), 2u);
-    EXPECT_EQ(clarke->FindInputPort("ia")->type.frame, Frame::Scalar);
-    EXPECT_EQ(clarke->FindInputPort("ib")->type.frame, Frame::Scalar);
-    EXPECT_EQ(clarke->FindInputPort("ic")->type.frame, Frame::Scalar);
-    EXPECT_EQ(clarke->FindOutputPort("i_alpha")->type.frame, Frame::Scalar);
-    EXPECT_EQ(clarke->FindOutputPort("i_beta")->type.frame, Frame::Scalar);
+    EXPECT_EQ(clarke->FindInputPort("I_A")->type.frame, Frame::Scalar);
+    EXPECT_EQ(clarke->FindInputPort("I_B")->type.frame, Frame::Scalar);
+    EXPECT_EQ(clarke->FindInputPort("I_C")->type.frame, Frame::Scalar);
+    EXPECT_EQ(clarke->FindOutputPort("I_Alpha")->type.frame, Frame::Scalar);
+    EXPECT_EQ(clarke->FindOutputPort("I_Beta")->type.frame, Frame::Scalar);
 
     const auto park = graph.FindNodeType("math.park");
     ASSERT_TRUE(park.has_value());
     EXPECT_EQ(park->inputPorts.size(), 3u);
     EXPECT_EQ(park->outputPorts.size(), 2u);
-    EXPECT_EQ(park->FindInputPort("i_alpha")->type.frame, Frame::Scalar);
-    EXPECT_EQ(park->FindInputPort("i_beta")->type.frame, Frame::Scalar);
-    EXPECT_EQ(park->FindOutputPort("id")->type.frame, Frame::Scalar);
-    EXPECT_EQ(park->FindOutputPort("iq")->type.frame, Frame::Scalar);
+    EXPECT_EQ(park->FindInputPort("I_Alpha")->type.frame, Frame::Scalar);
+    EXPECT_EQ(park->FindInputPort("I_Beta")->type.frame, Frame::Scalar);
+    EXPECT_EQ(park->FindOutputPort("I_D")->type.frame, Frame::Scalar);
+    EXPECT_EQ(park->FindOutputPort("I_Q")->type.frame, Frame::Scalar);
 
     const auto svpwm = graph.FindNodeType("math.svpwm");
     ASSERT_TRUE(svpwm.has_value());
@@ -140,7 +140,7 @@ TEST(NodeTemplates, LoadsControlBlocks) {
     ASSERT_TRUE(pwm.has_value());
     EXPECT_EQ(pwm->inputPorts.size(), 3u);
     EXPECT_TRUE(pwm->outputPorts.empty());
-    EXPECT_TRUE(pwm->FindInputPort("duty_a").has_value());
+    EXPECT_TRUE(pwm->FindInputPort("Duty_A").has_value());
 
     const auto encoder = graph.FindNodeType("hw.encoder.decode");
     ASSERT_TRUE(encoder.has_value());

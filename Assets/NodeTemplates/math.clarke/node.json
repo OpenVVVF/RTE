@@ -5,7 +5,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "ia",
+      "name": "I_A",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -14,7 +14,7 @@
       }
     },
     {
-      "name": "ib",
+      "name": "I_B",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -23,7 +23,7 @@
       }
     },
     {
-      "name": "ic",
+      "name": "I_C",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -34,7 +34,7 @@
   ],
   "outputPorts": [
     {
-      "name": "i_alpha",
+      "name": "I_Alpha",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -43,7 +43,7 @@
       }
     },
     {
-      "name": "i_beta",
+      "name": "I_Beta",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -51,5 +51,6 @@
         "dtype": "f32"
       }
     }
-  ]
+  ],
+  "parameterTypes": {}
 }

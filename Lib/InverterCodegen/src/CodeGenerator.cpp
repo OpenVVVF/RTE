@@ -243,16 +243,16 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
 }
 
 // Config nodes (type id "config.*") expose a FRAM-backed value by a user-chosen
-// string key. They must declare a string parameter "key" and a scalar parameter
-// "cached" (the live RAM state backing the node's output).
+// string key. They must declare a string parameter "Key" and a scalar parameter
+// "Cached" (the live RAM state backing the node's output).
 bool IsConfigNodeType(const NodeAPI::NodeType& nodeType) {
     return nodeType.id.rfind("config.", 0) == 0;
 }
 
 // Returns the unquoted config key, or nullopt when the node has no valid
-// quoted-string "key" parameter.
+// quoted-string "Key" parameter.
 std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
-    const auto it = node.parameters.find("key");
+    const auto it = node.parameters.find("Key");
     if (it == node.parameters.end()) return std::nullopt;
     const std::string& raw = it->second;
     if (raw.size() < 2 || raw.front() != '"' || raw.back() != '"') return std::nullopt;
@@ -654,8 +654,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                         *configKey + "'";
                 return false;
             }
-            if (node->parameters.find("cached") == node->parameters.end()) {
-                error = "Config node '" + node->id + "' needs a 'cached' parameter";
+            if (node->parameters.find("Cached") == node->parameters.end()) {
+                error = "Config node '" + node->id + "' needs a 'Cached' parameter";
                 return false;
             }
 
@@ -663,12 +663,12 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             const std::string getterName = "get_" + node->id + "_cached";
             source << "static void " << setterName << "(void* state, float value) {\n";
             source << "    auto* s = static_cast<" << domainTitle << "State*>(state);\n";
-            source << "    s->" << node->id << ".cached = value;\n";
+            source << "    s->" << node->id << ".Cached = value;\n";
             source << "}\n\n";
             source << "static float " << getterName << "(const void* state) {\n";
             source << "    const auto* s = static_cast<const " << domainTitle
                    << "State*>(state);\n";
-            source << "    return s->" << node->id << ".cached;\n";
+            source << "    return s->" << node->id << ".Cached;\n";
             source << "}\n\n";
 
             configEntries << "    {\"" << *configKey << "\", " << setterName << ", "

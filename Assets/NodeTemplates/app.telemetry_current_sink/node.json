@@ -6,7 +6,7 @@
   "domain": "",
   "inputPorts": [
     {
-      "name": "ia",
+      "name": "I_A",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -15,7 +15,7 @@
       }
     },
     {
-      "name": "ib",
+      "name": "I_B",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -24,7 +24,7 @@
       }
     },
     {
-      "name": "ic",
+      "name": "I_C",
       "direction": "input",
       "type": {
         "quantity": "current",
