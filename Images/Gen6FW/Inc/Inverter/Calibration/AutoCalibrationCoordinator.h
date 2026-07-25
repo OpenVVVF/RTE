@@ -28,6 +28,29 @@ public:
      */
     bool start();
 
+    /** Calibration stages, in dependency order. */
+    enum class State {
+        IDLE,
+        POLE,
+        OFFSET,
+        SETTLE,
+        RESISTANCE,
+        INDUCTANCE,
+        FLUX,
+        DONE,
+        FAIL
+    };
+
+    /**
+     * @brief Run only a contiguous slice of the full profiling sequence.
+     *
+     * Stages before `first` are skipped; their prerequisites are read from the
+     * RTE KV store (e.g. OFFSET needs Motor.Poles and
+     * Motor.Encoder.SinCos.CyclesRev).  After `last` completes the results are
+     * persisted and the routine finishes.
+     */
+    bool startSlice(State first, State last);
+
     /**
      * @brief Abort a running routine and return to idle.
      */
@@ -66,22 +89,13 @@ public:
     static AutoCalibrationCoordinator& instance();
 
 private:
-    enum class State {
-        IDLE,
-        POLE,
-        OFFSET,
-        SETTLE,
-        RESISTANCE,
-        INDUCTANCE,
-        FLUX,
-        DONE,
-        FAIL
-    };
-
     void enterState(State state);
     void fail(const char* reason_fmt, ...);
+    void finish();
 
     State m_state = State::IDLE;
+    State m_slice_last = State::FLUX;
+    bool m_full_run = false;
     uint32_t m_state_enter_ms = 0;
 
     float m_poles = 0.0f;

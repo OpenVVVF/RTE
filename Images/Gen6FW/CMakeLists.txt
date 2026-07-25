@@ -62,8 +62,27 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/SensorCommands.cpp
     Src/Inverter/Command/Commands/HelpCommand.cpp
     Src/Inverter/Command/Commands/ControlCommands.cpp
+    Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
+    Src/Inverter/Control/OpenLoopController.cpp
+    Src/Inverter/Control/FocControlManager.cpp
+    Src/Inverter/Control/FocController.cpp
+    Src/Inverter/Control/VectorPIController.cpp
+    Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
+    Src/Inverter/Calibration/CalKvStore.cpp
+    Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
+    Src/Inverter/Calibration/EncoderOffsetCalibrator.cpp
+    Src/Inverter/Calibration/FluxLinkageCalibrator.cpp
+    Src/Inverter/Calibration/InductanceCalibrator.cpp
+    Src/Inverter/Calibration/MotorCalibration.cpp
+    Src/Inverter/Calibration/PoleCalibrator.cpp
+    Src/Inverter/Calibration/ResistanceCalibrator.cpp
+    Src/Inverter/Calibration/Common/BreakawayFinder.cpp
+    Src/Inverter/Calibration/Common/CalibrationHardware.cpp
+    Src/Inverter/Calibration/Common/CurrentLimitedRamp.cpp
+    Src/Inverter/Calibration/Common/EncoderTracker.cpp
     Src/Inverter/Drivers/Storage/RteParamStore.cpp
+    Src/Inverter/Drivers/Storage/MotorConfigStore.cpp
     Src/Inverter/Drivers/GateDriver/gate_driver.c
     Src/Inverter/Drivers/CAN/can_display.c
     Src/Inverter/Drivers/CAN/FdcanFault.cpp

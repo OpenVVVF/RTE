@@ -113,3 +113,23 @@ build/rtetest-fw/
 
 See `Source/RTECodeEmitter/README.md` and `Source/RTEFirmwareBuilder/README.md`
 for detailed usage.
+
+## Roadmap
+
+Medium-term goals, roughly in priority order:
+
+- Restore the calibration suite (hierarchical `cal` command, results in the
+  `Motor.*` KV namespace)
+- Node parameter-as-input support in NodeAPI/codegen, so internal settings can
+  be wired and programmatically controlled
+- Default node instance name in templates (GUI team request)
+- Graph-owned variables (latches) for modes/enables and future conditional
+  logic
+- Zip-based project format: a library that packages project assets (node
+  templates as folders with `index.json` + separate `.cpp`/`.h` files, no
+  inline code) into a renamed zip
+- Node library expansion: CAN bus (CAN1/CAN2), digital inputs, digital outputs
+- Safety: compare against HARA/TARA/SWAD, verify base-image safety subsystems,
+  then bring the docs in line
+- Firmware/system documentation
+- Full dyno validation

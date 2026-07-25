@@ -1973,7 +1973,7 @@
       "parameters": {
         "Cached": "0.0",
         "DefaultValue": "1.0",
-        "Key": "\"Motor.Encoder.Sign\""
+        "Key": "\"Motor.Encoder.SinCos.Sign\""
       },
       "position": {
         "x": 0.0,
@@ -1988,7 +1988,7 @@
       "parameters": {
         "Cached": "0.0",
         "DefaultValue": "1.1868",
-        "Key": "\"Motor.Encoder.OffsetRad\""
+        "Key": "\"Motor.Encoder.SinCos.OffsetRad\""
       },
       "position": {
         "x": 0.0,

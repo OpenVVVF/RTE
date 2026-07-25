@@ -1,9 +1,16 @@
 #include "Inverter/InverterMain.h"
 #include "Inverter/AppState.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/PoleCalibrator.h"
+#include "Inverter/Calibration/EncoderOffsetCalibrator.h"
+#include "Inverter/Calibration/ResistanceCalibrator.h"
+#include "Inverter/Calibration/InductanceCalibrator.h"
+#include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Control/ControlSupervisor.h"
+#include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
@@ -158,6 +165,16 @@ static void loop()
     Inverter::dcLinkVoltageSensor().update();
     Inverter::dcLinkCurrentSensor().update();
     Inverter::supplyMonitorUpdate();
+
+    /* Calibration machinery: pump the open-loop controller and every
+     * calibrator state machine.  All early-out when inactive. */
+    Inverter::openLoopController().update();
+    Inverter::autoCalibrationCoordinator().update();
+    Inverter::poleCalibrator().update();
+    Inverter::encoderOffsetCalibrator().update();
+    Inverter::resistanceCalibrator().update();
+    Inverter::inductanceCalibrator().update();
+    Inverter::fluxLinkageCalibrator().update();
 
     /* TIME_DOMAIN: SAFETY_SUPERVISOR_100HZ
      *   Fault logging, safety actions, command dispatch.

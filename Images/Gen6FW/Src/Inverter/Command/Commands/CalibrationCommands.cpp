@@ -9,7 +9,9 @@
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
 #include <cstring>
@@ -347,18 +349,120 @@ static PolesCommand      sPolesCmd;
 static EncoderCalCommand sEncoderCalCmd;
 static CalPolesCommand   sCalPolesCmd;
 static EncOffsetCommand  sEncOffsetCmd;
+/**
+ * @brief `cal <path>` — hierarchical calibration dispatcher.
+ *
+ *   cal list                     Show the routine tree and stored values.
+ *   cal all                      Full profile, dependency order.
+ *   cal stop / cal status        Abort / show progress.
+ *   cal Motor.Poles              Pole count (+ encoder cycle count).
+ *   cal Motor.Encoder[.SinCos]   Encoder offset + sign.
+ *   cal Motor.Resistance         Phase resistances.
+ *   cal Motor.PMSM               Inductance then flux linkage.
+ *   cal Motor.PMSM.Inductance    Ld/Lq only.
+ *   cal Motor.PMSM.FluxLinkage   PM flux linkage only.
+ *
+ * Results are stored in the RTE KV store under the same Motor.* paths and
+ * picked up by graph config nodes at boot.
+ */
+class CalCommand : public CommandInterface {
+public:
+    CalCommand()
+      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path>",
+            {ArgSpec{"path", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* path = args[0].s_val;
+        using S = AutoCalibrationCoordinator::State;
+
+        if (stringsEqual(path, "list")) {
+            printList();
+        } else if (stringsEqual(path, "status")) {
+            printStatus();
+        } else if (stringsEqual(path, "stop")) {
+            autoCalibrationCoordinator().stop();
+            Telemetry::printf("[CAL] stop requested");
+        } else if (stringsEqual(path, "all")) {
+            startRun(S::POLE, S::FLUX, path);
+        } else if (stringsEqual(path, "Motor.Poles")) {
+            startRun(S::POLE, S::POLE, path);
+        } else if (stringsEqual(path, "Motor.Encoder") ||
+                   stringsEqual(path, "Motor.Encoder.SinCos")) {
+            startRun(S::OFFSET, S::OFFSET, path);
+        } else if (stringsEqual(path, "Motor.Resistance")) {
+            startRun(S::SETTLE, S::RESISTANCE, path);
+        } else if (stringsEqual(path, "Motor.PMSM")) {
+            startRun(S::INDUCTANCE, S::FLUX, path);
+        } else if (stringsEqual(path, "Motor.PMSM.Inductance")) {
+            startRun(S::INDUCTANCE, S::INDUCTANCE, path);
+        } else if (stringsEqual(path, "Motor.PMSM.FluxLinkage")) {
+            startRun(S::FLUX, S::FLUX, path);
+        } else {
+            Telemetry::printf("[CAL] unknown routine '%s' (try 'cal list')", path);
+        }
+    }
+
+private:
+    void startRun(AutoCalibrationCoordinator::State first,
+                  AutoCalibrationCoordinator::State last,
+                  const char* name) const {
+        Inverter::CalKvStore::ensureBaseInfo();
+        if (autoCalibrationCoordinator().startSlice(first, last)) {
+            Telemetry::printf("[CAL] %s: started", name);
+        }
+    }
+
+    static void printStored(const char* key, const char* label) {
+        float v = 0.0f;
+        if (Inverter::RteParamStore::isReady() &&
+            Inverter::RteParamStore::get(key, &v)) {
+            Telemetry::printf("[CAL]   %-28s = %.5f   (%s)", key,
+                              static_cast<double>(v), label);
+        } else {
+            Telemetry::printf("[CAL]   %-28s   unset   (%s)", key, label);
+        }
+    }
+
+    void printList() const {
+        Telemetry::printf("[CAL] routines (cal <path> to run):");
+        Telemetry::printf("[CAL]   all                         full profile, in order");
+        Telemetry::printf("[CAL]   Motor.Poles");
+        printStored("Motor.Poles", "rotor pole count");
+        printStored("Motor.Encoder.SinCos.CyclesRev", "encoder elec cycles/mech rev");
+        printStored("Motor.Encoder.SinCos.BreakMod", "breakaway modulation");
+        Telemetry::printf("[CAL]   Motor.Encoder.SinCos");
+        printStored("Motor.Encoder.SinCos.OffsetRad", "encoder offset, elec rad");
+        printStored("Motor.Encoder.SinCos.Sign", "encoder direction (+1/-1)");
+        Telemetry::printf("[CAL]   Motor.Resistance");
+        printStored("Motor.Resistance.Uv", "phase resistance, ohm");
+        printStored("Motor.Resistance.Uw", "phase resistance, ohm");
+        printStored("Motor.Resistance.Vw", "phase resistance, ohm");
+        printStored("Motor.Resistance.Avg", "average, ohm");
+        Telemetry::printf("[CAL]   Motor.PMSM[.Inductance|.FluxLinkage]");
+        printStored("Motor.PMSM.Inductance.Ld", "d-axis inductance, H");
+        printStored("Motor.PMSM.Inductance.Lq", "q-axis inductance, H");
+        printStored("Motor.PMSM.FluxLinkage.Wb", "PM flux linkage, Wb");
+    }
+
+    void printStatus() const {
+        AutoCalibrationCoordinator& coord = autoCalibrationCoordinator();
+        Telemetry::printf("[CAL] state=%s poles=%.2f enc_cycles=%.2f offset=%.3fdeg sign=%.0f R=%.4f",
+                          coord.stateName(),
+                          static_cast<double>(coord.lastPoles()),
+                          static_cast<double>(coord.lastEncoderCyclesPerRev()),
+                          static_cast<double>(coord.lastEncoderOffset()),
+                          static_cast<double>(coord.lastResistanceAverage()));
+    }
+};
+
 static ResCalCommand     sResCalCmd;
 static IndCalCommand     sIndCalCmd;
 static FluxCalCommand    sFluxCalCmd;
 static MotorCalCommand   sMotorCalCmd;
+static CalCommand        sCalCmd;
 
 void registerCalibrationCommands(CommandManager& mgr) {
-    mgr.registerCommand(&sPolesCmd);
-    mgr.registerCommand(&sEncoderCalCmd);
-    mgr.registerCommand(&sCalPolesCmd);
-    mgr.registerCommand(&sEncOffsetCmd);
-    mgr.registerCommand(&sResCalCmd);
-    mgr.registerCommand(&sIndCalCmd);
-    mgr.registerCommand(&sFluxCalCmd);
-    mgr.registerCommand(&sMotorCalCmd);
+    /* Only the hierarchical `cal` command is registered; the legacy flat
+     * commands above stay available for debug builds but are not exposed. */
+    mgr.registerCommand(&sCalCmd);
 }
