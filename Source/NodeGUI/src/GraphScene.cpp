@@ -499,7 +499,10 @@ void GraphScene::CreateDomainOutlines() {
 
         auto* outline = new QGraphicsRectItem();
         outline->setPen(QPen(color, 2.0));
-        outline->setBrush(QBrush(color, Qt::BrushStyle::BDiagPattern));
+
+        QColor fillColor = color;
+        fillColor.setAlpha(30);
+        outline->setBrush(QBrush(fillColor, Qt::SolidPattern));
         outline->setZValue(-100.0);
         scene_->addItem(outline);
 
