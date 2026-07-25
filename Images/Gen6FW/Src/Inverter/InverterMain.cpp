@@ -8,6 +8,7 @@
 #include "Inverter/Calibration/InductanceCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/OpenLoopController.h"
@@ -175,6 +176,9 @@ static void loop()
     Inverter::resistanceCalibrator().update();
     Inverter::inductanceCalibrator().update();
     Inverter::fluxLinkageCalibrator().update();
+
+    /* Legacy FOC manager (forced-angle diagnostics, offset experiments). */
+    Inverter::focControlManager().update();
 
     /* TIME_DOMAIN: SAFETY_SUPERVISOR_100HZ
      *   Fault logging, safety actions, command dispatch.
