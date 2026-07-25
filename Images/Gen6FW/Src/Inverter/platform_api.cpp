@@ -157,7 +157,10 @@ float platform_config_load(const char* key, float default_value) {
     float value = default_value;
     if (Inverter::RteParamStore::isReady()) {
         if (!Inverter::RteParamStore::get(key, &value)) {
-            /* Not found: create with default. */
+            /* Not found: warn, then create with default. */
+            Telemetry::printf(
+                "[RTE] config key '%s' not in FRAM; using default %.4f",
+                key, static_cast<double>(default_value));
             Inverter::RteParamStore::set(key, default_value);
             Inverter::RteParamStore::flush();
             value = default_value;

@@ -1,6 +1,6 @@
 {
-  "id": "config.current",
-  "displayName": "Config Current",
+  "id": "config.value",
+  "displayName": "Config Value",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
@@ -10,13 +10,12 @@
       "name": "value",
       "direction": "output",
       "type": {
-        "quantity": "current",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       }
     }
   ],
-  "constructorCode": "cached = platform_config_load(key, default_value.in(au::amperes));",
   "parameterTypes": {
     "key": {
       "quantity": "string",
@@ -24,7 +23,7 @@
       "dtype": "f32"
     },
     "default_value": {
-      "quantity": "current",
+      "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },

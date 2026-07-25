@@ -242,6 +242,23 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
     return value + "f";
 }
 
+// Config nodes (type id "config.*") expose a FRAM-backed value by a user-chosen
+// string key. They must declare a string parameter "key" and a scalar parameter
+// "cached" (the live RAM state backing the node's output).
+bool IsConfigNodeType(const NodeAPI::NodeType& nodeType) {
+    return nodeType.id.rfind("config.", 0) == 0;
+}
+
+// Returns the unquoted config key, or nullopt when the node has no valid
+// quoted-string "key" parameter.
+std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
+    const auto it = node.parameters.find("key");
+    if (it == node.parameters.end()) return std::nullopt;
+    const std::string& raw = it->second;
+    if (raw.size() < 2 || raw.front() != '"' || raw.back() != '"') return std::nullopt;
+    return raw.substr(1, raw.size() - 2);
+}
+
 std::optional<std::string> ExtractClassName(const std::string& classHeader) {
     // Very simple parser: find "class <Name>" or "class <Namespace::Name>".
     std::regex re(R"(\bclass\s+([A-Za-z_][A-Za-z0-9_:]*)\s*[:\{])");
@@ -400,6 +417,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         header << "namespace app {\n";
         header << "extern const RteParamDesc g_" << domainCpp << "_params[];\n";
         header << "extern const size_t g_" << domainCpp << "_param_count;\n";
+        header << "extern const RteParamDesc g_" << domainCpp << "_configs[];\n";
+        header << "extern const size_t g_" << domainCpp << "_config_count;\n";
         header << "} // namespace app\n";
 
         // Build source.
@@ -622,6 +641,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
             if (classBased) continue;
+            // Config nodes are exposed via the config registry instead.
+            if (IsConfigNodeType(*nodeType)) continue;
 
             for (const auto& [key, value] : node->parameters) {
                 auto paramType = nodeType->FindParameterType(key);
@@ -667,6 +688,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
             if (classBased) continue;
+            if (IsConfigNodeType(*nodeType)) continue;
 
             for (const auto& [key, value] : node->parameters) {
                 auto paramType = nodeType->FindParameterType(key);
@@ -684,6 +706,59 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         source << "};\n\n";
         source << "const size_t g_" << domainCpp << "_param_count = "
                << "sizeof(g_" << domainCpp << "_params) / sizeof(g_" << domainCpp << "_params[0]);\n\n";
+
+        // Config registry: expose config.* nodes' cached state by their
+        // user-chosen FRAM key for runtime get/set/save.
+        size_t configCount = 0;
+        std::ostringstream configEntries;
+        for (const auto& nodeId : order) {
+            const auto node = graph_.FindNode(nodeId);
+            if (!node) continue;
+            const auto nodeType = graph_.FindNodeType(node->type);
+            if (!nodeType || !IsConfigNodeType(*nodeType)) continue;
+
+            const auto configKey = ConfigNodeKey(*node);
+            if (!configKey) {
+                error = "Config node '" + node->id +
+                        "' needs a quoted-string 'key' parameter";
+                return false;
+            }
+            if (configKey->empty() || configKey->size() > 32) {
+                error = "Config node '" + node->id + "' key must be 1..32 chars: '" +
+                        *configKey + "'";
+                return false;
+            }
+            if (node->parameters.find("cached") == node->parameters.end()) {
+                error = "Config node '" + node->id + "' needs a 'cached' parameter";
+                return false;
+            }
+
+            const std::string setterName = "set_" + node->id + "_cached";
+            const std::string getterName = "get_" + node->id + "_cached";
+            source << "static void " << setterName << "(void* state, float value) {\n";
+            source << "    auto* s = static_cast<" << domainTitle << "State*>(state);\n";
+            source << "    s->" << node->id << ".cached = value;\n";
+            source << "}\n\n";
+            source << "static float " << getterName << "(const void* state) {\n";
+            source << "    const auto* s = static_cast<const " << domainTitle
+                   << "State*>(state);\n";
+            source << "    return s->" << node->id << ".cached;\n";
+            source << "}\n\n";
+
+            configEntries << "    {\"" << *configKey << "\", " << setterName << ", "
+                          << getterName << "},\n";
+            ++configCount;
+        }
+        source << "const RteParamDesc g_" << domainCpp << "_configs[] = {\n";
+        if (configCount == 0) {
+            // Zero-length arrays are not legal C++; emit a sentinel and count 0.
+            source << "    {nullptr, nullptr, nullptr},\n";
+        } else {
+            source << configEntries.str();
+        }
+        source << "};\n\n";
+        source << "const size_t g_" << domainCpp << "_config_count = " << configCount
+               << ";\n\n";
 
         source << "} // namespace app\n";
 
