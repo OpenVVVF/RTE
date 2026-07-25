@@ -57,9 +57,12 @@ void savePoleResults(float poles, float encoderCyclesPerRev, float breakawayMod)
 void saveEncoderResults(float offsetMechDeg, float sign, float cyclesPerRev,
                         float poles) {
     if (!RteParamStore::isReady()) return;
+    (void)poles;
+    /* The offset is stored as electrical radians directly (same convention as
+     * the base-image FocController and the graph ElecAngle formula:
+     * theta_elec = offset_rad + sign * encoder_angle * pole_pairs). */
     constexpr float DEG_TO_RAD = 3.14159265358979f / 180.0f;
-    const float offset_elec_rad = offsetMechDeg * DEG_TO_RAD * (poles * 0.5f);
-    setIfValid(KEY_ENC_OFFSETRAD, offset_elec_rad);
+    setIfValid(KEY_ENC_OFFSETRAD, offsetMechDeg * DEG_TO_RAD);
     setIfValid(KEY_ENC_SIGN, sign);
     setIfValid(KEY_ENC_CYCLES, cyclesPerRev);
 }

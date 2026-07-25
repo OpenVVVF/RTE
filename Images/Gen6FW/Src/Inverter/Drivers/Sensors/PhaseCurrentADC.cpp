@@ -1,5 +1,6 @@
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/AppState.h"
+#include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
@@ -349,6 +350,11 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
      * sin/cos so the estimate does not depend on the encoder angle bounds. */
     PoleEstimator::instance().onSample(
         m_current_u, encoderADC().lastRawSin(), encoderADC().lastRawCos());
+
+    /* Feed the encoder-cycle counter (used by motor profiling) at the same
+     * rate. */
+    EncoderCycleCalibrator::instance().onSample(encoderADC().lastRawSin(),
+                                                encoderADC().lastRawCos());
 
     m_new_data = true;
 }
