@@ -31,126 +31,6 @@
         "frame": "abc",
         "quantity": "current"
       }
-    },
-    {
-      "id": "IdMeasToDim",
-      "type": "math.current_to_dimensionless",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "id": "IqMeasToDim",
-      "type": "math.current_to_dimensionless",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "id": "VdOutToDim",
-      "type": "math.voltage_to_dimensionless",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "id": "VqOutToDim",
-      "type": "math.voltage_to_dimensionless",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "id": "LogId",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_id_a\""
-      }
-    },
-    {
-      "id": "LogIq",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_iq_a\""
-      }
-    },
-    {
-      "id": "LogVd",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_vd_v\""
-      }
-    },
-    {
-      "id": "LogVq",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_vq_v\""
-      }
-    },
-    {
-      "id": "LogDu",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_du\""
-      }
-    },
-    {
-      "id": "LogDv",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_dv\""
-      }
-    },
-    {
-      "id": "LogDw",
-      "type": "app.telemetry_log",
-      "domain": "tim_isr",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {
-        "key": "\"cg_dw\""
-      }
     }
   ],
   "connections": [
@@ -1499,6 +1379,17 @@
   "nodes": [
     {
       "displayName": "",
+      "domain": "tim_isr",
+      "id": "Clarke",
+      "parameters": {},
+      "position": {
+        "x": 300.0,
+        "y": 0.0
+      },
+      "type": "math.clarke"
+    },
+    {
+      "displayName": "",
       "domain": "adc_isr",
       "id": "Currents",
       "parameters": {
@@ -1514,49 +1405,13 @@
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "Encoder",
+      "id": "DqPack",
       "parameters": {},
       "position": {
-        "x": 0.0,
-        "y": 150.0
-      },
-      "type": "hw.encoder_angle"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "ElecAngle",
-      "parameters": {
-        "offset_rad": "1.1868",
-        "pole_pairs": "5.0"
-      },
-      "position": {
-        "x": 300.0,
-        "y": 300.0
-      },
-      "type": "math.encoder_elec_angle"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "Clarke",
-      "parameters": {},
-      "position": {
-        "x": 300.0,
+        "x": 1500.0,
         "y": 0.0
       },
-      "type": "math.clarke"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "Park",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
-        "y": 0.0
-      },
-      "type": "math.park"
+      "type": "math.dq_pack"
     },
     {
       "displayName": "",
@@ -1568,6 +1423,54 @@
         "y": 0.0
       },
       "type": "math.dq_unpack"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "ElecAngle",
+      "parameters": {
+        "offset_rad": "1.1868",
+        "pole_pairs": "5.0",
+        "encoder_sign": "1.0"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 300.0
+      },
+      "type": "math.encoder_elec_angle"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "Encoder",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 150.0
+      },
+      "type": "hw.encoder_angle"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "EncoderApp",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 300.0
+      },
+      "type": "hw.encoder_angle"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "IdMeasToDim",
+      "parameters": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "math.current_to_dimensionless"
     },
     {
       "displayName": "",
@@ -1585,6 +1488,28 @@
     {
       "displayName": "",
       "domain": "tim_isr",
+      "id": "InvPark",
+      "parameters": {},
+      "position": {
+        "x": 1800.0,
+        "y": 0.0
+      },
+      "type": "math.inverse_park"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "IqMeasToDim",
+      "parameters": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "math.current_to_dimensionless"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
         "amps": "10.0"
@@ -1598,135 +1523,80 @@
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "PiD",
+      "id": "LogDu",
       "parameters": {
-        "integral": "0.0",
-        "ki": "10.0",
-        "kp": "0.03",
-        "output_max": "50.0",
-        "output_min": "-50.0"
+        "key": "\"cg_du\""
       },
       "position": {
-        "x": 1200.0,
-        "y": 0.0
+        "x": 0,
+        "y": 0
       },
-      "type": "control.pi_current"
+      "type": "app.telemetry_log"
     },
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "PiQ",
+      "id": "LogDv",
       "parameters": {
-        "integral": "0.0",
-        "ki": "10.0",
-        "kp": "0.03",
-        "output_max": "50.0",
-        "output_min": "-50.0"
+        "key": "\"cg_dv\""
       },
       "position": {
-        "x": 1200.0,
-        "y": 150.0
+        "x": 0,
+        "y": 0
       },
-      "type": "control.pi_current"
+      "type": "app.telemetry_log"
     },
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "DqPack",
-      "parameters": {},
-      "position": {
-        "x": 1500.0,
-        "y": 0.0
+      "id": "LogDw",
+      "parameters": {
+        "key": "\"cg_dw\""
       },
-      "type": "math.dq_pack"
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "app.telemetry_log"
     },
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "InvPark",
-      "parameters": {},
-      "position": {
-        "x": 1800.0,
-        "y": 0.0
+      "id": "LogId",
+      "parameters": {
+        "key": "\"cg_id_a\""
       },
-      "type": "math.inverse_park"
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "app.telemetry_log"
     },
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "VdcSense",
-      "parameters": {},
-      "position": {
-        "x": 0.0,
-        "y": 900.0
+      "id": "LogIq",
+      "parameters": {
+        "key": "\"cg_iq_a\""
       },
-      "type": "hw.dc_link_voltage"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "Svpwm",
-      "parameters": {},
       "position": {
-        "x": 2100.0,
-        "y": 0.0
+        "x": 0,
+        "y": 0
       },
-      "type": "math.svpwm"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "PwmOut",
-      "parameters": {},
-      "position": {
-        "x": 2400.0,
-        "y": 0.0
-      },
-      "type": "hw.pwm.set_duty"
+      "type": "app.telemetry_log"
     },
     {
       "displayName": "",
       "domain": "app_loop",
-      "id": "Unpack",
-      "parameters": {},
+      "id": "LogTheta",
+      "parameters": {
+        "key": "\"cg_theta_rad\""
+      },
       "position": {
         "x": 300.0,
-        "y": 150.0
-      },
-      "type": "math.abc_current_unpack"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "UToDim",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
-        "y": 150.0
-      },
-      "type": "math.current_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "VToDim",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
-        "y": 300.0
-      },
-      "type": "math.current_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "WToDim",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
         "y": 450.0
       },
-      "type": "math.current_to_dimensionless"
+      "type": "app.telemetry_log"
     },
     {
       "displayName": "",
@@ -1756,6 +1626,45 @@
     },
     {
       "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogVd",
+      "parameters": {
+        "key": "\"cg_vd_v\""
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogVdc",
+      "parameters": {
+        "key": "\"cg_vdc_v\""
+      },
+      "position": {
+        "x": 600.0,
+        "y": 600.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogVq",
+      "parameters": {
+        "key": "\"cg_vq_v\""
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
       "domain": "app_loop",
       "id": "LogW",
       "parameters": {
@@ -1769,27 +1678,116 @@
     },
     {
       "displayName": "",
-      "domain": "app_loop",
-      "id": "EncoderApp",
+      "domain": "tim_isr",
+      "id": "Park",
       "parameters": {},
       "position": {
-        "x": 0.0,
-        "y": 300.0
+        "x": 600.0,
+        "y": 0.0
       },
-      "type": "hw.encoder_angle"
+      "type": "math.park"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "PiD",
+      "parameters": {
+        "integral": "0.0",
+        "ki": "10.0",
+        "kp": "0.03",
+        "output_max": "50.0",
+        "output_min": "-50.0",
+        "dt_s": "0.0002"
+      },
+      "position": {
+        "x": 1200.0,
+        "y": 0.0
+      },
+      "type": "control.pi_current"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "PiQ",
+      "parameters": {
+        "integral": "0.0",
+        "ki": "10.0",
+        "kp": "0.03",
+        "output_max": "50.0",
+        "output_min": "-50.0",
+        "dt_s": "0.0002"
+      },
+      "position": {
+        "x": 1200.0,
+        "y": 150.0
+      },
+      "type": "control.pi_current"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "PwmOut",
+      "parameters": {},
+      "position": {
+        "x": 2400.0,
+        "y": 0.0
+      },
+      "type": "hw.pwm.set_duty"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "Svpwm",
+      "parameters": {},
+      "position": {
+        "x": 2100.0,
+        "y": 0.0
+      },
+      "type": "math.svpwm"
     },
     {
       "displayName": "",
       "domain": "app_loop",
-      "id": "LogTheta",
-      "parameters": {
-        "key": "\"cg_theta_rad\""
+      "id": "UToDim",
+      "parameters": {},
+      "position": {
+        "x": 600.0,
+        "y": 150.0
       },
+      "type": "math.current_to_dimensionless"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Unpack",
+      "parameters": {},
       "position": {
         "x": 300.0,
-        "y": 450.0
+        "y": 150.0
       },
-      "type": "app.telemetry_log"
+      "type": "math.abc_current_unpack"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "VToDim",
+      "parameters": {},
+      "position": {
+        "x": 600.0,
+        "y": 300.0
+      },
+      "type": "math.current_to_dimensionless"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "VdOutToDim",
+      "parameters": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "math.voltage_to_dimensionless"
     },
     {
       "displayName": "",
@@ -1799,6 +1797,17 @@
       "position": {
         "x": 0.0,
         "y": 750.0
+      },
+      "type": "hw.dc_link_voltage"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "VdcSense",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 900.0
       },
       "type": "hw.dc_link_voltage"
     },
@@ -1815,16 +1824,25 @@
     },
     {
       "displayName": "",
-      "domain": "app_loop",
-      "id": "LogVdc",
-      "parameters": {
-        "key": "\"cg_vdc_v\""
+      "domain": "tim_isr",
+      "id": "VqOutToDim",
+      "parameters": {},
+      "position": {
+        "x": 0,
+        "y": 0
       },
+      "type": "math.voltage_to_dimensionless"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "WToDim",
+      "parameters": {},
       "position": {
         "x": 600.0,
-        "y": 600.0
+        "y": 450.0
       },
-      "type": "app.telemetry_log"
+      "type": "math.current_to_dimensionless"
     }
   ]
 }
