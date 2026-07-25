@@ -1,5 +1,6 @@
 #include "GraphScene.h"
 
+#include "BridgeConnectionPainter.h"
 #include "NodeDataModel.h"
 
 #include <NodeAPI/NodeTemplates.h>
@@ -131,6 +132,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     // Reset model/scene so each load starts fresh.
     model_ = std::make_unique<NodeGraphModel>(registry_, graph_);
     scene_ = std::make_unique<QtNodes::BasicGraphicsScene>(*model_);
+    scene_->setConnectionPainter(std::make_unique<BridgeConnectionPainter>());
 
     RegisterNodeTypes();
     CreateNodes();

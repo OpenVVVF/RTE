@@ -8,6 +8,8 @@ add_executable(NodeGUI
     src/NodeDataModel.h
     src/NodeGraphModel.cpp
     src/NodeGraphModel.h
+    src/BridgeConnectionPainter.cpp
+    src/BridgeConnectionPainter.h
 )
 
 set_target_properties(NodeGUI PROPERTIES

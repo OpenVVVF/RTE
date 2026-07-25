@@ -307,4 +307,9 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
     return DataFlowGraphModel::deleteConnection(connectionId);
 }
 
+bool NodeGraphModel::IsBridge(QtNodes::ConnectionId const connectionId) const {
+    const auto it = connectionMap_.find(connectionId);
+    return it != connectionMap_.end() && it->second.isBridge;
+}
+
 }  // namespace NodeGUI

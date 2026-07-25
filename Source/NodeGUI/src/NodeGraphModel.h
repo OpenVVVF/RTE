@@ -39,6 +39,9 @@ public:
     void addConnection(QtNodes::ConnectionId const connectionId) override;
     bool deleteConnection(QtNodes::ConnectionId const connectionId) override;
 
+    // Returns true if the QtNodes connection id maps to a NodeAPI Bridge.
+    bool IsBridge(QtNodes::ConnectionId const connectionId) const;
+
     // Retrieve the reason for the last rejected connection attempt and clear it.
     // Returns an empty string if nothing was rejected since the last clear.
     QString TakeLastRejectionReason();

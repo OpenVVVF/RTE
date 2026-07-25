@@ -38,7 +38,8 @@ Or launch with no arguments and use `File → Open`.
 - Loads node-type templates from `RTE/Assets/NodeTemplates`.
 - Parses a NodeAPI graph JSON with `NodeAPI::LoadFromJson`.
 - Renders each node instance as a QtNodes node at its stored position.
-- Renders `Connection`s and `Bridge`s as QtNodes connections.
+- Renders `Connection`s as solid QtNodes connections.
+- Renders `Bridge`s as dashed orange lines so cross-domain links are visually distinct.
 - Shows the node id, type, and timing domain in each node caption.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
@@ -54,5 +55,4 @@ Or launch with no arguments and use `File → Open`.
 
 ## What it does not do yet
 
-- Bridges are drawn as normal connections; distinct cross-domain styling is future work.
 - No parameter editing, node creation, or code generation.
