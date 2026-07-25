@@ -28,6 +28,6 @@ const rte::Current iw_a = rte::Amperes(-(iu_a.in(au::amperes) + iv_a.in(au::ampe
 /* The phase-current sensors on this hardware are wired with inverted polarity
  * relative to the FOC convention.  Negate all three so downstream transforms
  * see the correct sign (matches base-image FocControlManager). */
-i_abc.a = -iu_a;
-i_abc.b = -iv_a;
-i_abc.c = -iw_a;
+ia = -iu_a;
+ib = -iv_a;
+ic = -iw_a;

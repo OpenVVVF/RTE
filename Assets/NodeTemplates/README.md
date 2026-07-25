@@ -44,7 +44,7 @@ Assets/NodeTemplates/
 - Reference input/output ports by their declared names.
 - Reference parameters by their plain names (e.g. `kp`, not `params.kp`).
 - Physical ports have Au `Quantity` types; use `.in(au::<unit>)` when you need a raw `float` for math or HAL calls.
-- Framed ports (`abc`, `alpha_beta`, `dq`) are structs with named members (e.g. `i_abc.a`, `i_alpha_beta.alpha`, `v_dq.d`).
+- All ports are scalar (`"frame": "scalar"`); combined frames are expressed as separate scalar ports (e.g. `ia`/`ib`/`ic`, `v_alpha`/`v_beta`).
 
 ## Loading templates
 

@@ -6,11 +6,29 @@
   "domain": "",
   "inputPorts": [
     {
-      "name": "i_abc",
+      "name": "ia",
       "direction": "input",
       "type": {
         "quantity": "current",
-        "frame": "abc",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ib",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ic",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
         "dtype": "f32"
       }
     }

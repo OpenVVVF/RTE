@@ -4,8 +4,8 @@
  * boundary. */
 const float sqrt3 = 1.7320508075688772f;
 const float v_max_linear = (vdc.in(au::volts) / sqrt3) * 0.95f;
-float valpha = v_alpha_beta.alpha.in(au::volts);
-float vbeta  = v_alpha_beta.beta.in(au::volts);
+float valpha = v_alpha.in(au::volts);
+float vbeta  = v_beta.in(au::volts);
 const float v_albe_sq = valpha * valpha + vbeta * vbeta;
 if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
     const float scale = v_max_linear / sqrtf(v_albe_sq);

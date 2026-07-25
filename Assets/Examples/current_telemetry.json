@@ -16,15 +16,6 @@
       }
     },
     {
-      "id": "Unpack",
-      "type": "math.abc_current_unpack",
-      "domain": "app_loop",
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
       "id": "UToDim",
       "type": "math.current_to_dimensionless",
       "domain": "app_loop",
@@ -141,39 +132,6 @@
   ],
   "connections": [
     {
-      "id": "c1",
-      "from": {
-        "nodeId": "Unpack",
-        "portName": "a"
-      },
-      "to": {
-        "nodeId": "UToDim",
-        "portName": "value"
-      }
-    },
-    {
-      "id": "c2",
-      "from": {
-        "nodeId": "Unpack",
-        "portName": "b"
-      },
-      "to": {
-        "nodeId": "VToDim",
-        "portName": "value"
-      }
-    },
-    {
-      "id": "c3",
-      "from": {
-        "nodeId": "Unpack",
-        "portName": "c"
-      },
-      "to": {
-        "nodeId": "WToDim",
-        "portName": "value"
-      }
-    },
-    {
       "id": "c4",
       "from": {
         "nodeId": "UToDim",
@@ -242,19 +200,51 @@
   ],
   "bridges": [
     {
-      "id": "i_abc_bridge",
+      "id": "i_a_app_bridge",
       "type": {
         "quantity": "current",
-        "frame": "abc",
+        "frame": "scalar",
         "dtype": "f32"
       },
       "producer": {
         "nodeId": "Currents",
-        "portName": "i_abc"
+        "portName": "ia"
       },
       "consumer": {
-        "nodeId": "Unpack",
-        "portName": "i_abc"
+        "nodeId": "UToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "i_b_app_bridge",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "ib"
+      },
+      "consumer": {
+        "nodeId": "VToDim",
+        "portName": "value"
+      }
+    },
+    {
+      "id": "i_c_app_bridge",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "ic"
+      },
+      "consumer": {
+        "nodeId": "WToDim",
+        "portName": "value"
       }
     }
   ]

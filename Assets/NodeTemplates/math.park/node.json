@@ -5,11 +5,20 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "i_alpha_beta",
+      "name": "i_alpha",
       "direction": "input",
       "type": {
         "quantity": "current",
-        "frame": "alpha_beta",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "i_beta",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
         "dtype": "f32"
       }
     },
@@ -25,11 +34,20 @@
   ],
   "outputPorts": [
     {
-      "name": "i_dq",
+      "name": "id",
       "direction": "output",
       "type": {
         "quantity": "current",
-        "frame": "dq",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "iq",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
         "dtype": "f32"
       }
     }

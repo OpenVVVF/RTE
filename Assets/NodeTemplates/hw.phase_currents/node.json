@@ -7,11 +7,29 @@
   "inputPorts": [],
   "outputPorts": [
     {
-      "name": "i_abc",
+      "name": "ia",
       "direction": "output",
       "type": {
         "quantity": "current",
-        "frame": "abc",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ib",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ic",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
         "dtype": "f32"
       }
     }

@@ -5,22 +5,49 @@
   "isEntryPoint": false,
   "inputPorts": [
     {
-      "name": "v_alpha_beta",
+      "name": "v_alpha",
       "direction": "input",
       "type": {
         "quantity": "voltage",
-        "frame": "alpha_beta",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "v_beta",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
         "dtype": "f32"
       }
     }
   ],
   "outputPorts": [
     {
-      "name": "v_abc",
+      "name": "va",
       "direction": "output",
       "type": {
         "quantity": "voltage",
-        "frame": "abc",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "vb",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "vc",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
         "dtype": "f32"
       }
     }
