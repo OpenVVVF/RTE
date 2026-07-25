@@ -41,7 +41,7 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
 
     EXPECT_FALSE(type->inlineCode.empty());
     EXPECT_NE(type->inlineCode.find("ADC_VREF"), std::string::npos);
-    EXPECT_NE(type->inlineCode.find("i_abc.c = iw_a"), std::string::npos);
+    EXPECT_NE(type->inlineCode.find("i_abc.c = -iw_a"), std::string::npos);
 
     const auto offsetType = type->FindParameterType("offset_u_a");
     ASSERT_TRUE(offsetType.has_value());
