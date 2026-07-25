@@ -600,6 +600,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
             if (classBased) continue;  // class-based nodes manage their own reset
+            // Config nodes own their state (FRAM/live set); never reset it.
+            if (IsConfigNodeType(*nodeType)) continue;
 
             source << "    // Reset node: " << node->id << "\n";
             source << "    {\n";
