@@ -52,16 +52,8 @@ public:
             setParam(args[1].s_val, args[2].present ? args[2].f_val : 0.0f);
         } else if (strcasecmp(sub, "get") == 0) {
             getParam(args[1].s_val);
-        } else if (strcasecmp(sub, "save") == 0) {
-            saveParams();
-        } else if (strcasecmp(sub, "load") == 0) {
-            loadParams();
-        } else if (strcasecmp(sub, "list") == 0) {
-            listParams();
-        } else if (strcasecmp(sub, "clear") == 0) {
-            clearParams();
         } else {
-            Telemetry::printf("[SHELL] Unknown control subcommand '%s'. Use: start/stop/status/set/get/save/load/list/clear", sub);
+            Telemetry::printf("[SHELL] Unknown control subcommand '%s'. Use: start/stop/status/set/get", sub);
         }
     }
 
@@ -110,7 +102,6 @@ private:
             Telemetry::printf("[SHELL] param store not ready");
             return;
         }
-        /* Write every generated parameter into the KV store. */
         for (size_t i = 0; i < app::g_tim_isr_param_count; ++i) {
             const float v = app::g_tim_isr_params[i].get(&appState.tim_isr);
             Inverter::RteParamStore::set(app::g_tim_isr_params[i].name, v);
@@ -165,8 +156,136 @@ private:
     }
 };
 
+/**
+ * @brief `config <subcommand> [args...]` for FRAM-backed config nodes.
+ *
+ * Supported forms:
+ *   config set <key> <value>
+ *   config get <key>
+ *   config list
+ */
+class ConfigCommand : public CommandInterface {
+public:
+    ConfigCommand()
+      : CommandInterface("config", "FRAM config: set/get/list",
+            {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"key", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING},
+             ArgSpec{"value", "", -1e6f, 1e6f, 0.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* sub = args[0].s_val;
+
+        if (strcasecmp(sub, "set") == 0) {
+            const char* key = args[1].s_val;
+            const float value = args[2].present ? args[2].f_val : 0.0f;
+            if (!Inverter::RteParamStore::isReady()) {
+                Telemetry::printf("[SHELL] config store not ready");
+                return;
+            }
+            Inverter::RteParamStore::set(key, value);
+            Inverter::RteParamStore::flush();
+            Telemetry::printf("[SHELL] %s = %.4f (takes effect on reboot or node re-init)", key, static_cast<double>(value));
+        } else if (strcasecmp(sub, "get") == 0) {
+            const char* key = args[1].s_val;
+            float value = 0.0f;
+            if (Inverter::RteParamStore::get(key, &value)) {
+                Telemetry::printf("[SHELL] %s = %.4f", key, static_cast<double>(value));
+            } else {
+                Telemetry::printf("[SHELL] key '%s' not found", key);
+            }
+        } else if (strcasecmp(sub, "list") == 0) {
+            if (!Inverter::RteParamStore::isReady()) {
+                Telemetry::printf("[SHELL] config store not ready");
+                return;
+            }
+            Telemetry::printf("[SHELL] stored config keys (%zu):", Inverter::RteParamStore::count());
+            Inverter::RteParamStore::iterate(printConfig, nullptr);
+        } else {
+            Telemetry::printf("[SHELL] Unknown config subcommand '%s'. Use: set/get/list", sub);
+        }
+    }
+
+private:
+    static bool printConfig(const char* key, float value, void*) {
+        Telemetry::printf("[SHELL]   %s = %.4f", key, static_cast<double>(value));
+        return true;
+    }
+};
+
+/**
+ * @brief `live <subcommand> [args...]` for live runtime variables.
+ *
+ * Maps friendly names to generated node parameters for immediate updates.
+ *   live set iq_ref 5.0
+ *   live set id_ref 0.0
+ *   live get iq_ref
+ */
+class LiveCommand : public CommandInterface {
+public:
+    LiveCommand()
+      : CommandInterface("live", "Live variables: set/get iq_ref/id_ref",
+            {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"name", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING},
+             ArgSpec{"value", "", -1e6f, 1e6f, 0.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* sub = args[0].s_val;
+        const char* name = args[1].present ? args[1].s_val : "";
+        const float value = args[2].present ? args[2].f_val : 0.0f;
+
+        const char* param = mapName(name);
+        if (param == nullptr) {
+            Telemetry::printf("[SHELL] unknown live variable '%s'. Use: iq_ref, id_ref", name);
+            return;
+        }
+
+        if (strcasecmp(sub, "set") == 0) {
+            setLive(param, value);
+        } else if (strcasecmp(sub, "get") == 0) {
+            getLive(param);
+        } else {
+            Telemetry::printf("[SHELL] Unknown live subcommand '%s'. Use: set/get", sub);
+        }
+    }
+
+private:
+    static const char* mapName(const char* name) {
+        if (strcasecmp(name, "iq_ref") == 0) return "IqRef.amps";
+        if (strcasecmp(name, "id_ref") == 0) return "IdRef.amps";
+        if (strcasecmp(name, "offset_rad") == 0) return "ElecAngle.offset_rad";
+        if (strcasecmp(name, "encoder_sign") == 0) return "ElecAngle.encoder_sign";
+        return nullptr;
+    }
+
+    void setLive(const char* param, float value) const {
+        for (size_t i = 0; i < app::g_tim_isr_param_count; ++i) {
+            if (strcasecmp(param, app::g_tim_isr_params[i].name) == 0) {
+                app::g_tim_isr_params[i].set(&appState.tim_isr, value);
+                Telemetry::printf("[SHELL] %s = %.4f", param, static_cast<double>(value));
+                return;
+            }
+        }
+        Telemetry::printf("[SHELL] parameter '%s' not found", param);
+    }
+
+    void getLive(const char* param) const {
+        for (size_t i = 0; i < app::g_tim_isr_param_count; ++i) {
+            if (strcasecmp(param, app::g_tim_isr_params[i].name) == 0) {
+                const float v = app::g_tim_isr_params[i].get(&appState.tim_isr);
+                Telemetry::printf("[SHELL] %s = %.4f", param, static_cast<double>(v));
+                return;
+            }
+        }
+        Telemetry::printf("[SHELL] parameter '%s' not found", param);
+    }
+};
+
 static ControlCommand sControlCmd;
+static ConfigCommand sConfigCmd;
+static LiveCommand sLiveCmd;
 
 void registerControlCommands(CommandManager& mgr) {
     mgr.registerCommand(&sControlCmd);
+    mgr.registerCommand(&sConfigCmd);
+    mgr.registerCommand(&sLiveCmd);
 }

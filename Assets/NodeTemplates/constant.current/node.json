@@ -2,9 +2,20 @@
   "id": "constant.current",
   "displayName": "Constant Current",
   "maxInstances": 0,
-  "isEntryPoint": true,
+  "isEntryPoint": false,
   "domain": "",
-  "inputPorts": [],
+  "inputPorts": [
+    {
+      "name": "amps",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
   "outputPorts": [
     {
       "name": "value",

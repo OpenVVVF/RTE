@@ -136,6 +136,34 @@ void platform_critical_enter(void);
 void platform_critical_exit(void);
 
 /* --------------------------------------------------------------------------
+ * Config / persistence (for generated config nodes)
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Register a config key and load its persisted value from FRAM.
+ *
+ * If the key exists in FRAM, the stored value is returned.  Otherwise the
+ * default is returned and the key is created with the default value.
+ * The key is also registered in the base-image command registry so the
+ * 'config' shell command can get/set it at runtime.
+ *
+ * @param key     Config key string (max 31 chars).
+ * @param default_value  Default value if key not found in FRAM.
+ * @return Current value (persisted or default).
+ */
+float platform_config_load(const char* key, float default_value);
+
+/**
+ * @brief Set a config value and persist it to FRAM.
+ */
+void platform_config_set(const char* key, float value);
+
+/**
+ * @brief Get a config value.  Returns 0.0f if not found.
+ */
+float platform_config_get(const char* key);
+
+/* --------------------------------------------------------------------------
  * Telemetry
  * -------------------------------------------------------------------------- */
 

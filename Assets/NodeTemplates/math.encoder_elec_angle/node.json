@@ -13,6 +13,26 @@
         "frame": "scalar",
         "dtype": "f32"
       }
+    },
+    {
+      "name": "offset_rad",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "encoder_sign",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
     }
   ],
   "outputPorts": [

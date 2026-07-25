@@ -453,6 +453,18 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                            << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
                            << ";\n";
                 }
+                /* Bind local refs for parameters used by constructorCode. */
+                if (!nodeType->constructorCode.empty()) {
+                    auto used = UsedIdentifiers(nodeType->constructorCode);
+                    for (const auto& [key, value] : node->parameters) {
+                        if (used.count(key)) {
+                            auto paramType = nodeType->FindParameterType(key);
+                            source << "        "
+                                   << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                                   << "& " << key << " = state." << node->id << "." << key << ";\n";
+                        }
+                    }
+                }
             }
 
             if (!nodeType->constructorCode.empty()) {
@@ -480,6 +492,18 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& port : nodeType->inputPorts) {
                 auto src = FindSourceExpression(graph_, node->id, port.name);
                 if (!src) {
+                    if (port.optional) {
+                        /* Optional unconnected input: bind a const ref to the
+                         * parameter with the same name, if it exists. */
+                        const auto paramIt = node->parameters.find(port.name);
+                        if (paramIt != node->parameters.end()) {
+                            auto paramType = nodeType->FindParameterType(port.name);
+                            source << "        const "
+                                   << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                                   << "& " << port.name << " = state." << node->id << "." << port.name << ";\n";
+                        }
+                        continue;
+                    }
                     error = "Input port '" + port.name + "' of node '" + node->id +
                             "' is not connected";
                     return false;
@@ -512,6 +536,18 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 // Bind parameters as mutable refs (they may be updated by the
                 // inline code, e.g. an integrator). Inputs are already const.
                 for (const auto& [key, value] : node->parameters) {
+                    /* Skip parameters that are shadowed by an optional unconnected
+                     * input port with the same name. */
+                    bool shadowed = false;
+                    for (const auto& port : nodeType->inputPorts) {
+                        if (port.optional && port.name == key &&
+                            !FindSourceExpression(graph_, node->id, port.name)) {
+                            shadowed = true;
+                            break;
+                        }
+                    }
+                    if (shadowed) continue;
+
                     auto paramType = nodeType->FindParameterType(key);
                     source << "        "
                            << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")

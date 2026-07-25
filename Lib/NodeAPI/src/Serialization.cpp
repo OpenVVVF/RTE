@@ -29,6 +29,7 @@ json ToJson(const Port& port) {
         {"name", port.name},
         {"direction", port.direction == PortDirection::Input ? "input" : "output"},
         {"type", ToJson(port.type)},
+        {"optional", port.optional},
     });
 }
 
@@ -38,6 +39,7 @@ Port PortFromJson(const json& j) {
         .direction = j.at("direction").get<std::string>() == "input" ? PortDirection::Input
                                                                       : PortDirection::Output,
         .type = WireTypeFromJson(j.at("type")),
+        .optional = j.value("optional", false),
     };
 }
 

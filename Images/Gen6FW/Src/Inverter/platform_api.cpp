@@ -4,6 +4,7 @@
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Telemetry.h"
 
@@ -145,6 +146,41 @@ void platform_critical_enter(void) {
 
 void platform_critical_exit(void) {
     __enable_irq();
+}
+
+/* --------------------------------------------------------------------------
+ * Config / persistence
+ * -------------------------------------------------------------------------- */
+
+float platform_config_load(const char* key, float default_value) {
+    if (key == nullptr) return default_value;
+    float value = default_value;
+    if (Inverter::RteParamStore::isReady()) {
+        if (!Inverter::RteParamStore::get(key, &value)) {
+            /* Not found: create with default. */
+            Inverter::RteParamStore::set(key, default_value);
+            Inverter::RteParamStore::flush();
+            value = default_value;
+        }
+    }
+    return value;
+}
+
+void platform_config_set(const char* key, float value) {
+    if (key == nullptr) return;
+    if (Inverter::RteParamStore::isReady()) {
+        Inverter::RteParamStore::set(key, value);
+        Inverter::RteParamStore::flush();
+    }
+}
+
+float platform_config_get(const char* key) {
+    if (key == nullptr) return 0.0f;
+    float value = 0.0f;
+    if (Inverter::RteParamStore::isReady()) {
+        Inverter::RteParamStore::get(key, &value);
+    }
+    return value;
 }
 
 /* --------------------------------------------------------------------------

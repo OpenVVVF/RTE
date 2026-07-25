@@ -15,6 +15,7 @@ struct Port {
     std::string name;
     PortDirection direction = PortDirection::Input;
     WireType type;
+    bool optional = false;  // If true, unconnected is OK; template falls back to parameter.
 
     friend bool operator==(const Port& lhs, const Port& rhs) = default;
     friend bool operator!=(const Port& lhs, const Port& rhs) = default;

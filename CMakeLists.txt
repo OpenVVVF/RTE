@@ -14,4 +14,4 @@ add_subdirectory(Lib/InverterCodegen)
 add_subdirectory(Lib/InverterProtocol)
 add_subdirectory(Source/RTECodeEmitter)
 add_subdirectory(Source/RTEFirmwareBuilder)
-add_subdirectory(Source/NodeGUI)
+# add_subdirectory(Source/NodeGUI)  # third_party/QtNodes not vendored yet

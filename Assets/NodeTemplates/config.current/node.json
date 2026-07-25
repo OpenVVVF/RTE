@@ -1,0 +1,37 @@
+{
+  "id": "config.current",
+  "displayName": "Config Current",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "value",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "constructorCode": "cached = platform_config_load(key, default_value.in(au::amperes));",
+  "parameterTypes": {
+    "key": {
+      "quantity": "string",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "default_value": {
+      "quantity": "current",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "cached": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

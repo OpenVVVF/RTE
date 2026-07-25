@@ -1429,8 +1429,8 @@
       "domain": "tim_isr",
       "id": "ElecAngle",
       "parameters": {
-        "offset_rad": "1.1868",
         "pole_pairs": "5.0",
+        "offset_rad": "30.0",
         "encoder_sign": "1.0"
       },
       "position": {
@@ -1512,7 +1512,7 @@
       "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
-        "amps": "10.0"
+        "amps": "0.0"
       },
       "position": {
         "x": 0.0,
