@@ -1,12 +1,13 @@
 #pragma once
 
 #include <QtNodes/AbstractConnectionPainter>
-#include <QtNodes/internal/DefaultConnectionPainter.hpp>
+
+#include <QPainterPath>
 
 namespace NodeGUI {
 
-// Paints NodeAPI Bridges as dashed, colored lines while leaving regular
-// Connections rendered by QtNodes' default painter.
+// Paints Connections and Bridges using the color of the source port's quantity.
+// Bridges keep a dashed line style; regular Connections stay solid.
 class BridgeConnectionPainter : public QtNodes::AbstractConnectionPainter {
 public:
     void paint(QPainter* painter, QtNodes::ConnectionGraphicsObject const& cgo) const override;
@@ -14,10 +15,10 @@ public:
     QPainterPath getPainterStroke(QtNodes::ConnectionGraphicsObject const& cgo) const override;
 
 private:
-    QtNodes::DefaultConnectionPainter defaultPainter_;
-
     QPainterPath cubicPath(QtNodes::ConnectionGraphicsObject const& connection) const;
-    void drawBridgeLine(QPainter* painter, QtNodes::ConnectionGraphicsObject const& cgo) const;
+    void drawConnectionLine(QPainter* painter,
+                            QtNodes::ConnectionGraphicsObject const& cgo,
+                            bool isBridge) const;
 };
 
 }  // namespace NodeGUI

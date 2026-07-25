@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "FrameRateMonitor.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QFileDialog>
@@ -43,6 +45,13 @@ MainWindow::MainWindow(QWidget* parent)
     view_->installEventFilter(this);
     layout->addWidget(view_);
     setCentralWidget(central);
+
+#ifdef NODEGUI_ENABLE_FPS_OVERLAY
+    // Top-right FPS / frametime overlay. The monitor parents the label to the
+    // view itself and anchors it to the viewport geometry so it stays put when
+    // the view is resized, moved, or reparented.
+    (void)new FrameRateMonitor(view_, this);
+#endif
 
     SetupMenu();
     UpdateStatus();

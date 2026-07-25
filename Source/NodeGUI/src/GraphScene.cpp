@@ -2,6 +2,7 @@
 
 #include "BridgeConnectionPainter.h"
 #include "NodeDataModel.h"
+#include "TypedNodePainter.h"
 
 #include <NodeAPI/NodeTemplates.h>
 #include <NodeAPI/Serialization.h>
@@ -133,6 +134,8 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     model_ = std::make_unique<NodeGraphModel>(registry_, graph_);
     scene_ = std::make_unique<QtNodes::BasicGraphicsScene>(*model_);
     scene_->setConnectionPainter(std::make_unique<BridgeConnectionPainter>());
+    scene_->setNodePainter(std::make_unique<TypedNodePainter>());
+    nodeSizeCache_.clear();
 
     RegisterNodeTypes();
     CreateNodes();
@@ -561,8 +564,8 @@ void GraphScene::UpdateDomainOutlines() {
             continue;
         }
 
-        // Use the largest node size in the group so the outline does not clip
-        // captions or ports.
+        // Use the largest cached node size in the group so the outline does not
+        // clip captions or ports. Sizes are populated once when nodes are created.
         double nodeWidth = 200.0;
         double nodeHeight = 120.0;
         for (const auto& nodeId : nodeIds) {
@@ -570,7 +573,16 @@ void GraphScene::UpdateDomainOutlines() {
             if (nodeIt == nodeIdMap_.end()) {
                 continue;
             }
-            const QSize size = scene_->nodeGeometry().size(nodeIt->second);
+
+            QSize size;
+            const auto sizeIt = nodeSizeCache_.find(nodeIt->second);
+            if (sizeIt != nodeSizeCache_.end()) {
+                size = sizeIt->second;
+            } else {
+                size = scene_->nodeGeometry().size(nodeIt->second);
+                nodeSizeCache_[nodeIt->second] = size;
+            }
+
             nodeWidth = std::max(nodeWidth, static_cast<double>(size.width()));
             nodeHeight = std::max(nodeHeight, static_cast<double>(size.height()));
         }
@@ -633,6 +645,8 @@ void GraphScene::CreateNodes() {
         model_->setNodeData(qtId,
                             QtNodes::NodeRole::Label,
                             QVariant::fromValue(QString::fromStdString(node.id)));
+
+        nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     }
 }
 

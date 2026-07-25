@@ -8,10 +8,13 @@
 #include "NodeGraphModel.h"
 
 #include <QString>
+#include <QSize>
+
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class QColor;
@@ -98,6 +101,10 @@ public:
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;
+
+    // Cached node geometry sizes so domain-outline updates don't re-query the
+    // full geometry system on every mouse-move event.
+    std::unordered_map<QtNodes::NodeId, QSize> nodeSizeCache_;
 
     // Event filter that keeps domain outlines synced while dragging nodes.
     std::unique_ptr<QObject> sceneEventFilter_;

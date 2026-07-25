@@ -1,3 +1,5 @@
+option(NODEGUI_ENABLE_FPS_OVERLAY "Show the FPS/frametime overlay in NodeGUI" ON)
+
 add_executable(NodeGUI
     src/Main.cpp
     src/MainWindow.cpp
@@ -10,6 +12,12 @@ add_executable(NodeGUI
     src/NodeGraphModel.h
     src/BridgeConnectionPainter.cpp
     src/BridgeConnectionPainter.h
+    src/TypedNodePainter.cpp
+    src/TypedNodePainter.h
+    src/PortStyle.cpp
+    src/PortStyle.h
+    src/FrameRateMonitor.cpp
+    src/FrameRateMonitor.h
 )
 
 set_target_properties(NodeGUI PROPERTIES
@@ -33,6 +41,11 @@ target_compile_definitions(NodeGUI
     PRIVATE
         RTE_NODE_TEMPLATES_DIR="${CMAKE_SOURCE_DIR}/Assets/NodeTemplates"
 )
+
+if(NODEGUI_ENABLE_FPS_OVERLAY)
+    target_compile_definitions(NodeGUI PRIVATE NODEGUI_ENABLE_FPS_OVERLAY=1)
+endif()
+
 
 target_include_directories(NodeGUI
     PRIVATE

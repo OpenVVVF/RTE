@@ -1,6 +1,7 @@
 #include "BridgeConnectionPainter.h"
 
 #include "NodeGraphModel.h"
+#include "PortStyle.h"
 
 #include <QtNodes/Definitions>
 #include <QtNodes/StyleCollection>
@@ -15,14 +16,27 @@ namespace NodeGUI {
 
 namespace {
 
-QColor BridgeColor() {
-    // Distinct orange for cross-domain bridges.
-    return QColor(255, 140, 0);
-}
-
 const NodeGraphModel* TryGetNodeModel(QtNodes::ConnectionGraphicsObject const& cgo) {
     auto& model = cgo.graphModel();
     return dynamic_cast<const NodeGraphModel*>(&model);
+}
+
+QColor ConnectionColor(QtNodes::ConnectionGraphicsObject const& cgo) {
+    auto& model = cgo.graphModel();
+    const auto cId = cgo.connectionId();
+
+    const auto dataType = model
+                              .portData(cId.outNodeId,
+                                        QtNodes::PortType::Out,
+                                        cId.outPortIndex,
+                                        QtNodes::PortRole::DataType)
+                              .value<QtNodes::NodeDataType>();
+
+    if (const auto color = ParsePortColor(dataType.id)) {
+        return *color;
+    }
+
+    return QtNodes::StyleCollection::connectionStyle().normalColor();
 }
 
 }  // namespace
@@ -38,14 +52,15 @@ QPainterPath BridgeConnectionPainter::cubicPath(QtNodes::ConnectionGraphicsObjec
     return cubic;
 }
 
-void BridgeConnectionPainter::drawBridgeLine(QPainter* painter,
-                                             QtNodes::ConnectionGraphicsObject const& cgo) const {
+void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
+                                                 QtNodes::ConnectionGraphicsObject const& cgo,
+                                                 bool isBridge) const {
     auto const& connectionStyle = QtNodes::StyleCollection::connectionStyle();
 
     const bool selected = cgo.isSelected();
     const bool hovered = cgo.connectionState().hovered();
 
-    QColor color = BridgeColor();
+    QColor color = ConnectionColor(cgo);
     if (selected) {
         color = color.darker(200);
     } else if (hovered) {
@@ -55,7 +70,7 @@ void BridgeConnectionPainter::drawBridgeLine(QPainter* painter,
     QPen pen;
     pen.setWidthF(connectionStyle.lineWidth());
     pen.setColor(color);
-    pen.setStyle(Qt::DashLine);
+    pen.setStyle(isBridge ? Qt::DashLine : Qt::SolidLine);
     pen.setCapStyle(Qt::RoundCap);
 
     painter->setPen(pen);
@@ -68,12 +83,7 @@ void BridgeConnectionPainter::paint(QPainter* painter,
     const auto* model = TryGetNodeModel(cgo);
     const bool isBridge = model && model->IsBridge(cgo.connectionId());
 
-    if (!isBridge) {
-        defaultPainter_.paint(painter, cgo);
-        return;
-    }
-
-    // Draw halo/selection background using the default style.
+    // Draw halo/selection background.
     bool const hovered = cgo.connectionState().hovered();
     bool const selected = cgo.isSelected();
     if (hovered || selected) {
@@ -82,16 +92,16 @@ void BridgeConnectionPainter::paint(QPainter* painter,
         pen.setWidthF(2.0 * connectionStyle.lineWidth());
         pen.setColor(selected ? connectionStyle.selectedHaloColor()
                               : connectionStyle.hoveredColor());
-        pen.setStyle(Qt::DashLine);
+        pen.setStyle(isBridge ? Qt::DashLine : Qt::SolidLine);
 
         painter->setPen(pen);
         painter->setBrush(Qt::NoBrush);
         painter->drawPath(cubicPath(cgo));
     }
 
-    drawBridgeLine(painter, cgo);
+    drawConnectionLine(painter, cgo, isBridge);
 
-    // Draw construction endpoints so the dash line still visibly terminates.
+    // Draw construction endpoints.
     auto const& connectionStyle = QtNodes::StyleCollection::connectionStyle();
     double const pointDiameter = connectionStyle.pointDiameter();
     painter->setPen(connectionStyle.constructionColor());

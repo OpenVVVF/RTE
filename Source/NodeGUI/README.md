@@ -38,8 +38,10 @@ Or launch with no arguments and use `File → Open`.
 - Loads node-type templates from `RTE/Assets/NodeTemplates`.
 - Parses a NodeAPI graph JSON with `NodeAPI::LoadFromJson`.
 - Renders each node instance as a QtNodes node at its stored position.
-- Renders `Connection`s as solid QtNodes connections.
-- Renders `Bridge`s as dashed orange lines so cross-domain links are visually distinct.
+- Renders `Connection`s as solid lines colored by the port's quantity.
+- Renders `Bridge`s as dashed lines colored by the port's quantity, so cross-domain links are visually distinct by linestyle.
+- Draws each port as a filled shape: color = quantity, shape = frame (e.g., scalar angles are purple diamonds), so matching types are easy to spot.
+- Shows an FPS / frametime overlay in the top-right corner of the viewport.
 - Shows the node id, type, and timing domain in each node caption.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
