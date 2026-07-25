@@ -124,21 +124,6 @@ static void init()
      * generated control loop.  It does NOT start PWM at boot; use the shell
      * command 'control start' when ready. */
     Inverter::ControlSupervisor::instance().init();
-
-    /* Restore persisted parameters from FRAM into the generated state. */
-    if (Inverter::RteParamStore::isReady()) {
-        size_t loaded = 0;
-        for (size_t i = 0; i < app::g_tim_isr_param_count; ++i) {
-            float v;
-            if (Inverter::RteParamStore::get(app::g_tim_isr_params[i].name, &v)) {
-                app::g_tim_isr_params[i].set(&appState.tim_isr, v);
-                ++loaded;
-            }
-        }
-        if (loaded > 0) {
-            Telemetry::printf("[RTE] loaded %zu params from FRAM", loaded);
-        }
-    }
 }
 
 /* TIME_DOMAIN: APPLICATION_MAIN_LOOP

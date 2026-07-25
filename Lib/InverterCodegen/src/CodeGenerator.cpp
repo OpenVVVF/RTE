@@ -415,8 +415,6 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         header << "\n} // namespace app\n\n";
         header << "#include \"RteParams.h\"\n";
         header << "namespace app {\n";
-        header << "extern const RteParamDesc g_" << domainCpp << "_params[];\n";
-        header << "extern const size_t g_" << domainCpp << "_param_count;\n";
         header << "extern const RteParamDesc g_" << domainCpp << "_configs[];\n";
         header << "extern const size_t g_" << domainCpp << "_config_count;\n";
         header << "} // namespace app\n";
@@ -631,81 +629,6 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             source << "    }\n";
         }
         source << "}\n\n";
-
-        // Parameter table: expose mutable scalar parameters for runtime command access.
-        for (const auto& nodeId : order) {
-            const auto node = graph_.FindNode(nodeId);
-            if (!node) continue;
-            const auto nodeType = graph_.FindNodeType(node->type);
-            if (!nodeType) continue;
-
-            const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
-            if (classBased) continue;
-            // Config nodes are exposed via the config registry instead.
-            if (IsConfigNodeType(*nodeType)) continue;
-
-            for (const auto& [key, value] : node->parameters) {
-                auto paramType = nodeType->FindParameterType(key);
-                if (!paramType) continue;
-                if (paramType->frame != NodeAPI::Frame::Scalar) continue;
-                if (paramType->quantity == NodeAPI::Quantity::String) continue;
-                if (paramType->quantity == NodeAPI::Quantity::Boolean) continue;
-
-                const std::string setterName = "set_" + node->id + "_" + key;
-                const std::string getterName = "get_" + node->id + "_" + key;
-                const std::string cppType = WireTypeToCpp(*paramType);
-
-                source << "static void " << setterName << "(void* state, float value) {\n";
-                source << "    auto* s = static_cast<" << domainTitle << "State*>(state);\n";
-                if (paramType->quantity == NodeAPI::Quantity::Current) {
-                    source << "    s->" << node->id << "." << key << " = rte::Amperes(value);\n";
-                } else if (paramType->quantity == NodeAPI::Quantity::Voltage) {
-                    source << "    s->" << node->id << "." << key << " = rte::Volts(value);\n";
-                } else {
-                    source << "    s->" << node->id << "." << key << " = value;\n";
-                }
-                source << "}\n\n";
-
-                source << "static float " << getterName << "(const void* state) {\n";
-                source << "    const auto* s = static_cast<const " << domainTitle << "State*>(state);\n";
-                if (paramType->quantity == NodeAPI::Quantity::Current) {
-                    source << "    return s->" << node->id << "." << key << ".in(au::amperes);\n";
-                } else if (paramType->quantity == NodeAPI::Quantity::Voltage) {
-                    source << "    return s->" << node->id << "." << key << ".in(au::volts);\n";
-                } else {
-                    source << "    return s->" << node->id << "." << key << ";\n";
-                }
-                source << "}\n\n";
-            }
-        }
-
-        source << "const RteParamDesc g_" << domainCpp << "_params[] = {\n";
-        for (const auto& nodeId : order) {
-            const auto node = graph_.FindNode(nodeId);
-            if (!node) continue;
-            const auto nodeType = graph_.FindNodeType(node->type);
-            if (!nodeType) continue;
-
-            const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
-            if (classBased) continue;
-            if (IsConfigNodeType(*nodeType)) continue;
-
-            for (const auto& [key, value] : node->parameters) {
-                auto paramType = nodeType->FindParameterType(key);
-                if (!paramType) continue;
-                if (paramType->frame != NodeAPI::Frame::Scalar) continue;
-                if (paramType->quantity == NodeAPI::Quantity::String) continue;
-                if (paramType->quantity == NodeAPI::Quantity::Boolean) continue;
-
-                const std::string paramName = node->id + "." + key;
-                const std::string setterName = "set_" + node->id + "_" + key;
-                const std::string getterName = "get_" + node->id + "_" + key;
-                source << "    {\"" << paramName << "\", " << setterName << ", " << getterName << "},\n";
-            }
-        }
-        source << "};\n\n";
-        source << "const size_t g_" << domainCpp << "_param_count = "
-               << "sizeof(g_" << domainCpp << "_params) / sizeof(g_" << domainCpp << "_params[0]);\n\n";
 
         // Config registry: expose config.* nodes' cached state by their
         // user-chosen FRAM key for runtime get/set/save.
