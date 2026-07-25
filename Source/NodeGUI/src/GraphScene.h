@@ -12,6 +12,11 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
+
+class QColor;
+class QGraphicsRectItem;
+class QGraphicsTextItem;
 
 namespace NodeGUI {
 
@@ -54,13 +59,33 @@ private:
     };
 
     Adjacency BuildAdjacency() const;
+    Adjacency BuildAdjacencyForNodes(const std::vector<std::string>& nodeIds) const;
     std::vector<std::string> TopologicalSort(const Adjacency& adj) const;
     std::map<std::string, int> ComputeLevels(const Adjacency& adj,
                                              const std::vector<std::string>& order) const;
+
+    // Layout helpers that respect timing domains.
+    std::map<std::string, std::vector<std::string>> GroupNodesByDomain() const;
+    void LayoutDomainNodes(const std::vector<std::string>& nodeIds,
+                           const Adjacency& adj,
+                           double originX,
+                           double originY,
+                           double& outWidth,
+                           double& outHeight);
+
     void RegisterNodeTypes();
     void CreateNodes();
     void CreateConnections();
     void CreateBridges();
+
+    // Visual domain grouping: colored outline + label per timing domain.
+    void CreateDomainOutlines();
+    void ClearDomainOutlines();
+    QColor GetDomainColor(const std::string& domain) const;
+
+public:
+    // Public so the scene event filter can call it during node drags.
+    void UpdateDomainOutlines();
 
     QtNodes::PortIndex FindPortIndex(const std::string& nodeId,
                                      const std::string& portName,
@@ -73,6 +98,17 @@ private:
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;
+
+    // Event filter that keeps domain outlines synced while dragging nodes.
+    std::unique_ptr<QObject> sceneEventFilter_;
+
+    struct DomainVisuals {
+        QGraphicsRectItem* outline = nullptr;
+        QGraphicsTextItem* label = nullptr;
+        QColor color;
+    };
+    std::map<std::string, DomainVisuals> domainVisuals_;
+    std::vector<QColor> domainColors_;
 };
 
 }  // namespace NodeGUI

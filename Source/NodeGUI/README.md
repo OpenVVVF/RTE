@@ -40,7 +40,8 @@ Or launch with no arguments and use `File → Open`.
 - Renders each node instance as a QtNodes node at its stored position.
 - Renders `Connection`s and `Bridge`s as QtNodes connections.
 - Shows the node id, type, and timing domain in each node caption.
-- `View → Auto Arrange` lays out the graph left-to-right by dependency flow, with no overlaps.
+- Draws a colored outline around each timing domain, with the domain name labeled above it.
+- `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
 - Interactive connection edits are validated against NodeAPI rules and persisted to JSON:
   - Producer must be an output port and consumer must be an input port.
