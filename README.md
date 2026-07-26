@@ -1,13 +1,12 @@
 # RTE
 
-Source for the OpenVVVF motor inverter **firmware** and **Real Time Examiner
-(RTE)** host toolchain. This repo holds the STM32H723 base firmware image, the
-node-graph libraries, the Qt **NodeGUI** editor, and the tools that turn a graph
+Source for the OpenVVVF motor inverter firmware and Real Time Examiner (RTE)
+host toolchain. This repo holds the STM32H723 base firmware image, the
+node-graph libraries, the Qt NodeGUI editor, and the tools that turn a graph
 into a flashable firmware binary.
 
-Hardware designs and safety documentation (HARA / TARA / SWAD / user manual)
-live in [OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware). Start with
-[`docs/`](docs/README.md) in this repo for host-tool and node-editor guides.
+Hardware designs and safety documentation live in
+[OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
 
 > **A note on the name:** *VVVF* stands for Variable Voltage Variable Frequency — it describes the output, not the control strategy. This platform is **not** limited to scalar V/Hz control; it supports vector control (FOC), arbitrary modulation schemes, and any control scheme you can express through the node graph.
 
@@ -15,10 +14,9 @@ live in [OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware). Start with
 
 ```
 RTE/
-├── docs/                   # Getting started, NodeGUI, toolchain, templates
 ├── Assets/
-│   ├── Examples/           # Example NodeAPI graphs (FOC demos, telemetry)
-│   └── NodeTemplates/      # Reusable node types loaded by GUI + codegen
+│   ├── Examples/           # Example NodeAPI graphs
+│   └── NodeTemplates/      # Reusable node types for GUI + codegen
 ├── Images/
 │   └── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
 ├── Lib/
@@ -27,7 +25,7 @@ RTE/
 │   ├── RTELogger/          # Shared logging used by the host tools
 │   └── InverterProtocol/   # Shared host/device telemetry + command protocol
 └── Source/
-    ├── NodeGUI/            # Qt6 + QtNodes node editor (RTE canvas)
+    ├── NodeGUI/            # Qt6 + QtNodes node editor
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
     └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
 ```
@@ -35,30 +33,27 @@ RTE/
 - `Assets/` holds graphs and node-type templates shared by NodeGUI and codegen.
 - `Images/` contains the base firmware image that the emitter copies and modifies.
 - `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
-- `Source/` contains end-user executables (editor + emitter + firmware builder).
-- `docs/` is the human entry point for the toolchain.
-
-## Quick start — NodeGUI
-
-```bash
-git clone --recurse-submodules https://github.com/OpenVVVF/RTE.git
-cd RTE
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug   # set CMAKE_PREFIX_PATH to Qt6 on Windows
-cmake --build build --target NodeGUI -j8
-./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
-```
-
-Full dependency and Windows notes: [`docs/GettingStarted.md`](docs/GettingStarted.md).
-Editor behaviour: [`docs/NodeGUI.md`](docs/NodeGUI.md).
+- `Source/` contains end-user executables.
 
 ## Build host tools
 
-Requires CMake 3.24+, a C++20 compiler, Ninja, and **Qt 6** (for NodeGUI).
+Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for NodeGUI). Clone with
+`--recurse-submodules` (or run `git submodule update --init --recursive`) so the
+QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
 ```bash
 cmake -B build -G Ninja
 cmake --build build -j8
 ```
+
+### NodeGUI
+
+```bash
+cmake --build build --target NodeGUI -j8
+./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
+```
+
+On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
 
 ## Test
 
@@ -130,8 +125,6 @@ build/rtetest-fw/
 └── STM32CubeMX.bin
 ```
 
-Pipeline details: [`docs/Toolchain.md`](docs/Toolchain.md).
-
 ## Tools
 
 - `NodeGUI` — Qt node editor for NodeAPI graphs (open/save, domains, bridges,
@@ -141,9 +134,6 @@ Pipeline details: [`docs/Toolchain.md`](docs/Toolchain.md).
   firmware, generates domain code, and inserts it at `// RTE_EMIT:` markers.
 - `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally
   runs `RTECodeEmitter`, and builds the STM32 firmware.
-
-See `docs/`, `Source/NodeGUI/README.md`, `Source/RTECodeEmitter/README.md`, and
-`Source/RTEFirmwareBuilder/README.md` for detailed usage.
 
 ## Roadmap
 
