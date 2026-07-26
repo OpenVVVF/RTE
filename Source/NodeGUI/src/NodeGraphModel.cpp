@@ -51,32 +51,6 @@ void NodeGraphModel::BuildNodeIdMap(const std::map<std::string, QtNodes::NodeId>
     }
 }
 
-QVariant NodeGraphModel::nodeData(QtNodes::NodeId nodeId, QtNodes::NodeRole role) const {
-    if (role == QtNodes::NodeRole::Caption) {
-        const auto it = captions_.find(nodeId);
-        if (it != captions_.end()) {
-            return it->second;
-        }
-    }
-    return DataFlowGraphModel::nodeData(nodeId, role);
-}
-
-bool NodeGraphModel::setNodeData(QtNodes::NodeId nodeId,
-                                 QtNodes::NodeRole role,
-                                 QVariant value) {
-    if (role == QtNodes::NodeRole::Caption) {
-        captions_[nodeId] = value.toString();
-        Q_EMIT nodeUpdated(nodeId);
-        return true;
-    }
-    return DataFlowGraphModel::setNodeData(nodeId, role, value);
-}
-
-void NodeGraphModel::SetNodeCaption(QtNodes::NodeId nodeId, const QString& caption) {
-    captions_[nodeId] = caption;
-    Q_EMIT nodeUpdated(nodeId);
-}
-
 void NodeGraphModel::RegisterExistingConnection(QtNodes::ConnectionId qtId,
                                                 const std::string& graphId,
                                                 bool isBridge) {

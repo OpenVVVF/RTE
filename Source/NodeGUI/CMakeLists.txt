@@ -8,10 +8,6 @@ add_executable(NodeGUI
     src/GraphScene.h
     src/NodeDataModel.cpp
     src/NodeDataModel.h
-    src/NodeParameterWidget.cpp
-    src/NodeParameterWidget.h
-    src/NodePropertiesDialog.cpp
-    src/NodePropertiesDialog.h
     src/NodeGraphModel.cpp
     src/NodeGraphModel.h
     src/BridgeConnectionPainter.cpp

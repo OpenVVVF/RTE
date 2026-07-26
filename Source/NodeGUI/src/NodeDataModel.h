@@ -23,7 +23,6 @@ private:
 
 // QtNodes delegate model that represents one NodeAPI node instance.
 // The node type determines the port layout; the instance supplies the caption.
-// Parameters are edited through a double-click properties dialog, not inline.
 class NodeInstanceModel : public QtNodes::NodeDelegateModel {
     Q_OBJECT
 
@@ -42,7 +41,6 @@ public:
 
     std::shared_ptr<QtNodes::NodeData> outData(QtNodes::PortIndex const port) override;
 
-    // No inline editor; keep the node lightweight.
     QWidget* embeddedWidget() override { return nullptr; }
 
     QString portCaption(QtNodes::PortType portType,
