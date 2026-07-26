@@ -14,6 +14,10 @@ add_executable(NodeGUI
     src/BridgeConnectionPainter.h
     src/TypedNodePainter.cpp
     src/TypedNodePainter.h
+    src/ParameterBlock.cpp
+    src/ParameterBlock.h
+    src/ParameterNodeGeometry.cpp
+    src/ParameterNodeGeometry.h
     src/PortStyle.cpp
     src/PortStyle.h
     src/FrameRateMonitor.cpp

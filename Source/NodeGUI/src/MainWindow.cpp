@@ -43,6 +43,13 @@ MainWindow::MainWindow(QWidget* parent)
 
     view_ = new QtNodes::GraphicsView(graphScene_->Scene());
     view_->installEventFilter(this);
+
+    // Note: measured on the target machine, a QOpenGLWidget viewport was ~3x
+    // slower than the default raster viewport for this scene, so we keep the
+    // raster path. Node-level DeviceCoordinateCache (set in GraphScene) is
+    // what keeps pans and drags smooth.
+    view_->setOptimizationFlags(QGraphicsView::DontAdjustForAntialiasing);
+
     layout->addWidget(view_);
     setCentralWidget(central);
 

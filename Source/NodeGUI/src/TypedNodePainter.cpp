@@ -1,5 +1,7 @@
 #include "TypedNodePainter.h"
 
+#include "NodeDataModel.h"
+#include "ParameterBlock.h"
 #include "PortStyle.h"
 
 #include <QtNodes/Definitions>
@@ -9,6 +11,7 @@
 #include <QtNodes/internal/BasicGraphicsScene.hpp>
 #include <QtNodes/internal/ConnectionGraphicsObject.hpp>
 #include <QtNodes/internal/ConnectionIdUtils.hpp>
+#include <QtNodes/internal/DataFlowGraphModel.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 #include <QtNodes/internal/NodeState.hpp>
 
@@ -22,6 +25,30 @@ namespace NodeGUI {
 namespace {
 
 }  // namespace
+
+const QtNodes::NodeStyle& TypedNodePainter::GetNodeStyle() const {
+    if (!nodeStyleCache_) {
+        // Identical to what DataFlowGraphModel serves for NodeRole::Style, but
+        // parsed once instead of per node per frame.
+        nodeStyleCache_.emplace(QtNodes::StyleCollection::nodeStyle());
+    }
+    return *nodeStyleCache_;
+}
+
+void TypedNodePainter::DrawParameterBlock(QPainter* painter,
+                                          QtNodes::NodeGraphicsObject& ngo) const {
+    auto* model = dynamic_cast<QtNodes::DataFlowGraphModel*>(&ngo.graphModel());
+    if (!model) {
+        return;
+    }
+    const auto* delegate = model->delegateModel<NodeInstanceModel>(ngo.nodeId());
+    if (!delegate || delegate->ParameterBlock().size.isNull()) {
+        return;
+    }
+
+    const QSize size = ngo.nodeScene()->nodeGeometry().size(ngo.nodeId());
+    PaintParameterBlock(painter, delegate->ParameterBlock(), size);
+}
 
 const PortStyle* TypedNodePainter::GetPortStyle(const QString& typeId) const {
     auto it = styleCache_.find(typeId);
@@ -103,6 +130,8 @@ void TypedNodePainter::DrawPortShape(QPainter* painter,
 void TypedNodePainter::paint(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const {
     defaultPainter_.drawNodeRect(painter, ngo);
 
+    DrawParameterBlock(painter, ngo);
+
     drawConnectionPoints(painter, ngo);
     drawFilledConnectionPoints(painter, ngo);
 
@@ -121,8 +150,7 @@ void TypedNodePainter::drawConnectionPoints(QPainter* painter,
     const QtNodes::NodeId nodeId = ngo.nodeId();
     auto& geometry = ngo.nodeScene()->nodeGeometry();
 
-    QJsonDocument json = QJsonDocument::fromVariant(model.nodeData(nodeId, QtNodes::NodeRole::Style));
-    QtNodes::NodeStyle nodeStyle(json.object());
+    const QtNodes::NodeStyle& nodeStyle = GetNodeStyle();
 
     const float diameter = nodeStyle.ConnectionPointDiameter;
     const double reducedRadius = diameter * 0.6 / 2.0;
@@ -190,8 +218,7 @@ void TypedNodePainter::drawFilledConnectionPoints(QPainter* painter,
     const QtNodes::NodeId nodeId = ngo.nodeId();
     auto& geometry = ngo.nodeScene()->nodeGeometry();
 
-    QJsonDocument json = QJsonDocument::fromVariant(model.nodeData(nodeId, QtNodes::NodeRole::Style));
-    QtNodes::NodeStyle nodeStyle(json.object());
+    const QtNodes::NodeStyle& nodeStyle = GetNodeStyle();
 
     const auto diameter = nodeStyle.ConnectionPointDiameter;
     const double radius = diameter * 0.4;

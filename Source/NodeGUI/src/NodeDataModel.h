@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ParameterBlock.h"
+
 #include <NodeAPI/Graph.h>
 
 #include <QtNodes/NodeData>
@@ -41,14 +43,18 @@ public:
 
     std::shared_ptr<QtNodes::NodeData> outData(QtNodes::PortIndex const port) override;
 
-    QWidget* embeddedWidget() override { return parameterWidget_; }
+    // No embedded widget: the parameter block is painted directly by
+    // TypedNodePainter, which is far cheaper than a QGraphicsProxyWidget
+    // per node.
+    QWidget* embeddedWidget() override { return nullptr; }
 
-    // Builds (or refreshes) the read-only parameter view embedded inside the
-    // node. The first call must happen before the scene constructs the node's
-    // graphics object, which is when embeddedWidget() is queried; later calls
-    // rebuild the rows in place. An empty map hides the panel.
-    void SetParameters(const std::map<std::string, std::string>& parameters,
-                       const std::map<std::string, NodeAPI::WireType>& parameterTypes);
+    // Stores the node's parameters as pre-laid-out paint data. The block is
+    // painted directly by TypedNodePainter (no embedded widget, for
+    // performance) and ParameterNodeGeometry reserves the space for it.
+    // Emits requestNodeUpdate() so the scene refreshes geometry and repaints.
+    void SetParameters(std::map<std::string, std::string> parameters);
+
+    const ParameterBlockData& ParameterBlock() const { return parameterBlock_; }
 
     QString portCaption(QtNodes::PortType portType,
                         QtNodes::PortIndex portIndex) const override;
@@ -69,9 +75,7 @@ private:
 
     std::shared_ptr<QtNodes::NodeData> outputData_;
 
-    // Read-only parameter view. Ownership transfers to the scene's
-    // QGraphicsProxyWidget once it is embedded.
-    QWidget* parameterWidget_ = nullptr;
+    ParameterBlockData parameterBlock_;
 };
 
 }  // namespace NodeGUI

@@ -2,6 +2,7 @@
 
 #include "BridgeConnectionPainter.h"
 #include "NodeDataModel.h"
+#include "ParameterNodeGeometry.h"
 #include "TypedNodePainter.h"
 
 #include <NodeAPI/NodeTemplates.h>
@@ -158,6 +159,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     // Reset model/scene so each load starts fresh.
     model_ = std::make_unique<NodeGraphModel>(registry_, graph_);
     scene_ = std::make_unique<QtNodes::BasicGraphicsScene>(*model_);
+    scene_->setNodeGeometry(std::make_unique<ParameterNodeGeometry>(*model_));
     scene_->setConnectionPainter(std::make_unique<BridgeConnectionPainter>());
     scene_->setNodePainter(std::make_unique<TypedNodePainter>());
     nodeSizeCache_.clear();
@@ -582,13 +584,12 @@ void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
         return;
     }
 
-    // Refresh the embedded parameter view and the cached geometry.
+    // Refresh the painted parameter block and the cached geometry. The
+    // delegate's requestNodeUpdate signal makes the scene recompute the node
+    // size and repaint before we read the new size here.
     if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
-        static const std::map<std::string, NodeAPI::WireType> kNoTypes;
-        delegate->SetParameters(updated,
-                                nodeType ? nodeType->parameterTypes : kNoTypes);
+        delegate->SetParameters(updated);
     }
-    scene_->nodeGeometry().recomputeSize(qtId);
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     UpdateDomainOutlines();
 }
@@ -784,7 +785,7 @@ void GraphScene::RegisterNodeTypes() {
             dummy.type = nodeType.id;
             auto model = std::make_unique<NodeInstanceModel>(std::move(dummy), nodeType);
             if (pendingNode_ && pendingNode_->type == nodeType.id) {
-                model->SetParameters(pendingNode_->parameters, nodeType.parameterTypes);
+                model->SetParameters(pendingNode_->parameters);
             }
             return model;
         });
@@ -815,6 +816,14 @@ void GraphScene::CreateNodes() {
                             QVariant::fromValue(QString::fromStdString(node.id)));
 
         nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+
+        // Cache the rendered node as a pixmap: panning and dragging then blit
+        // the cache instead of re-running the (relatively expensive) node
+        // painter for every node on every frame. The cache invalidates itself
+        // on geometry/content changes and on zoom.
+        if (auto* ngo = scene_->nodeGraphicsObject(qtId)) {
+            ngo->setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+        }
     }
 }
 

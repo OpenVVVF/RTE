@@ -2,10 +2,7 @@
 
 #include <NodeAPI/WireType.h>
 
-#include <QLabel>
 #include <QString>
-#include <QVBoxLayout>
-#include <QWidget>
 
 namespace NodeGUI {
 
@@ -98,65 +95,9 @@ QtNodes::ConnectionPolicy NodeInstanceModel::portConnectionPolicy(QtNodes::PortT
                                               : QtNodes::ConnectionPolicy::One;
 }
 
-void NodeInstanceModel::SetParameters(
-    const std::map<std::string, std::string>& parameters,
-    const std::map<std::string, NodeAPI::WireType>& parameterTypes) {
-    const bool refreshing = (parameterWidget_ != nullptr);
-
-    if (!refreshing) {
-        if (parameters.empty()) {
-            return;
-        }
-
-        parameterWidget_ = new QWidget;
-        // Tinted, rounded panel so the parameter block reads as a distinct
-        // region inside the node rather than more port captions. The widget
-        // stays hidden until the scene embeds it; showing it beforehand would
-        // make it a top-level window and break the node's size computation.
-        parameterWidget_->setStyleSheet(QStringLiteral(
-            "background: rgba(255, 255, 255, 14);"
-            "border: 1px solid rgba(255, 255, 255, 45);"
-            "border-radius: 4px;"));
-
-        auto* layout = new QVBoxLayout(parameterWidget_);
-        layout->setContentsMargins(6, 3, 6, 3);
-        layout->setSpacing(1);
-    }
-
-    // Rebuild the rows in place so the widget can be refreshed after an edit
-    // without re-embedding it into the scene.
-    auto* layout = parameterWidget_->layout();
-    while (QLayoutItem* item = layout->takeAt(0)) {
-        delete item->widget();
-        delete item;
-    }
-
-    // Visibility may only be toggled once the widget is embedded (i.e. on a
-    // refresh), so an emptied parameter map collapses the panel.
-    if (refreshing) {
-        parameterWidget_->setVisible(!parameters.empty());
-    }
-
-    for (const auto& [name, value] : parameters) {
-        auto* row = new QLabel(QStringLiteral("%1: %2")
-                                   .arg(QString::fromStdString(name),
-                                        QString::fromStdString(value)),
-                               parameterWidget_);
-        // Amber italic monospace contrasts with the plain white port captions.
-        row->setStyleSheet(QStringLiteral(
-            "color: #e8c07a;"
-            "font-style: italic;"
-            "font-family: monospace;"
-            "background: transparent;"
-            "border: none;"));
-
-        const auto typeIt = parameterTypes.find(name);
-        if (typeIt != parameterTypes.end()) {
-            row->setToolTip(WireTypeToString(typeIt->second));
-        }
-
-        layout->addWidget(row);
-    }
+void NodeInstanceModel::SetParameters(std::map<std::string, std::string> parameters) {
+    parameterBlock_ = PrepareParameterBlock(parameters);
+    Q_EMIT requestNodeUpdate();
 }
 
 void NodeInstanceModel::setInData(std::shared_ptr<QtNodes::NodeData> /*nodeData*/,
