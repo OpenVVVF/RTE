@@ -41,7 +41,13 @@ public:
 
     std::shared_ptr<QtNodes::NodeData> outData(QtNodes::PortIndex const port) override;
 
-    QWidget* embeddedWidget() override { return nullptr; }
+    QWidget* embeddedWidget() override { return parameterWidget_; }
+
+    // Builds the read-only parameter view embedded inside the node. Must be
+    // called before the scene constructs the node's graphics object, which is
+    // when embeddedWidget() is queried. Does nothing when parameters is empty.
+    void SetParameters(const std::map<std::string, std::string>& parameters,
+                       const std::map<std::string, NodeAPI::WireType>& parameterTypes);
 
     QString portCaption(QtNodes::PortType portType,
                         QtNodes::PortIndex portIndex) const override;
@@ -61,6 +67,10 @@ private:
     std::vector<NodeAPI::Port> outputPorts_;
 
     std::shared_ptr<QtNodes::NodeData> outputData_;
+
+    // Read-only parameter view. Ownership transfers to the scene's
+    // QGraphicsProxyWidget once it is embedded.
+    QWidget* parameterWidget_ = nullptr;
 };
 
 }  // namespace NodeGUI

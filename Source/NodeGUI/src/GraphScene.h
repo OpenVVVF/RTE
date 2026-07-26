@@ -76,6 +76,10 @@ private:
                            double& outWidth,
                            double& outHeight);
 
+    // Actual rendered size of a node (caption + ports + parameter view).
+    // Falls back to the scene geometry when the size cache has no entry.
+    QSize NodeSize(const std::string& nodeId) const;
+
     void RegisterNodeTypes();
     void CreateNodes();
     void CreateConnections();
@@ -101,6 +105,11 @@ public:
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;
+
+    // Node instance currently being populated by CreateNodes(). Read by the
+    // registry creators so the delegate model can embed the node's parameter
+    // view before the scene constructs its graphics object.
+    const NodeAPI::Node* pendingNode_ = nullptr;
 
     // Cached node geometry sizes so domain-outline updates don't re-query the
     // full geometry system on every mouse-move event.

@@ -288,6 +288,18 @@ std::map<std::string, std::vector<std::string>> GraphScene::GroupNodesByDomain()
     return groups;
 }
 
+QSize GraphScene::NodeSize(const std::string& nodeId) const {
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end()) {
+        return QSize(200, 120);
+    }
+    const auto cached = nodeSizeCache_.find(it->second);
+    if (cached != nodeSizeCache_.end()) {
+        return cached->second;
+    }
+    return scene_->nodeGeometry().size(it->second);
+}
+
 void GraphScene::LayoutDomainNodes(const std::vector<std::string>& nodeIds,
                                    const Adjacency& adj,
                                    double originX,
@@ -303,26 +315,45 @@ void GraphScene::LayoutDomainNodes(const std::vector<std::string>& nodeIds,
 
     const std::vector<std::string> order = TopologicalSort(adj);
 
-    constexpr double horizontalSpacing = 300.0;
-    constexpr double verticalSpacing = 150.0;
+    // Gaps between nodes; column widths and row heights come from the actual
+    // node sizes so embedded parameter views are not overlapped.
+    constexpr double horizontalGap = 100.0;
+    constexpr double verticalGap = 40.0;
 
     // Fallback grid for cyclic subgraphs.
     if (order.size() != nodeIds.size()) {
         constexpr std::size_t columns = 3;
+        const std::size_t rows = (nodeIds.size() + columns - 1) / columns;
+
+        std::vector<double> colWidths(columns, 0.0);
+        std::vector<double> rowHeights(rows, 0.0);
         for (std::size_t i = 0; i < nodeIds.size(); ++i) {
-            const double x = originX + static_cast<double>(i % columns) * horizontalSpacing;
-            const double y = originY + static_cast<double>(i / columns) * verticalSpacing;
-
-            const auto it = nodeIdMap_.find(nodeIds[i]);
-            if (it != nodeIdMap_.end()) {
-                model_->setNodeData(it->second,
-                                    QtNodes::NodeRole::Position,
-                                    QVariant::fromValue(QPointF(x, y)));
-            }
-
-            outWidth = std::max(outWidth, x - originX + horizontalSpacing);
-            outHeight = std::max(outHeight, y - originY + verticalSpacing);
+            const QSize size = NodeSize(nodeIds[i]);
+            colWidths[i % columns] = std::max(colWidths[i % columns],
+                                              static_cast<double>(size.width()));
+            rowHeights[i / columns] = std::max(rowHeights[i / columns],
+                                               static_cast<double>(size.height()));
         }
+
+        double y = originY;
+        for (std::size_t r = 0; r < rows; ++r) {
+            double x = originX;
+            for (std::size_t c = 0; c < columns; ++c) {
+                const std::size_t i = r * columns + c;
+                if (i < nodeIds.size()) {
+                    const auto it = nodeIdMap_.find(nodeIds[i]);
+                    if (it != nodeIdMap_.end()) {
+                        model_->setNodeData(it->second,
+                                            QtNodes::NodeRole::Position,
+                                            QVariant::fromValue(QPointF(x, y)));
+                    }
+                }
+                x += colWidths[c] + horizontalGap;
+            }
+            outWidth = std::max(outWidth, x - originX - horizontalGap);
+            y += rowHeights[r] + verticalGap;
+        }
+        outHeight = y - originY - verticalGap;
         return;
     }
 
@@ -332,6 +363,19 @@ void GraphScene::LayoutDomainNodes(const std::vector<std::string>& nodeIds,
     for (const auto& id : nodeIds) {
         nodesByLevel[levels.at(id)].push_back(id);
     }
+
+    // Each level's column is as wide as its widest node.
+    std::map<int, double> levelX;
+    double xCursor = originX;
+    for (const auto& [level, ids] : nodesByLevel) {
+        double width = 0.0;
+        for (const auto& id : ids) {
+            width = std::max(width, static_cast<double>(NodeSize(id).width()));
+        }
+        levelX[level] = xCursor;
+        xCursor += width + horizontalGap;
+    }
+    outWidth = xCursor - originX - horizontalGap;
 
     std::map<std::string, double> yPositions;
 
@@ -359,21 +403,21 @@ void GraphScene::LayoutDomainNodes(const std::vector<std::string>& nodeIds,
             return a < b;
         });
 
-        const double x = originX + static_cast<double>(level) * horizontalSpacing;
-        for (std::size_t i = 0; i < levelNodeIds.size(); ++i) {
-            const double y = originY + static_cast<double>(i) * verticalSpacing;
-            yPositions[levelNodeIds[i]] = y;
+        const double x = levelX[level];
+        double y = originY;
+        for (const auto& id : levelNodeIds) {
+            yPositions[id] = y;
 
-            const auto it = nodeIdMap_.find(levelNodeIds[i]);
+            const auto it = nodeIdMap_.find(id);
             if (it != nodeIdMap_.end()) {
                 model_->setNodeData(it->second,
                                     QtNodes::NodeRole::Position,
                                     QVariant::fromValue(QPointF(x, y)));
             }
 
-            outWidth = std::max(outWidth, x - originX + horizontalSpacing);
-            outHeight = std::max(outHeight, y - originY + verticalSpacing);
+            y += static_cast<double>(NodeSize(id).height()) + verticalGap;
         }
+        outHeight = std::max(outHeight, y - originY - verticalGap);
     }
 }
 
@@ -382,19 +426,42 @@ void GraphScene::AutoArrange() {
         return;
     }
 
-    // Global fallback for cyclic graphs: plain grid.
+    // Global fallback for cyclic graphs: plain grid, sized from the actual
+    // node sizes.
     const Adjacency globalAdj = BuildAdjacency();
     const std::vector<std::string> globalOrder = TopologicalSort(globalAdj);
     if (globalOrder.size() != graph_.GetNodes().size()) {
-        constexpr double spacing = 250.0;
-        std::size_t index = 0;
-        for (const auto& [nodeId, qtId] : nodeIdMap_) {
-            const double x = static_cast<double>(index % 5) * spacing;
-            const double y = static_cast<double>(index / 5) * spacing;
-            model_->setNodeData(qtId,
-                                QtNodes::NodeRole::Position,
-                                QVariant::fromValue(QPointF(x, y)));
-            ++index;
+        constexpr std::size_t columns = 5;
+        constexpr double horizontalGap = 60.0;
+        constexpr double verticalGap = 40.0;
+
+        std::vector<std::pair<std::string, QtNodes::NodeId>> nodes(nodeIdMap_.begin(),
+                                                                   nodeIdMap_.end());
+        const std::size_t rows = (nodes.size() + columns - 1) / columns;
+
+        std::vector<double> colWidths(columns, 0.0);
+        std::vector<double> rowHeights(rows, 0.0);
+        for (std::size_t i = 0; i < nodes.size(); ++i) {
+            const QSize size = NodeSize(nodes[i].first);
+            colWidths[i % columns] = std::max(colWidths[i % columns],
+                                              static_cast<double>(size.width()));
+            rowHeights[i / columns] = std::max(rowHeights[i / columns],
+                                               static_cast<double>(size.height()));
+        }
+
+        double y = 0.0;
+        for (std::size_t r = 0; r < rows; ++r) {
+            double x = 0.0;
+            for (std::size_t c = 0; c < columns; ++c) {
+                const std::size_t i = r * columns + c;
+                if (i < nodes.size()) {
+                    model_->setNodeData(nodes[i].second,
+                                        QtNodes::NodeRole::Position,
+                                        QVariant::fromValue(QPointF(x, y)));
+                }
+                x += colWidths[c] + horizontalGap;
+            }
+            y += rowHeights[r] + verticalGap;
         }
         UpdateDomainOutlines();
         SyncPositionsFromScene();
@@ -615,12 +682,19 @@ QString GraphScene::SaveGraph(const std::string& path) const {
 void GraphScene::RegisterNodeTypes() {
     for (const auto& nodeType : graph_.GetNodeTypes()) {
         // Each creator captures a copy of its node type so the model can expose
-        // the correct ports.
-        registry_->registerModel([nodeType]() -> std::unique_ptr<QtNodes::NodeDelegateModel> {
+        // the correct ports. If a node instance is currently being populated
+        // (pendingNode_), its parameters are embedded into the delegate right
+        // away so the scene picks up the parameter view when the node's
+        // graphics object is constructed.
+        registry_->registerModel([this, nodeType]() -> std::unique_ptr<QtNodes::NodeDelegateModel> {
             NodeAPI::Node dummy;
             dummy.id = nodeType.id;
             dummy.type = nodeType.id;
-            return std::make_unique<NodeInstanceModel>(std::move(dummy), nodeType);
+            auto model = std::make_unique<NodeInstanceModel>(std::move(dummy), nodeType);
+            if (pendingNode_ && pendingNode_->type == nodeType.id) {
+                model->SetParameters(pendingNode_->parameters, nodeType.parameterTypes);
+            }
+            return model;
         });
     }
 }
@@ -633,7 +707,9 @@ void GraphScene::CreateNodes() {
         }
 
         const QString modelName = QString::fromStdString(node.type);
+        pendingNode_ = &node;
         const QtNodes::NodeId qtId = model_->addNode(modelName);
+        pendingNode_ = nullptr;
         nodeIdMap_[node.id] = qtId;
 
         model_->setNodeData(qtId,
