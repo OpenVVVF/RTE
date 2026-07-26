@@ -136,6 +136,7 @@ static void init()
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
+    // RTE_EMIT: vsense init
 
     /* The supervisor owns gate-driver sequencing and PWM start/stop for the
      * generated control loop.  It does NOT start PWM at boot; use the shell
@@ -160,6 +161,9 @@ static void loop()
     /* RTE codegen: application-domain step (throttle, temperature, CAN command
      * dispatch, state machines, etc.).  Runs at main-loop cadence. */
     // RTE_EMIT: app_loop step
+
+    /* Voltage-sense domain step (MAX22530 phase + DC-link voltages). */
+    // RTE_EMIT: vsense step
 
     /* TIME_DOMAIN: HOUSEKEEPING_1HZ
      *   Persistent on-time counter and boot count.  Non-volatile storage write.

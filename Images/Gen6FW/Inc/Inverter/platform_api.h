@@ -81,6 +81,12 @@ float platform_get_encoder_angle_latest(void);
  */
 float platform_get_dc_link_voltage(void);
 
+/* Phase voltages from the MAX22530 isolated ADC (filtered reads).
+ * Channel map: 0=U, 1=V, 2=W, 3=DC link. */
+float platform_phase_voltage_u(void);
+float platform_phase_voltage_v(void);
+float platform_phase_voltage_w(void);
+
 /**
  * @brief Throttle A input [0..1] (codegen application layer fills the sampler).
  */

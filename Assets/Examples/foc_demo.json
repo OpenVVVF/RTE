@@ -504,6 +504,72 @@
         "nodeId": "ElecAngle",
         "portName": "Poles"
       }
+    },
+    {
+      "id": "c43",
+      "from": {
+        "nodeId": "VoltSense",
+        "portName": "V_U"
+      },
+      "to": {
+        "nodeId": "VuToDim",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c44",
+      "from": {
+        "nodeId": "VuToDim",
+        "portName": "Result"
+      },
+      "to": {
+        "nodeId": "LogVu",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c45",
+      "from": {
+        "nodeId": "VoltSense",
+        "portName": "V_V"
+      },
+      "to": {
+        "nodeId": "VvToDim",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c46",
+      "from": {
+        "nodeId": "VvToDim",
+        "portName": "Result"
+      },
+      "to": {
+        "nodeId": "LogVv",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c47",
+      "from": {
+        "nodeId": "VoltSense",
+        "portName": "V_W"
+      },
+      "to": {
+        "nodeId": "VwToDim",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c48",
+      "from": {
+        "nodeId": "VwToDim",
+        "portName": "Result"
+      },
+      "to": {
+        "nodeId": "LogVw",
+        "portName": "Value"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1534,6 +1600,53 @@
       },
       "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n",
       "inlineCode": "Value = Cached;\n"
+    },
+    {
+      "id": "hw.phase_voltages",
+      "displayName": "Phase Voltages",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "V_U",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_V",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_W",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_Dc",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "/* All voltage sense channels from the MAX22530 isolated ADC, filtered. */\nV_U  = rte::Volts(platform_phase_voltage_u());\nV_V  = rte::Volts(platform_phase_voltage_v());\nV_W  = rte::Volts(platform_phase_voltage_w());\nV_Dc = rte::Volts(platform_get_dc_link_voltage());\n"
     }
   ],
   "nodes": [
@@ -2017,6 +2130,89 @@
         "y": 0.0
       },
       "type": "config.value"
+    },
+    {
+      "displayName": "VoltSense",
+      "domain": "vsense",
+      "id": "VoltSense",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "hw.phase_voltages"
+    },
+    {
+      "displayName": "LogVu",
+      "domain": "vsense",
+      "id": "LogVu",
+      "parameters": {
+        "Key": "cg_vu_v"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "LogVv",
+      "domain": "vsense",
+      "id": "LogVv",
+      "parameters": {
+        "Key": "cg_vv_v"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "LogVw",
+      "domain": "vsense",
+      "id": "LogVw",
+      "parameters": {
+        "Key": "cg_vw_v"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "VuToDim",
+      "domain": "vsense",
+      "id": "VuToDim",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "math.voltage_to_dimensionless"
+    },
+    {
+      "displayName": "VvToDim",
+      "domain": "vsense",
+      "id": "VvToDim",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "math.voltage_to_dimensionless"
+    },
+    {
+      "displayName": "VwToDim",
+      "domain": "vsense",
+      "id": "VwToDim",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "math.voltage_to_dimensionless"
     }
   ]
 }

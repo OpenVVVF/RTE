@@ -73,6 +73,18 @@ float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }
 
+float platform_phase_voltage_u(void) {
+    return Inverter::dcLinkVoltageSensor().adc().readFilteredVoltage(0);
+}
+
+float platform_phase_voltage_v(void) {
+    return Inverter::dcLinkVoltageSensor().adc().readFilteredVoltage(1);
+}
+
+float platform_phase_voltage_w(void) {
+    return Inverter::dcLinkVoltageSensor().adc().readFilteredVoltage(2);
+}
+
 /* --------------------------------------------------------------------------
  * Application sensors — placeholders for codegen layer to fill.
  * --------------------------------------------------------------------------

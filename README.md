@@ -135,6 +135,30 @@ build/rtetest-fw/
 - `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally
   runs `RTECodeEmitter`, and builds the STM32 firmware.
 
+## Calibration
+
+The `cal` command runs hierarchical calibration routines; results persist to
+the FRAM KV store under `Motor.*` and are consumed by graph config nodes at
+boot:
+
+- `cal list` — routine tree + stored values
+- `cal all` — full profile in dependency order (poles+encoder, resistance,
+  PMSM inductance/flux)
+- `cal Motor.Poles`, `cal Motor.Encoder.SinCos`, `cal Motor.Resistance`,
+  `cal Motor.PMSM[.Inductance|.FluxLinkage]`, `cal stop`, `cal status`
+
+Flux linkage is measured two ways: a FOC back-EMF sweep with a joint
+least-squares fit for (psi_m, V_off) — V_off captures inverter deadtime/IGBT
+drop — and stores to `Motor.PMSM.FluxLinkage.Wb`, which enables the
+flying-start feature (resume-into-spin with a back-EMF-matched pre-seed;
+without a flux value, live starts are refused).
+
+## Voltage sensing
+
+`hw.phase_voltages` exposes all MAX22530 channels as graph outputs
+(`V_U`, `V_V`, `V_W`, `V_Dc`, filtered reads) in the `vsense` timing domain.
+Telemetered as `cg_vu_v`, `cg_vv_v`, `cg_vw_v` in the demo graph.
+
 ## Roadmap
 
 Medium-term goals, roughly in priority order:
