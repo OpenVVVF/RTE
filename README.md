@@ -161,10 +161,18 @@ Telemetered as `cg_vu_v`, `cg_vv_v`, `cg_vw_v` in the demo graph.
 
 ## Roadmap
 
-Medium-term goals, roughly in priority order:
+Done recently:
 
-- Restore the calibration suite (hierarchical `cal` command, results in the
-  `Motor.*` KV namespace)
+- Calibration suite restored (hierarchical `cal`, results in the `Motor.*`
+  KV namespace; flux via LS fit with V_off; flying start)
+- Phase voltage sensing (`hw.phase_voltages`, `vsense` domain, snapshot reads)
+- Implicit unit extraction (dimensionless inputs accept voltage/current;
+  ToDim converters deleted)
+- Config node persistence (FRAM KV store, `config set/save/list/delete`)
+- PI voltage limit is now the true SVPWM linear limit (`Vdc/sqrt(3) * 0.95`)
+
+Next up, roughly in priority order:
+
 - Node parameter-as-input support in NodeAPI/codegen, so internal settings can
   be wired and programmatically controlled
 - Default node instance name in templates (GUI team request)
