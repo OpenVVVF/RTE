@@ -1,6 +1,10 @@
 # NodeGUI
 
-A minimal Qt6 + QtNodes viewer for NodeAPI graph files.
+Qt 6 + QtNodes canvas for **NodeAPI** graph files — the Real Time Examiner node
+editor that lives in this repo.
+
+Full user guide: [`docs/NodeGUI.md`](../../docs/NodeGUI.md).  
+Build prerequisites: [`docs/GettingStarted.md`](../../docs/GettingStarted.md).
 
 ## Dependencies
 
@@ -13,48 +17,49 @@ A minimal Qt6 + QtNodes viewer for NodeAPI graph files.
 From the RTE root:
 
 ```sh
+git submodule update --init --recursive
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --target NodeGUI -j8
 ```
 
-If this is the first time building after cloning, fetch the QtNodes submodule:
+On Windows, point CMake at your Qt kit, for example:
 
-```sh
-git submodule update --init --recursive
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug `
+  -DCMAKE_PREFIX_PATH="C:\Qt\6.7.3\mingw_64" `
+  -DCMAKE_C_COMPILER="C:/Qt/Tools/mingw1120_64/bin/gcc.exe" `
+  -DCMAKE_CXX_COMPILER="C:/Qt/Tools/mingw1120_64/bin/g++.exe"
+cmake --build build --target NodeGUI -j8
 ```
 
 ## Run
 
-Open a graph from the command line:
-
 ```sh
-./build/Source/NodeGUI/NodeGUI /home/aidan/Desktop/RTE/Assets/Examples/foc_demo.json
+./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
 ```
 
 Or launch with no arguments and use `File → Open`.
 
 ## What it does today
 
-- Loads node-type templates from `RTE/Assets/NodeTemplates`.
+- Loads node-type templates from `Assets/NodeTemplates`.
 - Parses a NodeAPI graph JSON with `NodeAPI::LoadFromJson`.
 - Renders each node instance as a QtNodes node at its stored position.
 - Renders `Connection`s as solid lines colored by the port's quantity.
-- Renders `Bridge`s as dashed lines colored by the port's quantity, so cross-domain links are visually distinct by linestyle.
-- Draws each port as a filled shape: color = quantity, shape = frame (e.g., scalar angles are purple diamonds), so matching types are easy to spot.
-- Shows an FPS / frametime overlay in the top-right corner of the viewport.
+- Renders `Bridge`s as dashed lines colored by the port's quantity.
+- Draws each port as a filled shape: color = quantity, shape = frame.
+- Shows an FPS / frametime overlay (optional `NODEGUI_ENABLE_FPS_OVERLAY`).
 - Shows the node id, type, and timing domain in each node caption.
-- Draws a colored outline around each timing domain, with the domain name labeled above it.
-- `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
-- `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
-- Interactive connection edits are validated against NodeAPI rules and persisted to JSON:
-  - Producer must be an output port and consumer must be an input port.
-  - Port types must match.
-  - An input may have either one intra-domain connection or one bridge, not both.
-  - Connections must stay within the same timing domain; bridges must cross domains.
-  - Entry-point nodes cannot have incoming connections.
-  - All edits are checked against the NodeAPI timing/DAG validator.
-  - If a drag is rejected, the reason is shown in the status bar (bottom-left) for 4 seconds.
+- Draws a colored outline around each timing domain.
+- Embeds a read-only parameter preview on nodes that have parameters.
+- Double-click a node to edit parameters; values persist through Save.
+- `View → Auto Arrange` lays out by dependency flow, grouped by timing domain.
+- `File → Save` / `File → Save As` writes JSON including positions + parameters.
+- Interactive connection edits are validated against NodeAPI rules; rejections
+  appear in the status bar for ~4 seconds.
 
 ## What it does not do yet
 
-- No parameter editing, node creation, or code generation.
+- No node create/delete palette.
+- No in-GUI code generation / flash / live telemetry (use the CLIs +
+  InverterProtocol for now).
