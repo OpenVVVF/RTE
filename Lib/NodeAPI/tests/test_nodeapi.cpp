@@ -47,6 +47,19 @@ NodeType MakeDisplayType() {
     };
 }
 
+NodeType MakeCurrentSinkType() {
+    return NodeType{
+        .id = "load.current",
+        .displayName = "Current Sink",
+        .inputPorts = {Port{.name = "in",
+                            .direction = PortDirection::Input,
+                            .type = WireType{.quantity = Quantity::Current,
+                                             .frame = Frame::Scalar,
+                                             .dtype = DType::F32}}},
+        .outputPorts = {},
+    };
+}
+
 NodeType MakePiControllerType() {
     return NodeType{
         .id = "control.pi",
@@ -198,12 +211,32 @@ TEST(Graph, TypeCheckMatchingPorts) {
     EXPECT_TRUE(graph.Connect(c));
 }
 
-TEST(Graph, TypeCheckMismatchedPorts) {
+TEST(Graph, TypeCheckImplicitExtraction) {
+    /* A dimensionless scalar input accepts a voltage/current scalar output
+     * (implicit unit extraction at the codegen binding site). */
     Graph graph;
     graph.AddNodeType(MakeVoltageType());
     graph.AddNodeType(MakeDisplayType());
     graph.AddNode(Node{.id = "voltage", .type = "constant.voltage", .domain = "app_loop"});
     graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    Connection c{
+        .id = "c1",
+        .from = PortRef{.nodeId = "voltage", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    };
+
+    EXPECT_TRUE(graph.TypeCheck(c));
+    EXPECT_TRUE(graph.Connect(c));
+}
+
+TEST(Graph, TypeCheckRejectsNonConvertibleMismatch) {
+    /* voltage -> current is still a hard type error (no implicit rule). */
+    Graph graph;
+    graph.AddNodeType(MakeVoltageType());
+    graph.AddNodeType(MakeCurrentSinkType());
+    graph.AddNode(Node{.id = "voltage", .type = "constant.voltage", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "load.current", .domain = "app_loop"});
 
     Connection c{
         .id = "c1",
@@ -335,7 +368,9 @@ TEST(Bridge, RejectBadDirection) {
     }));
 }
 
-TEST(Bridge, RejectMismatchedType) {
+TEST(Bridge, ImplicitExtractionBridge) {
+    /* A dimensionless bridge accepts a voltage/current producer (extracted
+     * at the store) as long as the consumer is dimensionless too. */
     Graph graph;
     graph.AddNodeType(MakeVoltageType());
     graph.AddNodeType(MakeDisplayType());
@@ -345,9 +380,29 @@ TEST(Bridge, RejectMismatchedType) {
     const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
                                      .frame = Frame::Scalar,
                                      .dtype = DType::F32};
-    EXPECT_FALSE(graph.AddBridge(Bridge{
+    EXPECT_TRUE(graph.AddBridge(Bridge{
         .id = "b1",
         .type = scalar,
+        .producer = PortRef{.nodeId = "voltage", .portName = "out"},
+        .consumer = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+}
+
+TEST(Bridge, RejectMismatchedType) {
+    /* A current-typed bridge with a voltage producer must still fail:
+     * the consumer has to match the bridge exactly. */
+    Graph graph;
+    graph.AddNodeType(MakeVoltageType());
+    graph.AddNodeType(MakeCurrentSinkType());
+    graph.AddNode(Node{.id = "voltage", .type = "constant.voltage", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "sink", .type = "load.current", .domain = "app_loop"});
+
+    const WireType current = WireType{.quantity = Quantity::Current,
+                                      .frame = Frame::Scalar,
+                                      .dtype = DType::F32};
+    EXPECT_FALSE(graph.AddBridge(Bridge{
+        .id = "b1",
+        .type = current,
         .producer = PortRef{.nodeId = "voltage", .portName = "out"},
         .consumer = PortRef{.nodeId = "sink", .portName = "in"},
     }));

@@ -261,6 +261,43 @@ std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
     return raw;
 }
 
+/* Unit extraction for implicit conversions: when a dimensionless scalar
+ * input binds from a voltage/current scalar source (direct connection), the
+ * emitted expression needs the .in(unit) suffix to unwrap the au quantity. */
+std::string ExtractionSuffix(const NodeAPI::Graph& graph,
+                             const std::string& targetNodeId,
+                             const std::string& targetPortName) {
+    const auto targetNode = graph.FindNode(targetNodeId);
+    if (!targetNode) return "";
+    const auto targetType = graph.FindNodeType(targetNode->type);
+    if (!targetType) return "";
+    const auto targetPort = targetType->FindInputPort(targetPortName);
+    if (!targetPort) return "";
+    if (targetPort->type.quantity != NodeAPI::Quantity::Dimensionless ||
+        targetPort->type.frame != NodeAPI::Frame::Scalar) {
+        return "";
+    }
+
+    for (const auto& c : graph.GetConnections()) {
+        if (c.to.nodeId == targetNodeId && c.to.portName == targetPortName) {
+            const auto srcNode = graph.FindNode(c.from.nodeId);
+            if (!srcNode) return "";
+            const auto srcType = graph.FindNodeType(srcNode->type);
+            if (!srcType) return "";
+            const auto srcPort = srcType->FindOutputPort(c.from.portName);
+            if (!srcPort) return "";
+            if (srcPort->type.quantity == NodeAPI::Quantity::Voltage) {
+                return ".in(au::volts)";
+            }
+            if (srcPort->type.quantity == NodeAPI::Quantity::Current) {
+                return ".in(au::amperes)";
+            }
+            return "";
+        }
+    }
+    return "";
+}
+
 std::optional<std::string> ExtractClassName(const std::string& classHeader) {
     // Very simple parser: find "class <Name>" or "class <Namespace::Name>".
     std::regex re(R"(\bclass\s+([A-Za-z_][A-Za-z0-9_:]*)\s*[:\{])");
@@ -528,7 +565,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                     return false;
                 }
                 source << "        const " << WireTypeToCpp(port.type) << " " << port.name
-                       << " = " << *src << ";\n";
+                       << " = " << *src
+                       << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
             }
 
             // Outputs.
@@ -583,8 +621,16 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& port : nodeType->outputPorts) {
                 auto producerBridges = FindProducerBridges(graph_, node->id, port.name);
                 for (const auto& bridge : producerBridges) {
+                    std::string suffix;
+                    if (bridge.type.quantity == NodeAPI::Quantity::Dimensionless) {
+                        if (port.type.quantity == NodeAPI::Quantity::Voltage) {
+                            suffix = ".in(au::volts)";
+                        } else if (port.type.quantity == NodeAPI::Quantity::Current) {
+                            suffix = ".in(au::amperes)";
+                        }
+                    }
                     source << "        Bridge" << Capitalize(bridge.id)
-                           << ".store(" << port.name << ");\n";
+                           << ".store(" << port.name << suffix << ");\n";
                 }
             }
 
