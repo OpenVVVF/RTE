@@ -1658,7 +1658,7 @@
       "domain": "tim_isr",
       "id": "LogDu",
       "parameters": {
-        "Key": "\"cg_du\""
+        "Key": "cg_du"
       },
       "position": {
         "x": 0,
@@ -1671,7 +1671,7 @@
       "domain": "tim_isr",
       "id": "LogDv",
       "parameters": {
-        "Key": "\"cg_dv\""
+        "Key": "cg_dv"
       },
       "position": {
         "x": 0,
@@ -1684,7 +1684,7 @@
       "domain": "tim_isr",
       "id": "LogDw",
       "parameters": {
-        "Key": "\"cg_dw\""
+        "Key": "cg_dw"
       },
       "position": {
         "x": 0,
@@ -1697,7 +1697,7 @@
       "domain": "tim_isr",
       "id": "LogId",
       "parameters": {
-        "Key": "\"cg_id_a\""
+        "Key": "cg_id_a"
       },
       "position": {
         "x": 0,
@@ -1710,7 +1710,7 @@
       "domain": "tim_isr",
       "id": "LogIq",
       "parameters": {
-        "Key": "\"cg_iq_a\""
+        "Key": "cg_iq_a"
       },
       "position": {
         "x": 0,
@@ -1723,7 +1723,7 @@
       "domain": "app_loop",
       "id": "LogTheta",
       "parameters": {
-        "Key": "\"cg_theta_rad\""
+        "Key": "cg_theta_rad"
       },
       "position": {
         "x": 300.0,
@@ -1736,7 +1736,7 @@
       "domain": "app_loop",
       "id": "LogU",
       "parameters": {
-        "Key": "\"cg_iu_a\""
+        "Key": "cg_iu_a"
       },
       "position": {
         "x": 900.0,
@@ -1749,7 +1749,7 @@
       "domain": "app_loop",
       "id": "LogV",
       "parameters": {
-        "Key": "\"cg_iv_a\""
+        "Key": "cg_iv_a"
       },
       "position": {
         "x": 900.0,
@@ -1762,7 +1762,7 @@
       "domain": "tim_isr",
       "id": "LogVd",
       "parameters": {
-        "Key": "\"cg_vd_v\""
+        "Key": "cg_vd_v"
       },
       "position": {
         "x": 0,
@@ -1775,7 +1775,7 @@
       "domain": "app_loop",
       "id": "LogVdc",
       "parameters": {
-        "Key": "\"cg_vdc_v\""
+        "Key": "cg_vdc_v"
       },
       "position": {
         "x": 600.0,
@@ -1788,7 +1788,7 @@
       "domain": "tim_isr",
       "id": "LogVq",
       "parameters": {
-        "Key": "\"cg_vq_v\""
+        "Key": "cg_vq_v"
       },
       "position": {
         "x": 0,
@@ -1801,7 +1801,7 @@
       "domain": "app_loop",
       "id": "LogW",
       "parameters": {
-        "Key": "\"cg_iw_a\""
+        "Key": "cg_iw_a"
       },
       "position": {
         "x": 900.0,
@@ -1973,7 +1973,7 @@
       "parameters": {
         "Cached": "0.0",
         "DefaultValue": "1.0",
-        "Key": "\"Motor.Encoder.SinCos.Sign\""
+        "Key": "Motor.Encoder.SinCos.Sign"
       },
       "position": {
         "x": 0.0,
@@ -1988,7 +1988,7 @@
       "parameters": {
         "Cached": "0.0",
         "DefaultValue": "1.1868",
-        "Key": "\"Motor.Encoder.SinCos.OffsetRad\""
+        "Key": "Motor.Encoder.SinCos.OffsetRad"
       },
       "position": {
         "x": 0.0,
@@ -2003,7 +2003,7 @@
       "parameters": {
         "Cached": "0.0",
         "DefaultValue": "10.0",
-        "Key": "\"Motor.Poles\""
+        "Key": "Motor.Poles"
       },
       "position": {
         "x": 0.0,

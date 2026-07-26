@@ -1,6 +1,7 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
 #include "Inverter/Command/CommandManager.h"
+#include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/FocController.h"
 #include "Inverter/Telemetry.h"
@@ -41,6 +42,10 @@ public:
         float v2 = args[2].present ? args[2].f_val : 0.0f;
 
         if (strcasecmp(sub, "start") == 0) {
+            if (Inverter::ControlSupervisor::instance().isRunning()) {
+                Telemetry::printf("[SHELL] stop the generated control loop first ('control stop')");
+                return;
+            }
             focControlManager().start(v1, v2);
         } else if (strcasecmp(sub, "stop") == 0) {
             focControlManager().stop();

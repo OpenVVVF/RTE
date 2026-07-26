@@ -63,6 +63,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/HelpCommand.cpp
     Src/Inverter/Command/Commands/ControlCommands.cpp
     Src/Inverter/Command/Commands/CalibrationCommands.cpp
+    Src/Inverter/Command/Commands/FocCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
     Src/Inverter/Control/FocControlManager.cpp
