@@ -13,7 +13,7 @@ namespace {
 constexpr const char* KEY_POLES          = "Motor.Poles";
 constexpr const char* KEY_ENC_CYCLES     = "Motor.Encoder.SinCos.CyclesRev";
 constexpr const char* KEY_ENC_BREAKMOD   = "Motor.Encoder.SinCos.BreakMod";
-constexpr const char* KEY_ENC_OFFSETRAD  = "Motor.Encoder.SinCos.OffsetRad";
+constexpr const char* KEY_ENC_OFFSETRAD  = "Motor.Encoder.SinCos.OffsetDeg";
 constexpr const char* KEY_ENC_SIGN       = "Motor.Encoder.SinCos.Sign";
 constexpr const char* KEY_RES_UV         = "Motor.Resistance.Uv";
 constexpr const char* KEY_RES_UW         = "Motor.Resistance.Uw";
@@ -57,12 +57,10 @@ void savePoleResults(float poles, float encoderCyclesPerRev, float breakawayMod)
 void saveEncoderResults(float offsetMechDeg, float sign, float cyclesPerRev,
                         float poles) {
     if (!RteParamStore::isReady()) return;
-    (void)poles;
-    /* The offset is stored as electrical radians directly (same convention as
-     * the base-image FocController and the graph ElecAngle formula:
-     * theta_elec = offset_rad + sign * encoder_angle * pole_pairs). */
-    constexpr float DEG_TO_RAD = 3.14159265358979f / 180.0f;
-    setIfValid(KEY_ENC_OFFSETRAD, offsetMechDeg * DEG_TO_RAD);
+    /* The offset is stored as electrical degrees (the graph ElecAngle formula:
+     * theta_elec = OffsetDeg*deg2rad + sign * encoder_angle * poles/2).  The
+     * calibrator measures mechanical degrees, so scale by pole pairs. */
+    setIfValid(KEY_ENC_OFFSETRAD, offsetMechDeg * poles * 0.5f);
     setIfValid(KEY_ENC_SIGN, sign);
     setIfValid(KEY_ENC_CYCLES, cyclesPerRev);
 }

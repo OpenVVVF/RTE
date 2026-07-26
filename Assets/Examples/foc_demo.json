@@ -491,7 +491,7 @@
       },
       "to": {
         "nodeId": "ElecAngle",
-        "portName": "OffsetRad"
+        "portName": "OffsetDeg"
       }
     },
     {
@@ -1389,7 +1389,7 @@
       "displayName": "Encoder Electrical Angle",
       "domain": "",
       "id": "math.encoder_elec_angle",
-      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(ThetaMech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset + sign * encoder_angle * (Poles / 2).\n * Matches the base-image FocController convention. */\nfloat elec = OffsetRad + EncoderSign * theta * Poles * 0.5f;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\nThetaElec = elec;\n",
+      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(ThetaMech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset (elec deg) + sign * encoder_angle * (Poles / 2).\n * Matches the base-image FocController convention. */\nconstexpr float DEG_TO_RAD = 0.01745329251f;\nfloat elec = OffsetDeg * DEG_TO_RAD + EncoderSign * theta * Poles * 0.5f;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\nThetaElec = elec;\n",
       "inputPorts": [
         {
           "direction": "input",
@@ -1402,7 +1402,7 @@
         },
         {
           "direction": "input",
-          "name": "OffsetRad",
+          "name": "OffsetDeg",
           "type": {
             "quantity": "dimensionless",
             "frame": "scalar",
@@ -1450,12 +1450,12 @@
           "frame": "scalar",
           "quantity": "dimensionless"
         },
-        "OffsetRad": {
+        "Poles": {
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
-        "Poles": {
+        "OffsetDeg": {
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -1563,8 +1563,8 @@
       "id": "ElecAngle",
       "parameters": {
         "EncoderSign": "1.0",
-        "OffsetRad": "1.1868",
-        "Poles": "10.0"
+        "Poles": "10.0",
+        "OffsetDeg": "6.445"
       },
       "position": {
         "x": 300.0,
@@ -1987,8 +1987,8 @@
       "id": "CfgEncOffset",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "1.1868",
-        "Key": "Motor.Encoder.SinCos.OffsetRad"
+        "DefaultValue": "6.445",
+        "Key": "Motor.Encoder.SinCos.OffsetDeg"
       },
       "position": {
         "x": 0.0,
