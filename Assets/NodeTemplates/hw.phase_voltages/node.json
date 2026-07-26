@@ -1,6 +1,7 @@
 {
   "id": "hw.phase_voltages",
   "displayName": "Phase Voltages",
+  "defaultName": "VoltSense",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",

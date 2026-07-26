@@ -298,6 +298,15 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
     return "";
 }
 
+/* True when the instance flags this parameter as a parameterInput (bound
+ * from a connection like an input port instead of a constant). */
+bool IsParameterInput(const NodeAPI::Node& node, const std::string& key) {
+    for (const auto& name : node.parameterInputs) {
+        if (name == key) return true;
+    }
+    return false;
+}
+
 std::optional<std::string> ExtractClassName(const std::string& classHeader) {
     // Very simple parser: find "class <Name>" or "class <Namespace::Name>".
     std::regex re(R"(\bclass\s+([A-Za-z_][A-Za-z0-9_:]*)\s*[:\{])");
@@ -366,8 +375,10 @@ std::string BuildStateStruct(
         } else {
             // Function-style: only declared parameters become persistent state
             // members. Everything else in inlineCode/constructorCode is treated as
-            // a local variable declared by the template author.
+            // a local variable declared by the template author.  Parameters
+            // flagged as parameterInputs are wire-bound and get no state member.
             for (const auto& [key, value] : node->parameters) {
+                if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
                 source << "        "
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless") << " "
@@ -504,6 +515,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 }
             } else {
                 for (const auto& [key, value] : node->parameters) {
+                    if (IsParameterInput(*node, key)) continue;
                     auto paramType = nodeType->FindParameterType(key);
                     source << "        state." << node->id << "." << key << " = "
                            << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
@@ -513,6 +525,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 if (!nodeType->constructorCode.empty()) {
                     auto used = UsedIdentifiers(nodeType->constructorCode);
                     for (const auto& [key, value] : node->parameters) {
+                        if (IsParameterInput(*node, key)) continue;
                         if (used.count(key)) {
                             auto paramType = nodeType->FindParameterType(key);
                             source << "        "
@@ -540,6 +553,11 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             if (!nodeType) continue;
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
+            if (classBased && !node->parameterInputs.empty()) {
+                error = "parameterInputs are not supported on class-based node '" +
+                        node->id + "'";
+                return false;
+            }
 
             source << "    // Step node: " << node->id << " (" << nodeType->id << ")\n";
             source << "    {\n";
@@ -567,6 +585,21 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 source << "        const " << WireTypeToCpp(port.type) << " " << port.name
                        << " = " << *src
                        << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
+            }
+
+            // Parameters flagged as parameterInputs bind from connections too.
+            for (const auto& key : node->parameterInputs) {
+                auto src = FindSourceExpression(graph_, node->id, key);
+                if (!src) {
+                    error = "parameterInput '" + key + "' of node '" + node->id +
+                            "' is not connected";
+                    return false;
+                }
+                auto paramType = nodeType->FindParameterType(key);
+                source << "        const "
+                       << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                       << " " << key << " = " << *src
+                       << ExtractionSuffix(graph_, node->id, key) << ";\n";
             }
 
             // Outputs.
@@ -605,6 +638,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                         }
                     }
                     if (shadowed) continue;
+                    /* parameterInputs are bound from their connection earlier. */
+                    if (IsParameterInput(*node, key)) continue;
 
                     auto paramType = nodeType->FindParameterType(key);
                     source << "        "
@@ -654,6 +689,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             source << "    // Reset node: " << node->id << "\n";
             source << "    {\n";
             for (const auto& [key, value] : node->parameters) {
+                if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
                 source << "        state." << node->id << "." << key << " = "
                        << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")

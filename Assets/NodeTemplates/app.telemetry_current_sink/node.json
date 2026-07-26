@@ -1,6 +1,7 @@
 {
   "id": "app.telemetry_current_sink",
   "displayName": "Telemetry Current Sink",
+  "defaultName": "CurrentLog",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",

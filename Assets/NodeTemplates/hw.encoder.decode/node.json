@@ -1,6 +1,7 @@
 {
   "id": "hw.encoder.decode",
   "displayName": "Encoder Decoder",
+  "defaultName": "EncoderDecode",
   "maxInstances": 1,
   "isEntryPoint": false,
   "inputPorts": [

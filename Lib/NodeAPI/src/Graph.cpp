@@ -177,7 +177,20 @@ std::optional<Port> Graph::FindPort(const PortRef& ref) const {
     if (!type) return std::nullopt;
 
     if (const auto port = type->FindOutputPort(ref.portName)) return *port;
-    return type->FindInputPort(ref.portName);
+    if (const auto port = type->FindInputPort(ref.portName)) return *port;
+
+    /* A parameter flagged as parameterInput on this instance is exposed as an
+     * input port, synthesized from its parameterType. */
+    for (const auto& name : node->parameterInputs) {
+        if (name == ref.portName) {
+            if (const auto paramType = type->FindParameterType(ref.portName)) {
+                return Port{.name = ref.portName,
+                            .direction = PortDirection::Input,
+                            .type = *paramType};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 bool Graph::TypeCheck(const Connection& connection) const {

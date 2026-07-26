@@ -449,6 +449,17 @@
         "nodeId": "LogVw",
         "portName": "Value"
       }
+    },
+    {
+      "id": "c51",
+      "from": {
+        "nodeId": "CfgKpQ",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Kp"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1763,7 +1774,10 @@
         "x": 1200.0,
         "y": 150.0
       },
-      "type": "control.pi_current"
+      "type": "control.pi_current",
+      "parameterInputs": [
+        "Kp"
+      ]
     },
     {
       "displayName": "",
@@ -1903,6 +1917,21 @@
         "y": 0.0
       },
       "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "CfgKpQ",
+      "domain": "tim_isr",
+      "id": "CfgKpQ",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.03",
+        "Key": "Ctrl.PiQ.Kp"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
     }
   ]
 }

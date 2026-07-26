@@ -1,6 +1,7 @@
 {
   "id": "app.telemetry_log",
   "displayName": "Telemetry Log",
+  "defaultName": "Log",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",

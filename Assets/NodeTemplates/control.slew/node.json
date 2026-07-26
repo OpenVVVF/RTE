@@ -1,6 +1,7 @@
 {
   "id": "control.slew",
   "displayName": "Slew Rate Limiter",
+  "defaultName": "Slew",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
