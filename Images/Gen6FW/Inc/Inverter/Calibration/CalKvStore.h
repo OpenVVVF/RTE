@@ -17,7 +17,8 @@ void ensureBaseInfo();
 
 void savePoleResults(float poles, float encoderCyclesPerRev, float breakawayMod);
 
-/** offsetMechDeg is converted to electrical radians using poles. */
+/** offsetMechDeg is converted to electrical degrees (x pole pairs) and stored
+ *  under Motor.Encoder.SinCos.OffsetDeg. */
 void saveEncoderResults(float offsetMechDeg, float sign, float cyclesPerRev,
                         float poles);
 

@@ -15,7 +15,7 @@
       }
     },
     {
-      "name": "OffsetRad",
+      "name": "OffsetDeg",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -57,17 +57,17 @@
     }
   ],
   "parameterTypes": {
-    "OffsetRad": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32"
-    },
     "EncoderSign": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Poles": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OffsetDeg": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

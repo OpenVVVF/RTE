@@ -4,6 +4,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -80,6 +81,23 @@ bool ControlSupervisor::start() {
         m_state = State::Fault;
         return false;
     }
+
+    /* The current-sensor zero shifts once the isolated rail is loaded by PWM
+     * switching (and drifts with temperature), so the boot-time offset
+     * calibration is stale by the time we run.  Recapture offsets here with
+     * the gate driver held off and a zero vector applied: guaranteed zero
+     * current, PWM rail in its true operating state. */
+    GateDriver_DisableOutputs();
+    PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+    HAL_Delay(100);
+    if (!Inverter::phaseCurrentADC().recalibrateOffsets()) {
+        Telemetry::printf("[SUP] ERROR: current offset recalibration failed");
+        PWM_Stop();
+        GateDriver_DisableOutputs();
+        m_state = State::Fault;
+        return false;
+    }
+    GateDriver_EnableOutputs();
 
     /* Reset generated control state before the first ISR fires. */
     app::TimIsrStart(appState.tim_isr);
