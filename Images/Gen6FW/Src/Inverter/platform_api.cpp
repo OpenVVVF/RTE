@@ -73,16 +73,19 @@ float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }
 
+/* Read the driver's 20 kHz DMA snapshot directly - never an ad-hoc SPI
+ * transaction from the main loop (racing the burst path corrupts frames and
+ * can block for the SPI timeout). */
 float platform_phase_voltage_u(void) {
-    return Inverter::dcLinkVoltageSensor().adc().readFilteredVoltage(0);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(0);
 }
 
 float platform_phase_voltage_v(void) {
-    return Inverter::dcLinkVoltageSensor().adc().readFilteredVoltage(1);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(1);
 }
 
 float platform_phase_voltage_w(void) {
-    return Inverter::dcLinkVoltageSensor().adc().readFilteredVoltage(2);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(2);
 }
 
 /* --------------------------------------------------------------------------
