@@ -166,17 +166,6 @@
     },
     {
       "from": {
-        "nodeId": "IqRef",
-        "portName": "Value"
-      },
-      "id": "c8",
-      "to": {
-        "nodeId": "PiQ",
-        "portName": "Setpoint"
-      }
-    },
-    {
-      "from": {
         "nodeId": "Park",
         "portName": "I_Q"
       },
@@ -459,6 +448,61 @@
       "to": {
         "nodeId": "PiQ",
         "portName": "Kp"
+      }
+    },
+    {
+      "id": "c52",
+      "from": {
+        "nodeId": "CfgEnable",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "EnableCmp",
+        "portName": "A"
+      }
+    },
+    {
+      "id": "c53",
+      "from": {
+        "nodeId": "EnableCmp",
+        "portName": "Out"
+      },
+      "to": {
+        "nodeId": "ThrottleEnable",
+        "portName": "In"
+      }
+    },
+    {
+      "id": "c54",
+      "from": {
+        "nodeId": "ThrottleEnable",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Sel"
+      }
+    },
+    {
+      "id": "c55",
+      "from": {
+        "nodeId": "IqGate",
+        "portName": "Out"
+      },
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Setpoint"
+      }
+    },
+    {
+      "id": "c56",
+      "from": {
+        "nodeId": "IqRef",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Val"
       }
     }
   ],
@@ -1469,6 +1513,148 @@
         }
       ],
       "inlineCode": "/* All voltage sense channels from the MAX22530 isolated ADC, filtered. */\nV_U  = rte::Volts(platform_phase_voltage_u());\nV_V  = rte::Volts(platform_phase_voltage_v());\nV_W  = rte::Volts(platform_phase_voltage_w());\nV_Dc = rte::Volts(platform_get_dc_link_voltage());\n"
+    },
+    {
+      "id": "var.bool",
+      "displayName": "Var (Bool)",
+      "defaultName": "Var",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "In",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Set",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Stored": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Set": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n"
+    },
+    {
+      "id": "math.greater",
+      "displayName": "Greater Than",
+      "defaultName": "Gt",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "A",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "B",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Out",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "B": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "Out = (A > B);\n"
+    },
+    {
+      "id": "control.gate",
+      "displayName": "Gate",
+      "defaultName": "Gate",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "Sel",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Val",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Out",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "Out = Sel ? Val : rte::Amperes(0.0f);\n"
     }
   ],
   "nodes": [
@@ -1932,6 +2118,59 @@
         "y": 0.0
       },
       "type": "config.value"
+    },
+    {
+      "displayName": "CfgEnable",
+      "domain": "tim_isr",
+      "id": "CfgEnable",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "1.0",
+        "Key": "Ctrl.ThrottleEnable"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "EnableCmp",
+      "domain": "tim_isr",
+      "id": "EnableCmp",
+      "parameters": {
+        "B": "0.5"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "math.greater"
+    },
+    {
+      "displayName": "ThrottleEnable",
+      "domain": "tim_isr",
+      "id": "ThrottleEnable",
+      "parameters": {
+        "Stored": "1.0",
+        "Set": "1.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "var.bool"
+    },
+    {
+      "displayName": "IqGate",
+      "domain": "tim_isr",
+      "id": "IqGate",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "control.gate"
     }
   ]
 }
