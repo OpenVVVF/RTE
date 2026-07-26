@@ -46,7 +46,7 @@ bool PoleCalibrator::start(float max_mod, float torque_margin) {
     m_last_poles = 0.0f;
 
     m_tracker.reset();
-    m_breakaway.start(0.01f, 50U, max_mod, 0.15f, torque_margin, 3000U);
+    m_breakaway.start(0.005f, 200U, max_mod, 0.15f, torque_margin, 6000U);
 
     m_state = State::RAMP;
 

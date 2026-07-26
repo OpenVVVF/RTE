@@ -14,6 +14,7 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Storage/MotorConfigStore.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
@@ -34,7 +35,7 @@ namespace {
 /* Conservative power limits suitable for unknown motors. */
 static constexpr float MAX_MODULATION = 0.35f;
 static constexpr float POLE_ROTATE_MOD_FACTOR = 1.00f;
-static constexpr float OFFSET_ROTATE_MOD_FACTOR = 0.75f;
+static constexpr float OFFSET_ROTATE_MOD_FACTOR = 1.00f;
 static constexpr float RES_MAX_CURRENT_A = 30.0f;
 static constexpr float RES_OC_LIMIT_A = 100.0f;
 static constexpr uint32_t RES_TIMEOUT_MS = 30000U;
@@ -154,10 +155,12 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
             Telemetry::printf("[CAL] AUTO: missing stored poles/encoder cycles; run cal Motor.Poles first");
             return false;
         }
-        RteParamStore::get("Motor.Encoder.SinCos.BreakMod", &breakaway);  // optional
         m_poles = poles;
         m_encoder_cycles_per_rev = cycles;
-        m_breakaway_mod = breakaway;
+        (void)breakaway;
+        /* Breakaway is re-found every run (not stored): stale values are
+         * meaningless across bus voltages anyway. */
+        m_breakaway_mod = 0.0f;
     }
 
     /* Open the encoder hard caps so the sin/cos envelope for this motor is
@@ -290,8 +293,7 @@ void AutoCalibrationCoordinator::update() {
                               static_cast<double>(m_encoder_cycles_per_rev),
                               static_cast<double>(m_breakaway_mod));
 
-            CalKvStore::savePoleResults(m_poles, m_encoder_cycles_per_rev,
-                                        m_breakaway_mod);
+            CalKvStore::savePoleResults(m_poles, m_encoder_cycles_per_rev);
             if (m_slice_last == State::POLE) {
                 finish();
                 break;

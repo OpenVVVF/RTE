@@ -12,7 +12,6 @@ namespace {
 /* Motor.* key namespace.  NOTE: RteParamStore keys are limited to 32 chars. */
 constexpr const char* KEY_POLES          = "Motor.Poles";
 constexpr const char* KEY_ENC_CYCLES     = "Motor.Encoder.SinCos.CyclesRev";
-constexpr const char* KEY_ENC_BREAKMOD   = "Motor.Encoder.SinCos.BreakMod";
 constexpr const char* KEY_ENC_OFFSETRAD  = "Motor.Encoder.SinCos.OffsetDeg";
 constexpr const char* KEY_ENC_SIGN       = "Motor.Encoder.SinCos.Sign";
 constexpr const char* KEY_RES_UV         = "Motor.Resistance.Uv";
@@ -47,11 +46,10 @@ void ensureBaseInfo() {
     }
 }
 
-void savePoleResults(float poles, float encoderCyclesPerRev, float breakawayMod) {
+void savePoleResults(float poles, float encoderCyclesPerRev) {
     if (!RteParamStore::isReady()) return;
     setIfValid(KEY_POLES, poles);
     setIfValid(KEY_ENC_CYCLES, encoderCyclesPerRev);
-    setIfValid(KEY_ENC_BREAKMOD, breakawayMod);
 }
 
 void saveEncoderResults(float offsetMechDeg, float sign, float cyclesPerRev,

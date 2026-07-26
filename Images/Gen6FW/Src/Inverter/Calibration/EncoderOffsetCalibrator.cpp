@@ -14,7 +14,7 @@ namespace Inverter {
 static constexpr float CAL_MAX_MOD = 0.50f;
 static constexpr float HOLD_MAX_MOD = 0.50f;
 static constexpr float WARMUP_MAX_MOD = 0.25f;
-static constexpr float RAMP_STEP = 0.01f;
+static constexpr float RAMP_STEP = 0.005f;
 static constexpr float TORQUE_MARGIN = 0.40f;
 
 static constexpr uint32_t WARMUP_MS = 5000U;
@@ -26,7 +26,7 @@ static constexpr uint32_t OFFSET_SAMPLE_PERIOD_MS = 10U;
 
 static constexpr float NOISE_THRESHOLD_CYCLES = 0.02f;
 static constexpr float BREAKAWAY_DETECT_CYCLES = 0.15f;
-static constexpr uint32_t RAMP_PERIOD_MS = 50U;
+static constexpr uint32_t RAMP_PERIOD_MS = 200U;
 static constexpr uint32_t MOVE_TIMEOUT_MS = 3000U;
 static constexpr uint32_t FIND_VOLTAGE_TIMEOUT_MS = 15000U;
 static constexpr uint32_t OFFSET_ROTATE_TIMEOUT_MS = 60000U;
@@ -116,7 +116,7 @@ void EncoderOffsetCalibrator::enterState(State state) {
         case State::WARMUP: {
             m_tracker.reset();
             const float target = (m_mod > WARMUP_MAX_MOD) ? WARMUP_MAX_MOD : m_mod;
-            m_ramp.start(0.0f, target, 1000U, openLoopController().rampCurrentLimit());
+            m_ramp.start(0.0f, target, 4000U, openLoopController().rampCurrentLimit());
             PWM_ResetSPWMElectricalCycles();
             PWM_StartSPWM(WARMUP_FREQUENCY_HZ, 0.0f);
 
@@ -145,7 +145,7 @@ void EncoderOffsetCalibrator::enterState(State state) {
             m_sample_count = 0;
             m_last_offset = 0.0f;
             m_last_offset_sample_ms = 0;
-            m_ramp.start(0.0f, m_mod, 500U, openLoopController().rampCurrentLimit());
+            m_ramp.start(0.0f, m_mod, 4000U, openLoopController().rampCurrentLimit());
             break;
 
         case State::DONE:

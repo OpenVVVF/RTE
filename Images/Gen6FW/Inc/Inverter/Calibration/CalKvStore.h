@@ -15,7 +15,7 @@ namespace CalKvStore {
 /** Create Motor.Type (1=PMSM) and Motor.Encoder.Type (1=SinCos) if absent. */
 void ensureBaseInfo();
 
-void savePoleResults(float poles, float encoderCyclesPerRev, float breakawayMod);
+void savePoleResults(float poles, float encoderCyclesPerRev);
 
 /** offsetMechDeg is converted to electrical degrees (x pole pairs) and stored
  *  under Motor.Encoder.SinCos.OffsetDeg. */
