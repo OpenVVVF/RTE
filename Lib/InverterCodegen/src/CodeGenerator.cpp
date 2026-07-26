@@ -235,7 +235,9 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
         case NodeAPI::Quantity::Boolean:
             return value + "f";
         case NodeAPI::Quantity::String:
-            return value;
+            // String params are stored unquoted in the graph JSON; quote them
+            // for C++ emission.
+            return "\"" + value + "\"";
     }
     // Unknown / framed: fall back to a plain float so existing templates keep
     // working, but this loses unit safety for those parameters.
@@ -249,14 +251,14 @@ bool IsConfigNodeType(const NodeAPI::NodeType& nodeType) {
     return nodeType.id.rfind("config.", 0) == 0;
 }
 
-// Returns the unquoted config key, or nullopt when the node has no valid
-// quoted-string "Key" parameter.
+// Returns the config key, or nullopt when the node has no valid non-empty
+// string "Key" parameter (keys are stored unquoted in the graph JSON).
 std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
     const auto it = node.parameters.find("Key");
     if (it == node.parameters.end()) return std::nullopt;
     const std::string& raw = it->second;
-    if (raw.size() < 2 || raw.front() != '"' || raw.back() != '"') return std::nullopt;
-    return raw.substr(1, raw.size() - 2);
+    if (raw.empty() || raw.find('"') != std::string::npos) return std::nullopt;
+    return raw;
 }
 
 std::optional<std::string> ExtractClassName(const std::string& classHeader) {
@@ -646,7 +648,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             const auto configKey = ConfigNodeKey(*node);
             if (!configKey) {
                 error = "Config node '" + node->id +
-                        "' needs a quoted-string 'key' parameter";
+                        "' needs a non-empty string 'Key' parameter";
                 return false;
             }
             if (configKey->empty() || configKey->size() > 32) {
