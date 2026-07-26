@@ -35,6 +35,15 @@ public:
                                     const std::string& graphId,
                                     bool isBridge);
 
+    QVariant nodeData(QtNodes::NodeId nodeId, QtNodes::NodeRole role) const override;
+    bool setNodeData(QtNodes::NodeId nodeId,
+                     QtNodes::NodeRole role,
+                     QVariant value) override;
+
+    // Store a per-node caption override. QtNodes does not persist Caption through
+    // setNodeData, so we keep our own map.
+    void SetNodeCaption(QtNodes::NodeId nodeId, const QString& caption);
+
     bool connectionPossible(QtNodes::ConnectionId const connectionId) const override;
     void addConnection(QtNodes::ConnectionId const connectionId) override;
     bool deleteConnection(QtNodes::ConnectionId const connectionId) override;
@@ -67,6 +76,7 @@ private:
 
     NodeAPI::Graph& graph_;
     std::unordered_map<QtNodes::NodeId, std::string> qtIdToNodeId_;
+    std::unordered_map<QtNodes::NodeId, QString> captions_;
     mutable std::unordered_map<QtNodes::ConnectionId, GraphConnection> connectionMap_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;

@@ -86,6 +86,10 @@ private:
     void ClearDomainOutlines();
     QColor GetDomainColor(const std::string& domain) const;
 
+    // Parameter display helpers.
+    QString FormatParameterLabel(const NodeAPI::Node& node) const;
+    void OpenNodeProperties(QtNodes::NodeId qtId);
+
 public:
     // Public so the scene event filter can call it during node drags.
     void UpdateDomainOutlines();

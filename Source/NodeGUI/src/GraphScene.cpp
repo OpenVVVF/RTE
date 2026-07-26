@@ -2,6 +2,7 @@
 
 #include "BridgeConnectionPainter.h"
 #include "NodeDataModel.h"
+#include "NodePropertiesDialog.h"
 #include "TypedNodePainter.h"
 
 #include <NodeAPI/NodeTemplates.h>
@@ -21,6 +22,7 @@
 #include <QObject>
 #include <QPen>
 #include <QPointF>
+#include <QStringList>
 
 #include <algorithm>
 #include <cmath>
@@ -68,18 +70,6 @@ std::optional<std::string> ReadTextFile(const std::string& path) {
     }
     return std::string{std::istreambuf_iterator<char>(stream),
                        std::istreambuf_iterator<char>()};
-}
-
-QString MakeNodeCaption(const NodeAPI::Node& node, const NodeAPI::NodeType& nodeType) {
-    QString caption = QString::fromStdString(node.displayName.empty() ? node.id : node.displayName);
-    caption += QStringLiteral("\n");
-    caption += QString::fromStdString(nodeType.id);
-    if (!node.domain.empty()) {
-        caption += QStringLiteral("\n[");
-        caption += QString::fromStdString(node.domain);
-        caption += QStringLiteral("]");
-    }
-    return caption;
 }
 
 }  // namespace
@@ -150,6 +140,10 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeMoved,
                      [this](QtNodes::NodeId) { UpdateDomainOutlines(); });
+
+    QObject::connect(scene_.get(),
+                     &QtNodes::BasicGraphicsScene::nodeDoubleClicked,
+                     [this](QtNodes::NodeId qtId) { OpenNodeProperties(qtId); });
 
     return QString{};
 }
@@ -612,10 +606,71 @@ QString GraphScene::SaveGraph(const std::string& path) const {
     return QString{};
 }
 
+QString GraphScene::FormatParameterLabel(const NodeAPI::Node& node) const {
+    const auto nodeType = graph_.FindNodeType(node.type);
+
+    QStringList lines;
+    if (nodeType) {
+        lines.append(QString::fromStdString(nodeType->id));
+    } else {
+        lines.append(QString::fromStdString(node.type));
+    }
+
+    auto append = [&](const std::string& name, const std::string& value) {
+        if (value.empty()) {
+            return;
+        }
+        lines.append(QStringLiteral("%1=%2").arg(QString::fromStdString(name),
+                                                  QString::fromStdString(value)));
+    };
+
+    // Show declared parameters in type order first, then any undeclared instance values.
+    if (nodeType) {
+        for (const auto& [paramName, paramType] : nodeType->parameterTypes) {
+            const auto it = node.parameters.find(paramName);
+            if (it != node.parameters.end()) {
+                append(paramName, it->second);
+            }
+        }
+    }
+    for (const auto& [paramName, value] : node.parameters) {
+        if (nodeType && nodeType->parameterTypes.count(paramName)) {
+            continue;
+        }
+        append(paramName, value);
+    }
+
+    return lines.join(QStringLiteral("\n"));
+}
+
+void GraphScene::OpenNodeProperties(QtNodes::NodeId qtId) {
+    std::string nodeId;
+    for (const auto& [id, qid] : nodeIdMap_) {
+        if (qid == qtId) {
+            nodeId = id;
+            break;
+        }
+    }
+    if (nodeId.empty()) {
+        return;
+    }
+
+    const auto node = graph_.FindNode(nodeId);
+    if (!node) {
+        return;
+    }
+
+    NodePropertiesDialog dialog(graph_, *node);
+    dialog.exec();
+
+    // Refresh the displayed parameter values after the dialog closes.
+    if (const auto updatedNode = graph_.FindNode(nodeId)) {
+        model_->SetNodeCaption(qtId, FormatParameterLabel(*updatedNode));
+    }
+}
+
 void GraphScene::RegisterNodeTypes() {
     for (const auto& nodeType : graph_.GetNodeTypes()) {
-        // Each creator captures a copy of its node type so the model can expose
-        // the correct ports.
         registry_->registerModel([nodeType]() -> std::unique_ptr<QtNodes::NodeDelegateModel> {
             NodeAPI::Node dummy;
             dummy.id = nodeType.id;
@@ -639,12 +694,11 @@ void GraphScene::CreateNodes() {
         model_->setNodeData(qtId,
                             QtNodes::NodeRole::Position,
                             QVariant::fromValue(QPointF(node.position.x, node.position.y)));
-        model_->setNodeData(qtId,
-                            QtNodes::NodeRole::Caption,
-                            QVariant::fromValue(MakeNodeCaption(node, *nodeType)));
+        // Node title (top line) is the node id; body (caption) shows parameter values.
         model_->setNodeData(qtId,
                             QtNodes::NodeRole::Label,
                             QVariant::fromValue(QString::fromStdString(node.id)));
+        model_->SetNodeCaption(qtId, FormatParameterLabel(node));
 
         nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     }

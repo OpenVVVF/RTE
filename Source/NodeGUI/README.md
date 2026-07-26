@@ -42,7 +42,9 @@ Or launch with no arguments and use `File → Open`.
 - Renders `Bridge`s as dashed lines colored by the port's quantity, so cross-domain links are visually distinct by linestyle.
 - Draws each port as a filled shape: color = quantity, shape = frame (e.g., scalar angles are purple diamonds), so matching types are easy to spot.
 - Shows an FPS / frametime overlay in the top-right corner of the viewport.
-- Shows the node id, type, and timing domain in each node caption.
+- Shows the node id in the node title.
+- Shows the node type and parameter values in the node body, one value per line.
+- Double-click a node to open a properties dialog for editing its parameters.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.

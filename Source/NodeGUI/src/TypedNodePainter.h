@@ -25,6 +25,7 @@ private:
 
     void drawConnectionPoints(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
     void drawFilledConnectionPoints(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
+    void drawNodeCaption(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
 
     void DrawPortShape(QPainter* painter,
                        const QPointF& center,

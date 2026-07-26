@@ -106,7 +106,7 @@ void TypedNodePainter::paint(QPainter* painter, QtNodes::NodeGraphicsObject& ngo
     drawConnectionPoints(painter, ngo);
     drawFilledConnectionPoints(painter, ngo);
 
-    defaultPainter_.drawNodeCaption(painter, ngo);
+    drawNodeCaption(painter, ngo);
     defaultPainter_.drawEntryLabels(painter, ngo);
     defaultPainter_.drawProcessingIndicator(painter, ngo);
     defaultPainter_.drawResizeRect(painter, ngo);
@@ -222,6 +222,49 @@ void TypedNodePainter::drawFilledConnectionPoints(QPainter* painter,
                 }
             }
         }
+    }
+}
+
+void TypedNodePainter::drawNodeCaption(QPainter* painter,
+                                       QtNodes::NodeGraphicsObject& ngo) const {
+    auto& model = ngo.graphModel();
+    const QtNodes::NodeId nodeId = ngo.nodeId();
+
+    if (!model.nodeData(nodeId, QtNodes::NodeRole::CaptionVisible).toBool()) {
+        return;
+    }
+
+    const QString text = model.nodeData(nodeId, QtNodes::NodeRole::Caption).toString();
+    if (text.isEmpty()) {
+        return;
+    }
+
+    auto& geometry = ngo.nodeScene()->nodeGeometry();
+    const QPointF capPos = geometry.captionPosition(nodeId);
+    const QRectF capRect = geometry.captionRect(nodeId);
+
+    QJsonDocument json = QJsonDocument::fromVariant(model.nodeData(nodeId, QtNodes::NodeRole::Style));
+    QtNodes::NodeStyle nodeStyle(json.object());
+
+    QFont f = painter->font();
+    const QString label = model.nodeData(nodeId, QtNodes::NodeRole::Label).toString();
+    f.setBold(label.isEmpty());
+    f.setItalic(!label.isEmpty());
+    painter->setFont(f);
+    painter->setPen(nodeStyle.FontColor);
+
+    const QStringList lines = text.split('\n');
+    const QFontMetricsF metrics(f);
+    const double lineHeight = metrics.height();
+    const double totalHeight = lineHeight * lines.size();
+    const double centerX = capPos.x() + capRect.width() / 2.0;
+    double y = capPos.y() - totalHeight / 2.0 + lineHeight;
+
+    for (const QString& line : lines) {
+        const QRectF lineRect = metrics.boundingRect(line);
+        const double x = centerX - lineRect.width() / 2.0;
+        painter->drawText(QPointF(x, y), line);
+        y += lineHeight;
     }
 }
 
