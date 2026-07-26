@@ -1,6 +1,6 @@
 {
-  "id": "var.bool",
-  "displayName": "Var (Bool)",
+  "id": "var.current",
+  "displayName": "Var (Current)",
   "defaultName": "Var",
   "maxInstances": 0,
   "isEntryPoint": false,
@@ -10,7 +10,7 @@
       "name": "In",
       "direction": "input",
       "type": {
-        "quantity": "boolean",
+        "quantity": "current",
         "frame": "scalar",
         "dtype": "f32"
       },
@@ -32,7 +32,7 @@
       "name": "Value",
       "direction": "output",
       "type": {
-        "quantity": "boolean",
+        "quantity": "current",
         "frame": "scalar",
         "dtype": "f32"
       }
@@ -40,16 +40,16 @@
   ],
   "parameterTypes": {
     "Stored": {
-      "quantity": "boolean",
-      "frame": "scalar",
-      "dtype": "f32"
-    },
-    "Set": {
-      "quantity": "boolean",
+      "quantity": "current",
       "frame": "scalar",
       "dtype": "f32"
     },
     "In": {
+      "quantity": "current",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Set": {
       "quantity": "boolean",
       "frame": "scalar",
       "dtype": "f32"

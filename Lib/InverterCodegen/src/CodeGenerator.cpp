@@ -298,6 +298,12 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
     return "";
 }
 
+// Var nodes (type id "var.*") hold machine-owned RAM state in their "Stored"
+// parameter; a runtime registry lets the shell adjust them by node id.
+bool IsVarNodeType(const NodeAPI::NodeType& nodeType) {
+    return nodeType.id.rfind("var.", 0) == 0;
+}
+
 /* True when the instance flags this parameter as a parameterInput (bound
  * from a connection like an input port instead of a constant). */
 bool IsParameterInput(const NodeAPI::Node& node, const std::string& key) {
@@ -467,6 +473,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         header << "namespace app {\n";
         header << "extern const RteParamDesc g_" << domainCpp << "_configs[];\n";
         header << "extern const size_t g_" << domainCpp << "_config_count;\n";
+        header << "extern const RteParamDesc g_" << domainCpp << "_vars[];\n";
+        header << "extern const size_t g_" << domainCpp << "_var_count;\n";
         header << "} // namespace app\n";
 
         // Build source.
@@ -768,6 +776,63 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         }
         source << "};\n\n";
         source << "const size_t g_" << domainCpp << "_config_count = " << configCount
+               << ";\n\n";
+
+        // Var registry: expose var.* nodes' Stored state by node id for
+        // runtime adjustment (RAM-only, machine-owned).
+        size_t varCount = 0;
+        std::ostringstream varEntries;
+        for (const auto& nodeId : order) {
+            const auto node = graph_.FindNode(nodeId);
+            if (!node) continue;
+            const auto nodeType = graph_.FindNodeType(node->type);
+            if (!nodeType || !IsVarNodeType(*nodeType)) continue;
+            if (node->parameters.find("Stored") == node->parameters.end()) continue;
+
+            auto storedType = nodeType->FindParameterType("Stored");
+            const auto storedQty = storedType ? storedType->quantity
+                                              : NodeAPI::Quantity::Dimensionless;
+
+            const std::string setterName = "set_" + node->id + "_stored";
+            const std::string getterName = "get_" + node->id + "_stored";
+            source << "static void " << setterName << "(void* state, float value) {\n";
+            source << "    auto* s = static_cast<" << domainTitle << "State*>(state);\n";
+            if (storedQty == NodeAPI::Quantity::Boolean) {
+                source << "    s->" << node->id << ".Stored = (value != 0.0f);\n";
+            } else if (storedQty == NodeAPI::Quantity::Current) {
+                source << "    s->" << node->id << ".Stored = rte::Amperes(value);\n";
+            } else if (storedQty == NodeAPI::Quantity::Voltage) {
+                source << "    s->" << node->id << ".Stored = rte::Volts(value);\n";
+            } else {
+                source << "    s->" << node->id << ".Stored = value;\n";
+            }
+            source << "}\n\n";
+            source << "static float " << getterName << "(const void* state) {\n";
+            source << "    const auto* s = static_cast<const " << domainTitle
+                   << "State*>(state);\n";
+            if (storedQty == NodeAPI::Quantity::Boolean) {
+                source << "    return s->" << node->id << ".Stored ? 1.0f : 0.0f;\n";
+            } else if (storedQty == NodeAPI::Quantity::Current) {
+                source << "    return s->" << node->id << ".Stored.in(au::amperes);\n";
+            } else if (storedQty == NodeAPI::Quantity::Voltage) {
+                source << "    return s->" << node->id << ".Stored.in(au::volts);\n";
+            } else {
+                source << "    return s->" << node->id << ".Stored;\n";
+            }
+            source << "}\n\n";
+
+            varEntries << "    {\"" << node->id << "\", " << setterName << ", "
+                       << getterName << "},\n";
+            ++varCount;
+        }
+        source << "const RteParamDesc g_" << domainCpp << "_vars[] = {\n";
+        if (varCount == 0) {
+            source << "    {nullptr, nullptr, nullptr},\n";
+        } else {
+            source << varEntries.str();
+        }
+        source << "};\n\n";
+        source << "const size_t g_" << domainCpp << "_var_count = " << varCount
                << ";\n\n";
 
         source << "} // namespace app\n";

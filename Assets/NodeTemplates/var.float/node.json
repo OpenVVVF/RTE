@@ -13,7 +13,8 @@
         "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
-      }
+      },
+      "optional": true
     },
     {
       "name": "Set",
@@ -45,6 +46,11 @@
     },
     "Set": {
       "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "In": {
+      "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     }

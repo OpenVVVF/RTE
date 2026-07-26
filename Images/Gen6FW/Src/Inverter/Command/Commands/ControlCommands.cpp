@@ -254,10 +254,114 @@ private:
     }
 };
 
+/**
+ * @brief `var <subcommand> [args...]` for graph-owned variables.
+ *
+ * RAM-only, machine-owned state (not persisted to FRAM).
+ *   var set <name> <value>   Set a var's Stored value.
+ *   var get <name>           Read it back.
+ *   var list                 List all vars and their values.
+ */
+class VarCommand : public CommandInterface {
+public:
+    VarCommand()
+      : CommandInterface("var", "Graph variables: set/get/list",
+            {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"name", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING},
+             ArgSpec{"value", "", -1e6f, 1e6f, 0.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* sub = args[0].s_val;
+        if (strcasecmp(sub, "set") == 0) {
+            if (!args[1].present || !args[2].present) {
+                Telemetry::printf("[SHELL] usage: var set <name> <value>");
+                return;
+            }
+            setVar(args[1].s_val, args[2].f_val);
+        } else if (strcasecmp(sub, "get") == 0) {
+            getVar(args[1].s_val);
+        } else if (strcasecmp(sub, "list") == 0) {
+            listVars();
+        } else {
+            Telemetry::printf("[SHELL] Unknown var subcommand '%s'. Use: set/get/list", sub);
+        }
+    }
+
+private:
+    struct VarDomain {
+        const RteParamDesc* descs;
+        size_t count;
+        void* state;
+    };
+
+    /* NOTE: no initializer_list return-by-value here (dangling backing
+     * array = wild iteration = main-loop hang).  Plain static array. */
+    static const VarDomain* allDomains(size_t& outCount) {
+        static const VarDomain kDomains[] = {
+            {app::g_app_loop_vars, app::g_app_loop_var_count, &appState.app_loop},
+            {app::g_tim_isr_vars, app::g_tim_isr_var_count, &appState.tim_isr},
+            {app::g_adc_isr_vars, app::g_adc_isr_var_count, &appState.adc_isr},
+        };
+        outCount = sizeof(kDomains) / sizeof(kDomains[0]);
+        return kDomains;
+    }
+
+    static const RteParamDesc* find(const char* name, void** stateOut) {
+        size_t domainCount = 0;
+        const VarDomain* domains = allDomains(domainCount);
+        for (size_t d = 0; d < domainCount; ++d) {
+            const VarDomain& domain = domains[d];
+            for (size_t i = 0; i < domain.count; ++i) {
+                if (strcasecmp(name, domain.descs[i].name) == 0) {
+                    *stateOut = domain.state;
+                    return &domain.descs[i];
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    void setVar(const char* name, float value) const {
+        void* state = nullptr;
+        const RteParamDesc* desc = find(name, &state);
+        if (desc == nullptr) {
+            Telemetry::printf("[SHELL] unknown var '%s'", name);
+            return;
+        }
+        desc->set(state, value);
+        Telemetry::printf("[SHELL] %s = %.4f", name, static_cast<double>(value));
+    }
+
+    void getVar(const char* name) const {
+        void* state = nullptr;
+        const RteParamDesc* desc = find(name, &state);
+        if (desc == nullptr) {
+            Telemetry::printf("[SHELL] unknown var '%s'", name);
+            return;
+        }
+        Telemetry::printf("[SHELL] %s = %.4f", name,
+                          static_cast<double>(desc->get(state)));
+    }
+
+    void listVars() const {
+        size_t domainCount = 0;
+        const VarDomain* domains = allDomains(domainCount);
+        for (size_t d = 0; d < domainCount; ++d) {
+            const VarDomain& domain = domains[d];
+            for (size_t i = 0; i < domain.count; ++i) {
+                Telemetry::printf("[SHELL]   %s = %.4f", domain.descs[i].name,
+                                  static_cast<double>(domain.descs[i].get(domain.state)));
+            }
+        }
+    }
+};
+
 static ControlCommand sControlCmd;
 static ConfigCommand sConfigCmd;
+static VarCommand sVarCmd;
 
 void registerControlCommands(CommandManager& mgr) {
     mgr.registerCommand(&sControlCmd);
     mgr.registerCommand(&sConfigCmd);
+    mgr.registerCommand(&sVarCmd);
 }
