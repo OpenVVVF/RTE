@@ -82,6 +82,17 @@ bool Graph::SetNodePosition(const std::string& nodeId, Position position) {
     return false;
 }
 
+bool Graph::SetNodeParameters(const std::string& nodeId,
+                              std::map<std::string, std::string> parameters) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.parameters = std::move(parameters);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Graph::Connect(Connection connection) {
     if (connection.id.empty()) return false;
     if (ConnectionIdTaken(connection.id)) return false;

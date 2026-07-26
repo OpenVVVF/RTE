@@ -94,6 +94,11 @@ public:
     // Public so the scene event filter can call it during node drags.
     void UpdateDomainOutlines();
 
+    // Public so the scene event filter can call it on node double-click.
+    // Opens a modal editor for the node's parameters and, on accept, writes
+    // them back to the graph and refreshes the embedded parameter view.
+    void EditNodeParameters(QtNodes::NodeId qtId);
+
     QtNodes::PortIndex FindPortIndex(const std::string& nodeId,
                                      const std::string& portName,
                                      QtNodes::PortType portType) const;

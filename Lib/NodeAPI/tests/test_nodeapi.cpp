@@ -128,6 +128,22 @@ TEST(Graph, AddNodeRequiresKnownType) {
     EXPECT_FALSE(graph.AddNode(Node{.id = "n", .type = "unknown", .domain = "app_loop"}));
 }
 
+TEST(Graph, SetNodeParameters) {
+    Graph graph = MakeDemoGraph();
+
+    EXPECT_TRUE(graph.SetNodeParameters("source", {{"Gain", "2.5"}, {"Key", "cfg_gain"}}));
+    const auto node = graph.FindNode("source");
+    ASSERT_TRUE(node.has_value());
+    EXPECT_EQ(node->parameters.at("Gain"), "2.5");
+    EXPECT_EQ(node->parameters.at("Key"), "cfg_gain");
+
+    // Replaces the whole map rather than merging.
+    EXPECT_TRUE(graph.SetNodeParameters("source", {{"Gain", "1.0"}}));
+    EXPECT_EQ(graph.FindNode("source")->parameters.size(), 1u);
+
+    EXPECT_FALSE(graph.SetNodeParameters("missing", {{"Gain", "1.0"}}));
+}
+
 TEST(Graph, MaxInstancesEnforced) {
     Graph graph;
     NodeType limited = MakeValueType();

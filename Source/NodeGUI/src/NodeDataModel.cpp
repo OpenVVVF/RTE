@@ -101,27 +101,47 @@ QtNodes::ConnectionPolicy NodeInstanceModel::portConnectionPolicy(QtNodes::PortT
 void NodeInstanceModel::SetParameters(
     const std::map<std::string, std::string>& parameters,
     const std::map<std::string, NodeAPI::WireType>& parameterTypes) {
-    if (parameters.empty()) {
-        return;
+    const bool refreshing = (parameterWidget_ != nullptr);
+
+    if (!refreshing) {
+        if (parameters.empty()) {
+            return;
+        }
+
+        parameterWidget_ = new QWidget;
+        // Tinted, rounded panel so the parameter block reads as a distinct
+        // region inside the node rather than more port captions. The widget
+        // stays hidden until the scene embeds it; showing it beforehand would
+        // make it a top-level window and break the node's size computation.
+        parameterWidget_->setStyleSheet(QStringLiteral(
+            "background: rgba(255, 255, 255, 14);"
+            "border: 1px solid rgba(255, 255, 255, 45);"
+            "border-radius: 4px;"));
+
+        auto* layout = new QVBoxLayout(parameterWidget_);
+        layout->setContentsMargins(6, 3, 6, 3);
+        layout->setSpacing(1);
     }
 
-    auto* container = new QWidget;
-    // Tinted, rounded panel so the parameter block reads as a distinct region
-    // inside the node rather than more port captions.
-    container->setStyleSheet(QStringLiteral(
-        "background: rgba(255, 255, 255, 14);"
-        "border: 1px solid rgba(255, 255, 255, 45);"
-        "border-radius: 4px;"));
+    // Rebuild the rows in place so the widget can be refreshed after an edit
+    // without re-embedding it into the scene.
+    auto* layout = parameterWidget_->layout();
+    while (QLayoutItem* item = layout->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
 
-    auto* layout = new QVBoxLayout(container);
-    layout->setContentsMargins(6, 3, 6, 3);
-    layout->setSpacing(1);
+    // Visibility may only be toggled once the widget is embedded (i.e. on a
+    // refresh), so an emptied parameter map collapses the panel.
+    if (refreshing) {
+        parameterWidget_->setVisible(!parameters.empty());
+    }
 
     for (const auto& [name, value] : parameters) {
         auto* row = new QLabel(QStringLiteral("%1: %2")
                                    .arg(QString::fromStdString(name),
                                         QString::fromStdString(value)),
-                               container);
+                               parameterWidget_);
         // Amber italic monospace contrasts with the plain white port captions.
         row->setStyleSheet(QStringLiteral(
             "color: #e8c07a;"
@@ -137,8 +157,6 @@ void NodeInstanceModel::SetParameters(
 
         layout->addWidget(row);
     }
-
-    parameterWidget_ = container;
 }
 
 void NodeInstanceModel::setInData(std::shared_ptr<QtNodes::NodeData> /*nodeData*/,

@@ -43,9 +43,10 @@ public:
 
     QWidget* embeddedWidget() override { return parameterWidget_; }
 
-    // Builds the read-only parameter view embedded inside the node. Must be
-    // called before the scene constructs the node's graphics object, which is
-    // when embeddedWidget() is queried. Does nothing when parameters is empty.
+    // Builds (or refreshes) the read-only parameter view embedded inside the
+    // node. The first call must happen before the scene constructs the node's
+    // graphics object, which is when embeddedWidget() is queried; later calls
+    // rebuild the rows in place. An empty map hides the panel.
     void SetParameters(const std::map<std::string, std::string>& parameters,
                        const std::map<std::string, NodeAPI::WireType>& parameterTypes);
 

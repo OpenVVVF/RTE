@@ -12,15 +12,22 @@
 
 #include <QBrush>
 #include <QColor>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QEvent>
 #include <QFile>
 #include <QFont>
+#include <QFormLayout>
 #include <QGraphicsRectItem>
+#include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
 #include <QJsonObject>
+#include <QLabel>
+#include <QLineEdit>
 #include <QObject>
 #include <QPen>
 #include <QPointF>
+#include <QTransform>
 
 #include <algorithm>
 #include <cmath>
@@ -37,7 +44,8 @@ namespace {
 
 // Filters QGraphicsScene events so domain outlines can follow nodes while they
 // are being dragged. QtNodes only emits nodeMoved on mouse release, so we poll
-// the scene's mouse grabber during move events.
+// the scene's mouse grabber during move events. Also opens the parameter
+// editor when a node is double-clicked.
 class SceneEventFilter : public QObject {
 public:
     explicit SceneEventFilter(GraphScene& scene, QObject* parent = nullptr)
@@ -52,6 +60,23 @@ protected:
                 if (qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(scene->mouseGrabberItem())) {
                     scene_.UpdateDomainOutlines();
                 }
+            }
+        } else if (event->type() == QEvent::GraphicsSceneMouseDoubleClick) {
+            auto* mouseEvent = static_cast<QGraphicsSceneMouseEvent*>(event);
+            auto* scene = scene_.Scene();
+            if (!scene) {
+                return false;
+            }
+
+            // Walk up from the hit item so clicks on the embedded parameter
+            // panel (a child proxy widget) also resolve to the node.
+            QGraphicsItem* item = scene->itemAt(mouseEvent->scenePos(), QTransform());
+            while (item) {
+                if (auto* ngo = qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+                    scene_.EditNodeParameters(ngo->nodeId());
+                    return false;
+                }
+                item = item->parentItem();
             }
         }
         return false;
@@ -499,6 +524,73 @@ void GraphScene::AutoArrange() {
 
     UpdateDomainOutlines();
     SyncPositionsFromScene();
+}
+
+void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
+    std::string nodeId;
+    for (const auto& [id, qt] : nodeIdMap_) {
+        if (qt == qtId) {
+            nodeId = id;
+            break;
+        }
+    }
+
+    const auto node = nodeId.empty() ? std::nullopt : graph_.FindNode(nodeId);
+    if (!node) {
+        return;
+    }
+    const auto nodeType = graph_.FindNodeType(node->type);
+
+    QDialog dialog;
+    dialog.setWindowTitle(QStringLiteral("Parameters: %1").arg(QString::fromStdString(nodeId)));
+
+    auto* form = new QFormLayout(&dialog);
+    std::vector<std::pair<std::string, QLineEdit*>> editors;
+    for (const auto& [name, value] : node->parameters) {
+        auto* edit = new QLineEdit(QString::fromStdString(value), &dialog);
+        if (nodeType) {
+            if (const auto type = nodeType->FindParameterType(name)) {
+                const std::string typeText = NodeAPI::ToString(type->quantity) + "."
+                                             + NodeAPI::ToString(type->frame) + "."
+                                             + NodeAPI::ToString(type->dtype);
+                edit->setToolTip(QString::fromStdString(typeText));
+            }
+        }
+        form->addRow(QString::fromStdString(name), edit);
+        editors.emplace_back(name, edit);
+    }
+
+    if (editors.empty()) {
+        form->addRow(new QLabel(QStringLiteral("This node has no parameters."), &dialog));
+    }
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                         &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+
+    if (editors.empty() || dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    std::map<std::string, std::string> updated;
+    for (const auto& [name, edit] : editors) {
+        updated[name] = edit->text().toStdString();
+    }
+    if (!graph_.SetNodeParameters(nodeId, updated)) {
+        return;
+    }
+
+    // Refresh the embedded parameter view and the cached geometry.
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        static const std::map<std::string, NodeAPI::WireType> kNoTypes;
+        delegate->SetParameters(updated,
+                                nodeType ? nodeType->parameterTypes : kNoTypes);
+    }
+    scene_->nodeGeometry().recomputeSize(qtId);
+    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+    UpdateDomainOutlines();
 }
 
 void GraphScene::SyncPositionsFromScene() {
