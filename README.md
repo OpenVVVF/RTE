@@ -4,6 +4,8 @@ Source for the RTE motor inverter project. This repo holds the STM32 base firmwa
 image, the node-graph toolchain libraries, and the tools that turn a graph into a
 flashable firmware binary.
 
+> **A note on the name:** *VVVF* stands for Variable Voltage Variable Frequency — it describes the output, not the control strategy. This platform is **not** limited to scalar V/Hz control; it supports vector control (FOC), arbitrary modulation schemes, and any control scheme you can express through the node graph.
+
 ## Layout
 
 ```
