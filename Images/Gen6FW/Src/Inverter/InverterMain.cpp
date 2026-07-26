@@ -82,6 +82,10 @@ static void init()
         /* Restore learned encoder envelope bounds (written by calibration) so
          * the angle decoder is correct from boot without re-running cal. */
         Inverter::CalKvStore::loadEncoderBounds();
+
+        /* Populate the runtime motor calibration from the KV store so no
+         * code path ever falls back to the debug-default angle/sign. */
+        Inverter::CalKvStore::loadMotorCalibration();
     }
 
     /* Telemetry over the MCP2221A USB-UART bridge (USART3). */

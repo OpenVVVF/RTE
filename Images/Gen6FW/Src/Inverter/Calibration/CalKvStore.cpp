@@ -1,6 +1,7 @@
 #include "Inverter/Calibration/CalKvStore.h"
 
 #include "Inverter/Drivers/Storage/RteParamStore.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 
 #include <cmath>
@@ -109,6 +110,32 @@ bool loadEncoderBounds() {
                                   static_cast<uint16_t>(sMax),
                                   static_cast<uint16_t>(cMin),
                                   static_cast<uint16_t>(cMax));
+    return true;
+}
+
+bool loadMotorCalibration() {
+    if (!RteParamStore::isReady()) return false;
+    float poles = 0.0f, cycles = 0.0f, offset_deg = 0.0f, sign = 0.0f;
+    if (!RteParamStore::get("Motor.Poles", &poles) || poles <= 0.0f ||
+        !RteParamStore::get("Motor.Encoder.SinCos.CyclesRev", &cycles) || cycles <= 0.0f ||
+        !RteParamStore::get("Motor.Encoder.SinCos.OffsetDeg", &offset_deg) ||
+        !RteParamStore::get("Motor.Encoder.SinCos.Sign", &sign)) {
+        return false;
+    }
+    MotorCalibration& mc = motorCalibration();
+    mc.pole_count = poles;
+    mc.encoder_cycles_per_rev = cycles;
+    /* KV stores electrical degrees; the struct wants mechanical. */
+    mc.encoder_offset_deg = offset_deg / (poles * 0.5f);
+    mc.encoder_sign = (sign >= 0.0f) ? 1.0f : -1.0f;
+    float r = 0.0f;
+    if (RteParamStore::get("Motor.Resistance.Avg", &r) && r > 0.0f) {
+        mc.r_phase_uv = r;
+        mc.r_phase_uw = r;
+        mc.r_phase_vw = r;
+        mc.r_phase_avg = r;
+    }
+    mc.valid = true;
     return true;
 }
 

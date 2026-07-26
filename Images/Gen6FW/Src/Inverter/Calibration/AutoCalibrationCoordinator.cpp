@@ -150,6 +150,10 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
      * the open-loop startup refuses to proceed while it is set. */
     GateDriver_ResetPulse();
 
+    /* Point the legacy FOC at the real calibrated angle/poles/resistance
+     * (its RAM calibration struct resets to debug defaults every boot). */
+    Inverter::CalKvStore::loadMotorCalibration();
+
     /* Stages that depend on earlier results pull their prerequisites from the
      * RTE KV store (written by earlier runs). */
     if (first == State::OFFSET) {
