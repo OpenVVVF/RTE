@@ -14,10 +14,11 @@ float limited_output = raw_output;
 if (limited_output > max_limit) limited_output = max_limit;
 if (limited_output < min_limit) limited_output = min_limit;
 
-/* Back-calculation anti-windup (matches base-image VectorPIController). */
-if (Ki > 0.0001f && Kp > 0.0001f) {
+/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches
+ * the base-image VectorPIController). */
+if (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {
     const float excess = raw_output - limited_output;
-    Integral -= excess * Dt / (Kp * Ki);
+    Integral -= excess * Dt * AwGain / (Kp * Ki);
 }
 
 Output = rte::Volts(limited_output);

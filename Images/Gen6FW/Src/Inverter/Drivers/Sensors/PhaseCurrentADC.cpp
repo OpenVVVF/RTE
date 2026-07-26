@@ -257,7 +257,9 @@ bool PhaseCurrentADC::recalibrateOffsets() {
     }
     const bool ok = calibrateOffsets();
     if (ok) {
-        Telemetry::printf("[CUR] recal done");
+        Telemetry::printf("[CUR] recal done U=%.3f V=%.3f",
+                          static_cast<double>(m_offset_u),
+                          static_cast<double>(m_offset_v));
     }
     return ok;
 }

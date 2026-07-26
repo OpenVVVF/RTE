@@ -64,6 +64,11 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
+    },
+    "AwGain": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
     }
   }
 }
