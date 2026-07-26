@@ -1,8 +1,12 @@
 # RTE
 
-Source for the RTE motor inverter project. This repo holds the STM32 base firmware
-image, the node-graph toolchain libraries, and the tools that turn a graph into a
-flashable firmware binary.
+Source for the OpenVVVF motor inverter firmware and Real Time Examiner (RTE)
+host toolchain. This repo holds the STM32H723 base firmware image, the
+node-graph libraries, the Qt NodeGUI editor, and the tools that turn a graph
+into a flashable firmware binary.
+
+Hardware designs and safety documentation live in
+[OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
 
 > **A note on the name:** *VVVF* stands for Variable Voltage Variable Frequency — it describes the output, not the control strategy. This platform is **not** limited to scalar V/Hz control; it supports vector control (FOC), arbitrary modulation schemes, and any control scheme you can express through the node graph.
 
@@ -10,6 +14,9 @@ flashable firmware binary.
 
 ```
 RTE/
+├── Assets/
+│   ├── Examples/           # Example NodeAPI graphs
+│   └── NodeTemplates/      # Reusable node types for GUI + codegen
 ├── Images/
 │   └── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
 ├── Lib/
@@ -18,22 +25,35 @@ RTE/
 │   ├── RTELogger/          # Shared logging used by the host tools
 │   └── InverterProtocol/   # Shared host/device telemetry + command protocol
 └── Source/
+    ├── NodeGUI/            # Qt6 + QtNodes node editor
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
     └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
 ```
 
+- `Assets/` holds graphs and node-type templates shared by NodeGUI and codegen.
 - `Images/` contains the base firmware image that the emitter copies and modifies.
-- `Lib/` contains reusable CMake libraries used by the host tools, future GUI, and device firmware.
+- `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
 - `Source/` contains end-user executables.
 
 ## Build host tools
 
-Requires CMake 3.24+ and a C++20 compiler.
+Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for NodeGUI). Clone with
+`--recurse-submodules` (or run `git submodule update --init --recursive`) so the
+QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
 ```bash
 cmake -B build -G Ninja
 cmake --build build -j8
 ```
+
+### NodeGUI
+
+```bash
+cmake --build build --target NodeGUI -j8
+./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
+```
+
+On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
 
 ## Test
 
@@ -107,14 +127,13 @@ build/rtetest-fw/
 
 ## Tools
 
+- `NodeGUI` — Qt node editor for NodeAPI graphs (open/save, domains, bridges,
+  parameter edit, auto-arrange).
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the
   firmware, generates domain code, and inserts it at `// RTE_EMIT:` markers.
 - `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally
   runs `RTECodeEmitter`, and builds the STM32 firmware.
-
-See `Source/RTECodeEmitter/README.md` and `Source/RTEFirmwareBuilder/README.md`
-for detailed usage.
 
 ## Roadmap
 
@@ -131,7 +150,7 @@ Medium-term goals, roughly in priority order:
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no
   inline code) into a renamed zip
 - Node library expansion: CAN bus (CAN1/CAN2), digital inputs, digital outputs
+- NodeGUI: node create/delete palette, emit/flash actions, live telemetry
 - Safety: compare against HARA/TARA/SWAD, verify base-image safety subsystems,
   then bring the docs in line
-- Firmware/system documentation
 - Full dyno validation
