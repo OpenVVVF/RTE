@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace Inverter {
 namespace CalKvStore {
 
@@ -27,6 +29,13 @@ void saveResistanceResults(float uv, float uw, float vw, float avg);
 void saveInductanceResults(float ldHenry, float lqHenry);
 
 void saveFluxResults(float fluxWb);
+
+/** Persist learned encoder sin/cos envelope bounds. */
+void saveEncoderBounds(uint16_t sinMin, uint16_t sinMax,
+                       uint16_t cosMin, uint16_t cosMax);
+
+/** Restore saved bounds into the decoder.  Returns false if not stored. */
+bool loadEncoderBounds();
 
 /** Persist the RAM cache to FRAM. */
 bool flush();

@@ -2,6 +2,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/EncoderOffsetCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
@@ -77,6 +78,10 @@ static void init()
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
         OnTime_Init(&g_fram);
         Inverter::RteParamStore::init(&g_fram);
+
+        /* Restore learned encoder envelope bounds (written by calibration) so
+         * the angle decoder is correct from boot without re-running cal. */
+        Inverter::CalKvStore::loadEncoderBounds();
     }
 
     /* Telemetry over the MCP2221A USB-UART bridge (USART3). */

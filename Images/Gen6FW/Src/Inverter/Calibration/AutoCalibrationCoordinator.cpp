@@ -11,6 +11,7 @@
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Storage/MotorConfigStore.h"
@@ -145,6 +146,10 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
     m_slice_last = last;
     m_full_run = (first == State::POLE && last == State::FLUX);
 
+    /* Clear any gate-driver fault latch left over from a previous run/stop;
+     * the open-loop startup refuses to proceed while it is set. */
+    GateDriver_ResetPulse();
+
     /* Stages that depend on earlier results pull their prerequisites from the
      * RTE KV store (written by earlier runs). */
     if (first == State::OFFSET) {
@@ -244,6 +249,11 @@ void AutoCalibrationCoordinator::finish() {
     if (MotorConfigStore::saveFromRuntime()) {
         Telemetry::printf("[CAL] AUTO: motor config saved to FRAM");
     }
+    /* Persist the learned sin/cos envelope so the decoder uses the correct
+     * bounds from the next boot instead of full-scale fallback caps. */
+    CalKvStore::saveEncoderBounds(encoderADC().sinMin(), encoderADC().sinMax(),
+                                  encoderADC().cosMin(), encoderADC().cosMax());
+
     if (CalKvStore::flush()) {
         Telemetry::printf("[CAL] AUTO: calibration results saved to RTE KV store");
     } else {
