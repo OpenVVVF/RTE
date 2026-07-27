@@ -504,6 +504,50 @@
         "nodeId": "IqGate",
         "portName": "Val"
       }
+    },
+    {
+      "id": "c57",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Motor"
+      },
+      "to": {
+        "nodeId": "LogTempMotor",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c58",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv1"
+      },
+      "to": {
+        "nodeId": "LogTempInv1",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c59",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv2"
+      },
+      "to": {
+        "nodeId": "LogTempInv2",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c60",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv3"
+      },
+      "to": {
+        "nodeId": "LogTempInv3",
+        "portName": "Value"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1515,6 +1559,54 @@
       "inlineCode": "/* All voltage sense channels from the MAX22530 isolated ADC, filtered. */\nV_U  = rte::Volts(platform_phase_voltage_u());\nV_V  = rte::Volts(platform_phase_voltage_v());\nV_W  = rte::Volts(platform_phase_voltage_w());\nV_Dc = rte::Volts(platform_get_dc_link_voltage());\n"
     },
     {
+      "id": "hw.temperatures",
+      "displayName": "Temperatures",
+      "defaultName": "Temps",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "T_Motor",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv1",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv2",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv3",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "/* Motor + board temperatures from the base-image TemperatureSensors driver.\n * NAN while a channel is disabled or out of range (open/short). */\nT_Motor = rte::Celsius(platform_get_motor_temperature());\nT_Inv1  = rte::Celsius(platform_get_inverter_temperature(0));\nT_Inv2  = rte::Celsius(platform_get_inverter_temperature(1));\nT_Inv3  = rte::Celsius(platform_get_inverter_temperature(2));\n"
+    },
+    {
       "id": "math.greater",
       "displayName": "Greater Than",
       "defaultName": "Gt",
@@ -2326,6 +2418,69 @@
         "y": 0.0
       },
       "type": "var.current"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Temps",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "hw.temperatures"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempMotor",
+      "parameters": {
+        "Key": "cg_temp_motor_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempInv1",
+      "parameters": {
+        "Key": "cg_temp_inv1_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempInv2",
+      "parameters": {
+        "Key": "cg_temp_inv2_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempInv3",
+      "parameters": {
+        "Key": "cg_temp_inv3_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
     }
   ]
 }

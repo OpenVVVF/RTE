@@ -125,8 +125,8 @@ bool Graph::AddBridge(Bridge bridge) {
     if (!producerPort || !consumerPort) return false;
 
     /* The consumer's type must match the bridge exactly.  The producer may
-     * be a voltage/current scalar feeding a dimensionless bridge (implicit
-     * unit extraction at the store, same rule as connections). */
+     * be a voltage/current/temperature scalar feeding a dimensionless bridge
+     * (implicit unit extraction at the store, same rule as connections). */
     if (consumerPort->type != bridge.type) return false;
     if (producerPort->type != bridge.type) {
         const bool extractOk =
@@ -134,7 +134,8 @@ bool Graph::AddBridge(Bridge bridge) {
             bridge.type.quantity == Quantity::Dimensionless &&
             producerPort->type.frame == Frame::Scalar &&
             (producerPort->type.quantity == Quantity::Voltage ||
-             producerPort->type.quantity == Quantity::Current);
+             producerPort->type.quantity == Quantity::Current ||
+             producerPort->type.quantity == Quantity::Temperature);
         if (!extractOk) return false;
     }
 
@@ -201,13 +202,14 @@ bool Graph::TypeCheck(const Connection& connection) const {
     if (fromPort->type == toPort->type) return true;
 
     /* Implicit unit extraction: a dimensionless scalar input accepts a
-     * voltage or current scalar output; codegen emits the .in(unit)
-     * extraction at the binding site. */
+     * voltage, current, or temperature scalar output; codegen emits the
+     * .in(unit) extraction at the binding site. */
     if (toPort->type.frame == Frame::Scalar &&
         toPort->type.quantity == Quantity::Dimensionless &&
         fromPort->type.frame == Frame::Scalar &&
         (fromPort->type.quantity == Quantity::Voltage ||
-         fromPort->type.quantity == Quantity::Current)) {
+         fromPort->type.quantity == Quantity::Current ||
+         fromPort->type.quantity == Quantity::Temperature)) {
         return true;
     }
 
