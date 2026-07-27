@@ -60,6 +60,14 @@ public:
     // Emits requestNodeUpdate() so the scene repaints.
     void SetDomain(std::string domain);
 
+    // Marks parameters as wireable input ports (or back to constants). The
+    // synthesized ports are appended after the type's input ports; wired
+    // parameters leave the painted parameter panel. Emits portsInserted()/
+    // portsDeleted() and requestNodeUpdate() so the scene re-lays out.
+    void SetParameterInputs(std::vector<std::string> parameterInputs);
+
+    const std::vector<std::string>& ParameterInputs() const { return parameterInputs_; }
+
     QString portCaption(QtNodes::PortType portType,
                         QtNodes::PortIndex portIndex) const override;
 
@@ -81,6 +89,13 @@ private:
 
     ParameterBlockData parameterBlock_;
     std::string domain_;
+
+    std::map<std::string, std::string> parameters_;
+    std::vector<std::string> parameterInputs_;
+
+    // Rebuilds inputPorts_ from the type's ports plus the synthesized
+    // parameter input ports, and refreshes the painted parameter block.
+    void RebuildPortsAndBlock();
 };
 
 }  // namespace NodeGUI

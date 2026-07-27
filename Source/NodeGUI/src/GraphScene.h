@@ -53,11 +53,25 @@ public:
     QString SaveGraph(const std::string& path) const;
 
     // Instantiates a node of the given type at the given scene position.
+    // When requestedId is non-empty it is used as the instance id (must be
+    // unique); otherwise an id is generated from the display name.
     // Returns an empty string on success, otherwise an error message.
-    QString AddNodeAt(const std::string& typeId, const QPointF& scenePos);
+    QString AddNodeAt(const std::string& typeId,
+                      const QPointF& scenePos,
+                      const std::string& requestedId = {});
 
     // Maps a QtNodes id back to the NodeAPI node id (empty when unknown).
     std::string NodeApiId(QtNodes::NodeId qtId) const;
+
+    // Replaces a node's parameter map (same write path as the parameter
+    // editor dialog). Returns an empty string on success.
+    QString SetNodeParameters(QtNodes::NodeId qtId,
+                              const std::map<std::string, std::string>& parameters);
+
+    // Replaces a node's wireable parameter-input list. Returns an empty
+    // string on success.
+    QString SetNodeParameterInputs(QtNodes::NodeId qtId,
+                                   const std::vector<std::string>& parameterInputs);
 
     // Changes a node's timing domain (empty = unassigned). Returns an empty
     // string on success, otherwise an error message. Types locked to a

@@ -12,6 +12,7 @@
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QBrush>
+#include <QCheckBox>
 #include <QColor>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -22,6 +23,7 @@
 #include <QGraphicsRectItem>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
+#include <QHBoxLayout>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
@@ -713,7 +715,13 @@ void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
     dialog.setWindowTitle(QStringLiteral("Parameters: %1").arg(QString::fromStdString(nodeId)));
 
     auto* form = new QFormLayout(&dialog);
-    std::vector<std::pair<std::string, QLineEdit*>> editors;
+
+    struct Row {
+        std::string name;
+        QLineEdit* edit;
+        QCheckBox* wireInput;
+    };
+    std::vector<Row> rows;
     for (const auto& [name, value] : node->parameters) {
         auto* edit = new QLineEdit(QString::fromStdString(value), &dialog);
         if (nodeType) {
@@ -724,11 +732,27 @@ void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
                 edit->setToolTip(QString::fromStdString(typeText));
             }
         }
-        form->addRow(QString::fromStdString(name), edit);
-        editors.emplace_back(name, edit);
+
+        // "Wire" exposes the parameter as an input port bound by a connection
+        // instead of a constant.
+        auto* wireInput = new QCheckBox(QStringLiteral("wire"), &dialog);
+        const bool wired = std::find(node->parameterInputs.begin(),
+                                     node->parameterInputs.end(),
+                                     name) != node->parameterInputs.end();
+        wireInput->setChecked(wired);
+        edit->setEnabled(!wired);
+
+        auto* rowWidget = new QWidget(&dialog);
+        auto* rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->addWidget(edit);
+        rowLayout->addWidget(wireInput);
+        form->addRow(QString::fromStdString(name), rowWidget);
+
+        rows.push_back({name, edit, wireInput});
     }
 
-    if (editors.empty()) {
+    if (rows.empty()) {
         form->addRow(new QLabel(QStringLiteral("This node has no parameters."), &dialog));
     }
 
@@ -738,26 +762,20 @@ void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     form->addRow(buttons);
 
-    if (editors.empty() || dialog.exec() != QDialog::Accepted) {
+    if (rows.empty() || dialog.exec() != QDialog::Accepted) {
         return;
     }
 
     std::map<std::string, std::string> updated;
-    for (const auto& [name, edit] : editors) {
-        updated[name] = edit->text().toStdString();
+    std::vector<std::string> parameterInputs;
+    for (const auto& row : rows) {
+        updated[row.name] = row.edit->text().toStdString();
+        if (row.wireInput->isChecked()) {
+            parameterInputs.push_back(row.name);
+        }
     }
-    if (!graph_.SetNodeParameters(nodeId, updated)) {
-        return;
-    }
-
-    // Refresh the painted parameter block and the cached geometry. The
-    // delegate's requestNodeUpdate signal makes the scene recompute the node
-    // size and repaint before we read the new size here.
-    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
-        delegate->SetParameters(updated);
-    }
-    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
-    UpdateDomainOutlines();
+    SetNodeParameters(qtId, updated);
+    SetNodeParameterInputs(qtId, parameterInputs);
 }
 
 void GraphScene::SyncPositionsFromScene() {
@@ -943,6 +961,7 @@ void GraphScene::RegisterNodeTypes() {
             if (pendingNode_ && pendingNode_->type == nodeType.id) {
                 model->SetParameters(pendingNode_->parameters);
                 model->SetDomain(pendingNode_->domain);
+                model->SetParameterInputs(pendingNode_->parameterInputs);
             }
             return model;
         });
@@ -998,6 +1017,40 @@ std::string GraphScene::NodeApiId(QtNodes::NodeId qtId) const {
     return {};
 }
 
+QString GraphScene::SetNodeParameters(
+    QtNodes::NodeId qtId,
+    const std::map<std::string, std::string>& parameters) {
+    const std::string nodeId = NodeApiId(qtId);
+    if (nodeId.empty() || !graph_.SetNodeParameters(nodeId, parameters)) {
+        return QStringLiteral("Node not found");
+    }
+
+    // Refresh the painted parameter block and the cached geometry. The
+    // delegate's requestNodeUpdate signal makes the scene recompute the node
+    // size and repaint before we read the new size here.
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        delegate->SetParameters(parameters);
+    }
+    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+    UpdateDomainOutlines();
+    return QString{};
+}
+
+QString GraphScene::SetNodeParameterInputs(QtNodes::NodeId qtId,
+                                           const std::vector<std::string>& parameterInputs) {
+    const std::string nodeId = NodeApiId(qtId);
+    if (nodeId.empty() || !graph_.SetNodeParameterInputs(nodeId, parameterInputs)) {
+        return QStringLiteral("Node not found");
+    }
+
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        delegate->SetParameterInputs(parameterInputs);
+    }
+    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+    UpdateDomainOutlines();
+    return QString{};
+}
+
 QString GraphScene::SetNodeDomain(QtNodes::NodeId qtId, const std::string& domain) {
     const std::string nodeId = NodeApiId(qtId);
     const auto node = nodeId.empty() ? std::nullopt : graph_.FindNode(nodeId);
@@ -1024,19 +1077,12 @@ QString GraphScene::SetNodeDomain(QtNodes::NodeId qtId, const std::string& domai
     return QString{};
 }
 
-QString GraphScene::AddNodeAt(const std::string& typeId, const QPointF& scenePos) {
+QString GraphScene::AddNodeAt(const std::string& typeId,
+                              const QPointF& scenePos,
+                              const std::string& requestedId) {
     const auto nodeType = graph_.FindNodeType(typeId);
     if (!nodeType) {
         return QStringLiteral("Unknown node type: %1").arg(QString::fromStdString(typeId));
-    }
-
-    // Generate a unique instance id from the display name (or type id).
-    QString base = QString::fromStdString(nodeType->displayName.empty()
-                                              ? nodeType->id
-                                              : nodeType->displayName);
-    base.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9]")));
-    if (base.isEmpty()) {
-        base = QStringLiteral("node");
     }
 
     NodeAPI::Node node;
@@ -1060,12 +1106,28 @@ QString GraphScene::AddNodeAt(const std::string& typeId, const QPointF& scenePos
         node.parameters.emplace(name, "");
     }
 
-    for (int suffix = 1;; ++suffix) {
-        const std::string candidate =
-            QStringLiteral("%1%2").arg(base).arg(suffix).toStdString();
-        if (!graph_.FindNode(candidate)) {
-            node.id = candidate;
-            break;
+    if (!requestedId.empty()) {
+        if (graph_.FindNode(requestedId)) {
+            return QStringLiteral("Node id '%1' is already in use")
+                .arg(QString::fromStdString(requestedId));
+        }
+        node.id = requestedId;
+    } else {
+        // Generate a unique instance id from the display name (or type id).
+        QString base = QString::fromStdString(nodeType->displayName.empty()
+                                                  ? nodeType->id
+                                                  : nodeType->displayName);
+        base.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9]")));
+        if (base.isEmpty()) {
+            base = QStringLiteral("node");
+        }
+        for (int suffix = 1;; ++suffix) {
+            const std::string candidate =
+                QStringLiteral("%1%2").arg(base).arg(suffix).toStdString();
+            if (!graph_.FindNode(candidate)) {
+                node.id = candidate;
+                break;
+            }
         }
     }
 
@@ -1103,6 +1165,17 @@ QtNodes::PortIndex GraphScene::FindPortIndex(const std::string& nodeId,
             return static_cast<QtNodes::PortIndex>(i);
         }
     }
+
+    // Synthesized parameter input ports follow the type's input ports (same
+    // order NodeInstanceModel uses).
+    if (portType == QtNodes::PortType::In) {
+        for (std::size_t i = 0; i < node->parameterInputs.size(); ++i) {
+            if (node->parameterInputs[i] == portName) {
+                return static_cast<QtNodes::PortIndex>(ports.size() + i);
+            }
+        }
+    }
+
     return QtNodes::InvalidPortIndex;
 }
 

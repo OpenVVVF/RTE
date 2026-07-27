@@ -103,6 +103,17 @@ bool Graph::SetNodeDomain(const std::string& nodeId, std::string domain) {
     return false;
 }
 
+bool Graph::SetNodeParameterInputs(const std::string& nodeId,
+                                   std::vector<std::string> parameterInputs) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.parameterInputs = std::move(parameterInputs);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Graph::Connect(Connection connection) {
     if (connection.id.empty()) return false;
     if (ConnectionIdTaken(connection.id)) return false;

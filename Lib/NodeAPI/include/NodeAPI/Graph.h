@@ -59,6 +59,11 @@ public:
     // node id is not found. An empty domain means "unassigned".
     bool SetNodeDomain(const std::string& nodeId, std::string domain);
 
+    // Replaces the list of parameters exposed as wireable input ports on an
+    // existing node. Returns false if the node id is not found.
+    bool SetNodeParameterInputs(const std::string& nodeId,
+                                std::vector<std::string> parameterInputs);
+
     // Connections.
     bool Connect(Connection connection);
     bool Disconnect(const std::string& connectionId);

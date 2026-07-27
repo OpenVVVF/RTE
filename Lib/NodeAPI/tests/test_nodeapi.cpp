@@ -170,6 +170,30 @@ TEST(Graph, SetNodeDomain) {
     EXPECT_FALSE(graph.SetNodeDomain("missing", "isr_pwm"));
 }
 
+TEST(Graph, SetNodeParameterInputs) {
+    Graph graph;
+    NodeType type = MakeValueType();
+    type.parameterTypes = {{"Gain", WireType{}}};
+    EXPECT_TRUE(graph.AddNodeType(type));
+    EXPECT_TRUE(graph.AddNode(Node{.id = "n", .type = "constant.value", .domain = "app_loop"}));
+
+    EXPECT_TRUE(graph.SetNodeParameterInputs("n", {"Gain"}));
+    const auto node = graph.FindNode("n");
+    ASSERT_TRUE(node.has_value());
+    EXPECT_EQ(node->parameterInputs.size(), 1u);
+    EXPECT_EQ(node->parameterInputs.front(), "Gain");
+
+    // A flagged parameter resolves to a synthesized input port.
+    const auto port = graph.FindPort(PortRef{.nodeId = "n", .portName = "Gain"});
+    ASSERT_TRUE(port.has_value());
+    EXPECT_EQ(port->direction, PortDirection::Input);
+
+    EXPECT_TRUE(graph.SetNodeParameterInputs("n", {}));
+    EXPECT_TRUE(graph.FindNode("n")->parameterInputs.empty());
+
+    EXPECT_FALSE(graph.SetNodeParameterInputs("missing", {"Gain"}));
+}
+
 TEST(Graph, MaxInstancesEnforced) {
     Graph graph;
     NodeType limited = MakeValueType();

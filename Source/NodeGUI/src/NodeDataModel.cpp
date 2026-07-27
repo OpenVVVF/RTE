@@ -106,8 +106,44 @@ QtNodes::ConnectionPolicy NodeInstanceModel::portConnectionPolicy(QtNodes::PortT
 }
 
 void NodeInstanceModel::SetParameters(std::map<std::string, std::string> parameters) {
-    parameterBlock_ = PrepareParameterBlock(parameters);
+    parameters_ = std::move(parameters);
+    RebuildPortsAndBlock();
     Q_EMIT requestNodeUpdate();
+}
+
+void NodeInstanceModel::SetParameterInputs(std::vector<std::string> parameterInputs) {
+    const std::size_t oldPortCount = inputPorts_.size();
+    parameterInputs_ = std::move(parameterInputs);
+    RebuildPortsAndBlock();
+
+    if (inputPorts_.size() > oldPortCount) {
+        Q_EMIT portsInserted();
+    } else if (inputPorts_.size() < oldPortCount) {
+        Q_EMIT portsDeleted();
+    }
+    Q_EMIT requestNodeUpdate();
+}
+
+void NodeInstanceModel::RebuildPortsAndBlock() {
+    // Type ports first, then synthesized parameter input ports (same order
+    // GraphScene::FindPortIndex uses).
+    inputPorts_ = nodeType_.inputPorts;
+    for (const auto& name : parameterInputs_) {
+        const auto typeIt = nodeType_.parameterTypes.find(name);
+        inputPorts_.push_back(
+            NodeAPI::Port{.name = name,
+                          .direction = NodeAPI::PortDirection::Input,
+                          .type = typeIt != nodeType_.parameterTypes.end()
+                                      ? typeIt->second
+                                      : NodeAPI::WireType{}});
+    }
+
+    // Wired parameters leave the painted panel; they are bound by connection.
+    std::map<std::string, std::string> constants = parameters_;
+    for (const auto& name : parameterInputs_) {
+        constants.erase(name);
+    }
+    parameterBlock_ = PrepareParameterBlock(constants);
 }
 
 void NodeInstanceModel::setInData(std::shared_ptr<QtNodes::NodeData> /*nodeData*/,

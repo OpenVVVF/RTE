@@ -85,11 +85,22 @@ std::optional<NodeAPI::PortRef> NodeGraphModel::MakePortRef(QtNodes::NodeId qtId
     }
 
     const QString name = PortName(*nodeType, type, index);
-    if (name.isEmpty()) {
-        return std::nullopt;
+    if (!name.isEmpty()) {
+        return NodeAPI::PortRef{nodeId, name.toStdString()};
     }
 
-    return NodeAPI::PortRef{nodeId, name.toStdString()};
+    // Indices beyond the type's input ports are synthesized parameter input
+    // ports (same order NodeInstanceModel/FindPortIndex use).
+    if (type == QtNodes::PortType::In
+        && static_cast<std::size_t>(index) >= nodeType->inputPorts.size()) {
+        const std::size_t synthIndex =
+            static_cast<std::size_t>(index) - nodeType->inputPorts.size();
+        if (synthIndex < node->parameterInputs.size()) {
+            return NodeAPI::PortRef{nodeId, node->parameterInputs[synthIndex]};
+        }
+    }
+
+    return std::nullopt;
 }
 
 std::string NodeGraphModel::GenerateId() const {
