@@ -17,7 +17,6 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
-#include "Inverter/Drivers/Sensors/TemperatureSensors.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -132,11 +131,6 @@ static void init()
     /* Isolated high-voltage DC-link sensor on SPI2 (VSENSE_ISO_ADC_INTERRUPT = PD1). */
     Inverter::dcLinkVoltageSensor().init();
 
-    /* Board + motor temperature sensors (ADC1/ADC3 regular, software-polled).
-     * Must run after CurrentSensorTest_Init(), which switches ADC1/2 to
-     * injected-simultaneous dual mode and frees the regular groups. */
-    Inverter::temperatureSensors().init();
-
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
@@ -162,22 +156,6 @@ static void loop()
 {
     static uint32_t s_last_ontime_ms = 0;
 
-    /* Loop health instrumentation: work cycles vs wall period, so CPU
-     * starvation by ISRs is visible (duty = main-loop share of CPU). */
-    const uint32_t work_start = DWT->CYCCNT;
-    static uint32_t s_prev_start = 0;
-    static uint32_t s_report_cyccnt = 0;
-    static uint32_t s_report_ms = 0;
-    static uint64_t s_work_cycles = 0;
-    static uint32_t s_period_max_us = 0;
-    if (s_prev_start != 0U) {
-        const uint32_t period_us = (work_start - s_prev_start) / (SystemCoreClock / 1000000U);
-        if (period_us > s_period_max_us) {
-            s_period_max_us = period_us;
-        }
-    }
-    s_prev_start = work_start;
-
     const uint32_t now_ms = HAL_GetTick();
 
     /* RTE codegen: application-domain step (throttle, temperature, CAN command
@@ -200,7 +178,6 @@ static void loop()
      * value is always the latest conversion from the EXTI ISR. */
     Inverter::dcLinkVoltageSensor().update();
     Inverter::dcLinkCurrentSensor().update();
-    Inverter::temperatureSensors().update();
     Inverter::supplyMonitorUpdate();
 
     /* Calibration machinery: pump the open-loop controller and every
@@ -228,22 +205,6 @@ static void loop()
 
     /* Flush queued telemetry values over UART. */
     Telemetry::updateSensors();
-
-    /* Loop health instrumentation: accumulate this iteration's work cycles
-     * and report the main-loop CPU share + worst period once per second. */
-    s_work_cycles += (DWT->CYCCNT - work_start);
-    if ((now_ms - s_report_ms) >= 1000U) {
-        const uint32_t window_cycles = DWT->CYCCNT - s_report_cyccnt;
-        const float duty = (window_cycles != 0U)
-            ? (100.0f * static_cast<float>(s_work_cycles) / static_cast<float>(window_cycles))
-            : 0.0f;
-        Telemetry::log("loop_duty_pct", duty);
-        Telemetry::log("loop_period_max_us", static_cast<float>(s_period_max_us));
-        s_work_cycles = 0;
-        s_period_max_us = 0;
-        s_report_ms = now_ms;
-        s_report_cyccnt = DWT->CYCCNT;
-    }
 }
 
 } // namespace InverterMain

@@ -292,9 +292,6 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
             if (srcPort->type.quantity == NodeAPI::Quantity::Current) {
                 return ".in(au::amperes)";
             }
-            if (srcPort->type.quantity == NodeAPI::Quantity::Temperature) {
-                return ".in(au::Celsius{})";
-            }
             return "";
         }
     }
@@ -673,8 +670,6 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                             suffix = ".in(au::volts)";
                         } else if (port.type.quantity == NodeAPI::Quantity::Current) {
                             suffix = ".in(au::amperes)";
-                        } else if (port.type.quantity == NodeAPI::Quantity::Temperature) {
-                            suffix = ".in(au::Celsius{})";
                         }
                     }
                     source << "        Bridge" << Capitalize(bridge.id)
