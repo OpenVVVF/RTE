@@ -14,6 +14,7 @@
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
@@ -132,6 +133,11 @@ static void init()
     /* Isolated high-voltage DC-link sensor on SPI2 (VSENSE_ISO_ADC_INTERRUPT = PD1). */
     Inverter::dcLinkVoltageSensor().init();
 
+    /* Slow application sensors (temperatures now, throttle in a later stage).
+     * ADC3 free-runs; the update() call in loop() only harvests completed
+     * conversions and never blocks. */
+    Inverter::appSensors().init();
+
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
@@ -200,6 +206,9 @@ static void loop()
     Inverter::dcLinkVoltageSensor().update();
     Inverter::dcLinkCurrentSensor().update();
     Inverter::supplyMonitorUpdate();
+
+    /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
+    Inverter::appSensors().update();
 
     /* Calibration machinery: pump the open-loop controller and every
      * calibrator state machine.  All early-out when inactive. */

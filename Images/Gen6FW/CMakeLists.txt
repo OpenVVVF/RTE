@@ -102,6 +102,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Sensors/PhaseCurrentADC.cpp
     Src/Inverter/Drivers/Sensors/PoleEstimator.cpp
     Src/Inverter/Drivers/Sensors/MAX22530.cpp
+    Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp
 )
 
 # Add RTE-generated domain sources if they exist. These are produced by

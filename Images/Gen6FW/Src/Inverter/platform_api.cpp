@@ -1,6 +1,7 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
@@ -117,7 +118,7 @@ float platform_get_throttle_b(void) {
 }
 
 float platform_get_motor_temperature(void) {
-    return s_motor_temp;
+    return Inverter::appSensors().motorTemperatureC();
 }
 
 float platform_get_inverter_temperature(uint8_t channel) {

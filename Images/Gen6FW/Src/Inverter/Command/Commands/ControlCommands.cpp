@@ -4,6 +4,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
@@ -11,6 +12,7 @@
 #include "../../../generated/domain_app_loop_generated.h"
 #include "../../../generated/domain_adc_isr_generated.h"
 
+#include <cmath>
 #include <cstring>
 #include <strings.h>
 
@@ -356,12 +358,55 @@ private:
     }
 };
 
+/**
+ * @brief `temp [types|reload]` live view of the temperature channels.
+ */
+class TempCommand : public CommandInterface {
+public:
+    TempCommand()
+      : CommandInterface("temp", "Temperature channels: V / ohm / degC live view",
+            {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        if (args[0].present && strcasecmp(args[0].s_val, "types") == 0) {
+            Telemetry::printf("[SHELL] sensor types: 0=disabled 1=NTC-beta 2=PTC-beta "
+                              "3=KTY84-130/150 4=linear-RTD 5=PT1000 6=PT100 7=KTY83-110");
+            return;
+        }
+        if (args[0].present && strcasecmp(args[0].s_val, "reload") == 0) {
+            Inverter::appSensors().reloadConfig();
+            return;
+        }
+        if (args[0].present && strcasecmp(args[0].s_val, "debug") == 0) {
+            Inverter::appSensors().debugStatus();
+            return;
+        }
+        static const char* NAMES[Inverter::ApplicationSensors::NUM_CHANNELS] = {
+            "inv1", "inv2", "inv3", "motor",
+        };
+        for (uint8_t ch = 0; ch < Inverter::ApplicationSensors::NUM_CHANNELS; ++ch) {
+            bool enabled = false, oor = false;
+            uint8_t type = 0;
+            float volts = NAN, ohms = NAN, tempC = NAN;
+            Inverter::appSensors().channelStatus(ch, enabled, type, volts,
+                                                 ohms, tempC, oor);
+            Telemetry::printf("[SHELL] %s: en=%d type=%s V=%.3f R=%.0f ohm T=%.1f C%s",
+                              NAMES[ch], enabled ? 1 : 0,
+                              Inverter::ApplicationSensors::typeName(type),
+                              static_cast<double>(volts), static_cast<double>(ohms),
+                              static_cast<double>(tempC), oor ? " OUT-OF-RANGE" : "");
+        }
+    }
+};
+
 static ControlCommand sControlCmd;
 static ConfigCommand sConfigCmd;
 static VarCommand sVarCmd;
+static TempCommand sTempCmd;
 
 void registerControlCommands(CommandManager& mgr) {
     mgr.registerCommand(&sControlCmd);
     mgr.registerCommand(&sConfigCmd);
     mgr.registerCommand(&sVarCmd);
+    mgr.registerCommand(&sTempCmd);
 }
