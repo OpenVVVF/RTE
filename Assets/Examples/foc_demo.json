@@ -49,51 +49,51 @@
       }
     },
     {
-      "consumer": {
-        "nodeId": "UToDim",
-        "portName": "Value"
-      },
       "id": "i_a_app_bridge",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
       "producer": {
         "nodeId": "Currents",
         "portName": "I_A"
       },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
+      "consumer": {
+        "nodeId": "LogU",
+        "portName": "Value"
       }
     },
     {
-      "consumer": {
-        "nodeId": "VToDim",
-        "portName": "Value"
-      },
       "id": "i_b_app_bridge",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
       "producer": {
         "nodeId": "Currents",
         "portName": "I_B"
       },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
+      "consumer": {
+        "nodeId": "LogV",
+        "portName": "Value"
       }
     },
     {
-      "consumer": {
-        "nodeId": "WToDim",
-        "portName": "Value"
-      },
       "id": "i_c_app_bridge",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
       "producer": {
         "nodeId": "Currents",
         "portName": "I_C"
       },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
+      "consumer": {
+        "nodeId": "LogW",
+        "portName": "Value"
       }
     }
   ],
@@ -144,7 +144,7 @@
     },
     {
       "from": {
-        "nodeId": "IdRef",
+        "nodeId": "IdVar",
         "portName": "Value"
       },
       "id": "c6",
@@ -162,17 +162,6 @@
       "to": {
         "nodeId": "PiD",
         "portName": "Measurement"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IqRef",
-        "portName": "Value"
-      },
-      "id": "c8",
-      "to": {
-        "nodeId": "PiQ",
-        "portName": "Setpoint"
       }
     },
     {
@@ -265,155 +254,12 @@
     },
     {
       "from": {
-        "nodeId": "UToDim",
-        "portName": "Result"
-      },
-      "id": "c21",
-      "to": {
-        "nodeId": "LogU",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "VToDim",
-        "portName": "Result"
-      },
-      "id": "c22",
-      "to": {
-        "nodeId": "LogV",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "WToDim",
-        "portName": "Result"
-      },
-      "id": "c23",
-      "to": {
-        "nodeId": "LogW",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
         "nodeId": "EncoderApp",
         "portName": "Theta"
       },
       "id": "c24",
       "to": {
         "nodeId": "LogTheta",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "VdcApp",
-        "portName": "V_Dc"
-      },
-      "id": "c25",
-      "to": {
-        "nodeId": "VdcToDim",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "VdcToDim",
-        "portName": "Result"
-      },
-      "id": "c26",
-      "to": {
-        "nodeId": "LogVdc",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
-      "id": "c27",
-      "to": {
-        "nodeId": "IdMeasToDim",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
-      "id": "c28",
-      "to": {
-        "nodeId": "IqMeasToDim",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiD",
-        "portName": "Output"
-      },
-      "id": "c29",
-      "to": {
-        "nodeId": "VdOutToDim",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiQ",
-        "portName": "Output"
-      },
-      "id": "c30",
-      "to": {
-        "nodeId": "VqOutToDim",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IdMeasToDim",
-        "portName": "Result"
-      },
-      "id": "c31",
-      "to": {
-        "nodeId": "LogId",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IqMeasToDim",
-        "portName": "Result"
-      },
-      "id": "c32",
-      "to": {
-        "nodeId": "LogIq",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "VdOutToDim",
-        "portName": "Result"
-      },
-      "id": "c33",
-      "to": {
-        "nodeId": "LogVd",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "VqOutToDim",
-        "portName": "Result"
-      },
-      "id": "c34",
-      "to": {
-        "nodeId": "LogVq",
         "portName": "Value"
       }
     },
@@ -503,6 +349,204 @@
       "to": {
         "nodeId": "ElecAngle",
         "portName": "Poles"
+      }
+    },
+    {
+      "id": "c43",
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "to": {
+        "nodeId": "LogId",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c44",
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "to": {
+        "nodeId": "LogIq",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c45",
+      "from": {
+        "nodeId": "PiD",
+        "portName": "Output"
+      },
+      "to": {
+        "nodeId": "LogVd",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c46",
+      "from": {
+        "nodeId": "PiQ",
+        "portName": "Output"
+      },
+      "to": {
+        "nodeId": "LogVq",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c47",
+      "from": {
+        "nodeId": "VdcApp",
+        "portName": "V_Dc"
+      },
+      "to": {
+        "nodeId": "LogVdc",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c48",
+      "from": {
+        "nodeId": "VoltSense",
+        "portName": "V_U"
+      },
+      "to": {
+        "nodeId": "LogVu",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c49",
+      "from": {
+        "nodeId": "VoltSense",
+        "portName": "V_V"
+      },
+      "to": {
+        "nodeId": "LogVv",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c50",
+      "from": {
+        "nodeId": "VoltSense",
+        "portName": "V_W"
+      },
+      "to": {
+        "nodeId": "LogVw",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c51",
+      "from": {
+        "nodeId": "CfgKpQ",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Kp"
+      }
+    },
+    {
+      "id": "c52",
+      "from": {
+        "nodeId": "CfgEnable",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "EnableCmp",
+        "portName": "A"
+      }
+    },
+    {
+      "id": "c53",
+      "from": {
+        "nodeId": "EnableCmp",
+        "portName": "Out"
+      },
+      "to": {
+        "nodeId": "ThrottleEnable",
+        "portName": "In"
+      }
+    },
+    {
+      "id": "c54",
+      "from": {
+        "nodeId": "ThrottleEnable",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Sel"
+      }
+    },
+    {
+      "id": "c55",
+      "from": {
+        "nodeId": "IqGate",
+        "portName": "Out"
+      },
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Setpoint"
+      }
+    },
+    {
+      "id": "c56",
+      "from": {
+        "nodeId": "IqVar",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Val"
+      }
+    },
+    {
+      "id": "c57",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Motor"
+      },
+      "to": {
+        "nodeId": "LogTempMotor",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c58",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv1"
+      },
+      "to": {
+        "nodeId": "LogTempInv1",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c59",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv2"
+      },
+      "to": {
+        "nodeId": "LogTempInv2",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c60",
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv3"
+      },
+      "to": {
+        "nodeId": "LogTempInv3",
+        "portName": "Value"
       }
     }
   ],
@@ -1085,7 +1129,7 @@
       "displayName": "PI Controller (Current)",
       "domain": "",
       "id": "control.pi_current",
-      "inlineCode": "const float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage, matching the base\n * image's VectorPIController convention: max = Vdc * 0.5 * MaxModulation. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 0.5f * 0.9f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup (matches base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
+      "inlineCode": "const float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage, matching the base\n * image's VectorPIController convention: max = Vdc * 0.5 * MaxModulation. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
       "inputPorts": [
         {
           "direction": "input",
@@ -1149,6 +1193,11 @@
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
+        },
+        "AwGain": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
         }
       }
     },
@@ -1270,40 +1319,6 @@
       "classDefinition": "",
       "classHeader": "",
       "constructorCode": "",
-      "displayName": "Current to Dimensionless",
-      "domain": "",
-      "id": "math.current_to_dimensionless",
-      "inlineCode": "Result = Value.in(au::amperes);\n",
-      "inputPorts": [
-        {
-          "direction": "input",
-          "name": "Value",
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "current"
-          }
-        }
-      ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
-      "outputPorts": [
-        {
-          "direction": "output",
-          "name": "Result",
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        }
-      ],
-      "parameterTypes": {}
-    },
-    {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
       "displayName": "DC Link Voltage",
       "domain": "",
       "id": "hw.dc_link_voltage",
@@ -1339,40 +1354,6 @@
         {
           "direction": "output",
           "name": "Theta",
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        }
-      ],
-      "parameterTypes": {}
-    },
-    {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
-      "displayName": "Voltage to Dimensionless",
-      "domain": "",
-      "id": "math.voltage_to_dimensionless",
-      "inlineCode": "Result = Value.in(au::volts);\n",
-      "inputPorts": [
-        {
-          "direction": "input",
-          "name": "Value",
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "voltage"
-          }
-        }
-      ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
-      "outputPorts": [
-        {
-          "direction": "output",
-          "name": "Result",
           "type": {
             "dtype": "f32",
             "frame": "scalar",
@@ -1529,6 +1510,367 @@
       },
       "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n",
       "inlineCode": "Value = Cached;\n"
+    },
+    {
+      "id": "hw.phase_voltages",
+      "displayName": "Phase Voltages",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "V_U",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_V",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_W",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_Dc",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "/* All voltage sense channels from the MAX22530 isolated ADC, filtered. */\nV_U  = rte::Volts(platform_phase_voltage_u());\nV_V  = rte::Volts(platform_phase_voltage_v());\nV_W  = rte::Volts(platform_phase_voltage_w());\nV_Dc = rte::Volts(platform_get_dc_link_voltage());\n"
+    },
+    {
+      "id": "hw.temperatures",
+      "displayName": "Temperatures",
+      "defaultName": "Temps",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "T_Motor",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv1",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv2",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv3",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "inlineCode": "/* Motor + board temperatures from the base-image TemperatureSensors driver.\n * NAN while a channel is disabled or out of range (open/short). */\nT_Motor = rte::Celsius(platform_get_motor_temperature());\nT_Inv1  = rte::Celsius(platform_get_inverter_temperature(0));\nT_Inv2  = rte::Celsius(platform_get_inverter_temperature(1));\nT_Inv3  = rte::Celsius(platform_get_inverter_temperature(2));\n"
+    },
+    {
+      "id": "math.greater",
+      "displayName": "Greater Than",
+      "defaultName": "Gt",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "A",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "B",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Out",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "B": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "Out = (A > B);\n"
+    },
+    {
+      "id": "control.gate",
+      "displayName": "Gate",
+      "defaultName": "Gate",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "Sel",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Val",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Out",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "Out = Sel ? Val : rte::Amperes(0.0f);\n"
+    },
+    {
+      "id": "var.bool",
+      "displayName": "Var (Bool)",
+      "defaultName": "Var",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "In",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        },
+        {
+          "name": "Set",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Stored": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Set": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "In": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n"
+    },
+    {
+      "id": "var.float",
+      "displayName": "Var (Float)",
+      "defaultName": "Var",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "In",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        },
+        {
+          "name": "Set",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Stored": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Set": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "In": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n"
+    },
+    {
+      "id": "var.current",
+      "displayName": "Var (Current)",
+      "defaultName": "Var",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "In",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        },
+        {
+          "name": "Set",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Stored": {
+          "quantity": "current",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "In": {
+          "quantity": "current",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Set": {
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n"
     }
   ],
   "nodes": [
@@ -1597,17 +1939,6 @@
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "IdMeasToDim",
-      "parameters": {},
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "type": "math.current_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
       "id": "IdRef",
       "parameters": {
         "Amps": "0.0"
@@ -1628,17 +1959,6 @@
         "y": 0.0
       },
       "type": "math.inverse_park"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "IqMeasToDim",
-      "parameters": {},
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "type": "math.current_to_dimensionless"
     },
     {
       "displayName": "",
@@ -1829,8 +2149,9 @@
         "Integral": "0.0",
         "Ki": "10.0",
         "Kp": "0.03",
-        "OutputMax": "50.0",
-        "OutputMin": "-50.0"
+        "OutputMax": "200.0",
+        "OutputMin": "-200.0",
+        "AwGain": "1.0"
       },
       "position": {
         "x": 1200.0,
@@ -1847,14 +2168,18 @@
         "Integral": "0.0",
         "Ki": "10.0",
         "Kp": "0.03",
-        "OutputMax": "50.0",
-        "OutputMin": "-50.0"
+        "OutputMax": "200.0",
+        "OutputMin": "-200.0",
+        "AwGain": "1.0"
       },
       "position": {
         "x": 1200.0,
         "y": 150.0
       },
-      "type": "control.pi_current"
+      "type": "control.pi_current",
+      "parameterInputs": [
+        "Kp"
+      ]
     },
     {
       "displayName": "",
@@ -1881,39 +2206,6 @@
     {
       "displayName": "",
       "domain": "app_loop",
-      "id": "UToDim",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
-        "y": 150.0
-      },
-      "type": "math.current_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "VToDim",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
-        "y": 300.0
-      },
-      "type": "math.current_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "VdOutToDim",
-      "parameters": {},
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "type": "math.voltage_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
       "id": "VdcApp",
       "parameters": {},
       "position": {
@@ -1932,39 +2224,6 @@
         "y": 900.0
       },
       "type": "hw.dc_link_voltage"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "VdcToDim",
-      "parameters": {},
-      "position": {
-        "x": 300.0,
-        "y": 600.0
-      },
-      "type": "math.voltage_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "VqOutToDim",
-      "parameters": {},
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "type": "math.voltage_to_dimensionless"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "WToDim",
-      "parameters": {},
-      "position": {
-        "x": 600.0,
-        "y": 450.0
-      },
-      "type": "math.current_to_dimensionless"
     },
     {
       "displayName": "CfgEncSign",
@@ -2010,6 +2269,218 @@
         "y": 0.0
       },
       "type": "config.value"
+    },
+    {
+      "displayName": "VoltSense",
+      "domain": "vsense",
+      "id": "VoltSense",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "hw.phase_voltages"
+    },
+    {
+      "displayName": "LogVu",
+      "domain": "vsense",
+      "id": "LogVu",
+      "parameters": {
+        "Key": "cg_vu_v"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "LogVv",
+      "domain": "vsense",
+      "id": "LogVv",
+      "parameters": {
+        "Key": "cg_vv_v"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "LogVw",
+      "domain": "vsense",
+      "id": "LogVw",
+      "parameters": {
+        "Key": "cg_vw_v"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "CfgKpQ",
+      "domain": "tim_isr",
+      "id": "CfgKpQ",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.03",
+        "Key": "Ctrl.PiQ.Kp"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "CfgEnable",
+      "domain": "tim_isr",
+      "id": "CfgEnable",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "1.0",
+        "Key": "Ctrl.ThrottleEnable"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "EnableCmp",
+      "domain": "tim_isr",
+      "id": "EnableCmp",
+      "parameters": {
+        "B": "0.5"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "math.greater"
+    },
+    {
+      "displayName": "ThrottleEnable",
+      "domain": "tim_isr",
+      "id": "ThrottleEnable",
+      "parameters": {
+        "Stored": "1.0",
+        "Set": "1.0",
+        "In": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "var.bool"
+    },
+    {
+      "displayName": "IqGate",
+      "domain": "tim_isr",
+      "id": "IqGate",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "control.gate"
+    },
+    {
+      "displayName": "IqVar",
+      "domain": "tim_isr",
+      "id": "IqVar",
+      "parameters": {
+        "Stored": "20.0",
+        "Set": "0.0",
+        "In": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "var.current"
+    },
+    {
+      "displayName": "IdVar",
+      "domain": "tim_isr",
+      "id": "IdVar",
+      "parameters": {
+        "Stored": "0.0",
+        "Set": "0.0",
+        "In": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "var.current"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Temps",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "hw.temperatures"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempMotor",
+      "parameters": {
+        "Key": "cg_temp_motor_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempInv1",
+      "parameters": {
+        "Key": "cg_temp_inv1_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempInv2",
+      "parameters": {
+        "Key": "cg_temp_inv2_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTempInv3",
+      "parameters": {
+        "Key": "cg_temp_inv3_c"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "app.telemetry_log"
     }
   ]
 }

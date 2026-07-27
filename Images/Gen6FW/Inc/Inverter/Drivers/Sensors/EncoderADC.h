@@ -59,6 +59,16 @@ public:
      * @brief Latest raw ADC counts and computed angle.
      */
     uint32_t lastRawSin() const { return m_snapshot.raw_sin; }
+
+    /** Install previously learned envelope bounds (e.g. restored from FRAM at
+     * boot) so the decoder does not fall back to full-scale caps. */
+    void setLearnedBounds(uint16_t sinMin, uint16_t sinMax,
+                          uint16_t cosMin, uint16_t cosMax) {
+        m_obs_sin_min = sinMin;
+        m_obs_sin_max = sinMax;
+        m_obs_cos_min = cosMin;
+        m_obs_cos_max = cosMax;
+    }
     uint32_t lastRawCos() const { return m_snapshot.raw_cos; }
     float    lastAngle() const { return m_snapshot.angle; }
 

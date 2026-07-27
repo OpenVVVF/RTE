@@ -1,6 +1,7 @@
 {
   "id": "control.pi_current",
   "displayName": "PI Controller (Current)",
+  "defaultName": "Pi",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
@@ -61,6 +62,11 @@
       "dtype": "f32"
     },
     "Dt": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "AwGain": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

@@ -71,6 +71,10 @@ bool ControlSupervisor::start() {
         return false;
     }
 
+    /* Reset generated control state BEFORE outputs are re-enabled, so a
+     * previously wound-up PI can never drive the motor. */
+    app::TimIsrStart(appState.tim_isr);
+
     PWM_ClearFault();
     PWM_EnableFocMode();
     PWM_Start();
@@ -81,26 +85,6 @@ bool ControlSupervisor::start() {
         m_state = State::Fault;
         return false;
     }
-
-    /* The current-sensor zero shifts once the isolated rail is loaded by PWM
-     * switching (and drifts with temperature), so the boot-time offset
-     * calibration is stale by the time we run.  Recapture offsets here with
-     * the gate driver held off and a zero vector applied: guaranteed zero
-     * current, PWM rail in its true operating state. */
-    GateDriver_DisableOutputs();
-    PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
-    HAL_Delay(100);
-    if (!Inverter::phaseCurrentADC().recalibrateOffsets()) {
-        Telemetry::printf("[SUP] ERROR: current offset recalibration failed");
-        PWM_Stop();
-        GateDriver_DisableOutputs();
-        m_state = State::Fault;
-        return false;
-    }
-    GateDriver_EnableOutputs();
-
-    /* Reset generated control state before the first ISR fires. */
-    app::TimIsrStart(appState.tim_isr);
 
     PWM_StartUpdateInterrupt();
     m_state = State::Running;
@@ -120,6 +104,11 @@ void ControlSupervisor::stop() {
 
     /* Zero generated outputs before stopping the ISR. */
     app::TimIsrStop(appState.tim_isr);
+
+    /* Halt the generated control step entirely: while stopped the PI would
+     * otherwise keep running and re-wind its integrators against the
+     * setpoint, ready to spike on the next start. */
+    PWM_StopUpdateInterrupt();
 
     PWM_Stop();
     GateDriver_DisableOutputs();

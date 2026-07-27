@@ -16,36 +16,6 @@
       }
     },
     {
-      "id": "UToDim",
-      "type": "math.current_to_dimensionless",
-      "domain": "app_loop",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {}
-    },
-    {
-      "id": "VToDim",
-      "type": "math.current_to_dimensionless",
-      "domain": "app_loop",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {}
-    },
-    {
-      "id": "WToDim",
-      "type": "math.current_to_dimensionless",
-      "domain": "app_loop",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {}
-    },
-    {
       "id": "LogU",
       "type": "app.telemetry_log",
       "domain": "app_loop",
@@ -92,16 +62,6 @@
       "parameters": {}
     },
     {
-      "id": "VdcToDim",
-      "type": "math.voltage_to_dimensionless",
-      "domain": "app_loop",
-      "position": {
-        "x": 0,
-        "y": 0
-      },
-      "parameters": {}
-    },
-    {
       "id": "LogVdc",
       "type": "app.telemetry_log",
       "domain": "app_loop",
@@ -138,61 +98,6 @@
   ],
   "connections": [
     {
-      "id": "c4",
-      "from": {
-        "nodeId": "UToDim",
-        "portName": "Result"
-      },
-      "to": {
-        "nodeId": "LogU",
-        "portName": "Value"
-      }
-    },
-    {
-      "id": "c5",
-      "from": {
-        "nodeId": "VToDim",
-        "portName": "Result"
-      },
-      "to": {
-        "nodeId": "LogV",
-        "portName": "Value"
-      }
-    },
-    {
-      "id": "c6",
-      "from": {
-        "nodeId": "WToDim",
-        "portName": "Result"
-      },
-      "to": {
-        "nodeId": "LogW",
-        "portName": "Value"
-      }
-    },
-    {
-      "id": "c7",
-      "from": {
-        "nodeId": "VdcSense",
-        "portName": "V_Dc"
-      },
-      "to": {
-        "nodeId": "VdcToDim",
-        "portName": "Value"
-      }
-    },
-    {
-      "id": "c8",
-      "from": {
-        "nodeId": "VdcToDim",
-        "portName": "Result"
-      },
-      "to": {
-        "nodeId": "LogVdc",
-        "portName": "Value"
-      }
-    },
-    {
       "id": "c9",
       "from": {
         "nodeId": "Encoder",
@@ -202,13 +107,24 @@
         "nodeId": "LogTheta",
         "portName": "Value"
       }
+    },
+    {
+      "id": "c10",
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "V_Dc"
+      },
+      "to": {
+        "nodeId": "LogVdc",
+        "portName": "Value"
+      }
     }
   ],
   "bridges": [
     {
       "id": "i_a_app_bridge",
       "type": {
-        "quantity": "current",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       },
@@ -217,14 +133,14 @@
         "portName": "I_A"
       },
       "consumer": {
-        "nodeId": "UToDim",
+        "nodeId": "LogU",
         "portName": "Value"
       }
     },
     {
       "id": "i_b_app_bridge",
       "type": {
-        "quantity": "current",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       },
@@ -233,14 +149,14 @@
         "portName": "I_B"
       },
       "consumer": {
-        "nodeId": "VToDim",
+        "nodeId": "LogV",
         "portName": "Value"
       }
     },
     {
       "id": "i_c_app_bridge",
       "type": {
-        "quantity": "current",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       },
@@ -249,7 +165,7 @@
         "portName": "I_C"
       },
       "consumer": {
-        "nodeId": "WToDim",
+        "nodeId": "LogW",
         "portName": "Value"
       }
     }

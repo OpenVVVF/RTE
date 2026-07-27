@@ -1,15 +1,25 @@
 {
-  "id": "math.voltage_to_dimensionless",
-  "displayName": "Voltage to Dimensionless",
+  "id": "control.gate",
+  "displayName": "Gate",
+  "defaultName": "Gate",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
-      "name": "Value",
+      "name": "Sel",
       "direction": "input",
       "type": {
-        "quantity": "voltage",
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Val",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
         "frame": "scalar",
         "dtype": "f32"
       }
@@ -17,10 +27,10 @@
   ],
   "outputPorts": [
     {
-      "name": "Result",
+      "name": "Out",
       "direction": "output",
       "type": {
-        "quantity": "dimensionless",
+        "quantity": "current",
         "frame": "scalar",
         "dtype": "f32"
       }

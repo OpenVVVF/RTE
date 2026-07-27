@@ -1,6 +1,7 @@
 {
   "id": "math.svpwm",
   "displayName": "Space Vector PWM",
+  "defaultName": "Svpwm",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

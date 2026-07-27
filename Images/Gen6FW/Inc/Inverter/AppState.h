@@ -18,6 +18,7 @@
 // RTE_EMIT: app_loop state
 // RTE_EMIT: tim_isr state
 // RTE_EMIT: adc_isr state
+// RTE_EMIT: vsense state
 
 /**
  * @brief Aggregates per-domain state for all RTE-generated timing domains.
@@ -30,6 +31,7 @@ struct AppState {
     app::AppLoopState app_loop;
     app::TimIsrState  tim_isr;
     app::AdcIsrState  adc_isr;
+    app::VsenseState  vsense;
 };
 
 /**

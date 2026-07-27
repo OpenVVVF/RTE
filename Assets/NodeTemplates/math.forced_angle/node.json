@@ -1,6 +1,7 @@
 {
   "id": "math.forced_angle",
   "displayName": "Forced Electrical Angle",
+  "defaultName": "ForcedAngle",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",

@@ -1,6 +1,7 @@
 {
   "id": "math.encoder_elec_angle",
   "displayName": "Encoder Electrical Angle",
+  "defaultName": "ElecAngle",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",

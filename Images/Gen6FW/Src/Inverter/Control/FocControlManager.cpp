@@ -1,4 +1,5 @@
 #include "Inverter/Control/FocControlManager.h"
+#include "Inverter/Calibration/CalKvStore.h"
 
 #include "tim.h"
 
@@ -131,6 +132,11 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
         Telemetry::printf("[FOC] ERROR: init failed");
         return false;
     }
+
+    /* The runtime calibration struct resets to debug defaults every boot
+     * (wrong sign/offset for this motor); refresh it from the KV store so
+     * every FOC start uses the calibrated values. */
+    Inverter::CalKvStore::loadMotorCalibration();
 
     if (m_running || m_starting) {
         stop();

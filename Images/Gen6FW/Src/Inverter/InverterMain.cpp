@@ -2,6 +2,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/EncoderOffsetCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
@@ -16,6 +17,7 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/TemperatureSensors.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -77,6 +79,14 @@ static void init()
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
         OnTime_Init(&g_fram);
         Inverter::RteParamStore::init(&g_fram);
+
+        /* Restore learned encoder envelope bounds (written by calibration) so
+         * the angle decoder is correct from boot without re-running cal. */
+        Inverter::CalKvStore::loadEncoderBounds();
+
+        /* Populate the runtime motor calibration from the KV store so no
+         * code path ever falls back to the debug-default angle/sign. */
+        Inverter::CalKvStore::loadMotorCalibration();
     }
 
     /* Telemetry over the MCP2221A USB-UART bridge (USART3). */
@@ -122,11 +132,17 @@ static void init()
     /* Isolated high-voltage DC-link sensor on SPI2 (VSENSE_ISO_ADC_INTERRUPT = PD1). */
     Inverter::dcLinkVoltageSensor().init();
 
+    /* Board + motor temperature sensors (ADC1/ADC3 regular, software-polled).
+     * Must run after CurrentSensorTest_Init(), which switches ADC1/2 to
+     * injected-simultaneous dual mode and frees the regular groups. */
+    Inverter::temperatureSensors().init();
+
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
+    // RTE_EMIT: vsense init
 
     /* The supervisor owns gate-driver sequencing and PWM start/stop for the
      * generated control loop.  It does NOT start PWM at boot; use the shell
@@ -152,6 +168,9 @@ static void loop()
      * dispatch, state machines, etc.).  Runs at main-loop cadence. */
     // RTE_EMIT: app_loop step
 
+    /* Voltage-sense domain step (MAX22530 phase + DC-link voltages). */
+    // RTE_EMIT: vsense step
+
     /* TIME_DOMAIN: HOUSEKEEPING_1HZ
      *   Persistent on-time counter and boot count.  Non-volatile storage write.
      * CODEGEN: Add other slow housekeeping here (e.g., SOH logging, thermal models).
@@ -165,6 +184,7 @@ static void loop()
      * value is always the latest conversion from the EXTI ISR. */
     Inverter::dcLinkVoltageSensor().update();
     Inverter::dcLinkCurrentSensor().update();
+    Inverter::temperatureSensors().update();
     Inverter::supplyMonitorUpdate();
 
     /* Calibration machinery: pump the open-loop controller and every

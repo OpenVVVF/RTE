@@ -130,6 +130,7 @@ bool FluxLinkageCalibrator::start(float max_iq_a) {
     m_fail_reason[0] = '\0';
 
     /* Runs inside motorcal's FLUX stage, so bypass the cal-active guard. */
+    
     if (!focControlManager().start(0.0f, 0.0f, true)) {
         Telemetry::printf("[CAL] FLUX: failed to start FOC");
         return false;
@@ -172,7 +173,7 @@ void FluxLinkageCalibrator::update() {
             const uint32_t elapsed = now - m_ramp_start_ms;
             const float ramp_frac = (elapsed >= RAMP_MS) ? 1.0f
                 : static_cast<float>(elapsed) / static_cast<float>(RAMP_MS);
-            focControlManager().setIq(ramp_frac * m_max_iq_a);
+            focControlManager().setIq(m_max_iq_a);
 
             const float rpm = encoderADC().rpmMech();
             const float vq = focControlManager().controller().Vq_V;

@@ -15,8 +15,10 @@ Codegen fills in:
 
 * The modulation strategy (SPWM, SVPWM, SHEPWM, DPWM, six-step, …).
 * The control law (open-loop, FOC, MPC, DTC, …).
-* The application layer (throttle mapping, temperature monitoring, CAN protocols,
+* The application layer (throttle mapping, CAN protocols,
   state machines, command tables, telemetry variables).
+  (Temperature monitoring is now implemented in the base image:
+  `TemperatureSensors` driver + `hw.temperatures` node template, see §7.6.)
 
 ## 2. What was done in this pass
 
@@ -284,7 +286,11 @@ code can call:
 * `platform_get_encoder_angle(&angle_deg)` — latest encoder angle.
 * `platform_get_dc_link_voltage()` — Vdc.
 * `platform_get_throttle_a/b()` — application throttle inputs.
-* `platform_get_motor_temperature()` / `platform_get_inverter_temperature(ch)`.
+* `platform_get_motor_temperature()` / `platform_get_inverter_temperature(ch)` —
+  implemented: backed by the base-image `TemperatureSensors` driver
+  (round-robin software-polled ADC1/ADC3 regular conversions, `Hw.Temp.*`
+  KV config, TempSensor/Overtemperature faults).  Exposed to graphs via the
+  `hw.temperatures` node template.
 * `platform_sample_application_sensors()` — trigger slow ADC sampling.
 * `platform_raise_fault(source, reason)` / `platform_has_critical_fault()`.
 * `platform_millis()` / `platform_micros()`.

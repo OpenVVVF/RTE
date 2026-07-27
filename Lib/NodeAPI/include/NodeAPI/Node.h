@@ -4,6 +4,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 namespace NodeAPI {
 
@@ -26,6 +27,11 @@ struct Node {
     // Generic key/value parameters for this instance. These are passed into the
     // node's constructor/init by the consuming project's codegen.
     std::map<std::string, std::string> parameters;
+
+    // Names of parameters to treat as input ports (wireable) instead of
+    // constants.  A parameter listed here is bound from a connection like a
+    // normal input port rather than from its value in `parameters`.
+    std::vector<std::string> parameterInputs;
 
     friend bool operator==(const Node& lhs, const Node& rhs) = default;
     friend bool operator!=(const Node& lhs, const Node& rhs) = default;

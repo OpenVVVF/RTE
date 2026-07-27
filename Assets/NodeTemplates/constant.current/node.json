@@ -1,6 +1,7 @@
 {
   "id": "constant.current",
   "displayName": "Constant Current",
+  "defaultName": "IRef",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",

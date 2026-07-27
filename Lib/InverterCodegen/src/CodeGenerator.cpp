@@ -261,6 +261,61 @@ std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
     return raw;
 }
 
+/* Unit extraction for implicit conversions: when a dimensionless scalar
+ * input binds from a voltage/current scalar source (direct connection), the
+ * emitted expression needs the .in(unit) suffix to unwrap the au quantity. */
+std::string ExtractionSuffix(const NodeAPI::Graph& graph,
+                             const std::string& targetNodeId,
+                             const std::string& targetPortName) {
+    const auto targetNode = graph.FindNode(targetNodeId);
+    if (!targetNode) return "";
+    const auto targetType = graph.FindNodeType(targetNode->type);
+    if (!targetType) return "";
+    const auto targetPort = targetType->FindInputPort(targetPortName);
+    if (!targetPort) return "";
+    if (targetPort->type.quantity != NodeAPI::Quantity::Dimensionless ||
+        targetPort->type.frame != NodeAPI::Frame::Scalar) {
+        return "";
+    }
+
+    for (const auto& c : graph.GetConnections()) {
+        if (c.to.nodeId == targetNodeId && c.to.portName == targetPortName) {
+            const auto srcNode = graph.FindNode(c.from.nodeId);
+            if (!srcNode) return "";
+            const auto srcType = graph.FindNodeType(srcNode->type);
+            if (!srcType) return "";
+            const auto srcPort = srcType->FindOutputPort(c.from.portName);
+            if (!srcPort) return "";
+            if (srcPort->type.quantity == NodeAPI::Quantity::Voltage) {
+                return ".in(au::volts)";
+            }
+            if (srcPort->type.quantity == NodeAPI::Quantity::Current) {
+                return ".in(au::amperes)";
+            }
+            if (srcPort->type.quantity == NodeAPI::Quantity::Temperature) {
+                return ".in(au::Celsius{})";
+            }
+            return "";
+        }
+    }
+    return "";
+}
+
+// Var nodes (type id "var.*") hold machine-owned RAM state in their "Stored"
+// parameter; a runtime registry lets the shell adjust them by node id.
+bool IsVarNodeType(const NodeAPI::NodeType& nodeType) {
+    return nodeType.id.rfind("var.", 0) == 0;
+}
+
+/* True when the instance flags this parameter as a parameterInput (bound
+ * from a connection like an input port instead of a constant). */
+bool IsParameterInput(const NodeAPI::Node& node, const std::string& key) {
+    for (const auto& name : node.parameterInputs) {
+        if (name == key) return true;
+    }
+    return false;
+}
+
 std::optional<std::string> ExtractClassName(const std::string& classHeader) {
     // Very simple parser: find "class <Name>" or "class <Namespace::Name>".
     std::regex re(R"(\bclass\s+([A-Za-z_][A-Za-z0-9_:]*)\s*[:\{])");
@@ -329,8 +384,10 @@ std::string BuildStateStruct(
         } else {
             // Function-style: only declared parameters become persistent state
             // members. Everything else in inlineCode/constructorCode is treated as
-            // a local variable declared by the template author.
+            // a local variable declared by the template author.  Parameters
+            // flagged as parameterInputs are wire-bound and get no state member.
             for (const auto& [key, value] : node->parameters) {
+                if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
                 source << "        "
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless") << " "
@@ -419,6 +476,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         header << "namespace app {\n";
         header << "extern const RteParamDesc g_" << domainCpp << "_configs[];\n";
         header << "extern const size_t g_" << domainCpp << "_config_count;\n";
+        header << "extern const RteParamDesc g_" << domainCpp << "_vars[];\n";
+        header << "extern const size_t g_" << domainCpp << "_var_count;\n";
         header << "} // namespace app\n";
 
         // Build source.
@@ -467,6 +526,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 }
             } else {
                 for (const auto& [key, value] : node->parameters) {
+                    if (IsParameterInput(*node, key)) continue;
                     auto paramType = nodeType->FindParameterType(key);
                     source << "        state." << node->id << "." << key << " = "
                            << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
@@ -476,6 +536,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 if (!nodeType->constructorCode.empty()) {
                     auto used = UsedIdentifiers(nodeType->constructorCode);
                     for (const auto& [key, value] : node->parameters) {
+                        if (IsParameterInput(*node, key)) continue;
                         if (used.count(key)) {
                             auto paramType = nodeType->FindParameterType(key);
                             source << "        "
@@ -503,6 +564,11 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             if (!nodeType) continue;
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
+            if (classBased && !node->parameterInputs.empty()) {
+                error = "parameterInputs are not supported on class-based node '" +
+                        node->id + "'";
+                return false;
+            }
 
             source << "    // Step node: " << node->id << " (" << nodeType->id << ")\n";
             source << "    {\n";
@@ -528,7 +594,23 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                     return false;
                 }
                 source << "        const " << WireTypeToCpp(port.type) << " " << port.name
-                       << " = " << *src << ";\n";
+                       << " = " << *src
+                       << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
+            }
+
+            // Parameters flagged as parameterInputs bind from connections too.
+            for (const auto& key : node->parameterInputs) {
+                auto src = FindSourceExpression(graph_, node->id, key);
+                if (!src) {
+                    error = "parameterInput '" + key + "' of node '" + node->id +
+                            "' is not connected";
+                    return false;
+                }
+                auto paramType = nodeType->FindParameterType(key);
+                source << "        const "
+                       << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                       << " " << key << " = " << *src
+                       << ExtractionSuffix(graph_, node->id, key) << ";\n";
             }
 
             // Outputs.
@@ -567,6 +649,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                         }
                     }
                     if (shadowed) continue;
+                    /* parameterInputs are bound from their connection earlier. */
+                    if (IsParameterInput(*node, key)) continue;
 
                     auto paramType = nodeType->FindParameterType(key);
                     source << "        "
@@ -583,8 +667,18 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& port : nodeType->outputPorts) {
                 auto producerBridges = FindProducerBridges(graph_, node->id, port.name);
                 for (const auto& bridge : producerBridges) {
+                    std::string suffix;
+                    if (bridge.type.quantity == NodeAPI::Quantity::Dimensionless) {
+                        if (port.type.quantity == NodeAPI::Quantity::Voltage) {
+                            suffix = ".in(au::volts)";
+                        } else if (port.type.quantity == NodeAPI::Quantity::Current) {
+                            suffix = ".in(au::amperes)";
+                        } else if (port.type.quantity == NodeAPI::Quantity::Temperature) {
+                            suffix = ".in(au::Celsius{})";
+                        }
+                    }
                     source << "        Bridge" << Capitalize(bridge.id)
-                           << ".store(" << port.name << ");\n";
+                           << ".store(" << port.name << suffix << ");\n";
                 }
             }
 
@@ -608,6 +702,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             source << "    // Reset node: " << node->id << "\n";
             source << "    {\n";
             for (const auto& [key, value] : node->parameters) {
+                if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
                 source << "        state." << node->id << "." << key << " = "
                        << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
@@ -686,6 +781,63 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         }
         source << "};\n\n";
         source << "const size_t g_" << domainCpp << "_config_count = " << configCount
+               << ";\n\n";
+
+        // Var registry: expose var.* nodes' Stored state by node id for
+        // runtime adjustment (RAM-only, machine-owned).
+        size_t varCount = 0;
+        std::ostringstream varEntries;
+        for (const auto& nodeId : order) {
+            const auto node = graph_.FindNode(nodeId);
+            if (!node) continue;
+            const auto nodeType = graph_.FindNodeType(node->type);
+            if (!nodeType || !IsVarNodeType(*nodeType)) continue;
+            if (node->parameters.find("Stored") == node->parameters.end()) continue;
+
+            auto storedType = nodeType->FindParameterType("Stored");
+            const auto storedQty = storedType ? storedType->quantity
+                                              : NodeAPI::Quantity::Dimensionless;
+
+            const std::string setterName = "set_" + node->id + "_stored";
+            const std::string getterName = "get_" + node->id + "_stored";
+            source << "static void " << setterName << "(void* state, float value) {\n";
+            source << "    auto* s = static_cast<" << domainTitle << "State*>(state);\n";
+            if (storedQty == NodeAPI::Quantity::Boolean) {
+                source << "    s->" << node->id << ".Stored = (value != 0.0f);\n";
+            } else if (storedQty == NodeAPI::Quantity::Current) {
+                source << "    s->" << node->id << ".Stored = rte::Amperes(value);\n";
+            } else if (storedQty == NodeAPI::Quantity::Voltage) {
+                source << "    s->" << node->id << ".Stored = rte::Volts(value);\n";
+            } else {
+                source << "    s->" << node->id << ".Stored = value;\n";
+            }
+            source << "}\n\n";
+            source << "static float " << getterName << "(const void* state) {\n";
+            source << "    const auto* s = static_cast<const " << domainTitle
+                   << "State*>(state);\n";
+            if (storedQty == NodeAPI::Quantity::Boolean) {
+                source << "    return s->" << node->id << ".Stored ? 1.0f : 0.0f;\n";
+            } else if (storedQty == NodeAPI::Quantity::Current) {
+                source << "    return s->" << node->id << ".Stored.in(au::amperes);\n";
+            } else if (storedQty == NodeAPI::Quantity::Voltage) {
+                source << "    return s->" << node->id << ".Stored.in(au::volts);\n";
+            } else {
+                source << "    return s->" << node->id << ".Stored;\n";
+            }
+            source << "}\n\n";
+
+            varEntries << "    {\"" << node->id << "\", " << setterName << ", "
+                       << getterName << "},\n";
+            ++varCount;
+        }
+        source << "const RteParamDesc g_" << domainCpp << "_vars[] = {\n";
+        if (varCount == 0) {
+            source << "    {nullptr, nullptr, nullptr},\n";
+        } else {
+            source << varEntries.str();
+        }
+        source << "};\n\n";
+        source << "const size_t g_" << domainCpp << "_var_count = " << varCount
                << ";\n\n";
 
         source << "} // namespace app\n";

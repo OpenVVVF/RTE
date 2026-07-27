@@ -1,6 +1,7 @@
 {
   "id": "hw.dc_link_voltage",
   "displayName": "DC Link Voltage",
+  "defaultName": "VdcSense",
   "maxInstances": 0,
   "isEntryPoint": true,
   "domain": "",

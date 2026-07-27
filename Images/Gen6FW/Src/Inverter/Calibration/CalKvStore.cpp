@@ -1,6 +1,8 @@
 #include "Inverter/Calibration/CalKvStore.h"
 
 #include "Inverter/Drivers/Storage/RteParamStore.h"
+#include "Inverter/Calibration/MotorCalibration.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
 
 #include <cmath>
 
@@ -12,7 +14,10 @@ namespace {
 /* Motor.* key namespace.  NOTE: RteParamStore keys are limited to 32 chars. */
 constexpr const char* KEY_POLES          = "Motor.Poles";
 constexpr const char* KEY_ENC_CYCLES     = "Motor.Encoder.SinCos.CyclesRev";
-constexpr const char* KEY_ENC_BREAKMOD   = "Motor.Encoder.SinCos.BreakMod";
+constexpr const char* KEY_ENC_SIN_MIN    = "Motor.Encoder.SinCos.SinMin";
+constexpr const char* KEY_ENC_SIN_MAX    = "Motor.Encoder.SinCos.SinMax";
+constexpr const char* KEY_ENC_COS_MIN    = "Motor.Encoder.SinCos.CosMin";
+constexpr const char* KEY_ENC_COS_MAX    = "Motor.Encoder.SinCos.CosMax";
 constexpr const char* KEY_ENC_OFFSETRAD  = "Motor.Encoder.SinCos.OffsetDeg";
 constexpr const char* KEY_ENC_SIGN       = "Motor.Encoder.SinCos.Sign";
 constexpr const char* KEY_RES_UV         = "Motor.Resistance.Uv";
@@ -47,11 +52,10 @@ void ensureBaseInfo() {
     }
 }
 
-void savePoleResults(float poles, float encoderCyclesPerRev, float breakawayMod) {
+void savePoleResults(float poles, float encoderCyclesPerRev) {
     if (!RteParamStore::isReady()) return;
     setIfValid(KEY_POLES, poles);
     setIfValid(KEY_ENC_CYCLES, encoderCyclesPerRev);
-    setIfValid(KEY_ENC_BREAKMOD, breakawayMod);
 }
 
 void saveEncoderResults(float offsetMechDeg, float sign, float cyclesPerRev,
@@ -82,6 +86,57 @@ void saveInductanceResults(float ldHenry, float lqHenry) {
 void saveFluxResults(float fluxWb) {
     if (!RteParamStore::isReady()) return;
     setIfValid(KEY_FLUX_WB, fluxWb);
+}
+
+void saveEncoderBounds(uint16_t sinMin, uint16_t sinMax,
+                       uint16_t cosMin, uint16_t cosMax) {
+    if (!RteParamStore::isReady()) return;
+    setIfValid(KEY_ENC_SIN_MIN, static_cast<float>(sinMin));
+    setIfValid(KEY_ENC_SIN_MAX, static_cast<float>(sinMax));
+    setIfValid(KEY_ENC_COS_MIN, static_cast<float>(cosMin));
+    setIfValid(KEY_ENC_COS_MAX, static_cast<float>(cosMax));
+}
+
+bool loadEncoderBounds() {
+    if (!RteParamStore::isReady()) return false;
+    float sMin, sMax, cMin, cMax;
+    if (!RteParamStore::get(KEY_ENC_SIN_MIN, &sMin) ||
+        !RteParamStore::get(KEY_ENC_SIN_MAX, &sMax) ||
+        !RteParamStore::get(KEY_ENC_COS_MIN, &cMin) ||
+        !RteParamStore::get(KEY_ENC_COS_MAX, &cMax)) {
+        return false;
+    }
+    encoderADC().setLearnedBounds(static_cast<uint16_t>(sMin),
+                                  static_cast<uint16_t>(sMax),
+                                  static_cast<uint16_t>(cMin),
+                                  static_cast<uint16_t>(cMax));
+    return true;
+}
+
+bool loadMotorCalibration() {
+    if (!RteParamStore::isReady()) return false;
+    float poles = 0.0f, cycles = 0.0f, offset_deg = 0.0f, sign = 0.0f;
+    if (!RteParamStore::get("Motor.Poles", &poles) || poles <= 0.0f ||
+        !RteParamStore::get("Motor.Encoder.SinCos.CyclesRev", &cycles) || cycles <= 0.0f ||
+        !RteParamStore::get("Motor.Encoder.SinCos.OffsetDeg", &offset_deg) ||
+        !RteParamStore::get("Motor.Encoder.SinCos.Sign", &sign)) {
+        return false;
+    }
+    MotorCalibration& mc = motorCalibration();
+    mc.pole_count = poles;
+    mc.encoder_cycles_per_rev = cycles;
+    /* KV stores electrical degrees; the struct wants mechanical. */
+    mc.encoder_offset_deg = offset_deg / (poles * 0.5f);
+    mc.encoder_sign = (sign >= 0.0f) ? 1.0f : -1.0f;
+    float r = 0.0f;
+    if (RteParamStore::get("Motor.Resistance.Avg", &r) && r > 0.0f) {
+        mc.r_phase_uv = r;
+        mc.r_phase_uw = r;
+        mc.r_phase_vw = r;
+        mc.r_phase_avg = r;
+    }
+    mc.valid = true;
+    return true;
 }
 
 bool flush() {

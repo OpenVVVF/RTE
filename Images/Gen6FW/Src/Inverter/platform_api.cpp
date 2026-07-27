@@ -4,6 +4,7 @@
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Sensors/TemperatureSensors.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Telemetry.h"
@@ -73,25 +74,32 @@ float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }
 
+/* Read the driver's 20 kHz DMA snapshot directly - never an ad-hoc SPI
+ * transaction from the main loop (racing the burst path corrupts frames and
+ * can block for the SPI timeout). */
+float platform_phase_voltage_u(void) {
+    return Inverter::dcLinkVoltageSensor().adc().voltage(0);
+}
+
+float platform_phase_voltage_v(void) {
+    return Inverter::dcLinkVoltageSensor().adc().voltage(1);
+}
+
+float platform_phase_voltage_w(void) {
+    return Inverter::dcLinkVoltageSensor().adc().voltage(2);
+}
+
 /* --------------------------------------------------------------------------
- * Application sensors — placeholders for codegen layer to fill.
+ * Application sensors
  * --------------------------------------------------------------------------
- * The analog pins are already configured in Src/adc.c:
- *   AIN_THROTTLE_A  = PA3 / ADC2_INP15
- *   AIN_THROTTLE_B  = PA4 / ADC2_INP18
- *   AIN_TMP_SENSE_1 = PA5 / ADC1_INP19
- *   AIN_TMP_SENSE_2 = PA1 / ADC1_INP17
- *   AIN_TMP_SENSE_3 = PA0 / ADC1_INP16
- *   AIN_MOTOR_TMP   = PF4 / ADC3_INP9
- *
- * Codegen is expected to add a slow ADC sampler in the app_loop domain and
- * update these variables (or replace these stubs with direct reads).
+ * Temperature channels are sampled by the TemperatureSensors driver
+ * (Src/Inverter/Drivers/Sensors/TemperatureSensors.cpp), pumped from the
+ * main loop and from platform_sample_application_sensors().
+ * Throttle inputs remain codegen placeholders.
  * -------------------------------------------------------------------------- */
 
 static float s_throttle_a = 0.0f;
 static float s_throttle_b = 0.0f;
-static float s_motor_temp = 0.0f;
-static float s_inverter_temp[3] = {0.0f, 0.0f, 0.0f};
 
 float platform_get_throttle_a(void) {
     return s_throttle_a;
@@ -102,23 +110,19 @@ float platform_get_throttle_b(void) {
 }
 
 float platform_get_motor_temperature(void) {
-    return s_motor_temp;
+    return Inverter::temperatureSensors().motorTemperatureC();
 }
 
 float platform_get_inverter_temperature(uint8_t channel) {
-    if (channel > 2) {
-        return 0.0f;
-    }
-    return s_inverter_temp[channel];
+    return Inverter::temperatureSensors().inverterTemperatureC(channel);
 }
 
 void platform_sample_application_sensors(void) {
     /* CODEGEN TODO: Add slow ADC sampling here for:
      *   AIN_THROTTLE_A, AIN_THROTTLE_B
-     *   AIN_TMP_SENSE_1/2/3
-     *   AIN_MOTOR_TMP
-     * Update s_throttle_a/b, s_motor_temp, s_inverter_temp[].
-     */
+     * Update s_throttle_a/b.
+     * Temperature channels are handled by the base-image driver. */
+    Inverter::temperatureSensors().update();
 }
 
 /* --------------------------------------------------------------------------

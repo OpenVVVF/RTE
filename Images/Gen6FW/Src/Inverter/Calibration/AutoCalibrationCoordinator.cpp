@@ -11,9 +11,11 @@
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Storage/MotorConfigStore.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
@@ -34,7 +36,7 @@ namespace {
 /* Conservative power limits suitable for unknown motors. */
 static constexpr float MAX_MODULATION = 0.35f;
 static constexpr float POLE_ROTATE_MOD_FACTOR = 1.00f;
-static constexpr float OFFSET_ROTATE_MOD_FACTOR = 0.75f;
+static constexpr float OFFSET_ROTATE_MOD_FACTOR = 1.00f;
 static constexpr float RES_MAX_CURRENT_A = 30.0f;
 static constexpr float RES_OC_LIMIT_A = 100.0f;
 static constexpr uint32_t RES_TIMEOUT_MS = 30000U;
@@ -144,6 +146,14 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
     m_slice_last = last;
     m_full_run = (first == State::POLE && last == State::FLUX);
 
+    /* Clear any gate-driver fault latch left over from a previous run/stop;
+     * the open-loop startup refuses to proceed while it is set. */
+    GateDriver_ResetPulse();
+
+    /* Point the legacy FOC at the real calibrated angle/poles/resistance
+     * (its RAM calibration struct resets to debug defaults every boot). */
+    Inverter::CalKvStore::loadMotorCalibration();
+
     /* Stages that depend on earlier results pull their prerequisites from the
      * RTE KV store (written by earlier runs). */
     if (first == State::OFFSET) {
@@ -154,10 +164,12 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
             Telemetry::printf("[CAL] AUTO: missing stored poles/encoder cycles; run cal Motor.Poles first");
             return false;
         }
-        RteParamStore::get("Motor.Encoder.SinCos.BreakMod", &breakaway);  // optional
         m_poles = poles;
         m_encoder_cycles_per_rev = cycles;
-        m_breakaway_mod = breakaway;
+        (void)breakaway;
+        /* Breakaway is re-found every run (not stored): stale values are
+         * meaningless across bus voltages anyway. */
+        m_breakaway_mod = 0.0f;
     }
 
     /* Open the encoder hard caps so the sin/cos envelope for this motor is
@@ -241,6 +253,11 @@ void AutoCalibrationCoordinator::finish() {
     if (MotorConfigStore::saveFromRuntime()) {
         Telemetry::printf("[CAL] AUTO: motor config saved to FRAM");
     }
+    /* Persist the learned sin/cos envelope so the decoder uses the correct
+     * bounds from the next boot instead of full-scale fallback caps. */
+    CalKvStore::saveEncoderBounds(encoderADC().sinMin(), encoderADC().sinMax(),
+                                  encoderADC().cosMin(), encoderADC().cosMax());
+
     if (CalKvStore::flush()) {
         Telemetry::printf("[CAL] AUTO: calibration results saved to RTE KV store");
     } else {
@@ -290,8 +307,7 @@ void AutoCalibrationCoordinator::update() {
                               static_cast<double>(m_encoder_cycles_per_rev),
                               static_cast<double>(m_breakaway_mod));
 
-            CalKvStore::savePoleResults(m_poles, m_encoder_cycles_per_rev,
-                                        m_breakaway_mod);
+            CalKvStore::savePoleResults(m_poles, m_encoder_cycles_per_rev);
             if (m_slice_last == State::POLE) {
                 finish();
                 break;

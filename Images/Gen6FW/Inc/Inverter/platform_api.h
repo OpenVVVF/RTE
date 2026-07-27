@@ -81,6 +81,12 @@ float platform_get_encoder_angle_latest(void);
  */
 float platform_get_dc_link_voltage(void);
 
+/* Phase voltages from the MAX22530 isolated ADC (filtered reads).
+ * Channel map: 0=U, 1=V, 2=W, 3=DC link. */
+float platform_phase_voltage_u(void);
+float platform_phase_voltage_v(void);
+float platform_phase_voltage_w(void);
+
 /**
  * @brief Throttle A input [0..1] (codegen application layer fills the sampler).
  */
@@ -92,12 +98,16 @@ float platform_get_throttle_a(void);
 float platform_get_throttle_b(void);
 
 /**
- * @brief Motor temperature [degC] (codegen application layer fills the sampler).
+ * @brief Motor temperature [degC] from the base-image TemperatureSensors driver.
+ *
+ * NAN while the sensor is disabled or out of range (open/short).
  */
 float platform_get_motor_temperature(void);
 
 /**
  * @brief Inverter temperature [degC] for one of the NTC channels.
+ *
+ * NAN while the sensor is disabled or out of range (open/short).
  * @param channel 0..2 maps to AIN_TMP_SENSE_1..3.
  */
 float platform_get_inverter_temperature(uint8_t channel);
@@ -105,9 +115,9 @@ float platform_get_inverter_temperature(uint8_t channel);
 /**
  * @brief Trigger a one-shot sample of all slow application analog inputs.
  *
- * This is a codegen insertion point: the base image provides the sampler, and
- * the app_loop domain may call it once per iteration.  Until the sampler is
- * implemented the getters above return 0.
+ * Performs one round-robin temperature conversion; the app_loop domain may
+ * call it once per iteration (the base image also pumps it from the main
+ * loop).  Throttle sampling remains a codegen insertion point.
  */
 void platform_sample_application_sensors(void);
 
