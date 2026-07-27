@@ -1,5 +1,6 @@
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 
+#include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
@@ -84,6 +85,40 @@ float ApplicationSensors::throttleAVoltage() const {
 
 float ApplicationSensors::throttleBVoltage() const {
     return m_thr_b_v;
+}
+
+float ApplicationSensors::throttleA() const {
+    return m_thr_a_norm;
+}
+
+float ApplicationSensors::throttleB() const {
+    return m_thr_b_norm;
+}
+
+bool ApplicationSensors::throttlePlausible() const {
+    return m_thr_plausible;
+}
+
+void ApplicationSensors::updateThrottlePlausibility(uint32_t now_ms) {
+    const float diff = std::fabs(m_thr_a_cand - m_thr_b_cand);
+    if (diff <= THROTTLE_PLAUS_TOL) {
+        m_thr_plausible = true;
+        m_thr_implausible_since = 0;
+        m_thr_fault_raised = false;  /**< re-arm: a cleared fault can re-raise */
+        return;
+    }
+    if (m_thr_implausible_since == 0) {
+        m_thr_implausible_since = now_ms;
+        return;
+    }
+    if ((now_ms - m_thr_implausible_since) >= THROTTLE_PLAUS_MS) {
+        m_thr_plausible = false;
+        if (!m_thr_fault_raised) {
+            m_thr_fault_raised = true;
+            FaultManager::instance().raise(FaultSource::ThrottlePlausibility,
+                                           FaultReason::ThrottlePlausibilityMismatch);
+        }
+    }
 }
 
 void ApplicationSensors::debugStatus() const {
@@ -240,6 +275,10 @@ void ApplicationSensors::loadConfig(bool persist_defaults) {
     }
 
     m_vcc = loadOne("Hw.Temp.Vcc", 3.3f);
+    m_thr_min_v[0] = loadOne("Hw.ThrA.MinV", 0.5f);
+    m_thr_max_v[0] = loadOne("Hw.ThrA.MaxV", 4.5f);
+    m_thr_min_v[1] = loadOne("Hw.ThrB.MinV", 0.5f);
+    m_thr_max_v[1] = loadOne("Hw.ThrB.MaxV", 4.5f);
 
     if (persist_defaults && RteParamStore::isReady()) {
         RteParamStore::flush();
@@ -411,6 +450,24 @@ void ApplicationSensors::computeWindow() {
     Telemetry::log("thr_a_v", m_thr_a_v);
     Telemetry::log("thr_b_v", m_thr_b_v);
 
+    /* Normalize via KV min/max; candidates feed the plausibility check, and
+     * the exposed values zero out while the channels disagree. */
+    auto normalize = [](float v, float lo, float hi) -> float {
+        if (hi <= lo) {
+            return 0.0f;
+        }
+        float n = (v - lo) / (hi - lo);
+        if (n < 0.0f) n = 0.0f;
+        if (n > 1.0f) n = 1.0f;
+        return n;
+    };
+    m_thr_a_cand = normalize(m_thr_a_v, m_thr_min_v[0], m_thr_max_v[0]);
+    m_thr_b_cand = normalize(m_thr_b_v, m_thr_min_v[1], m_thr_max_v[1]);
+    m_thr_a_norm = m_thr_plausible ? m_thr_a_cand : 0.0f;
+    m_thr_b_norm = m_thr_plausible ? m_thr_b_cand : 0.0f;
+    Telemetry::log("thr_a", m_thr_a_norm);
+    Telemetry::log("thr_b", m_thr_b_norm);
+
     /* Motor temp (ADC3 continuous): latest sample. */
     m_ch[3].voltage = (static_cast<float>(m_adc3_latest) / ADC3_FULL_SCALE) * m_vcc;
 
@@ -435,6 +492,7 @@ void ApplicationSensors::update() {
         computeWindow();
         m_last_window_ms = now_ms;
     }
+    updateThrottlePlausibility(now_ms);
 }
 
 } // namespace Inverter

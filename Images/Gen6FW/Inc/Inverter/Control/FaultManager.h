@@ -46,6 +46,7 @@ enum class FaultSource : uint32_t {
     SupplyVosrdy     = 1u << 20,  /**< Voltage scaling ready lost             */
     FramComm         = 1u << 21,  /**< SPI4 / F-RAM communication error       */
     AdcWatchdog      = 1u << 22,  /**< ADC analog watchdog overcurrent        */
+    ThrottlePlausibility = 1u << 23, /**< Throttle A/B channels disagree      */
 };
 
 constexpr FaultSource operator|(FaultSource a, FaultSource b) {
@@ -93,6 +94,7 @@ enum class FaultReason : uint8_t {
     FramReadFailed,
     FramWriteFailed,
     FramCommandFailed,
+    ThrottlePlausibilityMismatch,
     Count
 };
 
@@ -214,6 +216,7 @@ private:
         { FaultSource::SupplyVosrdy,     "SupplyVosrdy",     "Supply",       "voltage scaling ready lost",               FaultSeverity::Critical },
         { FaultSource::FramComm,         "FramComm",         "Storage",      "SPI4 / F-RAM communication error",         FaultSeverity::High     },
         { FaultSource::AdcWatchdog,      "AdcWatchdog",      "STM32 ADC",    "ADC analog watchdog overcurrent",          FaultSeverity::Critical },
+        { FaultSource::ThrottlePlausibility, "ThrottlePlausibility", "Throttle", "throttle A/B channels disagree",       FaultSeverity::Critical },
     };
 };
 

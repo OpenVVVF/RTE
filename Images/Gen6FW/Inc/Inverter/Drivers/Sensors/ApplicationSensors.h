@@ -45,9 +45,16 @@ public:
     /** @brief Board temperature [degC] for channel 0..2, NAN if disabled/out of range. */
     float inverterTemperatureC(uint8_t channel) const;
 
-    /** @brief Throttle input pin voltages [V] (raw; normalization is stage 4). */
+    /** @brief Throttle input pin voltages [V] (raw). */
     float throttleAVoltage() const;
     float throttleBVoltage() const;
+
+    /** @brief Throttle channels normalized [0..1] via KV min/max; 0 while implausible. */
+    float throttleA() const;
+    float throttleB() const;
+
+    /** @brief true while throttle A/B agree within the plausibility tolerance. */
+    bool throttlePlausible() const;
 
     /** @brief Per-channel live values for the `temp` shell command. */
     void channelStatus(uint8_t ch, bool& enabled, uint8_t& type, float& volts,
@@ -75,6 +82,8 @@ private:
     static constexpr uint32_t WINDOW_MS           = 16; /**< recompute cadence ~60 Hz. */
     static constexpr float    OOR_OPEN_RATIO      = 0.98f;  /**< of Vcc */
     static constexpr float    OOR_SHORT_RATIO     = 0.02f;  /**< of Vcc */
+    static constexpr float    THROTTLE_PLAUS_TOL  = 0.10f;  /**< |A-B| normalized */
+    static constexpr uint32_t THROTTLE_PLAUS_MS   = 100;    /**< sustain before fault */
 
     struct Config {
         bool    enabled;
@@ -96,6 +105,7 @@ private:
 
     void computeWindow();
     void evaluateChannel(uint8_t ch);
+    void updateThrottlePlausibility(uint32_t now_ms);
     bool configureAdc1ScanDma();
     void loadConfig(bool persist_defaults);
     float resistanceToTempC(const Config& cfg, float r) const;
@@ -103,6 +113,15 @@ private:
     Channel  m_ch[NUM_CHANNELS] = {};
     float    m_thr_a_v = 0.0f;
     float    m_thr_b_v = 0.0f;
+    float    m_thr_a_norm = 0.0f;
+    float    m_thr_b_norm = 0.0f;
+    float    m_thr_a_cand = 0.0f;  /**< normalized, pre-plausibility */
+    float    m_thr_b_cand = 0.0f;  /**< normalized, pre-plausibility */
+    float    m_thr_min_v[2] = {0.5f, 0.5f};
+    float    m_thr_max_v[2] = {4.5f, 4.5f};
+    bool     m_thr_plausible = true;
+    bool     m_thr_fault_raised = false;
+    uint32_t m_thr_implausible_since = 0;
     uint32_t m_adc3_latest = 0;
     float    m_vcc = 3.3f;
     uint32_t m_last_window_ms = 0;

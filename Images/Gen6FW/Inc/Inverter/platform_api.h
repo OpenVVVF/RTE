@@ -88,14 +88,19 @@ float platform_phase_voltage_v(void);
 float platform_phase_voltage_w(void);
 
 /**
- * @brief Throttle A input [0..1] (codegen application layer fills the sampler).
+ * @brief Throttle A input, normalized [0..1] (0 while implausible).
  */
 float platform_get_throttle_a(void);
 
 /**
- * @brief Throttle B input [0..1] (codegen application layer fills the sampler).
+ * @brief Throttle B input, normalized [0..1] (0 while implausible).
  */
 float platform_get_throttle_b(void);
+
+/**
+ * @brief true while throttle A/B agree within the plausibility tolerance.
+ */
+bool platform_get_throttle_valid(void);
 
 /**
  * @brief Motor temperature [degC] (codegen application layer fills the sampler).
@@ -107,15 +112,6 @@ float platform_get_motor_temperature(void);
  * @param channel 0..2 maps to AIN_TMP_SENSE_1..3.
  */
 float platform_get_inverter_temperature(uint8_t channel);
-
-/**
- * @brief Trigger a one-shot sample of all slow application analog inputs.
- *
- * This is a codegen insertion point: the base image provides the sampler, and
- * the app_loop domain may call it once per iteration.  Until the sampler is
- * implemented the getters above return 0.
- */
-void platform_sample_application_sensors(void);
 
 /* --------------------------------------------------------------------------
  * User digital IO

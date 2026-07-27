@@ -396,6 +396,12 @@ public:
                               static_cast<double>(volts), static_cast<double>(ohms),
                               static_cast<double>(tempC), oor ? " OUT-OF-RANGE" : "");
         }
+        Telemetry::printf("[SHELL] throttle: A=%.3f V (%.2f) B=%.3f V (%.2f)%s",
+                          static_cast<double>(Inverter::appSensors().throttleAVoltage()),
+                          static_cast<double>(Inverter::appSensors().throttleA()),
+                          static_cast<double>(Inverter::appSensors().throttleBVoltage()),
+                          static_cast<double>(Inverter::appSensors().throttleB()),
+                          Inverter::appSensors().throttlePlausible() ? "" : " IMPLAUSIBLE");
     }
 };
 

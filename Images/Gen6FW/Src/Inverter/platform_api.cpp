@@ -90,31 +90,27 @@ float platform_phase_voltage_w(void) {
 }
 
 /* --------------------------------------------------------------------------
- * Application sensors — placeholders for codegen layer to fill.
- * --------------------------------------------------------------------------
- * The analog pins are already configured in Src/adc.c:
- *   AIN_THROTTLE_A  = PA3 / ADC2_INP15
- *   AIN_THROTTLE_B  = PA4 / ADC2_INP18
+ * Application sensors — backed by the ApplicationSensors base-image driver.
+ *
+ * The analog pins are configured in Src/adc.c:
+ *   AIN_THROTTLE_A  = PA3 / ADC1_INP15 (shared ADC1/ADC2)
+ *   AIN_THROTTLE_B  = PA4 / ADC1_INP18 (shared ADC1/ADC2)
  *   AIN_TMP_SENSE_1 = PA5 / ADC1_INP19
  *   AIN_TMP_SENSE_2 = PA1 / ADC1_INP17
  *   AIN_TMP_SENSE_3 = PA0 / ADC1_INP16
  *   AIN_MOTOR_TMP   = PF4 / ADC3_INP9
- *
- * Codegen is expected to add a slow ADC sampler in the app_loop domain and
- * update these variables (or replace these stubs with direct reads).
  * -------------------------------------------------------------------------- */
 
-static float s_throttle_a = 0.0f;
-static float s_throttle_b = 0.0f;
-static float s_motor_temp = 0.0f;
-static float s_inverter_temp[3] = {0.0f, 0.0f, 0.0f};
-
 float platform_get_throttle_a(void) {
-    return s_throttle_a;
+    return Inverter::appSensors().throttleA();
 }
 
 float platform_get_throttle_b(void) {
-    return s_throttle_b;
+    return Inverter::appSensors().throttleB();
+}
+
+bool platform_get_throttle_valid(void) {
+    return Inverter::appSensors().throttlePlausible();
 }
 
 float platform_get_motor_temperature(void) {
@@ -123,15 +119,6 @@ float platform_get_motor_temperature(void) {
 
 float platform_get_inverter_temperature(uint8_t channel) {
     return Inverter::appSensors().inverterTemperatureC(channel);
-}
-
-void platform_sample_application_sensors(void) {
-    /* CODEGEN TODO: Add slow ADC sampling here for:
-     *   AIN_THROTTLE_A, AIN_THROTTLE_B
-     *   AIN_TMP_SENSE_1/2/3
-     *   AIN_MOTOR_TMP
-     * Update s_throttle_a/b, s_motor_temp, s_inverter_temp[].
-     */
 }
 
 /* --------------------------------------------------------------------------
