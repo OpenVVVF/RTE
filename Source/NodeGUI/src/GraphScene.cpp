@@ -447,7 +447,25 @@ void GraphScene::LayoutDomainNodes(const std::vector<std::string>& nodeIds,
         return;
     }
 
-    const std::map<std::string, int> levels = ComputeLevels(adj, order);
+    const std::map<std::string, int> forwardLevels = ComputeLevels(adj, order);
+
+    // Late-level assignment: source nodes (no incoming edges) are pulled
+    // right, into the column just before their earliest consumer, instead of
+    // all stacking into one tall leftmost column. This compacts the layout
+    // vertically and shortens wires.
+    std::map<std::string, int> levels = forwardLevels;
+    for (const auto& id : nodeIds) {
+        if (!adj.incoming.at(id).empty() || adj.outgoing.at(id).empty()) {
+            continue;
+        }
+        int late = std::numeric_limits<int>::max();
+        for (const auto& consumer : adj.outgoing.at(id)) {
+            late = std::min(late, levels.at(consumer) - 1);
+        }
+        if (late != std::numeric_limits<int>::max()) {
+            levels[id] = std::max(0, late);
+        }
+    }
 
     std::map<int, std::vector<std::string>> nodesByLevel;
     for (const auto& id : nodeIds) {
@@ -469,46 +487,59 @@ void GraphScene::LayoutDomainNodes(const std::vector<std::string>& nodeIds,
 
     std::map<std::string, double> yPositions;
 
-    for (auto& [level, levelNodeIds] : nodesByLevel) {
-        std::sort(levelNodeIds.begin(), levelNodeIds.end(), [&](const std::string& a, const std::string& b) {
-            const auto& predsA = adj.incoming.at(a);
-            const auto& predsB = adj.incoming.at(b);
-
-            auto avgY = [&](const std::vector<std::string>& preds) -> double {
-                if (preds.empty()) {
-                    return 0.0;
-                }
-                double sum = 0.0;
-                for (const auto& p : preds) {
-                    sum += yPositions.count(p) ? yPositions[p] : 0.0;
-                }
-                return sum / static_cast<double>(preds.size());
-            };
-
-            const double avgA = avgY(predsA);
-            const double avgB = avgY(predsB);
-            if (std::abs(avgA - avgB) > 1.0) {
-                return avgA < avgB;
-            }
-            return a < b;
-        });
-
-        const double x = levelX[level];
-        double y = originY;
-        for (const auto& id : levelNodeIds) {
-            yPositions[id] = y;
-
-            const auto it = nodeIdMap_.find(id);
-            if (it != nodeIdMap_.end()) {
-                model_->setNodeData(it->second,
-                                    QtNodes::NodeRole::Position,
-                                    QVariant::fromValue(QPointF(x, y)));
-            }
-
-            y += static_cast<double>(NodeSize(id).height()) + verticalGap;
+    auto barycenter = [&](const std::vector<std::string>& neighbors) -> double {
+        if (neighbors.empty()) {
+            return 0.0;
         }
-        outHeight = std::max(outHeight, y - originY - verticalGap);
-    }
+        double sum = 0.0;
+        for (const auto& n : neighbors) {
+            sum += yPositions.count(n) ? yPositions[n] : 0.0;
+        }
+        return sum / static_cast<double>(neighbors.size());
+    };
+
+    // Stacks each level's nodes top-to-bottom. Sort keys are predecessor
+    // barycenters; on the refinement pass, source nodes (no predecessors)
+    // use their consumers' barycenter so they align with what they feed.
+    auto placeLevels = [&](bool refineSources) {
+        outHeight = 0.0;
+        for (auto& [level, levelNodeIds] : nodesByLevel) {
+            std::sort(levelNodeIds.begin(), levelNodeIds.end(), [&](const std::string& a, const std::string& b) {
+                auto keyOf = [&](const std::string& id) {
+                    const auto& preds = adj.incoming.at(id);
+                    if (!preds.empty() || !refineSources) {
+                        return barycenter(preds);
+                    }
+                    return barycenter(adj.outgoing.at(id));
+                };
+                const double keyA = keyOf(a);
+                const double keyB = keyOf(b);
+                if (std::abs(keyA - keyB) > 1.0) {
+                    return keyA < keyB;
+                }
+                return a < b;
+            });
+
+            const double x = levelX[level];
+            double y = originY;
+            for (const auto& id : levelNodeIds) {
+                yPositions[id] = y;
+
+                const auto it = nodeIdMap_.find(id);
+                if (it != nodeIdMap_.end()) {
+                    model_->setNodeData(it->second,
+                                        QtNodes::NodeRole::Position,
+                                        QVariant::fromValue(QPointF(x, y)));
+                }
+
+                y += static_cast<double>(NodeSize(id).height()) + verticalGap;
+            }
+            outHeight = std::max(outHeight, y - originY - verticalGap);
+        }
+    };
+
+    placeLevels(false);
+    placeLevels(true);
 }
 
 void GraphScene::AutoArrange() {
