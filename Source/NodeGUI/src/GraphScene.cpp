@@ -148,6 +148,54 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
         return QStringLiteral("Failed to parse graph JSON: %1").arg(QString::fromStdString(e.what()));
     }
 
+    templatesDir_ = templatesDir;
+    RebuildScene();
+    return QString{};
+}
+
+QString GraphScene::NewGraph() {
+    graph_ = NodeAPI::Graph{};
+    if (templatesDir_.empty()) {
+        return QStringLiteral("No node templates have been loaded yet");
+    }
+
+    const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir_);
+    if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
+        return QStringLiteral("Failed to reload node templates");
+    }
+
+    RebuildScene();
+    return QString{};
+}
+
+QString GraphScene::LoadTemplates(const std::string& templatesDir) {
+    graph_ = NodeAPI::Graph{};
+
+    const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir);
+    if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
+        std::ostringstream message;
+        message << "Failed to load node templates from '" << templatesDir << "':";
+        for (const auto& error : templatesResult.errors) {
+            message << "\n  " << error;
+        }
+        return QString::fromStdString(message.str());
+    }
+
+    templatesDir_ = templatesDir;
+    RebuildScene();
+    return QString{};
+}
+
+void GraphScene::RebuildScene() {
+    // The old scene owns the outline/label items; forget them before tearing
+    // it down (calling removeItem/delete on them would use dangling pointers).
+    domainVisuals_.clear();
+
+    // The event filter is owned solely by sceneEventFilter_ (no QObject
+    // parent), so it must be destroyed before the old scene it was installed
+    // on.
+    sceneEventFilter_.reset();
+
     // Reset model/scene so each load starts fresh.
     model_ = std::make_unique<NodeGraphModel>(registry_, graph_);
     scene_ = std::make_unique<QtNodes::BasicGraphicsScene>(*model_);
@@ -155,6 +203,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     scene_->setConnectionPainter(std::make_unique<BridgeConnectionPainter>());
     scene_->setNodePainter(std::make_unique<TypedNodePainter>());
     nodeSizeCache_.clear();
+    nodeIdMap_.clear();
 
     RegisterNodeTypes();
     CreateNodes();
@@ -163,7 +212,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     CreateBridges();
     CreateDomainOutlines();
 
-    sceneEventFilter_ = std::make_unique<SceneEventFilter>(*this, scene_.get());
+    sceneEventFilter_ = std::make_unique<SceneEventFilter>(*this);
     scene_->installEventFilter(sceneEventFilter_.get());
 
     QObject::connect(scene_.get(),
@@ -185,8 +234,6 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
                          nodeSizeCache_.erase(qtId);
                          CreateDomainOutlines();
                      });
-
-    return QString{};
 }
 
 GraphScene::Adjacency GraphScene::BuildAdjacency() const {
@@ -1073,6 +1120,69 @@ QString GraphScene::SetNodeDomain(QtNodes::NodeId qtId, const std::string& domai
     if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
         delegate->SetDomain(domain);
     }
+    CreateDomainOutlines();
+    return QString{};
+}
+
+QString GraphScene::RenameNode(QtNodes::NodeId qtId, const std::string& newId) {
+    const std::string oldId = NodeApiId(qtId);
+    const auto node = oldId.empty() ? std::nullopt : graph_.FindNode(oldId);
+    if (!node) {
+        return QStringLiteral("Node not found");
+    }
+    if (newId.empty()) {
+        return QStringLiteral("Node id cannot be empty");
+    }
+    if (newId == oldId) {
+        return QString{};
+    }
+    if (graph_.FindNode(newId)) {
+        return QStringLiteral("Node id '%1' is already in use")
+            .arg(QString::fromStdString(newId));
+    }
+
+    // Collect the wires touching the node, remapped to the new id; they are
+    // re-added after the rename (NodeAPI::RemoveNode cascades them).
+    std::vector<NodeAPI::Connection> connections;
+    for (const auto& connection : graph_.GetConnections()) {
+        if (connection.from.nodeId == oldId || connection.to.nodeId == oldId) {
+            NodeAPI::Connection remapped = connection;
+            if (remapped.from.nodeId == oldId) remapped.from.nodeId = newId;
+            if (remapped.to.nodeId == oldId) remapped.to.nodeId = newId;
+            connections.push_back(std::move(remapped));
+        }
+    }
+    std::vector<NodeAPI::Bridge> bridges;
+    for (const auto& bridge : graph_.GetBridges()) {
+        if (bridge.producer.nodeId == oldId || bridge.consumer.nodeId == oldId) {
+            NodeAPI::Bridge remapped = bridge;
+            if (remapped.producer.nodeId == oldId) remapped.producer.nodeId = newId;
+            if (remapped.consumer.nodeId == oldId) remapped.consumer.nodeId = newId;
+            bridges.push_back(std::move(remapped));
+        }
+    }
+
+    NodeAPI::Node renamed = *node;
+    renamed.id = newId;
+
+    graph_.RemoveNode(oldId);
+    if (!graph_.AddNode(renamed)) {
+        return QStringLiteral("Rename failed");
+    }
+    for (auto& connection : connections) {
+        graph_.Connect(std::move(connection));
+    }
+    for (auto& bridge : bridges) {
+        graph_.AddBridge(std::move(bridge));
+    }
+
+    // QtNodes keys its side by qtId, so only the label and our maps change.
+    nodeIdMap_.erase(oldId);
+    nodeIdMap_[newId] = qtId;
+    model_->BuildNodeIdMap(nodeIdMap_);
+    model_->setNodeData(qtId,
+                        QtNodes::NodeRole::Label,
+                        QVariant::fromValue(QString::fromStdString(newId)));
     CreateDomainOutlines();
     return QString{};
 }

@@ -27,6 +27,7 @@ public:
 
 private slots:
     void OnOpen();
+    void OnNew();
     void OnSave();
     void OnSaveAs();
     void OnAutoArrange();
@@ -42,8 +43,13 @@ private:
     void UpdateStatus();
     bool DoSave(const std::string& path);
     void ConnectModelSignals();
-    // Right-click menu on a node: pick its timing domain.
+    // Right-click menu on a node: rename + pick its timing domain.
     void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
+
+    // QtNodes' undo stack and paste/duplicate paths restore nodes straight
+    // into its own model, bypassing the NodeAPI graph. Strip those shortcuts
+    // rather than offer actions that silently desync a later save.
+    void StripBrokenSceneActions();
 
     // Toast-style warning label anchored bottom-left of the canvas. Pairs
     // with an instant tooltip at the cursor; auto-hides on a timer.

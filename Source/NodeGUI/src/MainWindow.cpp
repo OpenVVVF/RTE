@@ -6,6 +6,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QCursor>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -13,7 +15,6 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
-#include <QMessageBox>
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QResizeEvent>
@@ -37,6 +38,28 @@ std::string DefaultTemplatesDir() {
 #else
     return (std::filesystem::current_path() / "Assets" / "NodeTemplates").string();
 #endif
+}
+
+// Native dialogs (QMessageBox statics and, on this system, QMessageBox in
+// general) crash in teardown under the KDE platform theme. A plain QDialog
+// does not take the native path and is safe. Errors go to the canvas toast
+// instead of a modal box.
+bool AskYesNo(QWidget* parent, const QString& title, const QString& text) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle(title);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* label = new QLabel(text, &dialog);
+    label->setWordWrap(true);
+    layout->addWidget(label);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No,
+                                         &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    return dialog.exec() == QDialog::Accepted;
 }
 
 }  // namespace
@@ -78,6 +101,8 @@ MainWindow::MainWindow(QWidget* parent)
     layout->addWidget(view_);
     setCentralWidget(central);
 
+    StripBrokenSceneActions();
+
     // Toast-style warning label, bottom-left of the canvas. Child of the
     // container (not the viewport, whose children get dragged by scroll
     // deltas), raised above the view, hidden until a refused action.
@@ -100,12 +125,27 @@ MainWindow::MainWindow(QWidget* parent)
     view_->viewport()->installEventFilter(this);
 
     // Toolbox dock listing the available node types; entries are dragged onto
-    // the view to instantiate them. Populated on OpenGraph.
+    // the view to instantiate them. Populated at startup (below) and on
+    // OpenGraph.
     palette_ = new NodePalette(this);
     auto* toolboxDock = new QDockWidget(QStringLiteral("Node Toolbox"), this);
     toolboxDock->setObjectName(QStringLiteral("nodeToolboxDock"));
     toolboxDock->setWidget(palette_);
     addDockWidget(Qt::LeftDockWidgetArea, toolboxDock);
+
+    // Load the node-type templates right away so the toolbox and node
+    // creation work before any graph file is opened.
+    const QString templatesError = graphScene_->LoadTemplates(DefaultTemplatesDir());
+    if (templatesError.isEmpty()) {
+        if (view_) {
+            view_->setScene(graphScene_->Scene());
+            StripBrokenSceneActions();
+        }
+        palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
+        ConnectModelSignals();
+    } else {
+        ShowToast(templatesError);
+    }
 
 #ifdef NODEGUI_ENABLE_FPS_OVERLAY
     // Top-right FPS / frametime overlay. The monitor parents the label to the
@@ -130,12 +170,13 @@ bool MainWindow::OpenGraph(const std::string& path) {
 
     const QString error = graphScene_->LoadGraph(path, DefaultTemplatesDir());
     if (!error.isEmpty()) {
-        QMessageBox::critical(this, QStringLiteral("Failed to load graph"), error);
+        ShowToast(QStringLiteral("Failed to load graph: %1").arg(error));
         return false;
     }
 
     if (view_) {
         view_->setScene(graphScene_->Scene());
+        StripBrokenSceneActions();
     }
 
     palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
@@ -148,8 +189,64 @@ bool MainWindow::OpenGraph(const std::string& path) {
     return true;
 }
 
+void MainWindow::OnNew() {
+    if (!AskYesNo(this,
+                  QStringLiteral("New Graph"),
+                  QStringLiteral("Discard the current graph and start a new empty one?"))) {
+        return;
+    }
+
+    if (view_) {
+        view_->setScene(nullptr);
+    }
+    const QString error = graphScene_->NewGraph();
+    if (!error.isEmpty()) {
+        ShowToast(error);
+    }
+    if (view_) {
+        view_->setScene(graphScene_->Scene());
+        StripBrokenSceneActions();
+    }
+
+    ConnectModelSignals();
+    currentPath_.clear();
+    setWindowTitle(QStringLiteral("NodeGUI"));
+    UpdateStatus();
+}
+
+void MainWindow::StripBrokenSceneActions() {
+    if (!view_) {
+        return;
+    }
+    const QList<QKeySequence> broken = {
+        QKeySequence(QKeySequence::Undo),
+        QKeySequence(QKeySequence::Redo),
+        QKeySequence(QKeySequence::Paste),
+        QKeySequence(Qt::CTRL | Qt::Key_D),
+    };
+    QList<QAction*> toRemove;
+    for (QAction* action : view_->actions()) {
+        for (const QKeySequence& shortcut : action->shortcuts()) {
+            if (broken.contains(shortcut)) {
+                toRemove.push_back(action);
+                break;
+            }
+        }
+    }
+    for (QAction* action : toRemove) {
+        // Only unregister: GraphicsView owns these and deletes them itself on
+        // the next setScene. Deleting here would leave it with a dangling
+        // pointer and double-free.
+        view_->removeAction(action);
+    }
+}
+
 void MainWindow::SetupMenu() {
     QMenu* fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
+
+    QAction* newAction = fileMenu->addAction(QStringLiteral("&New"));
+    newAction->setShortcuts(QKeySequence::New);
+    connect(newAction, &QAction::triggered, this, &MainWindow::OnNew);
 
     QAction* openAction = fileMenu->addAction(QStringLiteral("&Open..."));
     openAction->setShortcuts(QKeySequence::Open);
@@ -181,7 +278,7 @@ bool MainWindow::DoSave(const std::string& path) {
 
     const QString error = graphScene_->SaveGraph(path);
     if (!error.isEmpty()) {
-        QMessageBox::critical(this, QStringLiteral("Failed to save graph"), error);
+        ShowToast(QStringLiteral("Failed to save graph: %1").arg(error));
         return false;
     }
 
@@ -197,12 +294,34 @@ void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qt
         return;
     }
 
-    // Types locked to a domain cannot be reassigned.
+    QMenu menu(this);
+
+    QAction* renameAction = menu.addAction(QStringLiteral("Rename node..."));
+    connect(renameAction, &QAction::triggered, this, [this, qtId, nodeId] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this,
+                                                   QStringLiteral("Rename Node"),
+                                                   QStringLiteral("Node id:"),
+                                                   QLineEdit::Normal,
+                                                   QString::fromStdString(nodeId),
+                                                   &ok);
+        if (ok && !name.trimmed().isEmpty()) {
+            const QString error = graphScene_->RenameNode(qtId, name.trimmed().toStdString());
+            if (!error.isEmpty()) {
+                ShowToast(error);
+            }
+        }
+    });
+
+    menu.addSeparator();
+
+    // Types locked to a domain cannot be reassigned; say so in place.
     const auto nodeType = graphScene_->Graph().FindNodeType(node->type);
     if (nodeType && !nodeType->domain.empty()) {
-        ShowToast(QStringLiteral("'%1' is locked to domain '%2' by its node type")
-                      .arg(QString::fromStdString(nodeId),
-                           QString::fromStdString(nodeType->domain)));
+        QAction* locked = menu.addAction(QStringLiteral("Locked to domain '%1' by its node type")
+                                             .arg(QString::fromStdString(nodeType->domain)));
+        locked->setEnabled(false);
+        menu.exec(globalPos.toPoint());
         return;
     }
 
@@ -213,8 +332,6 @@ void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qt
             domains.insert(n.domain);
         }
     }
-
-    QMenu menu(this);
     auto addDomainAction = [&](const QString& label, const std::string& value) {
         QAction* action = menu.addAction(label);
         action->setCheckable(true);

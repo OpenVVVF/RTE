@@ -38,6 +38,15 @@ public:
     QString LoadGraph(const std::string& graphJsonPath,
                       const std::string& templatesDir);
 
+    // Starts a new empty graph, keeping the previously loaded node-type
+    // templates. Returns an empty string on success.
+    QString NewGraph();
+
+    // Loads only the node-type templates (no graph), so the palette and
+    // node creation work before any graph is opened. Returns an empty
+    // string on success.
+    QString LoadTemplates(const std::string& templatesDir);
+
     QtNodes::BasicGraphicsScene* Scene() const { return scene_.get(); }
 
     NodeGraphModel* Model() const { return model_.get(); }
@@ -77,6 +86,11 @@ public:
     // string on success, otherwise an error message. Types locked to a
     // specific domain reject changes.
     QString SetNodeDomain(QtNodes::NodeId qtId, const std::string& domain);
+
+    // Renames a node instance, remapping its connections and bridges to the
+    // new id. Returns an empty string on success, otherwise an error
+    // message.
+    QString RenameNode(QtNodes::NodeId qtId, const std::string& newId);
 
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
@@ -118,6 +132,8 @@ private:
     QtNodes::NodeId CreateNodeItem(const NodeAPI::Node& node);
     void CreateConnections();
     void CreateBridges();
+    // Rebuilds model and scene from graph_ (after load/new).
+    void RebuildScene();
 
     // Visual domain grouping: colored outline + label per timing domain.
     void CreateDomainOutlines();
@@ -141,6 +157,7 @@ public:
     std::shared_ptr<QtNodes::NodeDelegateModelRegistry> registry_;
     std::unique_ptr<NodeGraphModel> model_;
     std::unique_ptr<QtNodes::BasicGraphicsScene> scene_;
+    std::string templatesDir_;
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;
