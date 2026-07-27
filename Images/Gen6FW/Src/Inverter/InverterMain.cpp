@@ -156,7 +156,19 @@ static void loop()
 {
     static uint32_t s_last_ontime_ms = 0;
 
+    /* Main-loop rate instrumentation: permanent canary for anything that
+     * degrades loop throughput (a blocking driver shows up here immediately). */
+    static uint32_t s_loop_count = 0;
+    static uint32_t s_last_loop_hz_ms = 0;
+    ++s_loop_count;
+
     const uint32_t now_ms = HAL_GetTick();
+
+    if ((now_ms - s_last_loop_hz_ms) >= 1000U) {
+        Telemetry::log("loop_hz", static_cast<float>(s_loop_count));
+        s_loop_count = 0;
+        s_last_loop_hz_ms = now_ms;
+    }
 
     /* RTE codegen: application-domain step (throttle, temperature, CAN command
      * dispatch, state machines, etc.).  Runs at main-loop cadence. */
