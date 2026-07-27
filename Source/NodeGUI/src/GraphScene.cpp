@@ -207,6 +207,17 @@ void GraphScene::RebuildScene() {
                          nodeSizeCache_.erase(qtId);
                          CreateDomainOutlines();
                      });
+
+    // A domainless node adopted a peer's domain on connect: refresh its
+    // caption's domain line and the outlines.
+    QObject::connect(model_.get(),
+                     &NodeGraphModel::nodeDomainAssigned,
+                     [this](QtNodes::NodeId qtId, const std::string& domain) {
+                         if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+                             delegate->SetDomain(domain);
+                         }
+                         CreateDomainOutlines();
+                     });
 }
 
 GraphScene::Adjacency GraphScene::BuildAdjacency() const {

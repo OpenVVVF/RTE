@@ -52,6 +52,11 @@ public:
 
     void ClearRejectionState();
 
+Q_SIGNALS:
+    // Emitted when a domainless node adopts its peer's domain on connect, so
+    // the scene can refresh the node's caption and the domain outlines.
+    void nodeDomainAssigned(QtNodes::NodeId qtId, const std::string& domain);
+
 private:
     struct GraphConnection {
         std::string graphId;

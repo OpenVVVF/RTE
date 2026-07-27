@@ -177,7 +177,25 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
             .arg(QString::fromStdString(consumerNode->id));
     }
 
-    const bool sameDomain = producerNode->domain == consumerNode->domain;
+    // A domainless node adopts its peer's domain (unless its node type locks
+    // one, in which case validation below will fail as before).
+    const auto producerType = graph_.FindNodeType(producerNode->type);
+    const bool producerLocked = producerType && !producerType->domain.empty();
+    const bool consumerLocked = consumerType && !consumerType->domain.empty();
+
+    std::string producerDomain = producerNode->domain;
+    std::string consumerDomain = consumerNode->domain;
+    std::string assignProducer;
+    std::string assignConsumer;
+    if (producerDomain.empty() && !consumerDomain.empty() && !producerLocked) {
+        assignProducer = consumerDomain;
+        producerDomain = consumerDomain;
+    } else if (consumerDomain.empty() && !producerDomain.empty() && !consumerLocked) {
+        assignConsumer = producerDomain;
+        consumerDomain = producerDomain;
+    }
+
+    const bool sameDomain = producerDomain == consumerDomain;
     asBridge = !sameDomain;
 
     if (asBridge) {
@@ -207,6 +225,15 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
     }
 
     NodeAPI::Graph temp = graph_;
+    // Apply the domain adoption on the temp copy so the timing validator sees
+    // the post-connection state.
+    if (!assignProducer.empty()) {
+        temp.SetNodeDomain(producerRef->nodeId, assignProducer);
+    }
+    if (!assignConsumer.empty()) {
+        temp.SetNodeDomain(consumerRef->nodeId, assignConsumer);
+    }
+
     if (asBridge) {
         NodeAPI::Bridge bridge;
         bridge.id = GenerateId();
@@ -284,6 +311,20 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
     if (!producerPort || !consumerPort) {
         DataFlowGraphModel::deleteConnection(connectionId);
         return;
+    }
+
+    // Domain adoption (approved by Validate on its temp copy): a domainless
+    // node takes the peer's domain.
+    const auto producerNode = graph_.FindNode(producerRef->nodeId);
+    const auto consumerNode = graph_.FindNode(consumerRef->nodeId);
+    if (producerNode && consumerNode) {
+        if (producerNode->domain.empty() && !consumerNode->domain.empty()) {
+            graph_.SetNodeDomain(producerRef->nodeId, consumerNode->domain);
+            Q_EMIT nodeDomainAssigned(connectionId.outNodeId, consumerNode->domain);
+        } else if (consumerNode->domain.empty() && !producerNode->domain.empty()) {
+            graph_.SetNodeDomain(consumerRef->nodeId, producerNode->domain);
+            Q_EMIT nodeDomainAssigned(connectionId.inNodeId, producerNode->domain);
+        }
     }
 
     const std::string id = GenerateId();
