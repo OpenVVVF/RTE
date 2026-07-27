@@ -3,6 +3,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/SpikeRecorder.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Telemetry.h"
@@ -143,6 +144,27 @@ public:
     }
 };
 
+/**
+ * @brief `spikes [threshold_a]` dump the frozen spike capture / set trigger level.
+ */
+class SpikeDumpCommand : public CommandInterface {
+public:
+    SpikeDumpCommand()
+      : CommandInterface("spikes",
+            "Dump last current-spike capture; optional arg sets threshold [A]",
+            {ArgSpec{"threshold_a", "", 1.0f, 500.0f, 50.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        if (args[0].present) {
+            Inverter::spikeRecorder().setThreshold(args[0].f_val);
+            Telemetry::printf("[SHELL] spike threshold = %.1f A",
+                              static_cast<double>(Inverter::spikeRecorder().threshold()));
+            return;
+        }
+        Inverter::spikeRecorder().dump();
+    }
+};
+
 class EncBoundsCommand : public CommandInterface {
 public:
     EncBoundsCommand()
@@ -179,6 +201,7 @@ static VZeroCommand        sVZeroCmd;
 static SupplyStatusCommand sSupplyStatusCmd;
 static RebootCommand       sRebootCmd;
 static EncStatusCommand    sEncStatusCmd;
+static SpikeDumpCommand    sSpikeDumpCmd;
 static EncBoundsCommand    sEncBoundsCmd;
 
 #include "Inverter/Command/CommandManager.h"
@@ -190,5 +213,6 @@ void registerSystemCommands(CommandManager& mgr) {
     mgr.registerCommand(&sSupplyStatusCmd);
     mgr.registerCommand(&sRebootCmd);
     mgr.registerCommand(&sEncStatusCmd);
+    mgr.registerCommand(&sSpikeDumpCmd);
     mgr.registerCommand(&sEncBoundsCmd);
 }

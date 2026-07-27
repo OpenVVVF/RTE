@@ -5,6 +5,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
+#include "Inverter/Drivers/Sensors/SpikeRecorder.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -332,6 +333,18 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
 
     m_current_u = m_iu - m_offset_u;
     m_current_v = m_iv - m_offset_v;
+
+    /* Spike event recorder: synchronized raw currents + encoder snapshot for
+     * glitch forensics (see `spikes` shell command). */
+    spikeRecorder().onSample(HAL_GetTick(),
+                             static_cast<uint16_t>(m_raw_u_sig),
+                             static_cast<uint16_t>(m_raw_v_sig),
+                             static_cast<uint16_t>(m_raw_u_ref),
+                             static_cast<uint16_t>(m_raw_v_ref),
+                             m_current_u, m_current_v,
+                             encoderADC().lastAngle(),
+                             static_cast<uint16_t>(encoderADC().lastRawSin()),
+                             static_cast<uint16_t>(encoderADC().lastRawCos()));
 
     /* Software overcurrent protection.  Requires several consecutive
      * samples over threshold: at high bus voltage a single switching
