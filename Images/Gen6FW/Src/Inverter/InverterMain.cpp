@@ -1,5 +1,6 @@
 #include "Inverter/InverterMain.h"
 #include "Inverter/AppState.h"
+#include "Inverter/LoopStats.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
 #include "Inverter/Calibration/CalKvStore.h"
@@ -156,18 +157,25 @@ static void loop()
 {
     static uint32_t s_last_ontime_ms = 0;
 
-    /* Main-loop rate instrumentation: permanent canary for anything that
-     * degrades loop throughput (a blocking driver shows up here immediately). */
-    static uint32_t s_loop_count = 0;
-    static uint32_t s_last_loop_hz_ms = 0;
-    ++s_loop_count;
+    /* Per-domain rate instrumentation: permanent canary for anything that
+     * degrades loop throughput (a blocking driver shows up here immediately).
+     * ISR domains are hardware-timed; a starving ISR shows up as app_loop
+     * collapsing instead. */
+    static uint32_t s_last_hz_ms = 0;
+    ++Inverter::LoopStats::app_loop;
 
     const uint32_t now_ms = HAL_GetTick();
 
-    if ((now_ms - s_last_loop_hz_ms) >= 1000U) {
-        Telemetry::log("loop_hz", static_cast<float>(s_loop_count));
-        s_loop_count = 0;
-        s_last_loop_hz_ms = now_ms;
+    if ((now_ms - s_last_hz_ms) >= 1000U) {
+        Telemetry::log("hz_app_loop", static_cast<float>(Inverter::LoopStats::app_loop));
+        Telemetry::log("hz_vsense", static_cast<float>(Inverter::LoopStats::vsense));
+        Telemetry::log("hz_tim_isr", static_cast<float>(Inverter::LoopStats::tim_isr));
+        Telemetry::log("hz_adc_isr", static_cast<float>(Inverter::LoopStats::adc_isr));
+        Inverter::LoopStats::app_loop = 0;
+        Inverter::LoopStats::vsense = 0;
+        Inverter::LoopStats::tim_isr = 0;
+        Inverter::LoopStats::adc_isr = 0;
+        s_last_hz_ms = now_ms;
     }
 
     /* RTE codegen: application-domain step (throttle, temperature, CAN command
@@ -175,6 +183,7 @@ static void loop()
     // RTE_EMIT: app_loop step
 
     /* Voltage-sense domain step (MAX22530 phase + DC-link voltages). */
+    ++Inverter::LoopStats::vsense;
     // RTE_EMIT: vsense step
 
     /* TIME_DOMAIN: HOUSEKEEPING_1HZ

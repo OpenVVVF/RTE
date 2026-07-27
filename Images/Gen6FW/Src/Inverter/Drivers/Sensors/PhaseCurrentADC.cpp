@@ -1,5 +1,6 @@
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/AppState.h"
+#include "Inverter/LoopStats.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -313,6 +314,7 @@ bool PhaseCurrentADC::calibrateOffsets() {
 }
 
 void PhaseCurrentADC::onInjectedConversionComplete() {
+    ++LoopStats::adc_isr;
     /* RTE codegen: ADC current-sense step.  Generated code can consume the raw
      * or scaled phase currents for protection, observers, or logging.
      * The base image continues to perform safety overcurrent checks below. */
