@@ -95,6 +95,13 @@ private:
         float   rser;
         uint8_t orient;   /**< 0 = sensor to GND (RSer pull-up), 1 = sensor to VCC. */
         float   crit_c;
+        /* Excitation/divider model for orient=1:
+         *   V_adc = gain * vexc * RSer / (R_sensor + RSer)
+         * Covers plain sensor-to-VCC (gain=1, vexc=Vcc) and excitation from a
+         * higher rail with a post-divider (e.g. 5 V rail, 10k/20k divider:
+         * RSer = 10k+20k, gain = 20k/30k, vexc = 5).  vexc <= 0 means Vcc. */
+        float   vexc;
+        float   gain;
     };
 
     struct Channel {

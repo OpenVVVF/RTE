@@ -272,6 +272,10 @@ void ApplicationSensors::loadConfig(bool persist_defaults) {
         c.orient = static_cast<uint8_t>(loadOne(key, d.orient));
         std::snprintf(key, sizeof(key), "%s.CritC", KV_PREFIX[i]);
         c.crit_c = loadOne(key, d.crit);
+        std::snprintf(key, sizeof(key), "%s.Vexc", KV_PREFIX[i]);
+        c.vexc = loadOne(key, 0.0f);
+        std::snprintf(key, sizeof(key), "%s.Gain", KV_PREFIX[i]);
+        c.gain = loadOne(key, 1.0f);
     }
 
     m_vcc = loadOne("Hw.Temp.Vcc", 3.3f);
@@ -301,7 +305,7 @@ bool ApplicationSensors::init() {
     Telemetry::printf("[TMP] initialized: Vcc=%.2f V", static_cast<double>(m_vcc));
     for (uint8_t i = 0; i < NUM_CHANNELS; ++i) {
         const Config& c = m_ch[i].cfg;
-        Telemetry::printf("[TMP] %s: en=%d type=%s R25=%.0f beta=%.4f RSer=%.0f orient=%d crit=%.0fC",
+        Telemetry::printf("[TMP] %s: en=%d type=%s R25=%.0f beta=%.4f RSer=%.0f orient=%d crit=%.0fC vexc=%.2f gain=%.3f",
                           KV_PREFIX[i],
                           c.enabled ? 1 : 0,
                           typeName(c.type),
@@ -309,7 +313,9 @@ bool ApplicationSensors::init() {
                           static_cast<double>(c.beta),
                           static_cast<double>(c.rser),
                           static_cast<int>(c.orient),
-                          static_cast<double>(c.crit_c));
+                          static_cast<double>(c.crit_c),
+                          static_cast<double>(c.vexc),
+                          static_cast<double>(c.gain));
     }
 
     /* --- ADC3 (motor temp): continuous conversions, polled via EOC --------
@@ -512,9 +518,11 @@ void ApplicationSensors::evaluateChannel(uint8_t ch, uint32_t now_ms) {
                 r = cfg.rser * v / (m_vcc - v);
             }
         } else {
-            /* Sensor to VCC: R = RSer * (VCC - V)/V. */
+            /* Sensor to VCC (or higher rail via post-divider):
+             * V = gain * vexc * RSer/(R + RSer)  ->  R = RSer * (gain*vexc/V - 1). */
+            const float vexc = (cfg.vexc > 0.0f) ? cfg.vexc : m_vcc;
             if (v > 0.0f) {
-                r = cfg.rser * (m_vcc - v) / v;
+                r = cfg.rser * (cfg.gain * vexc / v - 1.0f);
             }
         }
         c.resistance = r;
