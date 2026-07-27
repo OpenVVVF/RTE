@@ -122,10 +122,7 @@ float platform_get_motor_temperature(void) {
 }
 
 float platform_get_inverter_temperature(uint8_t channel) {
-    if (channel > 2) {
-        return 0.0f;
-    }
-    return s_inverter_temp[channel];
+    return Inverter::appSensors().inverterTemperatureC(channel);
 }
 
 void platform_sample_application_sensors(void) {
