@@ -12,6 +12,7 @@ class QTimer;
 
 namespace NodeGUI {
 
+class InspectorPanel;
 class NodePalette;
 
 class MainWindow : public QMainWindow {
@@ -45,6 +46,8 @@ private:
     void ConnectModelSignals();
     // Right-click menu on a node: rename + pick its timing domain.
     void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
+    // Forwards scene selection to the inspector dock.
+    void OnSceneSelectionChanged();
 
     // QtNodes' undo stack and paste/duplicate paths restore nodes straight
     // into its own model, bypassing the NodeAPI graph. Strip those shortcuts
@@ -59,6 +62,7 @@ private:
     std::unique_ptr<GraphScene> graphScene_;
     QPointer<GraphView> view_;
     QPointer<NodePalette> palette_;
+    QPointer<InspectorPanel> inspector_;
     QPointer<QLabel> toast_;
     QTimer* toastTimer_ = nullptr;
     std::string currentPath_;

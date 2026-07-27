@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "FrameRateMonitor.h"
+#include "InspectorPanel.h"
 #include "NodePalette.h"
 
 #include <QAction>
@@ -132,6 +133,16 @@ MainWindow::MainWindow(QWidget* parent)
     toolboxDock->setObjectName(QStringLiteral("nodeToolboxDock"));
     toolboxDock->setWidget(palette_);
     addDockWidget(Qt::LeftDockWidgetArea, toolboxDock);
+
+    // Inspector dock reflecting the selected node (replaces the old
+    // double-click properties popup).
+    inspector_ = new InspectorPanel(this);
+    inspector_->Attach(graphScene_.get());
+    inspector_->onError = [this](const QString& message) { ShowToast(message); };
+    auto* inspectorDock = new QDockWidget(QStringLiteral("Inspector"), this);
+    inspectorDock->setObjectName(QStringLiteral("inspectorDock"));
+    inspectorDock->setWidget(inspector_);
+    addDockWidget(Qt::RightDockWidgetArea, inspectorDock);
 
     // Load the node-type templates right away so the toolbox and node
     // creation work before any graph file is opened.
@@ -458,6 +469,27 @@ void MainWindow::ConnectModelSignals() {
                 connectionCreatedThisDrag_ = true;
                 graphScene_->Model()->ClearRejectionState();
             });
+
+    // The inspector follows the selection.
+    inspector_->Clear();
+    connect(graphScene_->Scene(),
+            &QGraphicsScene::selectionChanged,
+            this,
+            &MainWindow::OnSceneSelectionChanged);
+}
+
+void MainWindow::OnSceneSelectionChanged() {
+    if (!graphScene_->Scene()) {
+        inspector_->Clear();
+        return;
+    }
+    for (QGraphicsItem* item : graphScene_->Scene()->selectedItems()) {
+        if (auto* ngo = qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+            inspector_->ShowNode(ngo->nodeId());
+            return;
+        }
+    }
+    inspector_->Clear();
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {

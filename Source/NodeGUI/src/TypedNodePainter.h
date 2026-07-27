@@ -3,6 +3,8 @@
 #include "PortStyle.h"
 
 #include <QtNodes/AbstractNodePainter>
+#include <QtNodes/Definitions>
+#include <QtNodes/NodeData>
 #include <QtNodes/NodeStyle>
 #include <QtNodes/internal/DefaultNodePainter.hpp>
 
@@ -13,6 +15,10 @@
 #include <unordered_map>
 
 class QPainter;
+
+namespace QtNodes {
+class AbstractGraphModel;
+}
 
 namespace NodeGUI {
 
@@ -44,6 +50,15 @@ private:
     const PortStyle* GetPortStyle(const QString& typeId) const;
     const QPolygonF& GetBasePolygon(PortShape shape) const;
     const QtNodes::NodeStyle& GetNodeStyle() const;
+
+    // Style for one port. Input ports typed dimensionless-scalar accept "any
+    // unit" (implicit unit extraction): they render as a grey circle while
+    // unconnected, and adopt the connected producer's style once wired.
+    const PortStyle* ResolvePortStyle(QtNodes::AbstractGraphModel& model,
+                                      QtNodes::NodeId nodeId,
+                                      QtNodes::PortType portType,
+                                      QtNodes::PortIndex portIndex,
+                                      const QtNodes::NodeDataType& dataType) const;
 
     mutable std::optional<QtNodes::NodeStyle> nodeStyleCache_;
 };

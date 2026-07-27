@@ -35,6 +35,38 @@ const QtNodes::NodeStyle& TypedNodePainter::GetNodeStyle() const {
     return *nodeStyleCache_;
 }
 
+const PortStyle* TypedNodePainter::ResolvePortStyle(
+    QtNodes::AbstractGraphModel& model,
+    QtNodes::NodeId nodeId,
+    QtNodes::PortType portType,
+    QtNodes::PortIndex portIndex,
+    const QtNodes::NodeDataType& dataType) const {
+    static const PortStyle anyUnitStyle{QColor(160, 160, 160), PortShape::Circle};
+
+    const bool anyUnitInput =
+        portType == QtNodes::PortType::In
+        && dataType.id.startsWith(QStringLiteral("dimensionless.scalar"));
+    if (!anyUnitInput) {
+        return GetPortStyle(dataType.id);
+    }
+
+    // Grey circle until connected; then adopt the producer's style.
+    const auto connected = model.connections(nodeId, portType, portIndex);
+    for (const auto& connectionId : connected) {
+        const auto producerType =
+            model
+                .portData(connectionId.outNodeId,
+                          QtNodes::PortType::Out,
+                          connectionId.outPortIndex,
+                          QtNodes::PortRole::DataType)
+                .value<QtNodes::NodeDataType>();
+        if (const PortStyle* style = GetPortStyle(producerType.id)) {
+            return style;
+        }
+    }
+    return &anyUnitStyle;
+}
+
 void TypedNodePainter::DrawParameterBlock(QPainter* painter,
                                           QtNodes::NodeGraphicsObject& ngo) const {
     auto* model = dynamic_cast<QtNodes::DataFlowGraphModel*>(&ngo.graphModel());
@@ -171,6 +203,13 @@ void TypedNodePainter::drawConnectionPoints(QPainter* painter,
 
             double scale = 1.0;
 
+            // Any-unit inputs preview the dragged wire's style at reduced
+            // opacity when the connection is allowed here.
+            const bool anyUnitInput =
+                portType == QtNodes::PortType::In
+                && dataType.id.startsWith(QStringLiteral("dimensionless.scalar"));
+            const PortStyle* draftStyle = nullptr;
+
             const auto& state = ngo.nodeState();
             if (auto const* cgo = state.connectionForReaction()) {
                 const QtNodes::PortType requiredPort = cgo->connectionState().requiredPort();
@@ -179,6 +218,18 @@ void TypedNodePainter::drawConnectionPoints(QPainter* painter,
                         QtNodes::makeCompleteConnectionId(cgo->connectionId(), nodeId, portIndex);
 
                     const bool possible = model.connectionPossible(possibleConnectionId);
+
+                    if (possible && anyUnitInput) {
+                        const auto draftId = cgo->connectionId();
+                        const auto draftType =
+                            model
+                                .portData(draftId.outNodeId,
+                                          QtNodes::PortType::Out,
+                                          draftId.outPortIndex,
+                                          QtNodes::PortRole::DataType)
+                                .value<QtNodes::NodeDataType>();
+                        draftStyle = GetPortStyle(draftType.id);
+                    }
 
                     auto cp = cgo->sceneTransform().map(cgo->endPoint(requiredPort));
                     cp = ngo.sceneTransform().inverted().map(cp);
@@ -196,9 +247,17 @@ void TypedNodePainter::drawConnectionPoints(QPainter* painter,
                 }
             }
 
-            const PortStyle* style = GetPortStyle(dataType.id);
+            const PortStyle* style =
+                ResolvePortStyle(model, nodeId, portType, portIndex, dataType);
             if (style) {
-                DrawPortShape(painter, p, reducedRadius * scale, *style);
+                if (draftStyle) {
+                    painter->save();
+                    painter->setOpacity(0.5);
+                    DrawPortShape(painter, p, reducedRadius * scale, *draftStyle);
+                    painter->restore();
+                } else {
+                    DrawPortShape(painter, p, reducedRadius * scale, *style);
+                }
             } else {
                 painter->setPen(Qt::NoPen);
                 painter->setBrush(nodeStyle.ConnectionPointColor);
@@ -239,7 +298,8 @@ void TypedNodePainter::drawFilledConnectionPoints(QPainter* painter,
                     model.portData(nodeId, portType, portIndex, QtNodes::PortRole::DataType)
                         .value<QtNodes::NodeDataType>();
 
-                const PortStyle* style = GetPortStyle(dataType.id);
+                const PortStyle* style =
+                    ResolvePortStyle(model, nodeId, portType, portIndex, dataType);
                 if (style) {
                     DrawPortShape(painter, p, radius, *style);
                 } else {

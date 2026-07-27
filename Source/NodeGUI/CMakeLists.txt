@@ -22,6 +22,8 @@ add_executable(NodeGUI
     src/ParameterNodeGeometry.h
     src/NodePalette.cpp
     src/NodePalette.h
+    src/InspectorPanel.cpp
+    src/InspectorPanel.h
     src/PortStyle.cpp
     src/PortStyle.h
     src/FrameRateMonitor.cpp

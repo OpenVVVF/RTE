@@ -12,26 +12,17 @@
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QBrush>
-#include <QCheckBox>
 #include <QColor>
-#include <QDialog>
-#include <QDialogButtonBox>
 #include <QEvent>
 #include <QFile>
 #include <QFont>
-#include <QFormLayout>
 #include <QGraphicsRectItem>
-#include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
-#include <QHBoxLayout>
 #include <QJsonObject>
-#include <QLabel>
-#include <QLineEdit>
 #include <QObject>
 #include <QPen>
 #include <QPointF>
 #include <QRegularExpression>
-#include <QTransform>
 
 #include <algorithm>
 #include <cmath>
@@ -49,8 +40,7 @@ namespace {
 
 // Filters QGraphicsScene events so domain outlines can follow nodes while they
 // are being dragged. QtNodes only emits nodeMoved on mouse release, so we poll
-// the scene's mouse grabber during move events. Also opens the parameter
-// editor when a node is double-clicked.
+// the scene's mouse grabber during move events.
 class SceneEventFilter : public QObject {
 public:
     explicit SceneEventFilter(GraphScene& scene, QObject* parent = nullptr)
@@ -65,23 +55,6 @@ protected:
                 if (qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(scene->mouseGrabberItem())) {
                     scene_.UpdateDomainOutlines();
                 }
-            }
-        } else if (event->type() == QEvent::GraphicsSceneMouseDoubleClick) {
-            auto* mouseEvent = static_cast<QGraphicsSceneMouseEvent*>(event);
-            auto* scene = scene_.Scene();
-            if (!scene) {
-                return false;
-            }
-
-            // Walk up from the hit item so clicks on the embedded parameter
-            // panel (a child proxy widget) also resolve to the node.
-            QGraphicsItem* item = scene->itemAt(mouseEvent->scenePos(), QTransform());
-            while (item) {
-                if (auto* ngo = qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
-                    scene_.EditNodeParameters(ngo->nodeId());
-                    return false;
-                }
-                item = item->parentItem();
             }
         }
         return false;
@@ -748,81 +721,6 @@ void GraphScene::AutoArrange() {
 
     UpdateDomainOutlines();
     SyncPositionsFromScene();
-}
-
-void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
-    const std::string nodeId = NodeApiId(qtId);
-    const auto node = nodeId.empty() ? std::nullopt : graph_.FindNode(nodeId);
-    if (!node) {
-        return;
-    }
-    const auto nodeType = graph_.FindNodeType(node->type);
-
-    QDialog dialog;
-    dialog.setWindowTitle(QStringLiteral("Parameters: %1").arg(QString::fromStdString(nodeId)));
-
-    auto* form = new QFormLayout(&dialog);
-
-    struct Row {
-        std::string name;
-        QLineEdit* edit;
-        QCheckBox* wireInput;
-    };
-    std::vector<Row> rows;
-    for (const auto& [name, value] : node->parameters) {
-        auto* edit = new QLineEdit(QString::fromStdString(value), &dialog);
-        if (nodeType) {
-            if (const auto type = nodeType->FindParameterType(name)) {
-                const std::string typeText = NodeAPI::ToString(type->quantity) + "."
-                                             + NodeAPI::ToString(type->frame) + "."
-                                             + NodeAPI::ToString(type->dtype);
-                edit->setToolTip(QString::fromStdString(typeText));
-            }
-        }
-
-        // "Wire" exposes the parameter as an input port bound by a connection
-        // instead of a constant.
-        auto* wireInput = new QCheckBox(QStringLiteral("wire"), &dialog);
-        const bool wired = std::find(node->parameterInputs.begin(),
-                                     node->parameterInputs.end(),
-                                     name) != node->parameterInputs.end();
-        wireInput->setChecked(wired);
-        edit->setEnabled(!wired);
-
-        auto* rowWidget = new QWidget(&dialog);
-        auto* rowLayout = new QHBoxLayout(rowWidget);
-        rowLayout->setContentsMargins(0, 0, 0, 0);
-        rowLayout->addWidget(edit);
-        rowLayout->addWidget(wireInput);
-        form->addRow(QString::fromStdString(name), rowWidget);
-
-        rows.push_back({name, edit, wireInput});
-    }
-
-    if (rows.empty()) {
-        form->addRow(new QLabel(QStringLiteral("This node has no parameters."), &dialog));
-    }
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
-                                         &dialog);
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    form->addRow(buttons);
-
-    if (rows.empty() || dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    std::map<std::string, std::string> updated;
-    std::vector<std::string> parameterInputs;
-    for (const auto& row : rows) {
-        updated[row.name] = row.edit->text().toStdString();
-        if (row.wireInput->isChecked()) {
-            parameterInputs.push_back(row.name);
-        }
-    }
-    SetNodeParameters(qtId, updated);
-    SetNodeParameterInputs(qtId, parameterInputs);
 }
 
 void GraphScene::SyncPositionsFromScene() {
