@@ -560,37 +560,110 @@ void GraphScene::AutoArrange() {
 
     // Layout each timing domain as its own subgraph, then place the domains
     // side-by-side in dataflow order (via bridges) so cross-domain bridges
-    // run left-to-right between groups.
+    // run left-to-right between groups. Rows are packed to keep the overall
+    // canvas close to square instead of one long strip.
     const auto domainGroups = GroupNodesByDomain();
     const std::vector<std::string> domainOrder = OrderDomainsByFlow(domainGroups);
 
     constexpr double domainHorizontalSpacing = 150.0;
     constexpr double domainVerticalSpacing = 80.0;
-    double currentX = domainHorizontalSpacing;
-    double currentY = domainVerticalSpacing;
-    double rowMaxHeight = 0.0;
 
-    std::size_t domainIndex = 0;
+    // Measure pass: lay out every domain at a throwaway origin to learn its
+    // extent. Positions are written again for real below.
+    struct DomainBox {
+        std::string domain;
+        double width;
+        double height;
+    };
+    std::vector<DomainBox> boxes;
+    double totalWidth = 0.0;
+    double maxDomainWidth = 0.0;
     for (const auto& domain : domainOrder) {
         const auto& nodeIds = domainGroups.at(domain);
         const Adjacency adj = BuildAdjacencyForNodes(nodeIds);
-
-        // Wrap to a new row only when the row gets too wide, so flow-ordered
-        // domains stay on one row whenever they reasonably fit.
-        constexpr double maxRowWidth = 2400.0;
-        if (domainIndex > 0 && currentX > maxRowWidth) {
-            currentX = domainHorizontalSpacing;
-            currentY += rowMaxHeight + domainVerticalSpacing + 40.0;
-            rowMaxHeight = 0.0;
-        }
-
         double width = 0.0;
         double height = 0.0;
-        LayoutDomainNodes(nodeIds, adj, currentX, currentY, width, height);
+        LayoutDomainNodes(nodeIds, adj, 0.0, 0.0, width, height);
+        boxes.push_back({domain, width, height});
+        totalWidth += width;
+        maxDomainWidth = std::max(maxDomainWidth, width);
+    }
+    if (boxes.size() > 1) {
+        totalWidth += domainHorizontalSpacing * (boxes.size() - 1);
+    }
 
-        currentX += width + domainHorizontalSpacing;
-        rowMaxHeight = std::max(rowMaxHeight, height);
-        ++domainIndex;
+    // Packing: greedy wrap in flow order at a width limit. Sweep the limit
+    // from "every domain on its own row" to "everything on one row" and keep
+    // the plan whose overall aspect (width/height) is closest to square.
+    // Widest-first iteration prefers fewer rows on ties.
+    struct Plan {
+        std::vector<int> rowOf;  // row index per box
+        double score = std::numeric_limits<double>::max();
+        int rows = 0;
+    };
+    Plan best;
+    constexpr int kSteps = 24;
+    for (int step = kSteps; step >= 0; --step) {
+        const double limit = maxDomainWidth
+                             + (totalWidth - maxDomainWidth) * step / kSteps;
+
+        Plan plan;
+        int row = 0;
+        double rowWidth = 0.0;
+        std::vector<double> rowWidths(1, 0.0);
+        std::vector<double> rowHeights(1, 0.0);
+        for (std::size_t i = 0; i < boxes.size(); ++i) {
+            if (rowWidth > 0.0
+                && rowWidth + domainHorizontalSpacing + boxes[i].width > limit) {
+                ++row;
+                rowWidth = 0.0;
+                rowWidths.push_back(0.0);
+                rowHeights.push_back(0.0);
+            }
+            plan.rowOf.push_back(row);
+            rowWidth += (rowWidth > 0.0 ? domainHorizontalSpacing : 0.0) + boxes[i].width;
+            rowWidths.back() = rowWidth;
+            rowHeights.back() = std::max(rowHeights.back(), boxes[i].height);
+        }
+
+        double maxRowWidth = 0.0;
+        double totalHeight = 0.0;
+        for (std::size_t r = 0; r < rowWidths.size(); ++r) {
+            maxRowWidth = std::max(maxRowWidth, rowWidths[r]);
+            totalHeight += rowHeights[r];
+        }
+        if (!rowHeights.empty()) {
+            totalHeight += domainVerticalSpacing * (rowHeights.size() - 1);
+        }
+        plan.rows = static_cast<int>(rowWidths.size());
+
+        const double aspect = maxRowWidth / std::max(totalHeight, 1.0);
+        plan.score = std::abs(std::log(aspect));
+        if (plan.score < best.score) {
+            best = std::move(plan);
+        }
+    }
+
+    // Placement pass.
+    double currentY = domainVerticalSpacing;
+    std::size_t i = 0;
+    for (int row = 0; row < best.rows && i < boxes.size(); ++row) {
+        double currentX = domainHorizontalSpacing;
+        double rowMaxHeight = 0.0;
+        while (i < boxes.size() && best.rowOf[i] == row) {
+            const auto& nodeIds = domainGroups.at(boxes[i].domain);
+            const Adjacency adj = BuildAdjacencyForNodes(nodeIds);
+
+            double width = 0.0;
+            double height = 0.0;
+            LayoutDomainNodes(nodeIds, adj, currentX, currentY, width, height);
+
+            currentX += width + domainHorizontalSpacing;
+            rowMaxHeight = std::max(rowMaxHeight, height);
+            ++i;
+        }
+        // Extra 40px so the next row clears this row's domain labels.
+        currentY += rowMaxHeight + domainVerticalSpacing + 40.0;
     }
 
     UpdateDomainOutlines();
@@ -763,6 +836,9 @@ void GraphScene::UpdateDomainOutlines() {
         double maxX = std::numeric_limits<double>::lowest();
         double maxY = std::numeric_limits<double>::lowest();
 
+        // Bounds come from each node's actual rectangle (position + its own
+        // size), so the outline hugs the group and cannot bleed into a
+        // neighboring domain's outline.
         for (const auto& nodeId : nodeIds) {
             const auto nodeIt = nodeIdMap_.find(nodeId);
             if (nodeIt == nodeIdMap_.end()) {
@@ -777,26 +853,6 @@ void GraphScene::UpdateDomainOutlines() {
                 pos = posVar.value<QPointF>();
             }
 
-            minX = std::min(minX, pos.x());
-            minY = std::min(minY, pos.y());
-            maxX = std::max(maxX, pos.x());
-            maxY = std::max(maxY, pos.y());
-        }
-
-        if (minX == std::numeric_limits<double>::max()) {
-            continue;
-        }
-
-        // Use the largest cached node size in the group so the outline does not
-        // clip captions or ports. Sizes are populated once when nodes are created.
-        double nodeWidth = 200.0;
-        double nodeHeight = 120.0;
-        for (const auto& nodeId : nodeIds) {
-            const auto nodeIt = nodeIdMap_.find(nodeId);
-            if (nodeIt == nodeIdMap_.end()) {
-                continue;
-            }
-
             QSize size;
             const auto sizeIt = nodeSizeCache_.find(nodeIt->second);
             if (sizeIt != nodeSizeCache_.end()) {
@@ -806,14 +862,20 @@ void GraphScene::UpdateDomainOutlines() {
                 nodeSizeCache_[nodeIt->second] = size;
             }
 
-            nodeWidth = std::max(nodeWidth, static_cast<double>(size.width()));
-            nodeHeight = std::max(nodeHeight, static_cast<double>(size.height()));
+            minX = std::min(minX, pos.x());
+            minY = std::min(minY, pos.y());
+            maxX = std::max(maxX, pos.x() + size.width());
+            maxY = std::max(maxY, pos.y() + size.height());
+        }
+
+        if (minX == std::numeric_limits<double>::max()) {
+            continue;
         }
 
         const QRectF bounds(minX - padding,
                             minY - padding,
-                            maxX - minX + nodeWidth + padding * 2.0,
-                            maxY - minY + nodeHeight + padding * 2.0);
+                            maxX - minX + padding * 2.0,
+                            maxY - minY + padding * 2.0);
 
         it->second.outline->setRect(bounds);
         it->second.label->setPos(bounds.left(), bounds.top() - it->second.label->boundingRect().height() - labelOffset);
