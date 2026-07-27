@@ -71,11 +71,7 @@ void MX_ADC1_Init(void)
 
   /** Configure the ADC multi-mode
   */
-  /* Injected-simultaneous dual mode only: the phase-current path uses dual
-     injected simultaneous conversions (reconfigured in PhaseCurrentADC), while
-     the regular groups stay independent so ADC1 regular can run slow
-     software-polled application sensors (temperature). */
-  multimode.Mode = ADC_DUALMODE_INJECSIMULT;
+  multimode.Mode = ADC_DUALMODE_REGSIMULT;
   multimode.DualModeData = ADC_DUALMODEDATAFORMAT_DISABLED;
   multimode.TwoSamplingDelay = ADC_TWOSAMPLINGDELAY_5CYCLES;
   if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK)

@@ -17,7 +17,6 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
-#include "Inverter/Drivers/Sensors/TemperatureSensors.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -132,11 +131,6 @@ static void init()
     /* Isolated high-voltage DC-link sensor on SPI2 (VSENSE_ISO_ADC_INTERRUPT = PD1). */
     Inverter::dcLinkVoltageSensor().init();
 
-    /* Board + motor temperature sensors (ADC1/ADC3 regular, software-polled).
-     * Must run after CurrentSensorTest_Init(), which switches ADC1/2 to
-     * injected-simultaneous dual mode and frees the regular groups. */
-    Inverter::temperatureSensors().init();
-
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
@@ -184,7 +178,6 @@ static void loop()
      * value is always the latest conversion from the EXTI ISR. */
     Inverter::dcLinkVoltageSensor().update();
     Inverter::dcLinkCurrentSensor().update();
-    Inverter::temperatureSensors().update();
     Inverter::supplyMonitorUpdate();
 
     /* Calibration machinery: pump the open-loop controller and every
