@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace Inverter {
@@ -120,6 +121,16 @@ public:
     void onDmaComplete();
 
     /**
+     * @brief Dump the angle-linearity trace via Telemetry.
+     *
+     * A 1 kHz-decimated ring (1024 samples ~ 1 s) of raw sin/cos + decoded
+     * angle, captured in the 10 kHz DMA ISR.  Used with the motor spinning
+     * to measure per-revolution decode nonlinearity without telemetry
+     * timestamp jitter (`enc_trace` shell command).
+     */
+    void traceDump();
+
+    /**
      * @brief DMA error callback for the encoder ADC stream.
      */
     void onDmaError();
@@ -208,6 +219,19 @@ private:
     volatile Snapshot m_snapshot;
     volatile bool     m_new_data = false;
     bool              m_running = false;
+
+    /* Angle-linearity trace ring: every 10th DMA sample (~1 kHz), ~1 s of
+     * raw sin/cos + decoded angle for offline per-rev analysis. */
+    struct TraceEntry {
+        uint16_t raw_sin;
+        uint16_t raw_cos;
+        float    angle_deg;
+    };
+    static constexpr size_t   TRACE_LEN = 1024;
+    static constexpr uint8_t  TRACE_DECIM = 10;
+    TraceEntry m_trace[TRACE_LEN] = {};
+    size_t     m_trace_head = 0;
+    uint8_t    m_trace_decim = 0;
 
     /* Fault-detection state. */
     static constexpr uint32_t SAMPLE_TIMEOUT_MS = 5U;

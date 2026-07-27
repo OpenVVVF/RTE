@@ -145,6 +145,19 @@ public:
 };
 
 /**
+ * @brief `enc_trace` dump the 1 kHz-decimated raw sin/cos + angle ring.
+ */
+class EncTraceCommand : public CommandInterface {
+public:
+    EncTraceCommand()
+      : CommandInterface("enc_trace", "Dump 1 s of raw encoder sin/cos + angle for linearity analysis") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        encoderADC().traceDump();
+    }
+};
+
+/**
  * @brief `spikes [threshold_a]` dump the frozen spike capture / set trigger level.
  */
 class SpikeDumpCommand : public CommandInterface {
@@ -201,6 +214,7 @@ static VZeroCommand        sVZeroCmd;
 static SupplyStatusCommand sSupplyStatusCmd;
 static RebootCommand       sRebootCmd;
 static EncStatusCommand    sEncStatusCmd;
+static EncTraceCommand     sEncTraceCmd;
 static SpikeDumpCommand    sSpikeDumpCmd;
 static EncBoundsCommand    sEncBoundsCmd;
 
@@ -213,6 +227,7 @@ void registerSystemCommands(CommandManager& mgr) {
     mgr.registerCommand(&sSupplyStatusCmd);
     mgr.registerCommand(&sRebootCmd);
     mgr.registerCommand(&sEncStatusCmd);
+    mgr.registerCommand(&sEncTraceCmd);
     mgr.registerCommand(&sSpikeDumpCmd);
     mgr.registerCommand(&sEncBoundsCmd);
 }

@@ -214,6 +214,20 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     return angle_deg;
 }
 
+void EncoderADC::traceDump() {
+    Telemetry::printf("[SHELL] enc trace: %d samples @ ~1 kHz (sin cos angle_deg), oldest first",
+                      static_cast<int>(TRACE_LEN));
+    /* Pause the ring while dumping so lines stay consistent. */
+    __disable_irq();
+    const size_t head = m_trace_head;
+    __enable_irq();
+    for (size_t k = 0; k < TRACE_LEN; ++k) {
+        const TraceEntry& e = m_trace[(head + k) % TRACE_LEN];
+        Telemetry::printf("[TR] %u %u %.3f", e.raw_sin, e.raw_cos,
+                          static_cast<double>(e.angle_deg));
+    }
+}
+
 void EncoderADC::onDmaComplete() {
     uint16_t raw_sin = s_enc_dma_buffer[0];
     uint16_t raw_cos = s_enc_dma_buffer[1];
@@ -255,6 +269,13 @@ void EncoderADC::onDmaComplete() {
     m_new_data = true;
     m_last_sample_ms = HAL_GetTick();
     ++m_isr_count;
+
+    /* Angle-linearity trace: decimated ring for the `enc_trace` command. */
+    if (++m_trace_decim >= TRACE_DECIM) {
+        m_trace_decim = 0;
+        m_trace[m_trace_head] = {raw_sin, raw_cos, angle};
+        m_trace_head = (m_trace_head + 1) % TRACE_LEN;
+    }
 
     /* Only evaluate signal-quality faults after the encoder has rotated enough
      * for the active bounds to be meaningful. */
