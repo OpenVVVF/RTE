@@ -39,6 +39,10 @@ public:
     void addConnection(QtNodes::ConnectionId const connectionId) override;
     bool deleteConnection(QtNodes::ConnectionId const connectionId) override;
 
+    // Removes the node from the NodeAPI graph (which cascades to its
+    // connections and bridges) before letting QtNodes tear down its side.
+    bool deleteNode(QtNodes::NodeId const nodeId) override;
+
     // Returns true if the QtNodes connection id maps to a NodeAPI Bridge.
     bool IsBridge(QtNodes::ConnectionId const connectionId) const;
 

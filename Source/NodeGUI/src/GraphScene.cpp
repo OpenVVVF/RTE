@@ -28,12 +28,14 @@
 #include <QObject>
 #include <QPen>
 #include <QPointF>
+#include <QRegularExpression>
 #include <QTransform>
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <queue>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -94,18 +96,6 @@ std::optional<std::string> ReadTextFile(const std::string& path) {
     }
     return std::string{std::istreambuf_iterator<char>(stream),
                        std::istreambuf_iterator<char>()};
-}
-
-QString MakeNodeCaption(const NodeAPI::Node& node, const NodeAPI::NodeType& nodeType) {
-    QString caption = QString::fromStdString(node.displayName.empty() ? node.id : node.displayName);
-    caption += QStringLiteral("\n");
-    caption += QString::fromStdString(nodeType.id);
-    if (!node.domain.empty()) {
-        caption += QStringLiteral("\n[");
-        caption += QString::fromStdString(node.domain);
-        caption += QStringLiteral("]");
-    }
-    return caption;
 }
 
 }  // namespace
@@ -177,6 +167,22 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeMoved,
                      [this](QtNodes::NodeId) { UpdateDomainOutlines(); });
+
+    // Keep our id maps and the domain outlines in sync when a node is
+    // deleted (the model has already removed it from the graph at this
+    // point).
+    QObject::connect(model_.get(),
+                     &QtNodes::AbstractGraphModel::nodeDeleted,
+                     [this](QtNodes::NodeId qtId) {
+                         for (auto it = nodeIdMap_.begin(); it != nodeIdMap_.end(); ++it) {
+                             if (it->second == qtId) {
+                                 nodeIdMap_.erase(it);
+                                 break;
+                             }
+                         }
+                         nodeSizeCache_.erase(qtId);
+                         CreateDomainOutlines();
+                     });
 
     return QString{};
 }
@@ -313,6 +319,63 @@ std::map<std::string, std::vector<std::string>> GraphScene::GroupNodesByDomain()
         groups[node.domain.empty() ? "(no domain)" : node.domain].push_back(node.id);
     }
     return groups;
+}
+
+std::vector<std::string> GraphScene::OrderDomainsByFlow(
+    const std::map<std::string, std::vector<std::string>>& groups) const {
+    auto domainOf = [&](const std::string& nodeId) -> std::string {
+        const auto node = graph_.FindNode(nodeId);
+        if (!node) {
+            return {};
+        }
+        return node->domain.empty() ? "(no domain)" : node->domain;
+    };
+
+    // Domain-level DAG from bridges.
+    std::map<std::string, std::set<std::string>> outgoing;
+    std::map<std::string, int> indegree;
+    for (const auto& [domain, nodeIds] : groups) {
+        outgoing[domain];
+        indegree[domain] = 0;
+    }
+    for (const auto& bridge : graph_.GetBridges()) {
+        const std::string from = domainOf(bridge.producer.nodeId);
+        const std::string to = domainOf(bridge.consumer.nodeId);
+        if (from.empty() || to.empty() || from == to) {
+            continue;
+        }
+        if (outgoing[from].insert(to).second) {
+            ++indegree[to];
+        }
+    }
+
+    // Kahn's algorithm with alphabetical tie-break.
+    std::set<std::string> ready;
+    for (const auto& [domain, degree] : indegree) {
+        if (degree == 0) {
+            ready.insert(domain);
+        }
+    }
+
+    std::vector<std::string> order;
+    while (!ready.empty()) {
+        const std::string domain = *ready.begin();
+        ready.erase(ready.begin());
+        order.push_back(domain);
+        for (const auto& next : outgoing[domain]) {
+            if (--indegree[next] == 0) {
+                ready.insert(next);
+            }
+        }
+    }
+
+    // Domains stuck in a cycle never became ready; keep them alphabetically.
+    for (const auto& [domain, nodeIds] : groups) {
+        if (std::find(order.begin(), order.end(), domain) == order.end()) {
+            order.push_back(domain);
+        }
+    }
+    return order;
 }
 
 QSize GraphScene::NodeSize(const std::string& nodeId) const {
@@ -496,8 +559,10 @@ void GraphScene::AutoArrange() {
     }
 
     // Layout each timing domain as its own subgraph, then place the domains
-    // side-by-side so cross-domain bridges run horizontally between groups.
+    // side-by-side in dataflow order (via bridges) so cross-domain bridges
+    // run left-to-right between groups.
     const auto domainGroups = GroupNodesByDomain();
+    const std::vector<std::string> domainOrder = OrderDomainsByFlow(domainGroups);
 
     constexpr double domainHorizontalSpacing = 150.0;
     constexpr double domainVerticalSpacing = 80.0;
@@ -506,8 +571,18 @@ void GraphScene::AutoArrange() {
     double rowMaxHeight = 0.0;
 
     std::size_t domainIndex = 0;
-    for (const auto& [domain, nodeIds] : domainGroups) {
+    for (const auto& domain : domainOrder) {
+        const auto& nodeIds = domainGroups.at(domain);
         const Adjacency adj = BuildAdjacencyForNodes(nodeIds);
+
+        // Wrap to a new row only when the row gets too wide, so flow-ordered
+        // domains stay on one row whenever they reasonably fit.
+        constexpr double maxRowWidth = 2400.0;
+        if (domainIndex > 0 && currentX > maxRowWidth) {
+            currentX = domainHorizontalSpacing;
+            currentY += rowMaxHeight + domainVerticalSpacing + 40.0;
+            rowMaxHeight = 0.0;
+        }
 
         double width = 0.0;
         double height = 0.0;
@@ -515,13 +590,7 @@ void GraphScene::AutoArrange() {
 
         currentX += width + domainHorizontalSpacing;
         rowMaxHeight = std::max(rowMaxHeight, height);
-
-        // Wrap to a new row every two domains to keep the canvas reasonable.
-        if (++domainIndex % 2 == 0 && domainIndex < domainGroups.size()) {
-            currentX = domainHorizontalSpacing;
-            currentY += rowMaxHeight + domainVerticalSpacing + 40.0;
-            rowMaxHeight = 0.0;
-        }
+        ++domainIndex;
     }
 
     UpdateDomainOutlines();
@@ -529,14 +598,7 @@ void GraphScene::AutoArrange() {
 }
 
 void GraphScene::EditNodeParameters(QtNodes::NodeId qtId) {
-    std::string nodeId;
-    for (const auto& [id, qt] : nodeIdMap_) {
-        if (qt == qtId) {
-            nodeId = id;
-            break;
-        }
-    }
-
+    const std::string nodeId = NodeApiId(qtId);
     const auto node = nodeId.empty() ? std::nullopt : graph_.FindNode(nodeId);
     if (!node) {
         return;
@@ -653,7 +715,8 @@ void GraphScene::CreateDomainOutlines() {
 
     const auto groups = GroupNodesByDomain();
     for (const auto& [domain, nodeIds] : groups) {
-        if (nodeIds.empty()) {
+        // Unassigned nodes get no outline; only real domains are framed.
+        if (nodeIds.empty() || domain == "(no domain)") {
             continue;
         }
 
@@ -786,6 +849,7 @@ void GraphScene::RegisterNodeTypes() {
             auto model = std::make_unique<NodeInstanceModel>(std::move(dummy), nodeType);
             if (pendingNode_ && pendingNode_->type == nodeType.id) {
                 model->SetParameters(pendingNode_->parameters);
+                model->SetDomain(pendingNode_->domain);
             }
             return model;
         });
@@ -794,37 +858,127 @@ void GraphScene::RegisterNodeTypes() {
 
 void GraphScene::CreateNodes() {
     for (const auto& node : graph_.GetNodes()) {
-        const auto nodeType = graph_.FindNodeType(node.type);
-        if (!nodeType) {
-            continue;
-        }
+        CreateNodeItem(node);
+    }
+}
 
-        const QString modelName = QString::fromStdString(node.type);
-        pendingNode_ = &node;
-        const QtNodes::NodeId qtId = model_->addNode(modelName);
-        pendingNode_ = nullptr;
-        nodeIdMap_[node.id] = qtId;
+QtNodes::NodeId GraphScene::CreateNodeItem(const NodeAPI::Node& node) {
+    const auto nodeType = graph_.FindNodeType(node.type);
+    if (!nodeType) {
+        return QtNodes::InvalidNodeId;
+    }
 
-        model_->setNodeData(qtId,
-                            QtNodes::NodeRole::Position,
-                            QVariant::fromValue(QPointF(node.position.x, node.position.y)));
-        model_->setNodeData(qtId,
-                            QtNodes::NodeRole::Caption,
-                            QVariant::fromValue(MakeNodeCaption(node, *nodeType)));
-        model_->setNodeData(qtId,
-                            QtNodes::NodeRole::Label,
-                            QVariant::fromValue(QString::fromStdString(node.id)));
+    const QString modelName = QString::fromStdString(node.type);
+    pendingNode_ = &node;
+    const QtNodes::NodeId qtId = model_->addNode(modelName);
+    pendingNode_ = nullptr;
+    nodeIdMap_[node.id] = qtId;
 
-        nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+    model_->setNodeData(qtId,
+                        QtNodes::NodeRole::Position,
+                        QVariant::fromValue(QPointF(node.position.x, node.position.y)));
+    // Note: NodeRole::Caption is read-only in QtNodes (the delegate's
+    // caption() is used), so the domain line is fed via SetDomain() instead.
+    model_->setNodeData(qtId,
+                        QtNodes::NodeRole::Label,
+                        QVariant::fromValue(QString::fromStdString(node.id)));
 
-        // Cache the rendered node as a pixmap: panning and dragging then blit
-        // the cache instead of re-running the (relatively expensive) node
-        // painter for every node on every frame. The cache invalidates itself
-        // on geometry/content changes and on zoom.
-        if (auto* ngo = scene_->nodeGraphicsObject(qtId)) {
-            ngo->setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+
+    // Cache the rendered node as a pixmap: panning and dragging then blit
+    // the cache instead of re-running the (relatively expensive) node
+    // painter for every node on every frame. The cache invalidates itself
+    // on geometry/content changes and on zoom.
+    if (auto* ngo = scene_->nodeGraphicsObject(qtId)) {
+        ngo->setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+    }
+
+    return qtId;
+}
+
+std::string GraphScene::NodeApiId(QtNodes::NodeId qtId) const {
+    for (const auto& [id, qt] : nodeIdMap_) {
+        if (qt == qtId) {
+            return id;
         }
     }
+    return {};
+}
+
+QString GraphScene::SetNodeDomain(QtNodes::NodeId qtId, const std::string& domain) {
+    const std::string nodeId = NodeApiId(qtId);
+    const auto node = nodeId.empty() ? std::nullopt : graph_.FindNode(nodeId);
+    if (!node) {
+        return QStringLiteral("Node not found");
+    }
+
+    const auto nodeType = graph_.FindNodeType(node->type);
+    if (nodeType && !nodeType->domain.empty() && nodeType->domain != domain) {
+        return QStringLiteral("Node type '%1' is locked to domain '%2'")
+            .arg(QString::fromStdString(node->type),
+                 QString::fromStdString(nodeType->domain));
+    }
+
+    if (!graph_.SetNodeDomain(nodeId, domain)) {
+        return QStringLiteral("Node not found");
+    }
+
+    // Refresh the caption's domain line and the domain outlines.
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        delegate->SetDomain(domain);
+    }
+    CreateDomainOutlines();
+    return QString{};
+}
+
+QString GraphScene::AddNodeAt(const std::string& typeId, const QPointF& scenePos) {
+    const auto nodeType = graph_.FindNodeType(typeId);
+    if (!nodeType) {
+        return QStringLiteral("Unknown node type: %1").arg(QString::fromStdString(typeId));
+    }
+
+    // Generate a unique instance id from the display name (or type id).
+    QString base = QString::fromStdString(nodeType->displayName.empty()
+                                              ? nodeType->id
+                                              : nodeType->displayName);
+    base.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9]")));
+    if (base.isEmpty()) {
+        base = QStringLiteral("node");
+    }
+
+    NodeAPI::Node node;
+    node.type = typeId;
+    // New instances start unassigned; the domain is chosen via the node's
+    // context menu. Only types locked to a specific domain bring their own.
+    node.domain = nodeType->domain;
+    node.position = NodeAPI::Position{scenePos.x(), scenePos.y()};
+    // Instances start with the type's declared parameters left empty; they
+    // are filled in via the node's parameter editor (double-click).
+    for (const auto& [name, wireType] : nodeType->parameterTypes) {
+        node.parameters.emplace(name, "");
+    }
+
+    for (int suffix = 1;; ++suffix) {
+        const std::string candidate =
+            QStringLiteral("%1%2").arg(base).arg(suffix).toStdString();
+        if (!graph_.FindNode(candidate)) {
+            node.id = candidate;
+            break;
+        }
+    }
+
+    if (!graph_.AddNode(node)) {
+        return QStringLiteral("Cannot add '%1' (instance limit reached?)")
+            .arg(QString::fromStdString(typeId));
+    }
+
+    CreateNodeItem(node);
+    model_->BuildNodeIdMap(nodeIdMap_);
+
+    // The new node may introduce a domain that has no outline yet.
+    CreateDomainOutlines();
+
+    return QString{};
 }
 
 QtNodes::PortIndex GraphScene::FindPortIndex(const std::string& nodeId,

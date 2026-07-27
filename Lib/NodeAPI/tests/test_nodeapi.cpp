@@ -144,6 +144,19 @@ TEST(Graph, SetNodeParameters) {
     EXPECT_FALSE(graph.SetNodeParameters("missing", {{"Gain", "1.0"}}));
 }
 
+TEST(Graph, SetNodeDomain) {
+    Graph graph = MakeDemoGraph();
+
+    EXPECT_TRUE(graph.SetNodeDomain("source", "isr_pwm"));
+    EXPECT_EQ(graph.FindNode("source")->domain, "isr_pwm");
+
+    // Empty string unassigns the domain.
+    EXPECT_TRUE(graph.SetNodeDomain("source", ""));
+    EXPECT_TRUE(graph.FindNode("source")->domain.empty());
+
+    EXPECT_FALSE(graph.SetNodeDomain("missing", "isr_pwm"));
+}
+
 TEST(Graph, MaxInstancesEnforced) {
     Graph graph;
     NodeType limited = MakeValueType();

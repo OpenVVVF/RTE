@@ -93,6 +93,16 @@ bool Graph::SetNodeParameters(const std::string& nodeId,
     return false;
 }
 
+bool Graph::SetNodeDomain(const std::string& nodeId, std::string domain) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.domain = std::move(domain);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Graph::Connect(Connection connection) {
     if (connection.id.empty()) return false;
     if (ConnectionIdTaken(connection.id)) return false;

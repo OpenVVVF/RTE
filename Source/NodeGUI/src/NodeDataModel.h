@@ -56,6 +56,10 @@ public:
 
     const ParameterBlockData& ParameterBlock() const { return parameterBlock_; }
 
+    // Sets the timing domain shown in the caption ("[domain]" second line).
+    // Emits requestNodeUpdate() so the scene repaints.
+    void SetDomain(std::string domain);
+
     QString portCaption(QtNodes::PortType portType,
                         QtNodes::PortIndex portIndex) const override;
 
@@ -76,6 +80,7 @@ private:
     std::shared_ptr<QtNodes::NodeData> outputData_;
 
     ParameterBlockData parameterBlock_;
+    std::string domain_;
 };
 
 }  // namespace NodeGUI

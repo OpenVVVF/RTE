@@ -1,14 +1,15 @@
 #pragma once
 
 #include "GraphScene.h"
-
-#include <QtNodes/GraphicsView>
+#include "GraphView.h"
 
 #include <QMainWindow>
 #include <QPointer>
 #include <memory>
 
 namespace NodeGUI {
+
+class NodePalette;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -18,6 +19,8 @@ public:
 
     // Open a graph file at startup.
     bool OpenGraph(const std::string& path);
+
+    GraphScene* Scene() const { return graphScene_.get(); }
 
 private slots:
     void OnOpen();
@@ -35,9 +38,12 @@ private:
     void UpdateStatus();
     bool DoSave(const std::string& path);
     void ConnectModelSignals();
+    // Right-click menu on a node: pick its timing domain.
+    void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
 
     std::unique_ptr<GraphScene> graphScene_;
-    QPointer<QtNodes::GraphicsView> view_;
+    QPointer<GraphView> view_;
+    QPointer<NodePalette> palette_;
     std::string currentPath_;
     bool connectionCreatedThisDrag_ = false;
 };

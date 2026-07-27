@@ -1,10 +1,14 @@
 #include "MainWindow.h"
 
 #include "FrameRateMonitor.h"
+#include "NodePalette.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QDockWidget>
 #include <QFileDialog>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -16,6 +20,7 @@
 #include <QWidget>
 
 #include <filesystem>
+#include <set>
 
 namespace NodeGUI {
 
@@ -41,7 +46,7 @@ MainWindow::MainWindow(QWidget* parent)
     auto* layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    view_ = new QtNodes::GraphicsView(graphScene_->Scene());
+    view_ = new GraphView(graphScene_->Scene());
     view_->installEventFilter(this);
 
     // Note: measured on the target machine, a QOpenGLWidget viewport was ~3x
@@ -50,8 +55,31 @@ MainWindow::MainWindow(QWidget* parent)
     // what keeps pans and drags smooth.
     view_->setOptimizationFlags(QGraphicsView::DontAdjustForAntialiasing);
 
+    // Node type dropped from the palette: instantiate it at the drop point.
+    view_->onNodeTypeDropped = [this](const QString& typeId, const QPointF& scenePos) {
+        const QString error = graphScene_->AddNodeAt(typeId.toStdString(), scenePos);
+        if (error.isEmpty()) {
+            UpdateStatus();
+        } else {
+            statusBar()->showMessage(error, 4000);
+        }
+    };
+
+    // Right-click on a node: offer the domain selection menu.
+    view_->onNodeContextMenu = [this](const QPointF& globalPos, QtNodes::NodeId qtId) {
+        ShowNodeDomainMenu(globalPos, qtId);
+    };
+
     layout->addWidget(view_);
     setCentralWidget(central);
+
+    // Toolbox dock listing the available node types; entries are dragged onto
+    // the view to instantiate them. Populated on OpenGraph.
+    palette_ = new NodePalette(this);
+    auto* toolboxDock = new QDockWidget(QStringLiteral("Node Toolbox"), this);
+    toolboxDock->setObjectName(QStringLiteral("nodeToolboxDock"));
+    toolboxDock->setWidget(palette_);
+    addDockWidget(Qt::LeftDockWidgetArea, toolboxDock);
 
 #ifdef NODEGUI_ENABLE_FPS_OVERLAY
     // Top-right FPS / frametime overlay. The monitor parents the label to the
@@ -83,6 +111,8 @@ bool MainWindow::OpenGraph(const std::string& path) {
     if (view_) {
         view_->setScene(graphScene_->Scene());
     }
+
+    palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
 
     ConnectModelSignals();
 
@@ -132,6 +162,70 @@ bool MainWindow::DoSave(const std::string& path) {
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
     return true;
+}
+
+void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId) {
+    const std::string nodeId = graphScene_->NodeApiId(qtId);
+    const auto node = nodeId.empty() ? std::nullopt : graphScene_->Graph().FindNode(nodeId);
+    if (!node) {
+        return;
+    }
+
+    // Types locked to a domain cannot be reassigned.
+    const auto nodeType = graphScene_->Graph().FindNodeType(node->type);
+    if (nodeType && !nodeType->domain.empty()) {
+        statusBar()->showMessage(QStringLiteral("'%1' is locked to domain '%2' by its node type")
+                                     .arg(QString::fromStdString(nodeId),
+                                          QString::fromStdString(nodeType->domain)),
+                                 4000);
+        return;
+    }
+
+    // Existing domains in the graph, plus "no domain" and a custom entry.
+    std::set<std::string> domains;
+    for (const auto& n : graphScene_->Graph().GetNodes()) {
+        if (!n.domain.empty()) {
+            domains.insert(n.domain);
+        }
+    }
+
+    QMenu menu(this);
+    auto addDomainAction = [&](const QString& label, const std::string& value) {
+        QAction* action = menu.addAction(label);
+        action->setCheckable(true);
+        action->setChecked(node->domain == value);
+        connect(action, &QAction::triggered, this, [this, qtId, value] {
+            const QString error = graphScene_->SetNodeDomain(qtId, value);
+            if (!error.isEmpty()) {
+                statusBar()->showMessage(error, 4000);
+            }
+        });
+    };
+
+    addDomainAction(QStringLiteral("(no domain)"), "");
+    for (const auto& domain : domains) {
+        addDomainAction(QString::fromStdString(domain), domain);
+    }
+
+    menu.addSeparator();
+    QAction* customAction = menu.addAction(QStringLiteral("New domain..."));
+    connect(customAction, &QAction::triggered, this, [this, qtId] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this,
+                                                   QStringLiteral("Set Domain"),
+                                                   QStringLiteral("Domain name:"),
+                                                   QLineEdit::Normal,
+                                                   {},
+                                                   &ok);
+        if (ok && !name.trimmed().isEmpty()) {
+            const QString error = graphScene_->SetNodeDomain(qtId, name.trimmed().toStdString());
+            if (!error.isEmpty()) {
+                statusBar()->showMessage(error, 4000);
+            }
+        }
+    });
+
+    menu.exec(globalPos.toPoint());
 }
 
 void MainWindow::UpdateStatus() {

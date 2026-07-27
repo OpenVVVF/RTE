@@ -42,7 +42,17 @@ QString NodeInstanceModel::caption() const {
     } else {
         caption = QString::fromStdString(node_.id);
     }
+    if (!domain_.empty()) {
+        caption += QStringLiteral("\n[");
+        caption += QString::fromStdString(domain_);
+        caption += QStringLiteral("]");
+    }
     return caption;
+}
+
+void NodeInstanceModel::SetDomain(std::string domain) {
+    domain_ = std::move(domain);
+    Q_EMIT requestNodeUpdate();
 }
 
 unsigned int NodeInstanceModel::nPorts(QtNodes::PortType portType) const {

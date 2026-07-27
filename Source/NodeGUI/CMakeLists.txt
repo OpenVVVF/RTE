@@ -6,6 +6,8 @@ add_executable(NodeGUI
     src/MainWindow.h
     src/GraphScene.cpp
     src/GraphScene.h
+    src/GraphView.cpp
+    src/GraphView.h
     src/NodeDataModel.cpp
     src/NodeDataModel.h
     src/NodeGraphModel.cpp
@@ -18,6 +20,8 @@ add_executable(NodeGUI
     src/ParameterBlock.h
     src/ParameterNodeGeometry.cpp
     src/ParameterNodeGeometry.h
+    src/NodePalette.cpp
+    src/NodePalette.h
     src/PortStyle.cpp
     src/PortStyle.h
     src/FrameRateMonitor.cpp

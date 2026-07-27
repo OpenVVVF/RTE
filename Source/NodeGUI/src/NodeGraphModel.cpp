@@ -307,6 +307,18 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
     return DataFlowGraphModel::deleteConnection(connectionId);
 }
 
+bool NodeGraphModel::deleteNode(QtNodes::NodeId const nodeId) {
+    const auto it = qtIdToNodeId_.find(nodeId);
+    if (it != qtIdToNodeId_.end()) {
+        // NodeAPI::Graph::RemoveNode also removes the node's connections and
+        // bridges. The base-class teardown below still emits connectionDeleted
+        // for each QtNodes connection; our deleteConnection override then just
+        // finds them already gone and cleans up the id map.
+        graph_.RemoveNode(it->second);
+    }
+    return DataFlowGraphModel::deleteNode(nodeId);
+}
+
 bool NodeGraphModel::IsBridge(QtNodes::ConnectionId const connectionId) const {
     const auto it = connectionMap_.find(connectionId);
     return it != connectionMap_.end() && it->second.isBridge;

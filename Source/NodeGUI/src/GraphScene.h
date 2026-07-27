@@ -52,6 +52,18 @@ public:
     // Returns an empty string on success, otherwise an error message.
     QString SaveGraph(const std::string& path) const;
 
+    // Instantiates a node of the given type at the given scene position.
+    // Returns an empty string on success, otherwise an error message.
+    QString AddNodeAt(const std::string& typeId, const QPointF& scenePos);
+
+    // Maps a QtNodes id back to the NodeAPI node id (empty when unknown).
+    std::string NodeApiId(QtNodes::NodeId qtId) const;
+
+    // Changes a node's timing domain (empty = unassigned). Returns an empty
+    // string on success, otherwise an error message. Types locked to a
+    // specific domain reject changes.
+    QString SetNodeDomain(QtNodes::NodeId qtId, const std::string& domain);
+
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
 
@@ -69,6 +81,11 @@ private:
 
     // Layout helpers that respect timing domains.
     std::map<std::string, std::vector<std::string>> GroupNodesByDomain() const;
+    // Orders domain groups by dataflow: bridges form a domain-level DAG
+    // (producer domain -> consumer domain) which is topologically sorted with
+    // an alphabetical tie-break. Cyclic leftovers are appended alphabetically.
+    std::vector<std::string> OrderDomainsByFlow(
+        const std::map<std::string, std::vector<std::string>>& groups) const;
     void LayoutDomainNodes(const std::vector<std::string>& nodeIds,
                            const Adjacency& adj,
                            double originX,
@@ -82,6 +99,9 @@ private:
 
     void RegisterNodeTypes();
     void CreateNodes();
+    // Creates the QtNodes graphics side for one graph node. Returns the
+    // QtNodes id, or InvalidNodeId when the node's type is unknown.
+    QtNodes::NodeId CreateNodeItem(const NodeAPI::Node& node);
     void CreateConnections();
     void CreateBridges();
 

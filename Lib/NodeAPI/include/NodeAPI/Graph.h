@@ -55,6 +55,10 @@ public:
     bool SetNodeParameters(const std::string& nodeId,
                            std::map<std::string, std::string> parameters);
 
+    // Updates the timing domain of an existing node. Returns false if the
+    // node id is not found. An empty domain means "unassigned".
+    bool SetNodeDomain(const std::string& nodeId, std::string domain);
+
     // Connections.
     bool Connect(Connection connection);
     bool Disconnect(const std::string& connectionId);
