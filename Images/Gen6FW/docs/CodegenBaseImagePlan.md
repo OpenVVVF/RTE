@@ -288,10 +288,13 @@ code can call:
 * `platform_get_throttle_a/b()` — application throttle inputs.
 * `platform_get_motor_temperature()` / `platform_get_inverter_temperature(ch)` —
   implemented: backed by the base-image `TemperatureSensors` driver
-  (round-robin software-polled ADC1/ADC3 regular conversions via LL — never
-  HAL_ADC_Stop, which would kill the injected phase-current group —
+  (TIM3 1 kHz TRGO -> ADC1 5-rank scan -> circular DMA on DMA2_Stream1,
+  ADC3 continuous for the motor channel; the DMA buffer must live in
+  `.dma_buffers` since DMA1/DMA2 cannot reach DTCM;
   `Hw.Temp.B1..3.*` / `Motor.Temp.*` KV config, TempSensor/Overtemperature
   faults).  Exposed to graphs via the `hw.temperatures` node template.
+  The same ADC1 scan also samples the throttle inputs (PA3/PA4 are shared
+  ADC1/ADC2 pins), so `platform_get_throttle_a/b()` return real volts.
 * `platform_sample_application_sensors()` — trigger slow ADC sampling.
 * `platform_raise_fault(source, reason)` / `platform_has_critical_fault()`.
 * `platform_millis()` / `platform_micros()`.

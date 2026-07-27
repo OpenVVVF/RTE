@@ -92,21 +92,18 @@ float platform_phase_voltage_w(void) {
 /* --------------------------------------------------------------------------
  * Application sensors
  * --------------------------------------------------------------------------
- * Temperature channels are sampled by the TemperatureSensors driver
- * (Src/Inverter/Drivers/Sensors/TemperatureSensors.cpp), pumped from the
- * main loop and from platform_sample_application_sensors().
- * Throttle inputs remain codegen placeholders.
+ * Temperature channels and throttle inputs are sampled by the
+ * TemperatureSensors driver (Src/Inverter/Drivers/Sensors/
+ * TemperatureSensors.cpp): TIM3 1 kHz trigger -> ADC1 5-rank scan -> DMA,
+ * ADC3 continuous for the motor channel.
  * -------------------------------------------------------------------------- */
 
-static float s_throttle_a = 0.0f;
-static float s_throttle_b = 0.0f;
-
 float platform_get_throttle_a(void) {
-    return s_throttle_a;
+    return Inverter::temperatureSensors().throttleAVoltage();
 }
 
 float platform_get_throttle_b(void) {
-    return s_throttle_b;
+    return Inverter::temperatureSensors().throttleBVoltage();
 }
 
 float platform_get_motor_temperature(void) {
@@ -118,10 +115,8 @@ float platform_get_inverter_temperature(uint8_t channel) {
 }
 
 void platform_sample_application_sensors(void) {
-    /* CODEGEN TODO: Add slow ADC sampling here for:
-     *   AIN_THROTTLE_A, AIN_THROTTLE_B
-     * Update s_throttle_a/b.
-     * Temperature channels are handled by the base-image driver. */
+    /* Sampling is hardware-driven (TIM3 TRGO + DMA); the driver only
+     * averages windows and runs fault checks. */
     Inverter::temperatureSensors().update();
 }
 

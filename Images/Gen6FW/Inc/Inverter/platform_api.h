@@ -88,12 +88,18 @@ float platform_phase_voltage_v(void);
 float platform_phase_voltage_w(void);
 
 /**
- * @brief Throttle A input [0..1] (codegen application layer fills the sampler).
+ * @brief Throttle A input pin voltage [V] (AIN_THROTTLE_A, PA3/ADC1_INP15).
+ *
+ * Sampled by the base-image TemperatureSensors driver (TIM3 1 kHz -> ADC1
+ * DMA scan).  Scaling to 0..1 is an application/graph concern.
  */
 float platform_get_throttle_a(void);
 
 /**
- * @brief Throttle B input [0..1] (codegen application layer fills the sampler).
+ * @brief Throttle B input pin voltage [V] (AIN_THROTTLE_B, PA4/ADC1_INP18).
+ *
+ * Sampled by the base-image TemperatureSensors driver (TIM3 1 kHz -> ADC1
+ * DMA scan).  Scaling to 0..1 is an application/graph concern.
  */
 float platform_get_throttle_b(void);
 
@@ -113,11 +119,11 @@ float platform_get_motor_temperature(void);
 float platform_get_inverter_temperature(uint8_t channel);
 
 /**
- * @brief Trigger a one-shot sample of all slow application analog inputs.
+ * @brief Service hook for slow application analog inputs.
  *
- * Performs one round-robin temperature conversion; the app_loop domain may
- * call it once per iteration (the base image also pumps it from the main
- * loop).  Throttle sampling remains a codegen insertion point.
+ * Sampling itself is hardware-driven (TIM3 TRGO -> ADC1 DMA, ADC3
+ * continuous); this just pumps the driver's averaging/fault logic.  The
+ * base image also calls it from the main loop.
  */
 void platform_sample_application_sensors(void);
 

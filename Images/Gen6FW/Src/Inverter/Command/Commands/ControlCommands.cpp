@@ -415,6 +415,10 @@ public:
                               static_cast<double>(volts), static_cast<double>(ohms),
                               static_cast<double>(tempC), oor ? " OUT-OF-RANGE" : "");
         }
+        Telemetry::printf("[SHELL] throttle: A=%.3f V B=%.3f V",
+                          static_cast<double>(platform_get_throttle_a()),
+                          static_cast<double>(platform_get_throttle_b()));
+        Inverter::temperatureSensors().debugStatus();
     }
 };
 
