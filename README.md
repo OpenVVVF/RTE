@@ -166,7 +166,8 @@ Done recently:
 - Calibration suite restored (hierarchical `cal`, results in the `Motor.*`
   KV namespace; flux via LS fit with V_off; flying start)
 - Temperature sensing (`hw.temperatures` node, base-image `TemperatureSensors`
-  driver on ADC1/ADC3, `Hw.Temp.*` KV config with live `config set`,
+  driver on ADC1/ADC3, `Hw.Temp.B1..3.*` / `Motor.Temp.*` KV config with
+  live `config set`,
   TempSensor warnings + over-temp critical faults)
 - Phase voltage sensing (`hw.phase_voltages`, `vsense` domain, snapshot reads)
 - Implicit unit extraction (dimensionless inputs accept voltage/current;

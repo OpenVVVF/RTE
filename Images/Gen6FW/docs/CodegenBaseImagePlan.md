@@ -288,9 +288,10 @@ code can call:
 * `platform_get_throttle_a/b()` — application throttle inputs.
 * `platform_get_motor_temperature()` / `platform_get_inverter_temperature(ch)` —
   implemented: backed by the base-image `TemperatureSensors` driver
-  (round-robin software-polled ADC1/ADC3 regular conversions, `Hw.Temp.*`
-  KV config, TempSensor/Overtemperature faults).  Exposed to graphs via the
-  `hw.temperatures` node template.
+  (round-robin software-polled ADC1/ADC3 regular conversions via LL — never
+  HAL_ADC_Stop, which would kill the injected phase-current group —
+  `Hw.Temp.B1..3.*` / `Motor.Temp.*` KV config, TempSensor/Overtemperature
+  faults).  Exposed to graphs via the `hw.temperatures` node template.
 * `platform_sample_application_sensors()` — trigger slow ADC sampling.
 * `platform_raise_fault(source, reason)` / `platform_has_critical_fault()`.
 * `platform_millis()` / `platform_micros()`.

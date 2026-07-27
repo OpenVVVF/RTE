@@ -33,7 +33,7 @@ constexpr const char* TELEM_VOLT_KEYS[TemperatureSensors::NUM_CHANNELS] = {
 };
 
 constexpr const char* KV_PREFIX[TemperatureSensors::NUM_CHANNELS] = {
-    "Hw.Temp.B1", "Hw.Temp.B2", "Hw.Temp.B3", "Hw.Temp.Mot",
+    "Hw.Temp.B1", "Hw.Temp.B2", "Hw.Temp.B3", "Motor.Temp",
 };
 
 constexpr uint32_t ADC1_CHANNELS[TemperatureSensors::BOARD_CHANNELS] = {
@@ -170,6 +170,25 @@ bool TemperatureSensors::init() {
 
 bool TemperatureSensors::sampleOnce(uint8_t ch, uint32_t& raw) {
     ADC_HandleTypeDef* hadc = (ch == 3) ? &hadc3 : &hadc1;
+    ADC_TypeDef* adc = hadc->Instance;
+
+    /* Never use HAL_ADC_Stop()/HAL_ADC_Start() here: on H7 HAL_ADC_Stop stops
+     * the INJECTED group as well as the regular one and then disables the
+     * whole ADC peripheral.  That kills the phase-current (injected, dual
+     * mode with ADC2) and encoder conversions for good, since injected start
+     * is only issued once at init.  Program the regular sequence and start a
+     * single conversion via LL instead; injected conversions keep running. */
+
+    /* Stop a lingering regular conversion (regular group only). */
+    if (LL_ADC_REG_IsConversionOngoing(adc)) {
+        LL_ADC_REG_StopConversion(adc);
+        uint32_t guard = 100000U;
+        while (LL_ADC_REG_IsConversionOngoing(adc) && guard-- != 0U) {
+        }
+        if (LL_ADC_REG_IsConversionOngoing(adc)) {
+            return false;
+        }
+    }
 
     ADC_ChannelConfTypeDef sConfig = {};
     sConfig.Channel = (ch == 3) ? ADC_CHANNEL_9 : ADC1_CHANNELS[ch];
@@ -179,21 +198,21 @@ bool TemperatureSensors::sampleOnce(uint8_t ch, uint32_t& raw) {
     sConfig.SingleDiff = ADC_SINGLE_ENDED;
     sConfig.OffsetNumber = ADC_OFFSET_NONE;
     sConfig.Offset = 0;
-
-    /* Make sure no regular conversion is running before reconfiguring. */
-    HAL_ADC_Stop(hadc);
     if (HAL_ADC_ConfigChannel(hadc, &sConfig) != HAL_OK) {
         return false;
     }
-    if (HAL_ADC_Start(hadc) != HAL_OK) {
+
+    LL_ADC_ClearFlag_EOC(adc);
+    LL_ADC_REG_StartConversion(adc);
+
+    uint32_t guard = 200000U;
+    while (!LL_ADC_IsActiveFlag_EOC(adc) && guard-- != 0U) {
+    }
+    if (!LL_ADC_IsActiveFlag_EOC(adc)) {
         return false;
     }
-    if (HAL_ADC_PollForConversion(hadc, 1U) != HAL_OK) {
-        HAL_ADC_Stop(hadc);
-        return false;
-    }
-    raw = HAL_ADC_GetValue(hadc);
-    HAL_ADC_Stop(hadc);
+
+    raw = LL_ADC_REG_ReadConversionData32(adc);
     return true;
 }
 

@@ -14,8 +14,9 @@ namespace Inverter {
  * per channel before computing resistance and temperature.
  *
  * Per-channel conversion parameters and over-temperature thresholds come
- * from the RteParamStore KV namespace (Hw.Temp.*) and are re-read once per
- * second from the RAM cache so `config set` applies live.
+ * from the RteParamStore KV namespace (Hw.Temp.B1..3.* for the board
+ * channels, Motor.Temp.* for the motor) and are re-read once per second
+ * from the RAM cache so `config set` applies live.
  *
  * Faults:
  *  - Open/short sensor sustained 500 ms  -> FaultSource::TempSensor (Warning)
