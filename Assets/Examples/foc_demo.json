@@ -515,6 +515,72 @@
         "nodeId": "LedGreen",
         "portName": "In"
       }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Motor"
+      },
+      "id": "c_t_motor",
+      "to": {
+        "nodeId": "LogT_Motor",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv1"
+      },
+      "id": "c_t_inv1",
+      "to": {
+        "nodeId": "LogT_Inv1",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv2"
+      },
+      "id": "c_t_inv2",
+      "to": {
+        "nodeId": "LogT_Inv2",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv3"
+      },
+      "id": "c_t_inv3",
+      "to": {
+        "nodeId": "LogT_Inv3",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Throttle",
+        "portName": "A"
+      },
+      "id": "c_thrA",
+      "to": {
+        "nodeId": "LogThrA",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Throttle",
+        "portName": "B"
+      },
+      "id": "c_thrB",
+      "to": {
+        "nodeId": "LogThrB",
+        "portName": "Value"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1850,6 +1916,99 @@
           "dtype": "f32"
         }
       }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Temperatures",
+      "domain": "",
+      "id": "hw.temperatures",
+      "inlineCode": "/* Motor + board temperatures from the base-image ApplicationSensors driver.\n * NAN while a channel is disabled or out of range (open/short). */\nT_Motor = rte::Celsius(platform_get_motor_temperature());\nT_Inv1  = rte::Celsius(platform_get_inverter_temperature(0));\nT_Inv2  = rte::Celsius(platform_get_inverter_temperature(1));\nT_Inv3  = rte::Celsius(platform_get_inverter_temperature(2));\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "name": "T_Motor",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv1",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv2",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "T_Inv3",
+          "direction": "output",
+          "type": {
+            "quantity": "temperature",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {}
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Throttle",
+      "domain": "",
+      "id": "hw.throttle",
+      "inlineCode": "/* Dual throttle channels, normalized [0..1] by the base-image driver\n * (KV calibration Hw.ThrA/B.MinV/MaxV).  Both read 0 and Valid is false\n * while the channels disagree beyond the plausibility tolerance. */\nA = platform_get_throttle_a();\nB = platform_get_throttle_b();\nValid = platform_get_throttle_valid();\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "name": "A",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "B",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Valid",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {}
     }
   ],
   "nodes": [
@@ -2423,6 +2582,106 @@
         "y": 1050.0
       },
       "type": "hw.digital_out"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Temps",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 1200.0
+      },
+      "type": "hw.temperatures"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Throttle",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 1350.0
+      },
+      "type": "hw.throttle"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Motor",
+      "parameters": {
+        "Key": "temp_motor_c"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1200.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Inv1",
+      "parameters": {
+        "Key": "temp_inv1_c"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1250.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Inv2",
+      "parameters": {
+        "Key": "temp_inv2_c"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1300.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Inv3",
+      "parameters": {
+        "Key": "temp_inv3_c"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1350.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogThrA",
+      "parameters": {
+        "Key": "thr_a_norm"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1450.0
+      },
+      "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogThrB",
+      "parameters": {
+        "Key": "thr_b_norm"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1500.0
+      },
+      "type": "app.telemetry_log"
     }
   ]
 }

@@ -222,13 +222,14 @@ bool Graph::TypeCheck(const Connection& connection) const {
     if (fromPort->type == toPort->type) return true;
 
     /* Implicit unit extraction: a dimensionless scalar input accepts a
-     * voltage or current scalar output; codegen emits the .in(unit)
-     * extraction at the binding site. */
+     * voltage, current, or temperature scalar output; codegen emits the
+     * .in(unit) extraction at the binding site. */
     if (toPort->type.frame == Frame::Scalar &&
         toPort->type.quantity == Quantity::Dimensionless &&
         fromPort->type.frame == Frame::Scalar &&
         (fromPort->type.quantity == Quantity::Voltage ||
-         fromPort->type.quantity == Quantity::Current)) {
+         fromPort->type.quantity == Quantity::Current ||
+         fromPort->type.quantity == Quantity::Temperature)) {
         return true;
     }
 

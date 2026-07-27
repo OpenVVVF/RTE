@@ -262,8 +262,9 @@ std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
 }
 
 /* Unit extraction for implicit conversions: when a dimensionless scalar
- * input binds from a voltage/current scalar source (direct connection), the
- * emitted expression needs the .in(unit) suffix to unwrap the au quantity. */
+ * input binds from a voltage/current/temperature scalar source (direct
+ * connection), the emitted expression needs the .in(unit) suffix to unwrap
+ * the au quantity. */
 std::string ExtractionSuffix(const NodeAPI::Graph& graph,
                              const std::string& targetNodeId,
                              const std::string& targetPortName) {
@@ -291,6 +292,9 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
             }
             if (srcPort->type.quantity == NodeAPI::Quantity::Current) {
                 return ".in(au::amperes)";
+            }
+            if (srcPort->type.quantity == NodeAPI::Quantity::Temperature) {
+                return ".in(au::celsius)";
             }
             return "";
         }

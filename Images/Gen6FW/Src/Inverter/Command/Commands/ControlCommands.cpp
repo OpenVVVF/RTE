@@ -176,7 +176,13 @@ private:
         void* state = nullptr;
         const RteParamDesc* desc = find(key, &state);
         if (desc == nullptr) {
-            Telemetry::printf("[SHELL] unknown config key '%s'", key);
+            /* Not a graph config node: fall back to the raw KV store so
+             * base-image driver keys (Hw.Temp.*, Hw.Thr*, Motor.Temp.*) are
+             * settable too.  Writes flush immediately; drivers re-read them
+             * on their reload path (e.g. `temp reload`) or at boot. */
+            if (!storeReady()) return;
+            Inverter::RteParamStore::set(key, value);
+            reportFlush("config value saved to FRAM", 1);
             return;
         }
         desc->set(state, value);
@@ -188,7 +194,13 @@ private:
         void* state = nullptr;
         const RteParamDesc* desc = find(key, &state);
         if (desc == nullptr) {
-            Telemetry::printf("[SHELL] unknown config key '%s'", key);
+            float value = 0.0f;
+            if (Inverter::RteParamStore::isReady() &&
+                Inverter::RteParamStore::get(key, &value)) {
+                Telemetry::printf("[SHELL] %s = %.4f", key, static_cast<double>(value));
+            } else {
+                Telemetry::printf("[SHELL] unknown config key '%s'", key);
+            }
             return;
         }
         Telemetry::printf("[SHELL] %s = %.4f", key,

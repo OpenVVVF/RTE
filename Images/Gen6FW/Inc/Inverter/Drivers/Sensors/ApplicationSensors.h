@@ -80,8 +80,10 @@ private:
     static constexpr uint8_t TYPE_KTY83_110  = 7; /**< KTY83-110 (R25 ~1000, approx)*/
 
     static constexpr uint32_t WINDOW_MS           = 16; /**< recompute cadence ~60 Hz. */
+    static constexpr uint32_t FAULT_SUSTAIN_MS    = 500;
     static constexpr float    OOR_OPEN_RATIO      = 0.98f;  /**< of Vcc */
     static constexpr float    OOR_SHORT_RATIO     = 0.02f;  /**< of Vcc */
+    static constexpr float    OVERTEMP_HYST_C     = 5.0f;
     static constexpr float    THROTTLE_PLAUS_TOL  = 0.10f;  /**< |A-B| normalized */
     static constexpr uint32_t THROTTLE_PLAUS_MS   = 100;    /**< sustain before fault */
 
@@ -101,10 +103,17 @@ private:
         float    voltage;
         float    resistance;  /**< Last computed divider resistance [ohm], NAN if invalid. */
         bool     out_of_range;
+        bool     oor_pending;
+        uint32_t oor_since_ms;
+        bool     over_temp_cond;
+        bool     over_temp_raised;
+        uint32_t ot_since_ms;
     };
 
-    void computeWindow();
-    void evaluateChannel(uint8_t ch);
+    void computeWindow(uint32_t now_ms);
+    void evaluateChannel(uint8_t ch, uint32_t now_ms);
+    void updateOutOfRange(uint8_t ch, uint32_t now_ms);
+    void updateOverTemp(uint8_t ch, uint32_t now_ms);
     void updateThrottlePlausibility(uint32_t now_ms);
     bool configureAdc1ScanDma();
     void loadConfig(bool persist_defaults);

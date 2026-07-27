@@ -251,10 +251,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     PF12     ------> ADC1_INP6   (AIN_DC_LINK_CURSENS_REF)
     */
     /* TIME_DOMAIN: APPLICATION_ADC_GPIO_INIT
-     *   ADC1 pins used for slow application sensors (temperature) are configured
-     *   here but are not yet sampled anywhere.  This is a codegen insertion point.
-     * CODEGEN: Add regular-group scan + DMA or software-triggered conversions for
-     *   AIN_TMP_SENSE_1/2/3, AIN_MOTOR_TMP, AIN_THROTTLE_A/B, etc.
+     *   ADC1 pins for slow application sensors (board temps; throttle A/B are
+     *   shared ADC1/ADC2 inputs, see ADC2 below).  Sampled by the
+     *   ApplicationSensors driver via a TIM3-triggered regular scan into
+     *   circular DMA — see Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp.
      */
     GPIO_InitStruct.Pin = AIN_TMP_SENSE_3_Pin|AIN_TMP_SENSE_2_Pin|AIN_TMP_SENSE_1_Pin|AIN_PH_V_CURSENS_Pin
                           |AIN_PH_V_CURSENS_REF_Pin;
@@ -312,11 +312,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     PF14     ------> ADC2_INP6   (AIN_PH_W_CURSENS_REF)
     */
     /* TIME_DOMAIN: APPLICATION_ADC_GPIO_INIT
-     *   ADC2 pins used for slow application sensors (throttle, hall) are
-     *   configured here but are not yet sampled anywhere.  This is a codegen
-     *   insertion point for application ADC channels.
-     * CODEGEN: Add regular-group scan + DMA or software-triggered conversions for
-     *   AIN_THROTTLE_A/B, AIN_HALL_U/V/W, etc.
+     *   ADC2 pins for slow application sensors (throttle, hall).  Throttle A/B
+     *   are shared ADC1/ADC2 inputs and are sampled by the ApplicationSensors
+     *   driver on ADC1 (the encoder owns ADC2's regular group).  The hall
+     *   inputs are reserved and not yet sampled.
      */
     GPIO_InitStruct.Pin = AIN_ENCODER_SIN_HALL_U_Pin|AIN_ENCODER_COS_HALL_V_Pin|AIN_PH_U_CURSENS_REF_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;

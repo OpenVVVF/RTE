@@ -159,6 +159,28 @@ without a flux value, live starts are refused).
 (`V_U`, `V_V`, `V_W`, `V_Dc`, filtered reads) in the `vsense` timing domain.
 Telemetered as `cg_vu_v`, `cg_vv_v`, `cg_vw_v` in the demo graph.
 
+## Temperature, throttle, and user IO
+
+The base-image `ApplicationSensors` driver samples all slow analog inputs
+with zero CPU involvement: TIM3 TRGO at 1 kHz triggers an ADC1 regular scan
+(board temps 1..3 on INP19/17/16, throttle A/B on INP15/18) into circular
+DMA, and ADC3 free-runs on the motor temp channel (INP9). The CPU never
+blocks on an ADC — `update()` only harvests finished conversions.
+
+- `hw.temperatures` (motor + 3 board channels, °C; NAN when a channel is
+  disabled or open/short). Per-channel KV config: `Hw.Temp.Bx.*` /
+  `Motor.Temp.*` (`En`, `Type`, `R25`, `Beta`, `RSer`, `Orient`, `CritC`;
+  types via `temp types`). Board channels default disabled (not populated).
+  Open/short sustained 500 ms raises a Warning; over-`CritC` raises Critical.
+- `hw.throttle` (dual channels normalized 0..1 via `Hw.ThrA/B.MinV/MaxV` +
+  `Valid`). |A−B| > 0.10 sustained 100 ms raises Critical and zeroes both.
+- `hw.digital_in` (USER_DIN_1..8) / `hw.digital_out` (USER_DOUT_1..4, pins
+  5/6 = green/orange debug LEDs), pin selected by node parameter.
+- Shell: `temp` (live V/ohm/°C + throttle), `temp types`, `temp reload`,
+  `temp debug`. `config set/get` also reach raw KV keys (driver config).
+- Rate telemetry (`hz_app_loop`, `hz_vsense`, `hz_tim_isr`, `hz_adc_isr`)
+  is always on as a throughput canary.
+
 ## Roadmap
 
 Done recently:
@@ -170,6 +192,8 @@ Done recently:
   ToDim converters deleted)
 - Config node persistence (FRAM KV store, `config set/save/list/delete`)
 - PI voltage limit is now the true SVPWM linear limit (`Vdc/sqrt(3) * 0.95`)
+- Temperature sensing, dual throttle with plausibility check, and user
+  digital IO (`hw.temperatures`, `hw.throttle`, `hw.digital_in/out`)
 
 Next up, roughly in priority order:
 
@@ -181,7 +205,7 @@ Next up, roughly in priority order:
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no
   inline code) into a renamed zip
-- Node library expansion: CAN bus (CAN1/CAN2), digital inputs, digital outputs
+- Node library expansion: CAN bus (CAN1/CAN2)
 - NodeGUI: node create/delete palette, emit/flash actions, live telemetry
 - Safety: compare against HARA/TARA/SWAD, verify base-image safety subsystems,
   then bring the docs in line

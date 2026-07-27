@@ -401,41 +401,130 @@ float ApplicationSensors::resistanceToTempC(const Config& cfg, float r) const {
     }
 }
 
-void ApplicationSensors::evaluateChannel(uint8_t ch) {
+void ApplicationSensors::updateOutOfRange(uint8_t ch, uint32_t now_ms) {
+    Channel& c = m_ch[ch];
+    const bool oor = (c.voltage > OOR_OPEN_RATIO * m_vcc) ||
+                     (c.voltage < OOR_SHORT_RATIO * m_vcc);
+
+    if (!oor) {
+        /* Back in range: clear the condition; the latched fault stays until
+         * the user clears it via the shell. */
+        c.oor_pending = false;
+        c.out_of_range = false;
+        return;
+    }
+
+    if (!c.oor_pending) {
+        c.oor_pending = true;
+        c.oor_since_ms = now_ms;
+        return;
+    }
+
+    if ((now_ms - c.oor_since_ms) < FAULT_SUSTAIN_MS) {
+        return;
+    }
+
+    if (!c.out_of_range) {
+        c.out_of_range = true;
+        static const FaultReason OPEN_REASONS[NUM_CHANNELS] = {
+            FaultReason::TempSensorOpenInv1, FaultReason::TempSensorOpenInv2,
+            FaultReason::TempSensorOpenInv3, FaultReason::TempSensorOpenMot,
+        };
+        static const FaultReason SHORT_REASONS[NUM_CHANNELS] = {
+            FaultReason::TempSensorShortInv1, FaultReason::TempSensorShortInv2,
+            FaultReason::TempSensorShortInv3, FaultReason::TempSensorShortMot,
+        };
+        const bool open = (c.voltage > OOR_OPEN_RATIO * m_vcc);
+        FaultManager::instance().raise(FaultSource::TempSensor,
+                                       open ? OPEN_REASONS[ch] : SHORT_REASONS[ch]);
+    }
+}
+
+void ApplicationSensors::updateOverTemp(uint8_t ch, uint32_t now_ms) {
     Channel& c = m_ch[ch];
     const Config& cfg = c.cfg;
 
-    /* A railed voltage means open/short sensor: the channel is never
-     * "in range", so the temperature is NAN. */
+    if (!cfg.enabled || c.out_of_range || !std::isfinite(c.temp_c)) {
+        c.over_temp_cond = false;
+        c.over_temp_raised = false;
+        return;
+    }
+
+    /* 5 degC hysteresis on the condition. */
+    if (c.over_temp_cond) {
+        c.over_temp_cond = (c.temp_c > (cfg.crit_c - OVERTEMP_HYST_C));
+    } else {
+        c.over_temp_cond = (c.temp_c > cfg.crit_c);
+        if (c.over_temp_cond) {
+            c.ot_since_ms = now_ms;
+        }
+    }
+
+    if (!c.over_temp_cond) {
+        c.over_temp_raised = false;
+        return;
+    }
+
+    if ((now_ms - c.ot_since_ms) < FAULT_SUSTAIN_MS) {
+        return;
+    }
+
+    if (!c.over_temp_raised) {
+        c.over_temp_raised = true;
+        if (ch == 3) {
+            FaultManager::instance().raise(FaultSource::OvertemperatureMotor,
+                                           FaultReason::OvertemperatureMotor);
+        } else {
+            static const FaultReason OT_REASONS[BOARD_CHANNELS] = {
+                FaultReason::OvertemperatureInv1, FaultReason::OvertemperatureInv2,
+                FaultReason::OvertemperatureInv3,
+            };
+            FaultManager::instance().raise(FaultSource::OvertemperatureInverter,
+                                           OT_REASONS[ch]);
+        }
+    }
+}
+
+void ApplicationSensors::evaluateChannel(uint8_t ch, uint32_t now_ms) {
+    Channel& c = m_ch[ch];
+    const Config& cfg = c.cfg;
+
+    /* A railed voltage means open/short sensor (or pending confirmation of
+     * it): the channel is never "in range", so the temperature is NAN and
+     * the over-temperature check must not run on a divider railed at Vcc/GND. */
     const bool railed = (c.voltage > OOR_OPEN_RATIO * m_vcc) ||
                         (c.voltage < OOR_SHORT_RATIO * m_vcc);
-    c.out_of_range = cfg.enabled && railed;
+
+    if (cfg.enabled) {
+        updateOutOfRange(ch, now_ms);
+    }
 
     if (!cfg.enabled || railed) {
         c.resistance = NAN;
         c.temp_c = NAN;
-        return;
+    } else {
+        /* Divider -> resistance, then resistance -> temperature. */
+        const float v = c.voltage;
+        float r = NAN;
+        if (cfg.orient == 0) {
+            /* Sensor to GND, RSer pull-up to VCC: R = RSer * V/(VCC - V). */
+            if (v < m_vcc) {
+                r = cfg.rser * v / (m_vcc - v);
+            }
+        } else {
+            /* Sensor to VCC: R = RSer * (VCC - V)/V. */
+            if (v > 0.0f) {
+                r = cfg.rser * (m_vcc - v) / v;
+            }
+        }
+        c.resistance = r;
+        c.temp_c = std::isfinite(r) ? resistanceToTempC(cfg, r) : NAN;
     }
 
-    /* Divider -> resistance, then resistance -> temperature. */
-    const float v = c.voltage;
-    float r = NAN;
-    if (cfg.orient == 0) {
-        /* Sensor to GND, RSer pull-up to VCC: R = RSer * V/(VCC - V). */
-        if (v < m_vcc) {
-            r = cfg.rser * v / (m_vcc - v);
-        }
-    } else {
-        /* Sensor to VCC: R = RSer * (VCC - V)/V. */
-        if (v > 0.0f) {
-            r = cfg.rser * (m_vcc - v) / v;
-        }
-    }
-    c.resistance = r;
-    c.temp_c = std::isfinite(r) ? resistanceToTempC(cfg, r) : NAN;
+    updateOverTemp(ch, now_ms);
 }
 
-void ApplicationSensors::computeWindow() {
+void ApplicationSensors::computeWindow(uint32_t now_ms) {
     /* The DMA buffer holds the latest 1 kHz scan; just read it. */
     for (uint8_t r = 0; r < ADC1_RANKS; ++r) {
         const float volts = (static_cast<float>(s_adc1_buf[r]) / ADC1_FULL_SCALE) * m_vcc;
@@ -472,7 +561,7 @@ void ApplicationSensors::computeWindow() {
     m_ch[3].voltage = (static_cast<float>(m_adc3_latest) / ADC3_FULL_SCALE) * m_vcc;
 
     for (uint8_t ch = 0; ch < NUM_CHANNELS; ++ch) {
-        evaluateChannel(ch);
+        evaluateChannel(ch, now_ms);
     }
 }
 
@@ -489,7 +578,7 @@ void ApplicationSensors::update() {
 
     const uint32_t now_ms = HAL_GetTick();
     if ((now_ms - m_last_window_ms) >= WINDOW_MS) {
-        computeWindow();
+        computeWindow(now_ms);
         m_last_window_ms = now_ms;
     }
     updateThrottlePlausibility(now_ms);

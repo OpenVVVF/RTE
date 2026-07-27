@@ -45,6 +45,19 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::FramReadFailed:       return "read failed";
         case FaultReason::FramWriteFailed:      return "write failed";
         case FaultReason::FramCommandFailed:    return "command failed";
+        case FaultReason::ThrottlePlausibilityMismatch: return "throttle A/B mismatch";
+        case FaultReason::TempSensorOpenInv1:   return "inverter sensor 1 open circuit";
+        case FaultReason::TempSensorOpenInv2:   return "inverter sensor 2 open circuit";
+        case FaultReason::TempSensorOpenInv3:   return "inverter sensor 3 open circuit";
+        case FaultReason::TempSensorOpenMot:    return "motor sensor open circuit";
+        case FaultReason::TempSensorShortInv1:  return "inverter sensor 1 short circuit";
+        case FaultReason::TempSensorShortInv2:  return "inverter sensor 2 short circuit";
+        case FaultReason::TempSensorShortInv3:  return "inverter sensor 3 short circuit";
+        case FaultReason::TempSensorShortMot:   return "motor sensor short circuit";
+        case FaultReason::OvertemperatureInv1:  return "inverter sensor 1 over limit";
+        case FaultReason::OvertemperatureInv2:  return "inverter sensor 2 over limit";
+        case FaultReason::OvertemperatureInv3:  return "inverter sensor 3 over limit";
+        case FaultReason::OvertemperatureMotor: return "motor over temperature limit";
         case FaultReason::Count:                break;
     }
     return "unknown";
