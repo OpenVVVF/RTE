@@ -16,9 +16,10 @@ namespace {
 
 TemperatureSensors s_instance;
 
-/* adc.c configures ADC1 regular oversampling; configureAdcAndTrigger() turns
- * it OFF for the application scan (ROVSE), so the regular conversions are
- * plain 16-bit.  ADC3 is 12-bit with no oversampling. */
+/* ADC1 runs plain 16-bit single conversions (full scale 65535) — regular
+ * oversampling is deliberately OFF because it delays injected phase-current
+ * triggers to sequence boundaries (see configureAdcAndTrigger).  ADC3 runs
+ * plain 12-bit (full scale 4095).  No software averaging anywhere. */
 constexpr float ADC1_FULL_SCALE = 65535.0f;
 constexpr float ADC3_FULL_SCALE = 4095.0f;
 
@@ -46,12 +47,12 @@ constexpr float KTY84_A = 7.418e-3f;
 constexpr float KTY84_B = 1.815e-5f;
 
 /* TIM3 TRGO (1 kHz) -> ADC1 scan -> circular DMA, mirroring the encoder's
- * TIM2 -> ADC2 setup.  Buffer holds SAMPLES_PER_CHANNEL scans per rank.
- * Must live in .dma_buffers (AXI SRAM): DMA1/DMA2 cannot access DTCM. */
+ * TIM2 -> ADC2 setup.  Buffer holds the latest scan (one value per rank;
+ * hardware oversampling does the averaging).  Must live in .dma_buffers
+ * (AXI SRAM): DMA1/DMA2 cannot access DTCM. */
 TIM_HandleTypeDef htim3_temp;
 DMA_HandleTypeDef hdma_adc1_temp;
-uint16_t s_adc1_buf[TemperatureSensors::ADC1_RANKS *
-                    TemperatureSensors::SAMPLES_PER_CHANNEL]
+uint16_t s_adc1_buf[TemperatureSensors::ADC1_RANKS]
     __attribute__((section(".dma_buffers")));
 
 } // namespace
@@ -105,9 +106,12 @@ void TemperatureSensors::debugStatus() const {
                       static_cast<unsigned long>(DMA2_Stream1->PAR),
                       static_cast<unsigned long>(DMA2_Stream1->M0AR),
                       static_cast<unsigned long>(reinterpret_cast<uintptr_t>(s_adc1_buf)));
-    Telemetry::printf("[SHELL] buf[0..7]: %u %u %u %u %u %u %u %u",
+    Telemetry::printf("[SHELL] buf[0..4]: %u %u %u %u %u",
                       s_adc1_buf[0], s_adc1_buf[1], s_adc1_buf[2], s_adc1_buf[3],
-                      s_adc1_buf[4], s_adc1_buf[5], s_adc1_buf[6], s_adc1_buf[7]);
+                      s_adc1_buf[4]);
+    Telemetry::printf("[SHELL] adc3: CFGR2=%08lX raw_latest=%lu",
+                      static_cast<unsigned long>(hadc3.Instance->CFGR2),
+                      static_cast<unsigned long>(m_adc3_latest));
 }
 
 void TemperatureSensors::channelStatus(uint8_t ch, bool& enabled, uint8_t& type,
@@ -196,7 +200,12 @@ bool TemperatureSensors::configureAdcAndTrigger() {
                                       LL_ADC_SAMPLINGTIME_64CYCLES_5);
     }
     CLEAR_BIT(hadc1.Instance->CFGR, ADC_CFGR_DISCEN | ADC_CFGR_DISCNUM);
-    /* No regular oversampling: the DMA window is averaged in software. */
+    CLEAR_BIT(hadc1.Instance->CFGR, ADC_CFGR_DISCEN | ADC_CFGR_DISCNUM);
+    /* No regular oversampling: an injected (phase current) trigger can only
+     * preempt a regular OVERSAMPLED sequence at sequence boundaries, delaying
+     * the current sample by tens of microseconds (onto a PWM switching edge)
+     * and tripping software overcurrent.  Plain single conversions preempt
+     * in ~3 us.  16-bit single samples are quiet enough for these channels. */
     CLEAR_BIT(hadc1.Instance->CFGR2, ADC_CFGR2_ROVSE);
     /* Trigger from TIM3 TRGO, rising edge. */
     MODIFY_REG(hadc1.Instance->CFGR, ADC_CFGR_EXTEN | ADC_CFGR_EXTSEL,
@@ -215,6 +224,10 @@ bool TemperatureSensors::configureAdcAndTrigger() {
     LL_ADC_REG_SetSequencerRanks(hadc3.Instance, LL_ADC_REG_RANK_1, ADC_CHANNEL_9);
     LL_ADC_SetChannelSamplingTime(hadc3.Instance, ADC_CHANNEL_9,
                                   ADC3_SAMPLETIME_92CYCLES_5);
+    /* ADC3 (v90 IP) does not accept the ADC1/2 CFGR2 oversampling layout;
+     * keep it plain 12-bit and read the latest sample — fine for a
+     * temperature channel. */
+    CLEAR_BIT(hadc3.Instance->CFGR2, ADC_CFGR2_ROVSE);
     /* No external trigger: software-started continuous. */
     MODIFY_REG(hadc3.Instance->CFGR, ADC_CFGR_EXTEN | ADC_CFGR_EXTSEL,
                ADC_EXTERNALTRIGCONVEDGE_NONE | ADC_SOFTWARE_START);
@@ -288,7 +301,7 @@ bool TemperatureSensors::init() {
     }
 
     if (HAL_ADC_Start_DMA(&hadc1, reinterpret_cast<uint32_t*>(s_adc1_buf),
-                          ADC1_RANKS * SAMPLES_PER_CHANNEL) != HAL_OK) {
+                          ADC1_RANKS) != HAL_OK) {
         Telemetry::printf("[TMP] ERROR: ADC1 DMA start failed");
         return false;
     }
@@ -304,8 +317,7 @@ bool TemperatureSensors::init() {
     }
 
     m_initialized = true;
-    m_last_cfg_ms = HAL_GetTick();
-    m_last_window_ms = m_last_cfg_ms;
+    m_last_window_ms = HAL_GetTick();
     return true;
 }
 
@@ -484,17 +496,10 @@ void TemperatureSensors::evaluateChannel(uint8_t ch, uint32_t now_ms) {
 }
 
 void TemperatureSensors::computeWindow(uint32_t now_ms) {
-    /* Average the circular DMA window: 5 ranks x 16 scans at 1 kHz.  A torn
-     * window just mixes adjacent 1 ms samples in the average — harmless at
-     * these signal speeds. */
+    /* The DMA buffer holds the latest 1 kHz scan (hardware-oversampled);
+     * just read it. */
     for (uint8_t r = 0; r < ADC1_RANKS; ++r) {
-        uint32_t sum = 0;
-        for (uint8_t k = 0; k < SAMPLES_PER_CHANNEL; ++k) {
-            sum += s_adc1_buf[k * ADC1_RANKS + r];
-        }
-        const float avg = static_cast<float>(sum) /
-                          static_cast<float>(SAMPLES_PER_CHANNEL);
-        const float volts = (avg / ADC1_FULL_SCALE) * m_vcc;
+        const float volts = (static_cast<float>(s_adc1_buf[r]) / ADC1_FULL_SCALE) * m_vcc;
         if (r < BOARD_CHANNELS) {
             m_ch[r].voltage = volts;
         } else if (r == 3) {
@@ -506,14 +511,8 @@ void TemperatureSensors::computeWindow(uint32_t now_ms) {
     Telemetry::log("thr_a_v", m_thr_a_v);
     Telemetry::log("thr_b_v", m_thr_b_v);
 
-    /* Motor temp (ADC3 continuous): average whatever completed this window. */
-    if (m_adc3_count != 0U) {
-        const float avg = static_cast<float>(m_adc3_accum) /
-                          static_cast<float>(m_adc3_count);
-        m_ch[3].voltage = (avg / ADC3_FULL_SCALE) * m_vcc;
-        m_adc3_accum = 0;
-        m_adc3_count = 0;
-    }
+    /* Motor temp (ADC3 continuous, hardware-oversampled): latest sample. */
+    m_ch[3].voltage = (static_cast<float>(m_adc3_latest) / ADC3_FULL_SCALE) * m_vcc;
 
     for (uint8_t ch = 0; ch < NUM_CHANNELS; ++ch) {
         evaluateChannel(ch, now_ms);
@@ -525,21 +524,13 @@ void TemperatureSensors::update() {
         return;
     }
 
+    /* Harvest the latest completed ADC3 conversion; never blocks.  Reading
+     * DR clears EOC, and continuous mode immediately starts the next one. */
+    if (LL_ADC_IsActiveFlag_EOC(hadc3.Instance)) {
+        m_adc3_latest = LL_ADC_REG_ReadConversionData32(hadc3.Instance);
+    }
+
     const uint32_t now_ms = HAL_GetTick();
-
-    /* Re-read the KV RAM cache once per second so `config set` applies live. */
-    if ((now_ms - m_last_cfg_ms) >= CONFIG_RELOAD_MS) {
-        loadConfig(/*persist_defaults=*/false);
-        m_last_cfg_ms = now_ms;
-    }
-
-    /* Harvest completed ADC3 conversions; never blocks.  Reading DR clears
-     * EOC, and continuous mode immediately starts the next conversion. */
-    while (LL_ADC_IsActiveFlag_EOC(hadc3.Instance)) {
-        m_adc3_accum += LL_ADC_REG_ReadConversionData32(hadc3.Instance);
-        ++m_adc3_count;
-    }
-
     if ((now_ms - m_last_window_ms) >= WINDOW_MS) {
         computeWindow(now_ms);
         m_last_window_ms = now_ms;

@@ -183,7 +183,7 @@ private:
              * (e.g. Hw.Temp.*) can be tuned live without a graph config node. */
             if (!storeReady()) return;
             platform_config_set(key, value);
-            Telemetry::printf("[SHELL] %s = %.4f (raw KV key, live; 'config save %s' to persist)",
+            Telemetry::printf("[SHELL] %s = %.4f (raw KV key; 'config save %s' to persist, applies at next boot)",
                               key, static_cast<double>(value), key);
             return;
         }

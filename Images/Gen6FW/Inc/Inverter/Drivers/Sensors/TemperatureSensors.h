@@ -31,7 +31,6 @@ public:
     static constexpr uint8_t NUM_CHANNELS = 4; /**< 0..2 = board, 3 = motor. */
     static constexpr uint8_t BOARD_CHANNELS = 3;
     static constexpr uint8_t ADC1_RANKS = 5;          /**< 3 temps + 2 throttle. */
-    static constexpr uint8_t SAMPLES_PER_CHANNEL = 16; /**< DMA window per channel. */
 
     /** @brief Load config from the KV store, start TIM3 + ADC DMA. */
     bool init();
@@ -75,12 +74,11 @@ private:
     static constexpr uint8_t TYPE_PT100      = 6; /**< PT100  (100 ohm @ 0 C)      */
     static constexpr uint8_t TYPE_KTY83_110  = 7; /**< KTY83-110 (R25 ~1000, approx)*/
 
-    static constexpr uint32_t WINDOW_MS           = 16; /**< 1 kHz x 16 scans.       */
+    static constexpr uint32_t WINDOW_MS           = 16; /**< 1 kHz scan, 60 Hz eval. */
     static constexpr uint32_t FAULT_SUSTAIN_MS    = 500;
     static constexpr float    OOR_OPEN_RATIO      = 0.98f;  /**< of Vcc */
     static constexpr float    OOR_SHORT_RATIO     = 0.02f;  /**< of Vcc */
     static constexpr float    OVERTEMP_HYST_C     = 5.0f;
-    static constexpr uint32_t CONFIG_RELOAD_MS    = 1000;
 
     struct Config {
         bool    enabled;
@@ -116,10 +114,8 @@ private:
     Channel  m_ch[NUM_CHANNELS] = {};
     float    m_thr_a_v = 0.0f;
     float    m_thr_b_v = 0.0f;
-    uint32_t m_adc3_accum = 0;
-    uint8_t  m_adc3_count = 0;
+    uint32_t m_adc3_latest = 0;
     float    m_vcc = 3.3f;
-    uint32_t m_last_cfg_ms = 0;
     uint32_t m_last_window_ms = 0;
     bool     m_initialized = false;
 };
