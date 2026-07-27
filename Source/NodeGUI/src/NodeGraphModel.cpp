@@ -145,7 +145,12 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
         return QStringLiteral("Consumer port must be an input");
     }
 
-    if (producerPort->type != consumerPort->type) {
+    // Delegate type compatibility to NodeAPI (exact match or implicit unit
+    // extraction), so the GUI cannot diverge from the graph's own rules.
+    NodeAPI::Connection probe;
+    probe.from = *producerRef;
+    probe.to = *consumerRef;
+    if (!graph_.TypeCheck(probe)) {
         return QStringLiteral("Port types do not match");
     }
 
@@ -194,7 +199,9 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
     if (asBridge) {
         NodeAPI::Bridge bridge;
         bridge.id = GenerateId();
-        bridge.type = producerPort->type;
+        // The bridge carries the consumer's type; NodeAPI lets the producer
+        // feed it via implicit unit extraction.
+        bridge.type = consumerPort->type;
         bridge.producer = *producerRef;
         bridge.consumer = *consumerRef;
         if (!temp.AddBridge(std::move(bridge))) {
@@ -262,7 +269,8 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
     }
 
     const auto producerPort = graph_.FindPort(*producerRef);
-    if (!producerPort) {
+    const auto consumerPort = graph_.FindPort(*consumerRef);
+    if (!producerPort || !consumerPort) {
         DataFlowGraphModel::deleteConnection(connectionId);
         return;
     }
@@ -272,7 +280,9 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
     if (asBridge) {
         NodeAPI::Bridge bridge;
         bridge.id = id;
-        bridge.type = producerPort->type;
+        // The bridge carries the consumer's type; NodeAPI lets the producer
+        // feed it via implicit unit extraction.
+        bridge.type = consumerPort->type;
         bridge.producer = *producerRef;
         bridge.consumer = *consumerRef;
         if (graph_.AddBridge(std::move(bridge))) {

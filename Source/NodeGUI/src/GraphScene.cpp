@@ -1041,9 +1041,18 @@ QString GraphScene::AddNodeAt(const std::string& typeId, const QPointF& scenePos
 
     NodeAPI::Node node;
     node.type = typeId;
-    // New instances start unassigned; the domain is chosen via the node's
-    // context menu. Only types locked to a specific domain bring their own.
+    // New instances start unassigned unless the type is locked to a domain.
+    // If the drop lands inside an existing domain's outline, the node adopts
+    // that domain instead (the outline then refits around it).
     node.domain = nodeType->domain;
+    if (node.domain.empty()) {
+        for (const auto& [domain, visuals] : domainVisuals_) {
+            if (visuals.outline && visuals.outline->rect().contains(scenePos)) {
+                node.domain = domain;
+                break;
+            }
+        }
+    }
     node.position = NodeAPI::Position{scenePos.x(), scenePos.y()};
     // Instances start with the type's declared parameters left empty; they
     // are filled in via the node's parameter editor (double-click).

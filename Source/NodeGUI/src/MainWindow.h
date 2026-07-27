@@ -7,6 +7,9 @@
 #include <QPointer>
 #include <memory>
 
+class QLabel;
+class QTimer;
+
 namespace NodeGUI {
 
 class NodePalette;
@@ -32,6 +35,7 @@ private slots:
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void SetupMenu();
@@ -41,9 +45,16 @@ private:
     // Right-click menu on a node: pick its timing domain.
     void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
 
+    // Toast-style warning label anchored bottom-left of the canvas. Pairs
+    // with an instant tooltip at the cursor; auto-hides on a timer.
+    void ShowToast(const QString& message);
+    void RepositionToast();
+
     std::unique_ptr<GraphScene> graphScene_;
     QPointer<GraphView> view_;
     QPointer<NodePalette> palette_;
+    QPointer<QLabel> toast_;
+    QTimer* toastTimer_ = nullptr;
     std::string currentPath_;
     bool connectionCreatedThisDrag_ = false;
 };

@@ -5,17 +5,22 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCursor>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QMouseEvent>
+#include <QResizeEvent>
 #include <QScreen>
 #include <QStatusBar>
+#include <QTimer>
+#include <QToolTip>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -61,7 +66,7 @@ MainWindow::MainWindow(QWidget* parent)
         if (error.isEmpty()) {
             UpdateStatus();
         } else {
-            statusBar()->showMessage(error, 4000);
+            ShowToast(error);
         }
     };
 
@@ -72,6 +77,27 @@ MainWindow::MainWindow(QWidget* parent)
 
     layout->addWidget(view_);
     setCentralWidget(central);
+
+    // Toast-style warning label, bottom-left of the canvas. Child of the
+    // container (not the viewport, whose children get dragged by scroll
+    // deltas), raised above the view, hidden until a refused action.
+    toast_ = new QLabel(central);
+    toast_->setStyleSheet(QStringLiteral(
+        "background-color: rgba(30, 30, 30, 200);"
+        "border-radius: 4px;"
+        "padding: 4px 8px;"
+        "color: #ffb74d;"));
+    toast_->hide();
+    toast_->raise();
+
+    toastTimer_ = new QTimer(this);
+    toastTimer_->setSingleShot(true);
+    toastTimer_->setInterval(4000);
+    connect(toastTimer_, &QTimer::timeout, toast_, &QLabel::hide);
+
+    // The viewport's Resize event carries the final post-layout size (and
+    // covers scrollbar appear/disappear).
+    view_->viewport()->installEventFilter(this);
 
     // Toolbox dock listing the available node types; entries are dragged onto
     // the view to instantiate them. Populated on OpenGraph.
@@ -174,10 +200,9 @@ void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qt
     // Types locked to a domain cannot be reassigned.
     const auto nodeType = graphScene_->Graph().FindNodeType(node->type);
     if (nodeType && !nodeType->domain.empty()) {
-        statusBar()->showMessage(QStringLiteral("'%1' is locked to domain '%2' by its node type")
-                                     .arg(QString::fromStdString(nodeId),
-                                          QString::fromStdString(nodeType->domain)),
-                                 4000);
+        ShowToast(QStringLiteral("'%1' is locked to domain '%2' by its node type")
+                      .arg(QString::fromStdString(nodeId),
+                           QString::fromStdString(nodeType->domain)));
         return;
     }
 
@@ -197,7 +222,7 @@ void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qt
         connect(action, &QAction::triggered, this, [this, qtId, value] {
             const QString error = graphScene_->SetNodeDomain(qtId, value);
             if (!error.isEmpty()) {
-                statusBar()->showMessage(error, 4000);
+                ShowToast(error);
             }
         });
     };
@@ -220,12 +245,42 @@ void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qt
         if (ok && !name.trimmed().isEmpty()) {
             const QString error = graphScene_->SetNodeDomain(qtId, name.trimmed().toStdString());
             if (!error.isEmpty()) {
-                statusBar()->showMessage(error, 4000);
+                ShowToast(error);
             }
         }
     });
 
     menu.exec(globalPos.toPoint());
+}
+
+void MainWindow::ShowToast(const QString& message) {
+    // Instant tooltip at the cursor at the moment of refusal, plus the
+    // persistent (few seconds) toast in the canvas corner.
+    QToolTip::showText(QCursor::pos(), message);
+
+    toast_->setText(message);
+    toast_->adjustSize();
+    RepositionToast();
+    toast_->show();
+    toast_->raise();
+    toastTimer_->start();  // restarts if already running
+}
+
+void MainWindow::RepositionToast() {
+    if (!toast_ || !view_) {
+        return;
+    }
+    constexpr int margin = 12;
+    QWidget* container = toast_->parentWidget();
+    const QPoint viewportBottomLeft =
+        view_->viewport()->mapTo(container, QPoint(0, view_->viewport()->height()));
+    toast_->move(viewportBottomLeft.x() + margin,
+                 viewportBottomLeft.y() - toast_->height() - margin);
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    RepositionToast();
 }
 
 void MainWindow::UpdateStatus() {
@@ -289,23 +344,31 @@ void MainWindow::ConnectModelSignals() {
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
-    if (watched != view_) {
-        return QMainWindow::eventFilter(watched, event);
-    }
+    // Mouse and resize events are delivered to the viewport, not the view.
+    if (view_ && watched == view_->viewport()) {
+        if (event->type() == QEvent::Resize) {
+            // Keep the toast anchored (covers post-layout sizing and
+            // scrollbar appear/disappear).
+            RepositionToast();
+            return false;
+        }
 
-    if (event->type() == QEvent::MouseButtonPress) {
-        connectionCreatedThisDrag_ = false;
-        if (graphScene_->Model()) {
-            graphScene_->Model()->ClearRejectionState();
+        if (event->type() == QEvent::MouseButtonPress) {
+            connectionCreatedThisDrag_ = false;
+            if (graphScene_->Model()) {
+                graphScene_->Model()->ClearRejectionState();
+            }
+        } else if (event->type() == QEvent::MouseButtonRelease) {
+            if (!connectionCreatedThisDrag_ && graphScene_->Model()) {
+                // Defer the check until QtNodes has finished processing the
+                // release, so connectionCreated has already been emitted on
+                // success.
+                QMetaObject::invokeMethod(this,
+                                          &MainWindow::CheckForRejectionReason,
+                                          Qt::QueuedConnection);
+            }
         }
-    } else if (event->type() == QEvent::MouseButtonRelease) {
-        if (!connectionCreatedThisDrag_ && graphScene_->Model()) {
-            // Defer the check until QtNodes has finished processing the release,
-            // so connectionCreated has already been emitted on success.
-            QMetaObject::invokeMethod(this,
-                                      &MainWindow::CheckForRejectionReason,
-                                      Qt::QueuedConnection);
-        }
+        return false;
     }
 
     return QMainWindow::eventFilter(watched, event);
@@ -319,7 +382,7 @@ void MainWindow::CheckForRejectionReason() {
     if (NodeGraphModel* model = graphScene_->Model()) {
         const QString reason = model->TakeLastRejectionReason();
         if (!reason.isEmpty()) {
-            statusBar()->showMessage(reason, 4000);
+            ShowToast(reason);
         }
     }
 }
