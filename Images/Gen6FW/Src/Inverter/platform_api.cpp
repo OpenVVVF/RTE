@@ -137,6 +137,56 @@ void platform_sample_application_sensors(void) {
 }
 
 /* --------------------------------------------------------------------------
+ * User digital IO
+ *
+ * Pins 1..8  -> USER_DIN_1..8  (inputs)
+ * Pins 1..4  -> USER_DOUT_1..4 (outputs)
+ * Pin  5     -> DEBUG_GREEN_LED, pin 6 -> DEBUG_ORANGE_LED (outputs)
+ * -------------------------------------------------------------------------- */
+
+namespace {
+struct DioMapEntry {
+    GPIO_TypeDef* port;
+    uint16_t      pin;
+};
+
+constexpr DioMapEntry DIN_MAP[8] = {
+    {USER_DIN_1_GPIO_Port, USER_DIN_1_Pin},
+    {USER_DIN_2_GPIO_Port, USER_DIN_2_Pin},
+    {USER_DIN_3_GPIO_Port, USER_DIN_3_Pin},
+    {USER_DIN_4_GPIO_Port, USER_DIN_4_Pin},
+    {USER_DIN_5_GPIO_Port, USER_DIN_5_Pin},
+    {USER_DIN_6_GPIO_Port, USER_DIN_6_Pin},
+    {USER_DIN_7_GPIO_Port, USER_DIN_7_Pin},
+    {USER_DIN_8_GPIO_Port, USER_DIN_8_Pin},
+};
+
+constexpr DioMapEntry DOUT_MAP[6] = {
+    {USER_DOUT_1_GPIO_Port, USER_DOUT_1_Pin},
+    {USER_DOUT_2_GPIO_Port, USER_DOUT_2_Pin},
+    {USER_DOUT_3_GPIO_Port, USER_DOUT_3_Pin},
+    {USER_DOUT_4_GPIO_Port, USER_DOUT_4_Pin},
+    {DEBUG_GREEN_LED_GPIO_Port, DEBUG_GREEN_LED_Pin},
+    {DEBUG_ORANGE_LED_GPIO_Port, DEBUG_ORANGE_LED_Pin},
+};
+} // namespace
+
+bool platform_digital_read(uint8_t pin) {
+    if (pin < 1 || pin > 8) {
+        return false;
+    }
+    return HAL_GPIO_ReadPin(DIN_MAP[pin - 1].port, DIN_MAP[pin - 1].pin) == GPIO_PIN_SET;
+}
+
+void platform_digital_write(uint8_t pin, bool value) {
+    if (pin < 1 || pin > 6) {
+        return;
+    }
+    HAL_GPIO_WritePin(DOUT_MAP[pin - 1].port, DOUT_MAP[pin - 1].pin,
+                      value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+/* --------------------------------------------------------------------------
  * Safety / faults
  * -------------------------------------------------------------------------- */
 

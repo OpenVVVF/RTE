@@ -118,6 +118,16 @@ float platform_get_inverter_temperature(uint8_t channel);
 void platform_sample_application_sensors(void);
 
 /* --------------------------------------------------------------------------
+ * User digital IO
+ *
+ * platform_digital_read:  pin 1..8 -> USER_DIN_1..8; invalid pin returns false.
+ * platform_digital_write: pin 1..4 -> USER_DOUT_1..4, 5 -> green LED,
+ *                         6 -> orange LED; invalid pin is ignored.
+ * -------------------------------------------------------------------------- */
+bool platform_digital_read(uint8_t pin);
+void platform_digital_write(uint8_t pin, bool value);
+
+/* --------------------------------------------------------------------------
  * Safety / faults
  * -------------------------------------------------------------------------- */
 

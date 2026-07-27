@@ -504,6 +504,17 @@
         "nodeId": "IqGate",
         "portName": "Val"
       }
+    },
+    {
+      "from": {
+        "nodeId": "Din1",
+        "portName": "Out"
+      },
+      "id": "c_din1_led",
+      "to": {
+        "nodeId": "LedGreen",
+        "portName": "In"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1779,6 +1790,66 @@
         }
       },
       "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n"
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Digital In",
+      "domain": "",
+      "id": "hw.digital_in",
+      "inlineCode": "/* User digital input. Pin 1..8 -> USER_DIN_1..8 (see platform_api.h). */\nOut = platform_digital_read(static_cast<uint8_t>(Pin));\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "name": "Out",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Pin": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Digital Out",
+      "domain": "",
+      "id": "hw.digital_out",
+      "inlineCode": "/* User digital output. Pin 1..4 -> USER_DOUT_1..4, 5 -> green LED,\n * 6 -> orange LED (see platform_api.h). */\nplatform_digital_write(static_cast<uint8_t>(Pin), In);\n",
+      "inputPorts": [
+        {
+          "name": "In",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Pin": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
     }
   ],
   "nodes": [
@@ -2326,6 +2397,32 @@
         "y": 0.0
       },
       "type": "var.current"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Din1",
+      "parameters": {
+        "Pin": "1.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1050.0
+      },
+      "type": "hw.digital_in"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LedGreen",
+      "parameters": {
+        "Pin": "5.0"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1050.0
+      },
+      "type": "hw.digital_out"
     }
   ]
 }
