@@ -12,6 +12,8 @@
 #include "adc.h"
 #include "tim.h"
 
+#include "../../../generated/domain_tim_isr_generated.h"
+
 #include <cstdio>
 #include <cmath>
 
@@ -344,7 +346,10 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
                              m_current_u, m_current_v,
                              encoderADC().lastAngle(),
                              static_cast<uint16_t>(encoderADC().lastRawSin()),
-                             static_cast<uint16_t>(encoderADC().lastRawCos()));
+                             static_cast<uint16_t>(encoderADC().lastRawCos()),
+                             appState.tim_isr.Svpwm.Duty_A,
+                             appState.tim_isr.Svpwm.Duty_B,
+                             appState.tim_isr.Svpwm.Duty_C);
 
     /* Software overcurrent protection.  Requires several consecutive
      * samples over threshold: at high bus voltage a single switching

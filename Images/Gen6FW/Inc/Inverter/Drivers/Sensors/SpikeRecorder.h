@@ -34,6 +34,9 @@ public:
         float    iu;
         float    iv;
         float    enc_angle;
+        float    duty_u;  /**< commanded duties [%], written by the tim_isr domain */
+        float    duty_v;
+        float    duty_w;
     };
 
     /** @brief Push one synchronized sample; call from the injected ADC ISR. */
@@ -41,7 +44,8 @@ public:
                   uint16_t raw_u_sig, uint16_t raw_v_sig,
                   uint16_t raw_u_ref, uint16_t raw_v_ref,
                   float iu, float iv,
-                  float enc_angle, uint16_t enc_sin, uint16_t enc_cos);
+                  float enc_angle, uint16_t enc_sin, uint16_t enc_cos,
+                  float duty_u, float duty_v, float duty_w);
 
     void  setThreshold(float amps);
     float threshold() const { return m_threshold; }

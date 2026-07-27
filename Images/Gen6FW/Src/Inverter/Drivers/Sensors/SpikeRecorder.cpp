@@ -24,7 +24,12 @@ void SpikeRecorder::onSample(uint32_t tick_ms,
                              uint16_t raw_u_sig, uint16_t raw_v_sig,
                              uint16_t raw_u_ref, uint16_t raw_v_ref,
                              float iu, float iv,
-                             float enc_angle, uint16_t enc_sin, uint16_t enc_cos) {
+                             float enc_angle, uint16_t enc_sin, uint16_t enc_cos,
+                             float duty_u, float duty_v, float duty_w) {
+    if (m_ready) {
+        return;  // frozen, waiting for dump — do NOT overwrite the capture
+    }
+
     Sample& s = m_ring[m_head];
     s.tick_ms   = tick_ms;
     s.raw_u_sig = raw_u_sig;
@@ -36,13 +41,12 @@ void SpikeRecorder::onSample(uint32_t tick_ms,
     s.iu        = iu;
     s.iv        = iv;
     s.enc_angle = enc_angle;
+    s.duty_u    = duty_u;
+    s.duty_v    = duty_v;
+    s.duty_w    = duty_w;
 
     const size_t this_idx = m_head;
     m_head = (m_head + 1) % RING;
-
-    if (m_ready) {
-        return;  // frozen, waiting for dump
-    }
 
     if (m_post_remaining >= 0) {
         if (--m_post_remaining == 0) {
@@ -77,8 +81,9 @@ void SpikeRecorder::dump() {
 
     float prev_angle = NAN;
     for (size_t k = 0; k < RING; ++k) {
-        /* Oldest first: trigger sits at RING - POST_TRIGGER - 1 steps in. */
-        const size_t idx = (m_trigger_idx + POST_TRIGGER + k) % RING;
+        /* Oldest first: the newest sample is POST_TRIGGER slots after the
+         * trigger, so the oldest is one slot past that. */
+        const size_t idx = (m_trigger_idx + POST_TRIGGER + 1 + k) % RING;
         const Sample& s = m_ring[idx];
 
         float dang = NAN;
@@ -91,7 +96,7 @@ void SpikeRecorder::dump() {
 
         const bool is_trigger = (idx == m_trigger_idx);
         Telemetry::printf("[SHELL] spk%c%02d t=%lu iu=%7.1f iv=%7.1f ang=%6.1f dang=%+5.2f "
-                          "sin=%5u cos=%5u ru=%5u/%5u rv=%5u/%5u",
+                          "du=%5.1f dv=%5.1f dw=%5.1f sin=%5u cos=%5u",
                           is_trigger ? '*' : ' ',
                           static_cast<int>(k),
                           static_cast<unsigned long>(s.tick_ms),
@@ -99,9 +104,10 @@ void SpikeRecorder::dump() {
                           static_cast<double>(s.iv),
                           static_cast<double>(s.enc_angle),
                           static_cast<double>(dang),
-                          s.enc_sin, s.enc_cos,
-                          s.raw_u_sig, s.raw_u_ref,
-                          s.raw_v_sig, s.raw_v_ref);
+                          static_cast<double>(s.duty_u),
+                          static_cast<double>(s.duty_v),
+                          static_cast<double>(s.duty_w),
+                          s.enc_sin, s.enc_cos);
     }
 
     m_ready = false;
