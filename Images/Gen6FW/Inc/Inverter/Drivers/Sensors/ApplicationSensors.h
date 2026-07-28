@@ -8,7 +8,7 @@ namespace Inverter {
  * @brief Slow application analog sampler: temperatures + throttle inputs.
  *
  * All hardware capture runs without CPU involvement:
- *  - TIM3 TRGO at 1 kHz triggers an ADC1 regular scan of 5 ranks
+ *  - TIM3 TRGO at 100 Hz triggers an ADC1 regular scan of 5 ranks
  *    (board temps 1..3 + throttle A/B) into a circular DMA buffer.
  *  - ADC3 (motor temp, INP9) free-runs in continuous mode; update() harvests
  *    completed conversions without ever blocking.

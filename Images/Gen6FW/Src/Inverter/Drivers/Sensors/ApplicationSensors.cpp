@@ -171,14 +171,16 @@ bool ApplicationSensors::configureAdc1ScanDma() {
     hadc1.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
     hadc1.Init.DMAContinuousRequests = ENABLE;
 
-    /* --- TIM3: 1 kHz update event as ADC1 trigger -------------------------
+    /* --- TIM3: 100 Hz update event as ADC1 trigger ------------------------
      * APB1 timer clock is 137.5 MHz (same as the encoder's TIM2):
-     * 137.5 MHz / 1375 / 100 = 1 kHz. */
+     * 137.5 MHz / 1375 / 1000 = 100 Hz.  Temperatures and throttle need no
+     * more; the low rate also minimizes regular-group occupancy around the
+     * injected phase-current sampling. */
     __HAL_RCC_TIM3_CLK_ENABLE();
     htim3_appsens.Instance = TIM3;
     htim3_appsens.Init.Prescaler = 1374U;
     htim3_appsens.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim3_appsens.Init.Period = 99U;
+    htim3_appsens.Init.Period = 999U;
     htim3_appsens.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim3_appsens.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
     if (HAL_TIM_Base_Init(&htim3_appsens) != HAL_OK) {
