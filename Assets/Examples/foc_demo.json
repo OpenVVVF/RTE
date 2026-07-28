@@ -2574,7 +2574,7 @@
       "id": "CfgKpQ",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.314",
+        "DefaultValue": "0.16",
         "Key": "Ctrl.PiQ.Kp"
       },
       "position": {
@@ -2832,7 +2832,7 @@
       "id": "CfgKpD",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.157",
+        "DefaultValue": "0.08",
         "Key": "Ctrl.PiD.Kp"
       },
       "position": {
@@ -2847,7 +2847,7 @@
       "id": "CfgKiD",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "19.3",
+        "DefaultValue": "10.0",
         "Key": "Ctrl.PiD.Ki"
       },
       "position": {
@@ -2862,7 +2862,7 @@
       "id": "CfgKiQ",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "19.3",
+        "DefaultValue": "10.0",
         "Key": "Ctrl.PiQ.Ki"
       },
       "position": {
