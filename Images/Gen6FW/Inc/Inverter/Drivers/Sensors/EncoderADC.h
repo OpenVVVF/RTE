@@ -131,6 +131,18 @@ public:
     void traceDump();
 
     /**
+     * @brief Select the encoder sample trigger source.
+     *
+     * false = TIM2 free-running 10 kHz (idle/calibration: always sampling).
+     * true  = TIM1 TRGO2 update event (control running: angle stream is
+     * synchronous with the FOC timebase — no independent-clock beat, no
+     * stall/catch-up angle steps at speed).  The DMA stream keeps running;
+     * only the trigger select bits change.  The RPM estimator's time base
+     * self-calibrates from the measured sample rate either way.
+     */
+    void useSynchronizedTrigger(bool sync);
+
+    /**
      * @brief DMA error callback for the encoder ADC stream.
      */
     void onDmaError();

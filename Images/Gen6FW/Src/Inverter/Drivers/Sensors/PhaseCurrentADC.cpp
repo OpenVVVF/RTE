@@ -133,6 +133,12 @@ bool PhaseCurrentADC::initTrigger() {
     }
 
     MODIFY_REG(htim1.Instance->CR2, TIM_CR2_MMS, TIM_TRGO_OC4REF);
+
+    /* TRGO2 = update event: triggers the encoder's ADC2 regular scan so the
+     * angle stream is synchronous with the control timebase while running
+     * (ControlSupervisor switches the encoder between TIM2 at idle and
+     * TIM1 TRGO2 in control). */
+    MODIFY_REG(htim1.Instance->CR2, TIM_CR2_MMS2, TIM_TRGO2_UPDATE);
     return true;
 }
 

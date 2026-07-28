@@ -214,6 +214,13 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     return angle_deg;
 }
 
+void EncoderADC::useSynchronizedTrigger(bool sync) {
+    /* Only the trigger-select bits change; the DMA stream keeps running.
+     * One sample may straddle the switch — harmless for a slow signal. */
+    MODIFY_REG(hadc2.Instance->CFGR, ADC_CFGR_EXTSEL,
+               sync ? ADC_EXTERNALTRIG_T1_TRGO2 : ADC_EXTERNALTRIG_T2_TRGO);
+}
+
 void EncoderADC::traceDump() {
     Telemetry::printf("[SHELL] enc trace: %d samples @ ~1 kHz (sin cos angle_deg), oldest first",
                       static_cast<int>(TRACE_LEN));
