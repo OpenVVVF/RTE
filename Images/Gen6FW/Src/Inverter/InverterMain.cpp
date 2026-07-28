@@ -210,6 +210,10 @@ static void loop()
     /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
     Inverter::appSensors().update();
 
+    /* Encoder: RPM estimate + signal-quality fault evaluation (the DMA ISR
+     * only decodes and publishes the angle snapshot). */
+    Inverter::encoderADC().diagnose();
+
     /* Calibration machinery: pump the open-loop controller and every
      * calibrator state machine.  All early-out when inactive. */
     Inverter::openLoopController().update();

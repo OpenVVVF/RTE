@@ -5,11 +5,14 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
+#include "Inverter/Drivers/Sensors/SpikeRecorder.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
 #include "adc.h"
 #include "tim.h"
+
+#include "../../../generated/domain_tim_isr_generated.h"
 
 #include <cstdio>
 #include <cmath>
@@ -130,6 +133,12 @@ bool PhaseCurrentADC::initTrigger() {
     }
 
     MODIFY_REG(htim1.Instance->CR2, TIM_CR2_MMS, TIM_TRGO_OC4REF);
+
+    /* TRGO2 = update event: triggers the encoder's ADC2 regular scan so the
+     * angle stream is synchronous with the control timebase while running
+     * (ControlSupervisor switches the encoder between TIM2 at idle and
+     * TIM1 TRGO2 in control). */
+    MODIFY_REG(htim1.Instance->CR2, TIM_CR2_MMS2, TIM_TRGO2_UPDATE);
     return true;
 }
 
@@ -332,6 +341,21 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
 
     m_current_u = m_iu - m_offset_u;
     m_current_v = m_iv - m_offset_v;
+
+    /* Spike event recorder: synchronized raw currents + encoder snapshot for
+     * glitch forensics (see `spikes` shell command). */
+    spikeRecorder().onSample(HAL_GetTick(),
+                             static_cast<uint16_t>(m_raw_u_sig),
+                             static_cast<uint16_t>(m_raw_v_sig),
+                             static_cast<uint16_t>(m_raw_u_ref),
+                             static_cast<uint16_t>(m_raw_v_ref),
+                             m_current_u, m_current_v,
+                             encoderADC().extrapolatedAngleDeg(),
+                             static_cast<uint16_t>(encoderADC().lastRawSin()),
+                             static_cast<uint16_t>(encoderADC().lastRawCos()),
+                             appState.tim_isr.Svpwm.Duty_A,
+                             appState.tim_isr.Svpwm.Duty_B,
+                             appState.tim_isr.Svpwm.Duty_C);
 
     /* Software overcurrent protection.  Requires several consecutive
      * samples over threshold: at high bus voltage a single switching

@@ -11,7 +11,10 @@ set -euo pipefail
 #   --no-flash          Build only; do not attempt to flash.
 #   --flash-only        Skip build; only flash the existing binary.
 #   --flash-url <url>   Override the live-flash client URL.
-#   --build-type <type> Debug | Release | RelWithDebInfo | MinSizeRel (default: Debug).
+#   --build-type <type> Debug | Release | RelWithDebInfo | MinSizeRel (default: Release).
+#              NOTE: Debug (-O0) starves the CPU under full control ISR load
+#              (hz_app_loop collapses from ~9 kHz to <100 Hz); only use it
+#              when you actually need a debugger.
 #   --clean             Wipe emitted source and build dirs before building.
 #   --dry-run           Print RTEFirmwareBuilder commands without executing.
 #   -h, --help          Show this message.
@@ -35,7 +38,7 @@ NO_FLASH=0
 FLASH_ONLY=0
 CLEAN=0
 DRY_RUN=0
-BUILD_TYPE="Debug"
+BUILD_TYPE="Release"
 CLIENT_FLASH_URL="${INVERTER_CLIENT_FLASH_URL:-http://localhost:18080}"
 
 usage() {

@@ -2103,7 +2103,7 @@
       "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
-        "Amps": "20.0"
+        "Amps": "0.0"
       },
       "position": {
         "x": 0.0,
@@ -2532,7 +2532,7 @@
       "domain": "tim_isr",
       "id": "IqVar",
       "parameters": {
-        "Stored": "20.0",
+        "Stored": "0.0",
         "Set": "0.0",
         "In": "0.0"
       },

@@ -4,6 +4,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
 
@@ -87,6 +88,12 @@ bool ControlSupervisor::start() {
     }
 
     PWM_StartUpdateInterrupt();
+
+    /* Lock the encoder sample stream onto the control timebase (TIM1 TRGO2
+     * update events) so the FOC never sees a stall/catch-up angle step from
+     * the independent TIM2 clock beating against TIM1. */
+    Inverter::encoderADC().useSynchronizedTrigger(true);
+
     m_state = State::Running;
     m_started_ms = HAL_GetTick();
     Telemetry::printf("[SUP] STARTED f_sw=%.0f Hz f_u=%.0f Hz",
@@ -110,6 +117,9 @@ void ControlSupervisor::stop() {
      * setpoint, ready to spike on the next start. */
     PWM_StopUpdateInterrupt();
 
+    /* Back to the free-running TIM2 encoder trigger (always sampling). */
+    Inverter::encoderADC().useSynchronizedTrigger(false);
+
     PWM_Stop();
     GateDriver_DisableOutputs();
     m_state = State::Idle;
@@ -122,6 +132,7 @@ void ControlSupervisor::requestStopFromIsr() {
 
 void ControlSupervisor::enterFaultState() {
     if (m_state == State::Running || m_state == State::Starting) {
+        Inverter::encoderADC().useSynchronizedTrigger(false);
         app::TimIsrStop(appState.tim_isr);
         PWM_Stop();
         GateDriver_DisableOutputs();
