@@ -20,7 +20,13 @@ constexpr float    ADC_VREF       = 3.3f;
 constexpr float    DIVIDER        = 2.0f / 3.0f;
 constexpr float    SENSITIVITY_VA = 1.042e-3f;
 
-constexpr uint32_t ZERO_SAMPLES = 200U;  /* 100 Hz scan -> 2 s settle window */
+/* The DC-link bus current is chopped at the switching frequency; any single
+ * sample lands at a random point on the chop.  The ~1020 Hz scan is not an
+ * integer ratio of the 2.5 kHz PWM, so scan phase walks the PWM cycle and a
+ * 40-sample moving average (~40 ms, 100 PWM periods) converges to the true
+ * mean bus current. */
+constexpr size_t   AVG_SAMPLES  = 40;
+constexpr uint32_t ZERO_SAMPLES = 50U;  /* ~2 s on the averaged stream */
 
 } // namespace
 
@@ -81,6 +87,9 @@ void DcLinkCurrentSensor::update() {
         m_offset_valid = false;
         m_zero_samples_left = ZERO_SAMPLES;
         m_zero_acc = 0.0;
+        m_avg_sum = 0.0;
+        m_avg_head = 0;
+        m_avg_count = 0;
         m_current_a = NAN;
         m_power_w = NAN;
         Telemetry::log("dclink_i_a", m_current_a);
@@ -88,8 +97,20 @@ void DcLinkCurrentSensor::update() {
         return;
     }
 
+    /* Push this scan's differential into the moving average. */
+    const float diff_a = countsToCurrent(m_raw_sig, m_raw_ref);
+    if (m_avg_count < AVG_SAMPLES) {
+        ++m_avg_count;
+    } else {
+        m_avg_sum -= m_avg_ring[m_avg_head];
+    }
+    m_avg_ring[m_avg_head] = diff_a;
+    m_avg_sum += diff_a;
+    m_avg_head = (m_avg_head + 1) % AVG_SAMPLES;
+    const float mean_a = m_avg_sum / static_cast<float>(m_avg_count);
+
     if (m_zero_samples_left > 0) {
-        m_zero_acc += countsToCurrent(m_raw_sig, m_raw_ref);
+        m_zero_acc += mean_a;
         if (--m_zero_samples_left == 0) {
             m_offset_a = static_cast<float>(m_zero_acc /
                                             static_cast<double>(ZERO_SAMPLES));
@@ -101,7 +122,7 @@ void DcLinkCurrentSensor::update() {
         return;
     }
 
-    m_current_a = countsToCurrent(m_raw_sig, m_raw_ref) - m_offset_a;
+    m_current_a = mean_a - m_offset_a;
     m_power_w = m_current_a * dcLinkVoltageSensor().voltage();
 
     const uint32_t now_ms = HAL_GetTick();
