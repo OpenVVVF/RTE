@@ -125,7 +125,12 @@ bool EncoderADC::initDma() {
 
     __HAL_LINKDMA(&hadc2, DMA_Handle, hdma_adc2_enc);
 
-    HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);
+    /* Highest of the control-path interrupts: the encoder snapshot must land
+     * before the next TIM1 update, or the FOC sees stall/catch-up angle
+     * steps at speed (commutation kicks).  The handler is ~10 us; preempting
+     * the TIM1 FOC step (prio 5) or ADC injected ISR (prio 4) with it is
+     * harmless — they read the angle, they don't write it. */
+    HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 3, 0);
     HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
 
     return true;
