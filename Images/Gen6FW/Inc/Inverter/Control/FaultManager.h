@@ -50,6 +50,7 @@ enum class FaultSource : uint32_t {
     TempSensor       = 1u << 24,  /**< Temperature sensor open/short          */
     OvertemperatureMotor = 1u << 25,  /**< Motor temperature above limit    */
     OvertemperatureInverter = 1u << 26, /**< Board temperature above limit  */
+    CurrentSensorRef = 1u << 27,  /**< Current-sensor reference out of window */
 };
 
 constexpr FaultSource operator|(FaultSource a, FaultSource b) {
@@ -110,6 +111,7 @@ enum class FaultReason : uint8_t {
     OvertemperatureInv2,
     OvertemperatureInv3,
     OvertemperatureMotor,
+    SensorRefOutOfRange,
     Count
 };
 
@@ -235,6 +237,7 @@ private:
         { FaultSource::TempSensor,       "TempSensor",       "Temperature",  "temperature sensor open/short",            FaultSeverity::Warning  },
         { FaultSource::OvertemperatureMotor,    "OvertemperatureMotor",    "Temperature", "motor temperature above limit",        FaultSeverity::Critical },
         { FaultSource::OvertemperatureInverter, "OvertemperatureInverter", "Temperature", "board temperature above limit",        FaultSeverity::Critical },
+        { FaultSource::CurrentSensorRef, "CurrentSensorRef", "Current Sense", "current-sensor reference out of window",      FaultSeverity::Warning  },
     };
 };
 

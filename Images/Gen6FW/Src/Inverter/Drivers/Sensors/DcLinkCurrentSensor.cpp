@@ -2,6 +2,8 @@
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
+#include "Inverter/Control/FaultManager.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -27,6 +29,14 @@ constexpr float    SENSITIVITY_VA = 1.042e-3f;
  * mean bus current. */
 constexpr size_t   AVG_SAMPLES  = 40;
 constexpr uint32_t ZERO_SAMPLES = 50U;  /* ~2 s on the averaged stream */
+
+float kvOr(const char* key, float def) {
+    float v = def;
+    if (RteParamStore::isReady()) {
+        RteParamStore::get(key, &v);
+    }
+    return v;
+}
 
 } // namespace
 
@@ -75,14 +85,28 @@ void DcLinkCurrentSensor::update() {
     m_raw_sig = appSensors().dcLinkSigCounts();
     m_raw_ref = appSensors().dcLinkRefCounts();
 
-    /* Dead-channel guard: a live LA37S600 reference sits at mid-scale
-     * (~32k counts).  Far below that the sensor is unpowered/unpopulated and
-     * the differential is leakage, not current — report invalid instead of
-     * garbage amps. */
-    constexpr uint32_t REF_ALIVE_MIN = 20000U;
-    if (m_raw_ref < REF_ALIVE_MIN) {
-        if (m_offset_valid) {
-            Telemetry::printf("[DCL] sensor reference lost (unpowered?)");
+    /* Reference plausibility: a healthy transducer reference sits inside a
+     * known voltage window (KV Hw.DclCur.RefMinV/MaxV, defaults 2.0/3.0 V —
+     * this transducer's ref is ~2.5 V).  Checked on every sample, forever:
+     * out of window means the sensor is unpowered/unpopulated/failed, the
+     * output goes NAN, and a sustained violation latches a fault. */
+    constexpr float COUNTS_TO_V = 3.3f / 65535.0f;
+    const float ref_v = static_cast<float>(m_raw_ref) * COUNTS_TO_V;
+    const float win_lo = kvOr("Hw.DclCur.RefMinV", 2.0f);
+    const float win_hi = kvOr("Hw.DclCur.RefMaxV", 3.0f);
+    const bool plausible = (ref_v >= win_lo) && (ref_v <= win_hi);
+    if (!plausible) {
+        if (m_implausible_since_ms == 0) {
+            m_implausible_since_ms = HAL_GetTick();
+        } else if (!m_fault_raised &&
+                   (HAL_GetTick() - m_implausible_since_ms) >= 500U) {
+            m_fault_raised = true;
+            FaultManager::instance().raise(FaultSource::CurrentSensorRef,
+                                           FaultReason::SensorRefOutOfRange);
+            Telemetry::printf("[DCL] sensor ref implausible: %.2f V (window %.1f..%.1f)",
+                              static_cast<double>(ref_v),
+                              static_cast<double>(win_lo),
+                              static_cast<double>(win_hi));
         }
         m_offset_valid = false;
         m_zero_samples_left = ZERO_SAMPLES;
@@ -96,6 +120,8 @@ void DcLinkCurrentSensor::update() {
         Telemetry::log("dclink_p_w", m_power_w);
         return;
     }
+    m_implausible_since_ms = 0;
+    m_fault_raised = false;  /* re-arm: a cleared fault re-raises on relapse */
 
     /* Push this scan's differential into the moving average. */
     const float diff_a = countsToCurrent(m_raw_sig, m_raw_ref);
