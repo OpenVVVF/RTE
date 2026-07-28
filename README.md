@@ -1,9 +1,17 @@
 # RTE
 
-Source for the OpenVVVF motor inverter firmware and Real Time Examiner (RTE)
-host toolchain. This repo holds the STM32H723 base firmware image, the
-node-graph libraries, the Qt NodeGUI editor, and the tools that turn a graph
-into a flashable firmware binary.
+RTE is an open-source model-based development toolchain for motor drives:
+design control as a node graph, and the toolchain turns the graph into
+flashable firmware. It ships with the base image for our OpenVVVF
+STM32H723 inverter, but it is not tied to our hardware — **any platform
+can be targeted by writing your own base image**: the HAL/driver layer,
+plus the small `platform_api` contract the generated code calls.
+
+This repo holds the STM32H723 base firmware image, the node-graph
+libraries, the Qt NodeGUI editor, and the tools that turn a graph into a
+flashable firmware binary. A plant/inverter simulator based on
+[ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
+exercised in closed loop before touching hardware.
 
 Hardware designs and safety documentation live in
 [OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
@@ -34,6 +42,17 @@ RTE/
 - `Images/` contains the base firmware image that the emitter copies and modifies.
 - `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
 - `Source/` contains end-user executables.
+
+## Porting to your platform
+
+A base image is a normal firmware tree (HAL, startup, linker, drivers) with
+three additions: `// RTE_EMIT:` markers at the timing-domain dispatch points,
+an `AppState` global for the generated domain state, and an implementation
+of `Images/Gen6FW/Inc/Inverter/platform_api.h` — the only contract between
+generated code and hardware (PWM out, sensor reads, faults, config,
+telemetry, time). `RTECodeEmitter --base-src <your-tree>` then produces a
+flashable image from any graph. `Images/Gen6FW` is the reference
+implementation.
 
 ## Build host tools
 
@@ -194,14 +213,25 @@ Done recently:
 - PI voltage limit is now the true SVPWM linear limit (`Vdc/sqrt(3) * 0.95`)
 - Temperature sensing, dual throttle with plausibility check, and user
   digital IO (`hw.temperatures`, `hw.throttle`, `hw.digital_in/out`)
+- Graph-owned variables (`var.bool/var.float/var.current` + `var` shell),
+  parameter-as-input, default node instance names
+- Encoder/control timebase sync + angle extrapolation: killed the
+  speed-dependent commutation "crackle" (encoder and FOC ran on independent
+  clocks; the consumed angle stalled then caught up in speed-proportional
+  steps). On-target instruments that found it are permanent: spike event
+  recorder (`spikes`), encoder linearity trace (`enc_trace`), per-domain
+  rate telemetry (`hz_*`)
+- Bench builds default to Release — at `-O0` the CPU cannot service the
+  control ISR load (`hz_app_loop` collapses to <100 Hz)
 
 Next up, roughly in priority order:
 
-- Node parameter-as-input support in NodeAPI/codegen, so internal settings can
-  be wired and programmatically controlled
-- Default node instance name in templates (GUI team request)
-- Graph-owned variables (latches) for modes/enables and future conditional
-  logic
+- Current-loop tuning from measured motor parameters: run the R/L
+  calibrators, compute PI gains for a target bandwidth, slew-limit the
+  current references (the `control.slew` node exists, unwired)
+- ngspice-based plant/inverter simulator for closed-loop graph testing
+  before hardware
+- Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no
   inline code) into a renamed zip
