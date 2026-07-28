@@ -5,14 +5,16 @@
 namespace Inverter {
 
 /**
- * @brief DC-link current sensor (LA37S600 on ADC1_INP2 / ADC1_INP6).
+ * @brief DC-link current sensor (LA37S600 on ADC1_INP2 sig / ADC1_INP6 ref).
  *
  * The DC-link current uses the same differential signal + reference scheme
- * as the phase-current sensors and is sampled in the SAME PWM-synchronized
- * injected sequence (ADC1 injected ranks 3/4) as the phase currents.  That
- * keeps signal and reference microseconds apart, so the sensor supply bounce
- * is common-mode and cancels in the difference - polled regular conversions
- * proved unusable here (kHz supply ripple aliased into the sequential reads).
+ * as the phase-current sensors and is sampled by the ApplicationSensors
+ * TIM3-triggered ADC1 regular scan (ranks 5/6, 100 Hz, circular DMA).
+ * Signal and reference are converted microseconds apart in the same scan,
+ * so the sensor supply bounce is common-mode and cancels in the
+ * difference — and the injected phase-current path is never touched
+ * (an earlier injected-rank attempt degraded it; polled regular
+ * conversions aliased the supply ripple).
  *
  * Also integrates input power into cumulative energy [Wh].
  */
@@ -43,6 +45,7 @@ private:
     float countsToCurrent(uint32_t sig, uint32_t ref) const;
 
     uint32_t m_last_energy_ms = 0;
+    uint32_t m_last_seq = 0;
     uint32_t m_zero_samples_left = 0;
     double   m_zero_acc = 0.0;
 

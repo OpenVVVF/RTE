@@ -29,11 +29,14 @@ constexpr const char* KV_PREFIX[ApplicationSensors::NUM_CHANNELS] = {
     "Hw.Temp.B1", "Hw.Temp.B2", "Hw.Temp.B3", "Motor.Temp",
 };
 
-/* ADC1 scan rank order (board temp 1/2/3, throttle A/B).  The throttle pins
- * PA3/PA4 are shared ADC1/ADC2 inputs, so ADC1 can read them while the
- * encoder owns ADC2's regular group. */
+/* ADC1 scan rank order (board temp 1/2/3, throttle A/B, DC-link cur sig/ref).
+ * The throttle pins PA3/PA4 are shared ADC1/ADC2 inputs, so ADC1 can read
+ * them while the encoder owns ADC2's regular group.  The DC-link pair is
+ * sampled in the same scan microseconds apart, so the sensor supply bounce
+ * is common-mode and cancels in the difference. */
 constexpr uint32_t ADC1_RANK_CHANNELS[ApplicationSensors::ADC1_RANKS] = {
-    ADC_CHANNEL_19, ADC_CHANNEL_17, ADC_CHANNEL_16, ADC_CHANNEL_15, ADC_CHANNEL_18,
+    ADC_CHANNEL_19, ADC_CHANNEL_17, ADC_CHANNEL_16, ADC_CHANNEL_15,
+    ADC_CHANNEL_18, ADC_CHANNEL_2, ADC_CHANNEL_6, ADC_CHANNEL_5,
 };
 
 /* KTY84 quadratic coefficients: R = R25 * (1 + A*dT + B*dT^2). */
@@ -99,6 +102,18 @@ bool ApplicationSensors::throttlePlausible() const {
     return m_thr_plausible;
 }
 
+uint16_t ApplicationSensors::dcLinkSigCounts() const {
+    return m_dclink_sig;
+}
+
+uint16_t ApplicationSensors::dcLinkRefCounts() const {
+    return m_dclink_ref;
+}
+
+uint32_t ApplicationSensors::dcLinkSeq() const {
+    return m_dclink_seq;
+}
+
 void ApplicationSensors::updateThrottlePlausibility(uint32_t now_ms) {
     const float diff = std::fabs(m_thr_a_cand - m_thr_b_cand);
     if (diff <= THROTTLE_PLAUS_TOL) {
@@ -131,11 +146,12 @@ void ApplicationSensors::debugStatus() const {
                       static_cast<unsigned long>(hadc1.Instance->CFGR),
                       static_cast<unsigned long>(hadc1.Instance->SQR1),
                       static_cast<unsigned long>(TIM3->CR1));
-    Telemetry::printf("[SHELL] dma2s1: CR=%08lX NDTR=%lu buf[0..4]: %u %u %u %u %u",
+    Telemetry::printf("[SHELL] dma2s1: CR=%08lX NDTR=%lu buf[0..7]: %u %u %u %u %u %u %u %u",
                       static_cast<unsigned long>(DMA2_Stream1->CR),
                       static_cast<unsigned long>(DMA2_Stream1->NDTR),
                       s_adc1_buf[0], s_adc1_buf[1], s_adc1_buf[2],
-                      s_adc1_buf[3], s_adc1_buf[4]);
+                      s_adc1_buf[3], s_adc1_buf[4], s_adc1_buf[5],
+                      s_adc1_buf[6], s_adc1_buf[7]);
 }
 
 bool ApplicationSensors::configureAdc1ScanDma() {
@@ -143,10 +159,11 @@ bool ApplicationSensors::configureAdc1ScanDma() {
      * Register-level setup (mirrors EncoderADC): HAL_ADC_ConfigChannel would
      * fight the injected phase-current state machine; direct writes to the
      * regular-group registers do not disturb injected conversions. */
-    LL_ADC_REG_SetSequencerLength(hadc1.Instance, LL_ADC_REG_SEQ_SCAN_ENABLE_5RANKS);
+    LL_ADC_REG_SetSequencerLength(hadc1.Instance, LL_ADC_REG_SEQ_SCAN_ENABLE_8RANKS);
     static constexpr uint32_t RANKS[ADC1_RANKS] = {
         LL_ADC_REG_RANK_1, LL_ADC_REG_RANK_2, LL_ADC_REG_RANK_3,
-        LL_ADC_REG_RANK_4, LL_ADC_REG_RANK_5,
+        LL_ADC_REG_RANK_4, LL_ADC_REG_RANK_5, LL_ADC_REG_RANK_6,
+        LL_ADC_REG_RANK_7, LL_ADC_REG_RANK_8,
     };
     for (uint8_t r = 0; r < ADC1_RANKS; ++r) {
         LL_ADC_REG_SetSequencerRanks(hadc1.Instance, RANKS[r],
@@ -535,17 +552,20 @@ void ApplicationSensors::evaluateChannel(uint8_t ch, uint32_t now_ms) {
 }
 
 void ApplicationSensors::computeWindow(uint32_t now_ms) {
-    /* The DMA buffer holds the latest 1 kHz scan; just read it. */
+    /* The DMA buffer holds the latest 100 Hz scan; just read it. */
     for (uint8_t r = 0; r < ADC1_RANKS; ++r) {
         const float volts = (static_cast<float>(s_adc1_buf[r]) / ADC1_FULL_SCALE) * m_vcc;
         if (r < BOARD_CHANNELS) {
             m_ch[r].voltage = volts;
         } else if (r == 3) {
             m_thr_a_v = volts;
-        } else {
+        } else if (r == 4) {
             m_thr_b_v = volts;
         }
     }
+    m_dclink_sig = s_adc1_buf[5];
+    m_dclink_ref = s_adc1_buf[6];
+    ++m_dclink_seq;
     Telemetry::log("thr_a_v", m_thr_a_v);
     Telemetry::log("thr_b_v", m_thr_b_v);
 
