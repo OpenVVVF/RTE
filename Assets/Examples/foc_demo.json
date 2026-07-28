@@ -501,8 +501,8 @@
         "portName": "Value"
       },
       "to": {
-        "nodeId": "IqGate",
-        "portName": "Val"
+        "nodeId": "SlewIq",
+        "portName": "In"
       }
     },
     {
@@ -580,6 +580,61 @@
       "to": {
         "nodeId": "LogThrB",
         "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SlewIq",
+        "portName": "Out"
+      },
+      "id": "c_slew_iq_out",
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Val"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgIqSlew",
+        "portName": "Value"
+      },
+      "id": "c_slew_rate",
+      "to": {
+        "nodeId": "SlewIq",
+        "portName": "Rate"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgKpD",
+        "portName": "Value"
+      },
+      "id": "c_kp_d",
+      "to": {
+        "nodeId": "PiD",
+        "portName": "Kp"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgKiD",
+        "portName": "Value"
+      },
+      "id": "c_ki_d",
+      "to": {
+        "nodeId": "PiD",
+        "portName": "Ki"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgKiQ",
+        "portName": "Value"
+      },
+      "id": "c_ki_q",
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Ki"
       }
     }
   ],
@@ -2009,6 +2064,56 @@
         }
       ],
       "parameterTypes": {}
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Slew Rate Limiter",
+      "domain": "",
+      "id": "control.slew",
+      "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In.in(au::amperes);\nconst float step = Rate * Dt;\nfloat v = Value.in(au::amperes);\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = rte::Amperes(v);\nOut = Value;\n",
+      "inputPorts": [
+        {
+          "name": "In",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "name": "Out",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Rate": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Dt": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Value": {
+          "quantity": "current",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
     }
   ],
   "nodes": [
@@ -2295,7 +2400,11 @@
         "x": 1200.0,
         "y": 0.0
       },
-      "type": "control.pi_current"
+      "type": "control.pi_current",
+      "parameterInputs": [
+        "Kp",
+        "Ki"
+      ]
     },
     {
       "displayName": "",
@@ -2316,7 +2425,8 @@
       },
       "type": "control.pi_current",
       "parameterInputs": [
-        "Kp"
+        "Kp",
+        "Ki"
       ]
     },
     {
@@ -2464,7 +2574,7 @@
       "id": "CfgKpQ",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.03",
+        "DefaultValue": "0.16",
         "Key": "Ctrl.PiQ.Kp"
       },
       "position": {
@@ -2682,6 +2792,84 @@
         "y": 1500.0
       },
       "type": "app.telemetry_log"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "SlewIq",
+      "parameters": {
+        "Rate": "50.0",
+        "Dt": "0.0002",
+        "Value": "0.0"
+      },
+      "position": {
+        "x": 600.0,
+        "y": 600.0
+      },
+      "type": "control.slew",
+      "parameterInputs": [
+        "Rate"
+      ]
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgIqSlew",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "50.0",
+        "Key": "Ctrl.Iq.SlewAps"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 600.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgKpD",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.08",
+        "Key": "Ctrl.PiD.Kp"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 150.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgKiD",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "10.0",
+        "Key": "Ctrl.PiD.Ki"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 250.0
+      },
+      "type": "config.value"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgKiQ",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "10.0",
+        "Key": "Ctrl.PiQ.Ki"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 350.0
+      },
+      "type": "config.value"
     }
   ]
 }

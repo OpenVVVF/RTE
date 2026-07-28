@@ -181,10 +181,10 @@ Telemetered as `cg_vu_v`, `cg_vv_v`, `cg_vw_v` in the demo graph.
 ## Temperature, throttle, and user IO
 
 The base-image `ApplicationSensors` driver samples all slow analog inputs
-with zero CPU involvement: TIM3 TRGO at 1 kHz triggers an ADC1 regular scan
-(board temps 1..3 on INP19/17/16, throttle A/B on INP15/18) into circular
-DMA, and ADC3 free-runs on the motor temp channel (INP9). The CPU never
-blocks on an ADC — `update()` only harvests finished conversions.
+with zero CPU involvement: TIM3 TRGO at 100 Hz triggers an ADC1 regular
+scan (board temps 1..3 on INP19/17/16, throttle A/B on INP15/18) into
+circular DMA, and ADC3 free-runs on the motor temp channel (INP9). The CPU
+never blocks on an ADC — `update()` only harvests finished conversions.
 
 - `hw.temperatures` (motor + 3 board channels, °C; NAN when a channel is
   disabled or open/short). Per-channel KV config: `Hw.Temp.Bx.*` /
