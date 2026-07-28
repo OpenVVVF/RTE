@@ -132,6 +132,11 @@ bool EncoderADC::initDma() {
 }
 
 bool EncoderADC::init() {
+    /* DWT cycle counter for microsecond snapshot timestamps (angle
+     * extrapolation).  Idempotent — safe if already enabled elsewhere. */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
     if (!configureAdcChannels()) return false;
     if (!initTimer()) return false;
     if (!initDma()) return false;
@@ -214,6 +219,29 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     return angle_deg;
 }
 
+float EncoderADC::extrapolatedAngleDeg() {
+    const float angle = m_snapshot.angle;
+    if (!m_running || !m_rpm_init) {
+        return angle;
+    }
+    /* Age of the snapshot in seconds (u32 cycle subtraction wraps cleanly). */
+    const uint32_t age_cycles = DWT->CYCCNT - m_last_sample_cycles;
+    const float age_s = static_cast<float>(age_cycles) /
+                        static_cast<float>(SystemCoreClock);
+    /* Bound the correction to one sample period's rotation: a stalled stream
+     * degrades to (near) the raw snapshot instead of extrapolating away. */
+    const float deg_per_s = m_rpm_ema * 6.0f;  /* rpm -> deg/s */
+    float corr = deg_per_s * age_s;
+    const float bound = std::fabs(deg_per_s) * (1.5f / m_sample_hz);
+    if (corr > bound) corr = bound;
+    else if (corr < -bound) corr = -bound;
+
+    float out = angle + corr;
+    while (out >= 360.0f) out -= 360.0f;
+    while (out < 0.0f) out += 360.0f;
+    return out;
+}
+
 void EncoderADC::useSynchronizedTrigger(bool sync) {
     /* Only the trigger-select bits change; the DMA stream keeps running.
      * One sample may straddle the switch — harmless for a slow signal. */
@@ -236,45 +264,23 @@ void EncoderADC::traceDump() {
 }
 
 void EncoderADC::onDmaComplete() {
-    uint16_t raw_sin = s_enc_dma_buffer[0];
-    uint16_t raw_cos = s_enc_dma_buffer[1];
+    /* Slim ISR: decode + publish only.  No RPM math, no fault evaluation,
+     * no library calls — those live in diagnose() (main loop).  This handler
+     * is ~5 us so its priority can sit above the control ISRs without
+     * meaningfully delaying them. */
+    const uint16_t raw_sin = s_enc_dma_buffer[0];
+    const uint16_t raw_cos = s_enc_dma_buffer[1];
 
     /* Compute angle before touching the snapshot so the ISR writes all three
      * fields atomically relative to the main-loop readers. */
     const float angle = computeAngle(raw_sin, raw_cos);
-
-    /* Mechanical speed from the angle delta over a short window: the raw
-     * per-sample delta multiplies angle noise by the full sample rate, which
-     * buries the estimate in EMI at high switching frequencies. */
-    if (!m_rpm_init) {
-        m_rpm_init = true;
-        m_unwrapped_angle = angle;
-        m_window_ref_angle = angle;
-        m_rpm_prev_angle = angle;
-        m_rpm_filt_angle = angle;
-        m_rpm_ema = 0.0f;
-    } else {
-        float delta = angle - m_rpm_prev_angle;
-        if (delta > 180.0f) delta -= 360.0f;
-        else if (delta < -180.0f) delta += 360.0f;
-        m_unwrapped_angle += delta;
-        m_rpm_prev_angle = angle;
-
-        if (++m_window_n >= RPM_WINDOW) {
-            const float win_deg = m_unwrapped_angle - m_window_ref_angle;
-            const float win_s = static_cast<float>(RPM_WINDOW) / m_sample_hz;
-            const float rpm_inst = (win_deg / 360.0f) * (60.0f / win_s);
-            m_rpm_ema += RPM_ALPHA * (rpm_inst - m_rpm_ema);
-            m_window_ref_angle = m_unwrapped_angle;
-            m_window_n = 0;
-        }
-    }
 
     m_snapshot.angle = angle;
     m_snapshot.raw_sin = raw_sin;
     m_snapshot.raw_cos = raw_cos;
     m_new_data = true;
     m_last_sample_ms = HAL_GetTick();
+    m_last_sample_cycles = DWT->CYCCNT;
     ++m_isr_count;
 
     /* Angle-linearity trace: decimated ring for the `enc_trace` command. */
@@ -282,51 +288,6 @@ void EncoderADC::onDmaComplete() {
         m_trace_decim = 0;
         m_trace[m_trace_head] = {raw_sin, raw_cos, angle};
         m_trace_head = (m_trace_head + 1) % TRACE_LEN;
-    }
-
-    /* Only evaluate signal-quality faults after the encoder has rotated enough
-     * for the active bounds to be meaningful. */
-    const bool range_ok = (m_active_sin_max - m_active_sin_min > MIN_AMP_RANGE) &&
-                          (m_active_cos_max - m_active_cos_min > MIN_AMP_RANGE);
-    if (range_ok) {
-        const float sin_mid = 0.5f * static_cast<float>(m_active_sin_min + m_active_sin_max);
-        const float cos_mid = 0.5f * static_cast<float>(m_active_cos_min + m_active_cos_max);
-        const float dx = static_cast<float>(raw_sin) - sin_mid;
-        const float dy = static_cast<float>(raw_cos) - cos_mid;
-        const float mag = std::sqrt(dx * dx + dy * dy);
-
-        if (!m_mag_ema_init) {
-            m_mag_ema = mag;
-            m_mag_ema_init = true;
-        } else {
-            constexpr float ALPHA = 0.05f;
-            m_mag_ema += ALPHA * (mag - m_mag_ema);
-        }
-
-        if (m_mag_ema < AMP_COLLAPSE_THRESHOLD) {
-            if (++m_amp_low_count >= AMP_COLLAPSE_COUNT) {
-                FaultManager::instance().raise(
-                    FaultSource::EncoderAmplitude, FaultReason::EncoderAmplitudeLow);
-                m_amp_low_count = 0;
-            }
-        } else {
-            m_amp_low_count = 0;
-        }
-
-        const bool at_rail =
-            (raw_sin < SIN_MIN_CAP + RAIL_MARGIN) ||
-            (raw_sin > SIN_MAX_CAP - RAIL_MARGIN) ||
-            (raw_cos < COS_MIN_CAP + RAIL_MARGIN) ||
-            (raw_cos > COS_MAX_CAP - RAIL_MARGIN);
-        if (at_rail) {
-            if (++m_rail_count >= RAIL_COUNT) {
-                FaultManager::instance().raise(
-                    FaultSource::EncoderOutOfRange, FaultReason::EncoderAtRail);
-                m_rail_count = 0;
-            }
-        } else {
-            m_rail_count = 0;
-        }
     }
 }
 
@@ -407,11 +368,92 @@ void EncoderADC::onDmaError() {
 }
 
 void EncoderADC::diagnose() {
+    const uint32_t now_ms = HAL_GetTick();
+
+    /* Mechanical speed, evaluated here (main loop) rather than in the DMA
+     * ISR: per-sample angle deltas at 10 kHz multiply angle noise by the
+     * full sample rate, which buries the estimate in EMI at high switching
+     * frequencies.  Time-based window instead of sample-count window so the
+     * estimate is independent of the caller's cadence. */
+    {
+        const float angle = m_snapshot.angle;
+        if (!m_rpm_init) {
+            m_rpm_init = true;
+            m_unwrapped_angle = angle;
+            m_window_ref_angle = angle;
+            m_rpm_prev_angle = angle;
+            m_rpm_filt_angle = angle;
+            m_rpm_ema = 0.0f;
+            m_rpm_window_ms = now_ms;
+        } else {
+            float delta = angle - m_rpm_prev_angle;
+            if (delta > 180.0f) delta -= 360.0f;
+            else if (delta < -180.0f) delta += 360.0f;
+            m_unwrapped_angle += delta;
+            m_rpm_prev_angle = angle;
+
+            const uint32_t win_ms = now_ms - m_rpm_window_ms;
+            if (win_ms >= RPM_WINDOW_MS) {
+                const float win_deg = m_unwrapped_angle - m_window_ref_angle;
+                const float rpm_inst = (win_deg / 360.0f) * (60000.0f / static_cast<float>(win_ms));
+                m_rpm_ema += RPM_ALPHA * (rpm_inst - m_rpm_ema);
+                m_window_ref_angle = m_unwrapped_angle;
+                m_rpm_window_ms = now_ms;
+            }
+        }
+    }
+
+    /* Signal-quality faults (main loop now): magnitude collapse and rail
+     * sticking, evaluated on the latest snapshot raws.  Fault detection is
+     * slow by nature; per-call EMA replaces the per-sample one. */
+    const bool range_ok = (m_active_sin_max - m_active_sin_min > MIN_AMP_RANGE) &&
+                          (m_active_cos_max - m_active_cos_min > MIN_AMP_RANGE);
+    if (range_ok) {
+        const uint16_t raw_sin = m_snapshot.raw_sin;
+        const uint16_t raw_cos = m_snapshot.raw_cos;
+        const float sin_mid = 0.5f * static_cast<float>(m_active_sin_min + m_active_sin_max);
+        const float cos_mid = 0.5f * static_cast<float>(m_active_cos_min + m_active_cos_max);
+        const float dx = static_cast<float>(raw_sin) - sin_mid;
+        const float dy = static_cast<float>(raw_cos) - cos_mid;
+        const float mag = std::sqrt(dx * dx + dy * dy);
+
+        if (!m_mag_ema_init) {
+            m_mag_ema = mag;
+            m_mag_ema_init = true;
+        } else {
+            m_mag_ema += MAG_EMA_ALPHA * (mag - m_mag_ema);
+        }
+
+        if (m_mag_ema < AMP_COLLAPSE_THRESHOLD) {
+            if (++m_amp_low_count >= AMP_COLLAPSE_COUNT) {
+                FaultManager::instance().raise(
+                    FaultSource::EncoderAmplitude, FaultReason::EncoderAmplitudeLow);
+                m_amp_low_count = 0;
+            }
+        } else {
+            m_amp_low_count = 0;
+        }
+
+        const bool at_rail =
+            (raw_sin < SIN_MIN_CAP + RAIL_MARGIN) ||
+            (raw_sin > SIN_MAX_CAP - RAIL_MARGIN) ||
+            (raw_cos < COS_MIN_CAP + RAIL_MARGIN) ||
+            (raw_cos > COS_MAX_CAP - RAIL_MARGIN);
+        if (at_rail) {
+            if (++m_rail_count >= RAIL_COUNT) {
+                FaultManager::instance().raise(
+                    FaultSource::EncoderOutOfRange, FaultReason::EncoderAtRail);
+                m_rail_count = 0;
+            }
+        } else {
+            m_rail_count = 0;
+        }
+    }
+
     /* Publish the measured trigger/ISR rate once a second so the assumed
      * sample rate (m_sample_hz) can be validated against reality. */
     static uint32_t s_last_ms = 0;
     static uint32_t s_last_count = 0;
-    const uint32_t now_ms = HAL_GetTick();
     if (s_last_ms != 0U && (now_ms - s_last_ms) >= 1000U) {
         const float hz = static_cast<float>(m_isr_count - s_last_count) *
                          (1000.0f / static_cast<float>(now_ms - s_last_ms));
@@ -426,7 +468,7 @@ void EncoderADC::diagnose() {
         s_last_ms = now_ms;
     }
 
-    if (m_running && (HAL_GetTick() - m_last_sample_ms) > SAMPLE_TIMEOUT_MS) {
+    if (m_running && (now_ms - m_last_sample_ms) > SAMPLE_TIMEOUT_MS) {
         /* Temporarily disabled: encoder timeout fault is firing during
          * bench testing and interfering with other calibration work. */
         // FaultManager::instance().raise(FaultSource::EncoderTimeout,

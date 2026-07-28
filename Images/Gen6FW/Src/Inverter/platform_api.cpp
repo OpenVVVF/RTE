@@ -67,7 +67,9 @@ bool platform_get_encoder_angle(float* angle_deg) {
 }
 
 float platform_get_encoder_angle_latest(void) {
-    return Inverter::encoderADC().lastAngle();
+    /* Extrapolated to the read instant: smooths the sample staircase between
+     * the 5 kHz encoder stream and the 10 kHz FOC steps. */
+    return Inverter::encoderADC().extrapolatedAngleDeg();
 }
 
 float platform_get_dc_link_voltage(void) {

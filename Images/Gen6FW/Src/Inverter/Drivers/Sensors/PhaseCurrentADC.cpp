@@ -350,7 +350,7 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
                              static_cast<uint16_t>(m_raw_u_ref),
                              static_cast<uint16_t>(m_raw_v_ref),
                              m_current_u, m_current_v,
-                             encoderADC().lastAngle(),
+                             encoderADC().extrapolatedAngleDeg(),
                              static_cast<uint16_t>(encoderADC().lastRawSin()),
                              static_cast<uint16_t>(encoderADC().lastRawCos()),
                              appState.tim_isr.Svpwm.Duty_A,

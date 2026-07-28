@@ -131,6 +131,18 @@ public:
     void traceDump();
 
     /**
+     * @brief Latest angle extrapolated to NOW [deg, 0..360).
+     *
+     * snapshot angle + rpm_ema * age (DWT cycle counter, microsecond
+     * precision).  The encoder samples at the TIM1 update rate (5 kHz) while
+     * the FOC steps at 10 kHz; without extrapolation the commutation angle
+     * staircases by (speed x sample period) every other step.  The
+     * correction is bounded to one sample period's worth of rotation, so a
+     * stalled stream degrades to the raw snapshot, never a runaway angle.
+     */
+    float extrapolatedAngleDeg();
+
+    /**
      * @brief Select the encoder sample trigger source.
      *
      * false = TIM2 free-running 10 kHz (idle/calibration: always sampling).
@@ -148,10 +160,12 @@ public:
     void onDmaError();
 
     /**
-     * @brief Main-loop health check for sample timeout.
+     * @brief Main-loop health check, RPM estimate, and fault evaluation.
      *
-     * Amplitude-collapse and out-of-range faults are evaluated inside
-     * onDmaComplete(); this call only catches a completely stalled DMA stream.
+     * The DMA ISR only decodes and publishes the angle snapshot; everything
+     * else (mechanical-speed estimate, amplitude-collapse/rail faults,
+     * sample-rate telemetry, stalled-stream check) runs here at main-loop
+     * cadence.  Call once per main-loop iteration.
      */
     void diagnose();
 
@@ -231,6 +245,7 @@ private:
     volatile Snapshot m_snapshot;
     volatile bool     m_new_data = false;
     bool              m_running = false;
+    volatile uint32_t m_last_sample_cycles = 0;  /**< DWT->CYCCNT at DMA completion */
 
     /* Angle-linearity trace ring: every 10th DMA sample (~1 kHz), ~1 s of
      * raw sin/cos + decoded angle for offline per-rev analysis. */
@@ -245,13 +260,14 @@ private:
     size_t     m_trace_head = 0;
     uint8_t    m_trace_decim = 0;
 
-    /* Fault-detection state. */
+    /* Fault-detection state (evaluated in diagnose() at main-loop cadence). */
     static constexpr uint32_t SAMPLE_TIMEOUT_MS = 5U;
     static constexpr uint16_t MIN_AMP_RANGE     = 20000U;
     static constexpr float    AMP_COLLAPSE_THRESHOLD = 500.0f;
-    static constexpr uint16_t AMP_COLLAPSE_COUNT  = 500U;
+    static constexpr float    MAG_EMA_ALPHA     = 0.2f;   /**< per diagnose() call */
+    static constexpr uint16_t AMP_COLLAPSE_COUNT  = 25U;  /**< consecutive calls */
     static constexpr uint16_t RAIL_MARGIN         = 200U;
-    static constexpr uint16_t RAIL_COUNT          = 50U;
+    static constexpr uint16_t RAIL_COUNT          = 10U;  /**< consecutive calls */
 
     volatile uint32_t m_last_sample_ms = 0;
     volatile uint16_t m_amp_low_count  = 0;
@@ -260,17 +276,17 @@ private:
     bool              m_mag_ema_init   = false;
     volatile uint32_t m_isr_count      = 0;
 
-    /* Mechanical speed estimation (ISR context).  m_sample_hz is derived
-     * from the actual TIM2 trigger configuration in initTimer(). */
-    static constexpr float    RPM_ALPHA  = 0.005f;
-    static constexpr uint32_t RPM_WINDOW = 40U;  /* ~4 ms: averages away
-        per-sample angle noise (EMI) that a 1-sample delta amplifies 1666x. */
+    /* Mechanical speed estimation (main loop, time-based window).
+     * m_sample_hz is measured from the actual trigger rate in diagnose(). */
+    static constexpr float    RPM_ALPHA     = 0.005f;
+    static constexpr uint32_t RPM_WINDOW_MS = 40U;  /* long enough to average
+        away per-sample angle noise (EMI) that a 1-sample delta amplifies. */
     float m_sample_hz    = 10000.0f;
     float m_rpm_prev_angle = 0.0f;
     float m_rpm_filt_angle = 0.0f;
     float m_unwrapped_angle = 0.0f;
     float m_window_ref_angle = 0.0f;
-    uint32_t m_window_n = 0;
+    uint32_t m_rpm_window_ms = 0;
     bool  m_rpm_init       = false;
     volatile float m_rpm_ema = 0.0f;
 };
