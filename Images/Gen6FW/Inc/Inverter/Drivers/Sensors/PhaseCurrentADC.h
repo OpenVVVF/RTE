@@ -88,6 +88,18 @@ public:
     uint32_t lastRawVSig() const { return m_raw_v_sig; }
     uint32_t lastRawURef() const { return m_raw_u_ref; }
     uint32_t lastRawVRef() const { return m_raw_v_ref; }
+
+    /**
+     * @brief Main-loop health check: reference-channel plausibility.
+     *
+     * A healthy LA37S600 reference is ~1.65 V (KV window
+     * Hw.PhCur.RefMinV/MaxV, defaults 1.4/1.9 V).  Checked continuously once
+     * armed (the first in-window sighting arms it, so boot-time rail settle
+     * can't false-trip); a sustained (500 ms) violation latches
+     * FaultSource::CurrentSensorRef — live detection of transducer
+     * death/unpowering mid-run.
+     */
+    void diagnose();
     uint32_t lastRawDclSig() const { return m_raw_dcl_sig; }
     uint32_t lastRawDclRef() const { return m_raw_dcl_ref; }
     float    lastOffsetU() const { return m_offset_u; }
@@ -165,6 +177,11 @@ private:
 
     volatile bool     m_new_data = false;
     bool              m_running = false;
+
+    /* Reference-plausibility state (diagnose(), main loop). */
+    bool              m_ref_armed = false;
+    uint32_t          m_ref_implausible_since_ms = 0;
+    bool              m_ref_fault_raised = false;
 };
 
 /**

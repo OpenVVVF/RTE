@@ -16,6 +16,7 @@
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -220,6 +221,10 @@ static void loop()
     /* Encoder: RPM estimate + signal-quality fault evaluation (the DMA ISR
      * only decodes and publishes the angle snapshot). */
     Inverter::encoderADC().diagnose();
+
+    /* Phase-current sensors: reference-channel plausibility (armed after
+     * first healthy sighting, so boot rail settle can't false-trip). */
+    Inverter::phaseCurrentADC().diagnose();
 
     /* Calibration machinery: pump the open-loop controller and every
      * calibrator state machine.  All early-out when inactive. */

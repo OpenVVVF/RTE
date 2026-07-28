@@ -56,6 +56,10 @@ private:
     size_t   m_avg_head = 0;
     size_t   m_avg_count = 0;
 
+    /* Reference-plausibility state (out-of-window sustain -> fault). */
+    uint32_t m_implausible_since_ms = 0;
+    bool     m_fault_raised = false;
+
     uint32_t m_raw_sig = 0;
     uint32_t m_raw_ref = 0;
     float m_offset_a = 0.0f;
