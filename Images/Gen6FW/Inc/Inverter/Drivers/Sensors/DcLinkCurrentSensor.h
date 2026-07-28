@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace Inverter {
@@ -48,6 +49,12 @@ private:
     uint32_t m_last_seq = 0;
     uint32_t m_zero_samples_left = 0;
     double   m_zero_acc = 0.0;
+
+    /* Moving-average state (see AVG_SAMPLES above). */
+    float    m_avg_ring[40] = {};
+    double   m_avg_sum = 0.0;
+    size_t   m_avg_head = 0;
+    size_t   m_avg_count = 0;
 
     uint32_t m_raw_sig = 0;
     uint32_t m_raw_ref = 0;

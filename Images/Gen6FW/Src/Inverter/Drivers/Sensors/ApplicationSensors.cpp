@@ -188,16 +188,17 @@ bool ApplicationSensors::configureAdc1ScanDma() {
     hadc1.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
     hadc1.Init.DMAContinuousRequests = ENABLE;
 
-    /* --- TIM3: 100 Hz update event as ADC1 trigger ------------------------
-     * APB1 timer clock is 137.5 MHz (same as the encoder's TIM2):
-     * 137.5 MHz / 1375 / 1000 = 100 Hz.  Temperatures and throttle need no
-     * more; the low rate also minimizes regular-group occupancy around the
-     * injected phase-current sampling. */
+    /* --- TIM3: ~1020 Hz update event as ADC1 trigger ----------------------
+     * APB1 timer clock is 137.5 MHz: 137.5 MHz / 1375 / 98 = 1020.4 Hz.
+     * NOT an exact integer ratio of the 2.5 kHz PWM (both timers share the
+     * same clock root): the scan phase walks through the PWM cycle, so the
+     * chopped DC-link bus current averages to its true mean over many scans
+     * (see DcLinkCurrentSensor's moving average). */
     __HAL_RCC_TIM3_CLK_ENABLE();
     htim3_appsens.Instance = TIM3;
     htim3_appsens.Init.Prescaler = 1374U;
     htim3_appsens.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim3_appsens.Init.Period = 999U;
+    htim3_appsens.Init.Period = 97U;
     htim3_appsens.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim3_appsens.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
     if (HAL_TIM_Base_Init(&htim3_appsens) != HAL_OK) {
@@ -563,9 +564,6 @@ void ApplicationSensors::computeWindow(uint32_t now_ms) {
             m_thr_b_v = volts;
         }
     }
-    m_dclink_sig = s_adc1_buf[5];
-    m_dclink_ref = s_adc1_buf[6];
-    ++m_dclink_seq;
     Telemetry::log("thr_a_v", m_thr_a_v);
     Telemetry::log("thr_b_v", m_thr_b_v);
 
@@ -598,6 +596,18 @@ void ApplicationSensors::computeWindow(uint32_t now_ms) {
 void ApplicationSensors::update() {
     if (!m_initialized) {
         return;
+    }
+
+    /* Per-scan feed for the DC-link current pair: the DMA counter reloads
+     * once per ~1020 Hz scan; every arrival publishes the raw pair so the
+     * DcLinkCurrentSensor moving average sees every sample (the 16 ms
+     * compute window below would alias it away). */
+    const uint32_t ndtr = DMA2_Stream1->NDTR;
+    if (ndtr != m_last_ndtr) {
+        m_last_ndtr = ndtr;
+        m_dclink_sig = s_adc1_buf[5];
+        m_dclink_ref = s_adc1_buf[6];
+        ++m_dclink_seq;
     }
 
     /* Harvest the latest completed ADC3 conversion; never blocks.  Reading

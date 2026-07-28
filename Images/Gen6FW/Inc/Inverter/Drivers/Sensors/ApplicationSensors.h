@@ -144,6 +144,7 @@ private:
     uint16_t m_dclink_sig = 0;
     uint16_t m_dclink_ref = 0;
     uint32_t m_dclink_seq = 0;
+    uint32_t m_last_ndtr = 0;
     float    m_thr_a_norm = 0.0f;
     float    m_thr_b_norm = 0.0f;
     float    m_thr_a_cand = 0.0f;  /**< normalized, pre-plausibility */
