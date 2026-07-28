@@ -81,6 +81,13 @@ float platform_get_encoder_angle_latest(void);
  */
 float platform_get_dc_link_voltage(void);
 
+/**
+ * @brief Latest DC-link current [A] and input power [W].
+ * Zero until the startup zero-offset capture completes (~2 s).
+ */
+float platform_get_dc_link_current(void);
+float platform_get_dc_link_power(void);
+
 /* Phase voltages from the MAX22530 isolated ADC (filtered reads).
  * Channel map: 0=U, 1=V, 2=W, 3=DC link. */
 float platform_phase_voltage_u(void);

@@ -25,7 +25,7 @@ class ApplicationSensors {
 public:
     static constexpr uint8_t NUM_CHANNELS = 4; /**< 0..2 = board, 3 = motor. */
     static constexpr uint8_t BOARD_CHANNELS = 3;
-    static constexpr uint8_t ADC1_RANKS = 5;   /**< 3 temps + 2 throttle. */
+    static constexpr uint8_t ADC1_RANKS = 8;   /**< 3 temps + 2 throttle + DC-link sig/ref + probe. */
 
     /** @brief Load config from the KV store, start ADC3 (and later TIM3+DMA). */
     bool init();
@@ -55,6 +55,18 @@ public:
 
     /** @brief true while throttle A/B agree within the plausibility tolerance. */
     bool throttlePlausible() const;
+
+    /**
+     * @brief DC-link current sensor raw counts + scan sequence counter.
+     *
+     * LA37S600 differential pair on ADC1_INP2 (sig) / ADC1_INP6 (ref),
+     * sampled ranks 5/6 of the same 100 Hz scan, so the sensor supply bounce
+     * is common-mode and cancels in the difference.  Consumed by
+     * DcLinkCurrentSensor (offset cal, current/power/energy).
+     */
+    uint16_t dcLinkSigCounts() const;
+    uint16_t dcLinkRefCounts() const;
+    uint32_t dcLinkSeq() const;
 
     /** @brief Per-channel live values for the `temp` shell command. */
     void channelStatus(uint8_t ch, bool& enabled, uint8_t& type, float& volts,
@@ -129,6 +141,9 @@ private:
     Channel  m_ch[NUM_CHANNELS] = {};
     float    m_thr_a_v = 0.0f;
     float    m_thr_b_v = 0.0f;
+    uint16_t m_dclink_sig = 0;
+    uint16_t m_dclink_ref = 0;
+    uint32_t m_dclink_seq = 0;
     float    m_thr_a_norm = 0.0f;
     float    m_thr_b_norm = 0.0f;
     float    m_thr_a_cand = 0.0f;  /**< normalized, pre-plausibility */

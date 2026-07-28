@@ -1,4 +1,5 @@
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
@@ -19,7 +20,7 @@ constexpr float    ADC_VREF       = 3.3f;
 constexpr float    DIVIDER        = 2.0f / 3.0f;
 constexpr float    SENSITIVITY_VA = 1.042e-3f;
 
-constexpr uint32_t ZERO_SAMPLES = 2000U;
+constexpr uint32_t ZERO_SAMPLES = 200U;  /* 100 Hz scan -> 2 s settle window */
 
 } // namespace
 
@@ -54,10 +55,62 @@ float DcLinkCurrentSensor::countsToCurrent(uint32_t sig, uint32_t ref) const {
 }
 
 void DcLinkCurrentSensor::update() {
-    /* Disabled: the injected rank 3/4 approach degraded the phase-current
-     * path, and polled regular conversions alias the sensor supply ripple.
-     * DC-link current needs its own clean sampling path (see reminder.md). */
-    return;
+    /* Samples come from the ApplicationSensors TIM3-triggered ADC1 scan
+     * (ranks 5/6, 100 Hz, DMA): signal and reference are converted
+     * microseconds apart in the same scan, so the sensor supply bounce is
+     * common-mode and cancels in the difference.  Nothing here ever blocks
+     * on the ADC. */
+    const uint32_t seq = appSensors().dcLinkSeq();
+    if (seq == m_last_seq) {
+        return;
+    }
+    m_last_seq = seq;
+
+    m_raw_sig = appSensors().dcLinkSigCounts();
+    m_raw_ref = appSensors().dcLinkRefCounts();
+
+    /* Dead-channel guard: a live LA37S600 reference sits at mid-scale
+     * (~32k counts).  Far below that the sensor is unpowered/unpopulated and
+     * the differential is leakage, not current — report invalid instead of
+     * garbage amps. */
+    constexpr uint32_t REF_ALIVE_MIN = 20000U;
+    if (m_raw_ref < REF_ALIVE_MIN) {
+        if (m_offset_valid) {
+            Telemetry::printf("[DCL] sensor reference lost (unpowered?)");
+        }
+        m_offset_valid = false;
+        m_zero_samples_left = ZERO_SAMPLES;
+        m_zero_acc = 0.0;
+        m_current_a = NAN;
+        m_power_w = NAN;
+        Telemetry::log("dclink_i_a", m_current_a);
+        Telemetry::log("dclink_p_w", m_power_w);
+        return;
+    }
+
+    if (m_zero_samples_left > 0) {
+        m_zero_acc += countsToCurrent(m_raw_sig, m_raw_ref);
+        if (--m_zero_samples_left == 0) {
+            m_offset_a = static_cast<float>(m_zero_acc /
+                                            static_cast<double>(ZERO_SAMPLES));
+            m_zero_acc = 0.0;
+            m_offset_valid = true;
+            Telemetry::printf("[DCL] zero offset %.3f A",
+                              static_cast<double>(m_offset_a));
+        }
+        return;
+    }
+
+    m_current_a = countsToCurrent(m_raw_sig, m_raw_ref) - m_offset_a;
+    m_power_w = m_current_a * dcLinkVoltageSensor().voltage();
+
+    const uint32_t now_ms = HAL_GetTick();
+    m_energy_wh += static_cast<float>(
+        m_power_w * (static_cast<double>(now_ms - m_last_energy_ms) / 3600000.0));
+    m_last_energy_ms = now_ms;
+
+    Telemetry::log("dclink_i_a", m_current_a);
+    Telemetry::log("dclink_p_w", m_power_w);
 }
 
 } // namespace Inverter

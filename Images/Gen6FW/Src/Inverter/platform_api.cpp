@@ -4,6 +4,7 @@
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
@@ -74,6 +75,14 @@ float platform_get_encoder_angle_latest(void) {
 
 float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
+}
+
+float platform_get_dc_link_current(void) {
+    return Inverter::dcLinkCurrentSensor().current();
+}
+
+float platform_get_dc_link_power(void) {
+    return Inverter::dcLinkCurrentSensor().power();
 }
 
 /* Read the driver's 20 kHz DMA snapshot directly - never an ad-hoc SPI
