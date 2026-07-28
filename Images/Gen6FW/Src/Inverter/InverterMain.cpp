@@ -19,6 +19,7 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/CAN/CanBus.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -138,6 +139,9 @@ static void init()
      * conversions and never blocks. */
     Inverter::appSensors().init();
 
+    /* CAN buses (KV enables; no-op when both disabled). */
+    Inverter::canBus().init();
+
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
@@ -209,6 +213,9 @@ static void loop()
 
     /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
     Inverter::appSensors().update();
+
+    /* CAN: drain TX queues, bus-off recovery. */
+    Inverter::canBus().update();
 
     /* Encoder: RPM estimate + signal-quality fault evaluation (the DMA ISR
      * only decodes and publishes the angle snapshot). */

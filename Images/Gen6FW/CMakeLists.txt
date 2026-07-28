@@ -65,6 +65,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/ControlCommands.cpp
     Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Command/Commands/FocCommands.cpp
+    Src/Inverter/Command/Commands/CanCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
     Src/Inverter/Control/FocControlManager.cpp
@@ -104,6 +105,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Sensors/MAX22530.cpp
     Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp
     Src/Inverter/Drivers/Sensors/SpikeRecorder.cpp
+    Src/Inverter/Drivers/CAN/CanBus.cpp
 )
 
 # Add RTE-generated domain sources if they exist. These are produced by
