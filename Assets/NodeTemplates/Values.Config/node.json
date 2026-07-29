@@ -1,0 +1,37 @@
+{
+  "id": "Values.Config",
+  "displayName": "Config Value",
+  "defaultName": "Cfg",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "Value",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Key": {
+      "quantity": "string",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "DefaultValue": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Cached": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

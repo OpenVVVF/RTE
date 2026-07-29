@@ -74,6 +74,10 @@ float platform_get_encoder_angle_latest(void) {
     return Inverter::encoderADC().extrapolatedAngleDeg();
 }
 
+float platform_get_motor_rpm(void) {
+    return Inverter::encoderADC().rpmMech();
+}
+
 float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }

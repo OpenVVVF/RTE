@@ -1,0 +1,27 @@
+{
+  "id": "Actuators.DigitalOut",
+  "displayName": "Digital Out",
+  "defaultName": "Dout",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "In",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [],
+  "parameterTypes": {
+    "Pin": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

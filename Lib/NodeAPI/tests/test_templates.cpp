@@ -24,12 +24,10 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_GE(result.filesLoaded, 1u);
     EXPECT_GE(result.typesLoaded, 1u);
 
-    const auto type = graph.FindNodeType("hw.adc.phase_currents");
+    const auto type = graph.FindNodeType("Sensors.PhaseCurrents");
     ASSERT_TRUE(type.has_value());
-    EXPECT_EQ(type->displayName, "Phase Currents (ISR)");
-    EXPECT_TRUE(type->isEntryPoint);
-    EXPECT_EQ(type->domain, "adc_isr");
-    EXPECT_EQ(type->maxInstances, 1u);
+    EXPECT_EQ(type->displayName, "Phase Currents");
+    EXPECT_EQ(type->domain, "");
     EXPECT_EQ(type->inputPorts.size(), 0u);
     EXPECT_EQ(type->outputPorts.size(), 3u);
 
@@ -52,12 +50,7 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_EQ(ic->type.dtype, DType::F32);
 
     EXPECT_FALSE(type->inlineCode.empty());
-    EXPECT_NE(type->inlineCode.find("ADC_VREF"), std::string::npos);
-    EXPECT_NE(type->inlineCode.find("I_C = -iw_a"), std::string::npos);
-
-    const auto offsetType = type->FindParameterType("OffsetU");
-    ASSERT_TRUE(offsetType.has_value());
-    EXPECT_EQ(offsetType->quantity, Quantity::Current);
+    EXPECT_NE(type->inlineCode.find("platform_get_phase_currents"), std::string::npos);
 }
 
 TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
@@ -65,7 +58,7 @@ TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
     const auto result = LoadNodeTypesFromDirectory(graph, GetTemplatesDirectory());
     ASSERT_TRUE(result.ok);
 
-    const auto clarke = graph.FindNodeType("math.clarke");
+    const auto clarke = graph.FindNodeType("Transforms.Clarke");
     ASSERT_TRUE(clarke.has_value());
     EXPECT_NE(clarke->inlineCode.find("I_Alpha = I_A;"), std::string::npos);
 }
@@ -86,14 +79,14 @@ TEST(NodeTemplates, ForcedDomainOverridesInstanceDomain) {
 
     // Try to place it in the wrong domain.
     ASSERT_TRUE(graph.AddNode(Node{
-        .id = "currents",
-        .type = "hw.adc.phase_currents",
-        .domain = "tim_isr",
+        .id = "pwm",
+        .type = "Actuators.PwmOut",
+        .domain = "app_loop",
     }));
 
-    const auto node = graph.FindNode("currents");
+    const auto node = graph.FindNode("pwm");
     ASSERT_TRUE(node.has_value());
-    EXPECT_EQ(node->domain, "adc_isr");
+    EXPECT_EQ(node->domain, "tim_isr");
 }
 
 TEST(NodeTemplates, LoadsControlBlocks) {
@@ -101,13 +94,13 @@ TEST(NodeTemplates, LoadsControlBlocks) {
     const auto result = LoadNodeTypesFromDirectory(graph, GetTemplatesDirectory());
     ASSERT_TRUE(result.ok);
 
-    const auto pi = graph.FindNodeType("control.pi");
+    const auto pi = graph.FindNodeType("Control.Pi");
     ASSERT_TRUE(pi.has_value());
     EXPECT_EQ(pi->inputPorts.size(), 2u);
     EXPECT_EQ(pi->outputPorts.size(), 1u);
-    EXPECT_NE(pi->inlineCode.find("integral += error"), std::string::npos);
+    EXPECT_NE(pi->inlineCode.find("Integral += error"), std::string::npos);
 
-    const auto clarke = graph.FindNodeType("math.clarke");
+    const auto clarke = graph.FindNodeType("Transforms.Clarke");
     ASSERT_TRUE(clarke.has_value());
     EXPECT_EQ(clarke->inputPorts.size(), 3u);
     EXPECT_EQ(clarke->outputPorts.size(), 2u);
@@ -117,7 +110,7 @@ TEST(NodeTemplates, LoadsControlBlocks) {
     EXPECT_EQ(clarke->FindOutputPort("I_Alpha")->type.frame, Frame::Scalar);
     EXPECT_EQ(clarke->FindOutputPort("I_Beta")->type.frame, Frame::Scalar);
 
-    const auto park = graph.FindNodeType("math.park");
+    const auto park = graph.FindNodeType("Transforms.Park");
     ASSERT_TRUE(park.has_value());
     EXPECT_EQ(park->inputPorts.size(), 3u);
     EXPECT_EQ(park->outputPorts.size(), 2u);
@@ -126,25 +119,25 @@ TEST(NodeTemplates, LoadsControlBlocks) {
     EXPECT_EQ(park->FindOutputPort("I_D")->type.frame, Frame::Scalar);
     EXPECT_EQ(park->FindOutputPort("I_Q")->type.frame, Frame::Scalar);
 
-    const auto svpwm = graph.FindNodeType("math.svpwm");
+    const auto svpwm = graph.FindNodeType("Transforms.Svpwm");
     ASSERT_TRUE(svpwm.has_value());
     EXPECT_EQ(svpwm->inputPorts.size(), 3u);
     EXPECT_EQ(svpwm->outputPorts.size(), 3u);
 
-    const auto sincos = graph.FindNodeType("math.sincos");
+    const auto sincos = graph.FindNodeType("Transforms.SinCos");
     ASSERT_TRUE(sincos.has_value());
     EXPECT_EQ(sincos->inputPorts.size(), 1u);
     EXPECT_EQ(sincos->outputPorts.size(), 2u);
 
-    const auto pwm = graph.FindNodeType("hw.pwm.set_duty");
+    const auto pwm = graph.FindNodeType("Actuators.PwmOut");
     ASSERT_TRUE(pwm.has_value());
     EXPECT_EQ(pwm->inputPorts.size(), 3u);
     EXPECT_TRUE(pwm->outputPorts.empty());
     EXPECT_TRUE(pwm->FindInputPort("Duty_A").has_value());
 
-    const auto encoder = graph.FindNodeType("hw.encoder.decode");
+    const auto encoder = graph.FindNodeType("Sensors.Encoder");
     ASSERT_TRUE(encoder.has_value());
-    EXPECT_EQ(encoder->inputPorts.size(), 1u);
+    EXPECT_EQ(encoder->inputPorts.size(), 0u);
     EXPECT_EQ(encoder->outputPorts.size(), 2u);
 }
 
