@@ -48,6 +48,15 @@ bool CanBus::enabled(uint8_t bus) const {
     return bus < NUM_BUSES && m_enabled[bus];
 }
 
+size_t CanBus::txFree(uint8_t bus) const {
+    if (!enabled(bus)) {
+        return 0;
+    }
+    const size_t head = m_tx_head[bus];
+    const size_t tail = m_tx_tail[bus];
+    return (tail + TX_RING - head - 1) % TX_RING;
+}
+
 bool CanBus::applyTiming(uint8_t bus, uint32_t rate) {
     /* FDCAN kernel clock is 96 MHz (PLL2P).  Prefer a 24-tq bit
      * (seg1 17, seg2 6, sjw 4, ~75% sample point) and pick the prescaler
@@ -148,9 +157,13 @@ bool CanBus::send(uint8_t bus, uint32_t id, bool ext, const uint8_t* data,
     __disable_irq();
     size_t next = (m_tx_head[bus] + 1) % TX_RING;
     if (next == m_tx_tail[bus]) {
-        /* Full: drop the oldest. */
-        m_tx_tail[bus] = (m_tx_tail[bus] + 1) % TX_RING;
+        /* Full: reject (drop-newest).  Dropping the OLDEST would corrupt an
+         * in-progress segmented protocol packet and waste the bus time of
+         * its remaining chunks; rejecting new work keeps in-flight packets
+         * intact. */
         ++m_tx_dropped[bus];
+        __enable_irq();
+        return false;
     }
     TxSlot& s = m_tx[bus][m_tx_head[bus]];
     s.id = id;

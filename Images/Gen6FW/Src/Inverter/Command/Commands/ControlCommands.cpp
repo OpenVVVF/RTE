@@ -181,7 +181,10 @@ private:
              * settable too.  Writes flush immediately; drivers re-read them
              * on their reload path (e.g. `temp reload`) or at boot. */
             if (!storeReady()) return;
-            Inverter::RteParamStore::set(key, value);
+            if (!Inverter::RteParamStore::set(key, value)) {
+                Telemetry::printf("[SHELL] ERROR: KV store full or invalid key '%s'", key);
+                return;
+            }
             reportFlush("config value saved to FRAM", 1);
             return;
         }

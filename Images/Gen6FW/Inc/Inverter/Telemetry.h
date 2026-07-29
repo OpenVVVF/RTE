@@ -60,6 +60,15 @@ inline bool updateSensors(const MeasurementSystem&) { return updateSensors(); }
 
 void onUartTxComplete(UART_HandleTypeDef* huart);
 
+/**
+ * @brief Register an additional raw-packet sink (e.g. the CAN session).
+ *
+ * The sink receives every complete telemetry packet (header + payload +
+ * CRC, before COBS/UART framing).  UART transmission is unaffected by the
+ * sink's result.  Pass nullptr to clear.
+ */
+void set_extra_frame_sink(bool (*sink)(const uint8_t* packet, size_t len));
+
 bool txBusy();
 size_t txBytesQueued();
 
