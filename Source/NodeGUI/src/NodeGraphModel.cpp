@@ -1,5 +1,7 @@
 #include "NodeGraphModel.h"
 
+#include "NodeDataModel.h"
+
 #include <NodeAPI/Timing.h>
 
 #include <QPointF>
@@ -9,17 +11,6 @@
 namespace NodeGUI {
 
 namespace {
-
-QString PortName(const NodeAPI::NodeType& nodeType,
-                 QtNodes::PortType type,
-                 QtNodes::PortIndex index) {
-    const auto& ports = (type == QtNodes::PortType::In) ? nodeType.inputPorts
-                                                        : nodeType.outputPorts;
-    if (index >= ports.size()) {
-        return QString{};
-    }
-    return QString::fromStdString(ports[index].name);
-}
 
 bool ConsumerHasConnection(const NodeAPI::Graph& graph,
                            const NodeAPI::PortRef& consumer) {
@@ -84,12 +75,21 @@ std::optional<NodeAPI::PortRef> NodeGraphModel::MakePortRef(QtNodes::NodeId qtId
         return std::nullopt;
     }
 
-    const QString name = PortName(*nodeType, type, index);
-    if (name.isEmpty()) {
+    if (type == QtNodes::PortType::In) {
+        // Same ordering as the delegate: visible type ports (optional ones
+        // only when wired or connected), then synthesized parameter ports.
+        const auto connected = ConnectedOptionalInputs(graph_, *node, *nodeType);
+        const auto ports = VisibleInputPorts(*nodeType, node->parameterInputs, connected);
+        if (static_cast<std::size_t>(index) < ports.size()) {
+            return NodeAPI::PortRef{nodeId, ports[static_cast<std::size_t>(index)].name};
+        }
         return std::nullopt;
     }
 
-    return NodeAPI::PortRef{nodeId, name.toStdString()};
+    if (static_cast<std::size_t>(index) < nodeType->outputPorts.size()) {
+        return NodeAPI::PortRef{nodeId, nodeType->outputPorts[static_cast<std::size_t>(index)].name};
+    }
+    return std::nullopt;
 }
 
 std::string NodeGraphModel::GenerateId() const {
@@ -145,7 +145,12 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
         return QStringLiteral("Consumer port must be an input");
     }
 
-    if (producerPort->type != consumerPort->type) {
+    // Delegate type compatibility to NodeAPI (exact match or implicit unit
+    // extraction), so the GUI cannot diverge from the graph's own rules.
+    NodeAPI::Connection probe;
+    probe.from = *producerRef;
+    probe.to = *consumerRef;
+    if (!graph_.TypeCheck(probe)) {
         return QStringLiteral("Port types do not match");
     }
 
@@ -161,7 +166,25 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
             .arg(QString::fromStdString(consumerNode->id));
     }
 
-    const bool sameDomain = producerNode->domain == consumerNode->domain;
+    // A domainless node adopts its peer's domain (unless its node type locks
+    // one, in which case validation below will fail as before).
+    const auto producerType = graph_.FindNodeType(producerNode->type);
+    const bool producerLocked = producerType && !producerType->domain.empty();
+    const bool consumerLocked = consumerType && !consumerType->domain.empty();
+
+    std::string producerDomain = producerNode->domain;
+    std::string consumerDomain = consumerNode->domain;
+    std::string assignProducer;
+    std::string assignConsumer;
+    if (producerDomain.empty() && !consumerDomain.empty() && !producerLocked) {
+        assignProducer = consumerDomain;
+        producerDomain = consumerDomain;
+    } else if (consumerDomain.empty() && !producerDomain.empty() && !consumerLocked) {
+        assignConsumer = producerDomain;
+        consumerDomain = producerDomain;
+    }
+
+    const bool sameDomain = producerDomain == consumerDomain;
     asBridge = !sameDomain;
 
     if (asBridge) {
@@ -191,10 +214,21 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
     }
 
     NodeAPI::Graph temp = graph_;
+    // Apply the domain adoption on the temp copy so the timing validator sees
+    // the post-connection state.
+    if (!assignProducer.empty()) {
+        temp.SetNodeDomain(producerRef->nodeId, assignProducer);
+    }
+    if (!assignConsumer.empty()) {
+        temp.SetNodeDomain(consumerRef->nodeId, assignConsumer);
+    }
+
     if (asBridge) {
         NodeAPI::Bridge bridge;
         bridge.id = GenerateId();
-        bridge.type = producerPort->type;
+        // The bridge carries the consumer's type; NodeAPI lets the producer
+        // feed it via implicit unit extraction.
+        bridge.type = consumerPort->type;
         bridge.producer = *producerRef;
         bridge.consumer = *consumerRef;
         if (!temp.AddBridge(std::move(bridge))) {
@@ -262,9 +296,24 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
     }
 
     const auto producerPort = graph_.FindPort(*producerRef);
-    if (!producerPort) {
+    const auto consumerPort = graph_.FindPort(*consumerRef);
+    if (!producerPort || !consumerPort) {
         DataFlowGraphModel::deleteConnection(connectionId);
         return;
+    }
+
+    // Domain adoption (approved by Validate on its temp copy): a domainless
+    // node takes the peer's domain.
+    const auto producerNode = graph_.FindNode(producerRef->nodeId);
+    const auto consumerNode = graph_.FindNode(consumerRef->nodeId);
+    if (producerNode && consumerNode) {
+        if (producerNode->domain.empty() && !consumerNode->domain.empty()) {
+            graph_.SetNodeDomain(producerRef->nodeId, consumerNode->domain);
+            Q_EMIT nodeDomainAssigned(connectionId.outNodeId, consumerNode->domain);
+        } else if (consumerNode->domain.empty() && !producerNode->domain.empty()) {
+            graph_.SetNodeDomain(consumerRef->nodeId, producerNode->domain);
+            Q_EMIT nodeDomainAssigned(connectionId.inNodeId, producerNode->domain);
+        }
     }
 
     const std::string id = GenerateId();
@@ -272,7 +321,9 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
     if (asBridge) {
         NodeAPI::Bridge bridge;
         bridge.id = id;
-        bridge.type = producerPort->type;
+        // The bridge carries the consumer's type; NodeAPI lets the producer
+        // feed it via implicit unit extraction.
+        bridge.type = consumerPort->type;
         bridge.producer = *producerRef;
         bridge.consumer = *consumerRef;
         if (graph_.AddBridge(std::move(bridge))) {
@@ -291,9 +342,42 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
             DataFlowGraphModel::deleteConnection(connectionId);
         }
     }
+
+    // A new connection may make an optional, parameter-backed port visible.
+    RefreshOptionalPortVisibility(consumerRef->nodeId);
+}
+
+void NodeGraphModel::RefreshOptionalPortVisibility(const std::string& nodeId) {
+    QtNodes::NodeId qtId = QtNodes::InvalidNodeId;
+    for (const auto& [qt, id] : qtIdToNodeId_) {
+        if (id == nodeId) {
+            qtId = qt;
+            break;
+        }
+    }
+    if (qtId == QtNodes::InvalidNodeId) {
+        return;
+    }
+
+    auto* delegate = delegateModel<NodeInstanceModel>(qtId);
+    const auto node = graph_.FindNode(nodeId);
+    if (!delegate || !node) {
+        return;
+    }
+    const auto nodeType = graph_.FindNodeType(node->type);
+    if (!nodeType) {
+        return;
+    }
+    delegate->SetConnectedInputs(ConnectedOptionalInputs(graph_, *node, *nodeType));
 }
 
 bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) {
+    // Resolve the consumer before teardown so we can refresh its optional
+    // port visibility afterwards (a freed optional port may hide again).
+    const auto consumerRef = MakePortRef(connectionId.inNodeId,
+                                         connectionId.inPortIndex,
+                                         QtNodes::PortType::In);
+
     const auto it = connectionMap_.find(connectionId);
     if (it != connectionMap_.end()) {
         if (it->second.isBridge) {
@@ -304,7 +388,24 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
         connectionMap_.erase(it);
     }
 
-    return DataFlowGraphModel::deleteConnection(connectionId);
+    const bool result = DataFlowGraphModel::deleteConnection(connectionId);
+
+    if (consumerRef) {
+        RefreshOptionalPortVisibility(consumerRef->nodeId);
+    }
+    return result;
+}
+
+bool NodeGraphModel::deleteNode(QtNodes::NodeId const nodeId) {
+    const auto it = qtIdToNodeId_.find(nodeId);
+    if (it != qtIdToNodeId_.end()) {
+        // NodeAPI::Graph::RemoveNode also removes the node's connections and
+        // bridges. The base-class teardown below still emits connectionDeleted
+        // for each QtNodes connection; our deleteConnection override then just
+        // finds them already gone and cleans up the id map.
+        graph_.RemoveNode(it->second);
+    }
+    return DataFlowGraphModel::deleteNode(nodeId);
 }
 
 bool NodeGraphModel::IsBridge(QtNodes::ConnectionId const connectionId) const {

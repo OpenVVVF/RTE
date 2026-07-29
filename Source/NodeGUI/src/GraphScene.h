@@ -38,6 +38,15 @@ public:
     QString LoadGraph(const std::string& graphJsonPath,
                       const std::string& templatesDir);
 
+    // Starts a new empty graph, keeping the previously loaded node-type
+    // templates. Returns an empty string on success.
+    QString NewGraph();
+
+    // Loads only the node-type templates (no graph), so the palette and
+    // node creation work before any graph is opened. Returns an empty
+    // string on success.
+    QString LoadTemplates(const std::string& templatesDir);
+
     QtNodes::BasicGraphicsScene* Scene() const { return scene_.get(); }
 
     NodeGraphModel* Model() const { return model_.get(); }
@@ -51,6 +60,37 @@ public:
     // Write the current graph (including any moved node positions) to disk.
     // Returns an empty string on success, otherwise an error message.
     QString SaveGraph(const std::string& path) const;
+
+    // Instantiates a node of the given type at the given scene position.
+    // When requestedId is non-empty it is used as the instance id (must be
+    // unique); otherwise an id is generated from the display name.
+    // Returns an empty string on success, otherwise an error message.
+    QString AddNodeAt(const std::string& typeId,
+                      const QPointF& scenePos,
+                      const std::string& requestedId = {});
+
+    // Maps a QtNodes id back to the NodeAPI node id (empty when unknown).
+    std::string NodeApiId(QtNodes::NodeId qtId) const;
+
+    // Replaces a node's parameter map (same write path as the parameter
+    // editor dialog). Returns an empty string on success.
+    QString SetNodeParameters(QtNodes::NodeId qtId,
+                              const std::map<std::string, std::string>& parameters);
+
+    // Replaces a node's wireable parameter-input list. Returns an empty
+    // string on success.
+    QString SetNodeParameterInputs(QtNodes::NodeId qtId,
+                                   const std::vector<std::string>& parameterInputs);
+
+    // Changes a node's timing domain (empty = unassigned). Returns an empty
+    // string on success, otherwise an error message. Types locked to a
+    // specific domain reject changes.
+    QString SetNodeDomain(QtNodes::NodeId qtId, const std::string& domain);
+
+    // Renames a node instance, remapping its connections and bridges to the
+    // new id. Returns an empty string on success, otherwise an error
+    // message.
+    QString RenameNode(QtNodes::NodeId qtId, const std::string& newId);
 
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
@@ -69,6 +109,11 @@ private:
 
     // Layout helpers that respect timing domains.
     std::map<std::string, std::vector<std::string>> GroupNodesByDomain() const;
+    // Orders domain groups by dataflow: bridges form a domain-level DAG
+    // (producer domain -> consumer domain) which is topologically sorted with
+    // an alphabetical tie-break. Cyclic leftovers are appended alphabetically.
+    std::vector<std::string> OrderDomainsByFlow(
+        const std::map<std::string, std::vector<std::string>>& groups) const;
     void LayoutDomainNodes(const std::vector<std::string>& nodeIds,
                            const Adjacency& adj,
                            double originX,
@@ -82,8 +127,13 @@ private:
 
     void RegisterNodeTypes();
     void CreateNodes();
+    // Creates the QtNodes graphics side for one graph node. Returns the
+    // QtNodes id, or InvalidNodeId when the node's type is unknown.
+    QtNodes::NodeId CreateNodeItem(const NodeAPI::Node& node);
     void CreateConnections();
     void CreateBridges();
+    // Rebuilds model and scene from graph_ (after load/new).
+    void RebuildScene();
 
     // Visual domain grouping: colored outline + label per timing domain.
     void CreateDomainOutlines();
@@ -94,11 +144,6 @@ public:
     // Public so the scene event filter can call it during node drags.
     void UpdateDomainOutlines();
 
-    // Public so the scene event filter can call it on node double-click.
-    // Opens a modal editor for the node's parameters and, on accept, writes
-    // them back to the graph and refreshes the embedded parameter view.
-    void EditNodeParameters(QtNodes::NodeId qtId);
-
     QtNodes::PortIndex FindPortIndex(const std::string& nodeId,
                                      const std::string& portName,
                                      QtNodes::PortType portType) const;
@@ -107,6 +152,7 @@ public:
     std::shared_ptr<QtNodes::NodeDelegateModelRegistry> registry_;
     std::unique_ptr<NodeGraphModel> model_;
     std::unique_ptr<QtNodes::BasicGraphicsScene> scene_;
+    std::string templatesDir_;
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;

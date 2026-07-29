@@ -1,11 +1,14 @@
 #pragma once
 
+#include "ParameterBlock.h"
+
 #include <NodeAPI/Graph.h>
 
 #include <QtNodes/NodeData>
 #include <QtNodes/NodeDelegateModel>
 
 #include <memory>
+#include <set>
 #include <vector>
 
 namespace NodeGUI {
@@ -20,6 +23,23 @@ public:
 private:
     QtNodes::NodeDataType type_;
 };
+
+// The input ports a node instance actually shows: the type's input ports,
+// except optional ports that share a name with a parameter and are neither
+// wired nor connected (those fall back to the parameter), then synthesized
+// parameter input ports not already covered by a type port.
+// GraphScene::FindPortIndex and NodeGraphModel::MakePortRef use this same
+// ordering.
+std::vector<NodeAPI::Port> VisibleInputPorts(
+    const NodeAPI::NodeType& nodeType,
+    const std::vector<std::string>& parameterInputs,
+    const std::set<std::string>& connectedInputs);
+
+// Names of optional, parameter-backed input ports of this node that are the
+// consumer of a connection or bridge.
+std::set<std::string> ConnectedOptionalInputs(const NodeAPI::Graph& graph,
+                                              const NodeAPI::Node& node,
+                                              const NodeAPI::NodeType& nodeType);
 
 // QtNodes delegate model that represents one NodeAPI node instance.
 // The node type determines the port layout; the instance supplies the caption.
@@ -41,14 +61,36 @@ public:
 
     std::shared_ptr<QtNodes::NodeData> outData(QtNodes::PortIndex const port) override;
 
-    QWidget* embeddedWidget() override { return parameterWidget_; }
+    // No embedded widget: the parameter block is painted directly by
+    // TypedNodePainter, which is far cheaper than a QGraphicsProxyWidget
+    // per node.
+    QWidget* embeddedWidget() override { return nullptr; }
 
-    // Builds (or refreshes) the read-only parameter view embedded inside the
-    // node. The first call must happen before the scene constructs the node's
-    // graphics object, which is when embeddedWidget() is queried; later calls
-    // rebuild the rows in place. An empty map hides the panel.
-    void SetParameters(const std::map<std::string, std::string>& parameters,
-                       const std::map<std::string, NodeAPI::WireType>& parameterTypes);
+    // Stores the node's parameters as pre-laid-out paint data. The block is
+    // painted directly by TypedNodePainter (no embedded widget, for
+    // performance) and ParameterNodeGeometry reserves the space for it.
+    // Emits requestNodeUpdate() so the scene refreshes geometry and repaints.
+    void SetParameters(std::map<std::string, std::string> parameters);
+
+    const ParameterBlockData& ParameterBlock() const { return parameterBlock_; }
+
+    // Sets the timing domain shown in the caption ("[domain]" second line).
+    // Emits requestNodeUpdate() so the scene repaints.
+    void SetDomain(std::string domain);
+
+    // Marks parameters as wireable input ports (or back to constants). The
+    // synthesized ports are appended after the type's input ports; wired
+    // parameters leave the painted parameter panel. Emits portsInserted()/
+    // portsDeleted() and requestNodeUpdate() so the scene re-lays out.
+    void SetParameterInputs(std::vector<std::string> parameterInputs);
+
+    const std::vector<std::string>& ParameterInputs() const { return parameterInputs_; }
+
+    // Updates which optional, parameter-backed input ports currently have a
+    // connection. Those stay visible even when their parameter is not wired;
+    // unwired and unconnected ones are hidden (the parameter is used
+    // instead). No-ops when unchanged.
+    void SetConnectedInputs(std::set<std::string> connectedInputs);
 
     QString portCaption(QtNodes::PortType portType,
                         QtNodes::PortIndex portIndex) const override;
@@ -69,9 +111,16 @@ private:
 
     std::shared_ptr<QtNodes::NodeData> outputData_;
 
-    // Read-only parameter view. Ownership transfers to the scene's
-    // QGraphicsProxyWidget once it is embedded.
-    QWidget* parameterWidget_ = nullptr;
+    ParameterBlockData parameterBlock_;
+    std::string domain_;
+
+    std::map<std::string, std::string> parameters_;
+    std::vector<std::string> parameterInputs_;
+    std::set<std::string> connectedInputs_;
+
+    // Rebuilds inputPorts_ from the type's ports plus the synthesized
+    // parameter input ports, and refreshes the painted parameter block.
+    void RebuildPortsAndBlock();
 };
 
 }  // namespace NodeGUI

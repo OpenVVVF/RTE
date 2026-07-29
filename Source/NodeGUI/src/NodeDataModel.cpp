@@ -2,10 +2,9 @@
 
 #include <NodeAPI/WireType.h>
 
-#include <QLabel>
 #include <QString>
-#include <QVBoxLayout>
-#include <QWidget>
+
+#include <algorithm>
 
 namespace NodeGUI {
 
@@ -45,7 +44,17 @@ QString NodeInstanceModel::caption() const {
     } else {
         caption = QString::fromStdString(node_.id);
     }
+    if (!domain_.empty()) {
+        caption += QStringLiteral("\n[");
+        caption += QString::fromStdString(domain_);
+        caption += QStringLiteral("]");
+    }
     return caption;
+}
+
+void NodeInstanceModel::SetDomain(std::string domain) {
+    domain_ = std::move(domain);
+    Q_EMIT requestNodeUpdate();
 }
 
 unsigned int NodeInstanceModel::nPorts(QtNodes::PortType portType) const {
@@ -98,65 +107,113 @@ QtNodes::ConnectionPolicy NodeInstanceModel::portConnectionPolicy(QtNodes::PortT
                                               : QtNodes::ConnectionPolicy::One;
 }
 
-void NodeInstanceModel::SetParameters(
-    const std::map<std::string, std::string>& parameters,
-    const std::map<std::string, NodeAPI::WireType>& parameterTypes) {
-    const bool refreshing = (parameterWidget_ != nullptr);
+void NodeInstanceModel::SetParameters(std::map<std::string, std::string> parameters) {
+    parameters_ = std::move(parameters);
+    RebuildPortsAndBlock();
+    Q_EMIT requestNodeUpdate();
+}
 
-    if (!refreshing) {
-        if (parameters.empty()) {
-            return;
+void NodeInstanceModel::SetParameterInputs(std::vector<std::string> parameterInputs) {
+    const std::size_t oldPortCount = inputPorts_.size();
+    parameterInputs_ = std::move(parameterInputs);
+    RebuildPortsAndBlock();
+
+    if (inputPorts_.size() > oldPortCount) {
+        Q_EMIT portsInserted();
+    } else if (inputPorts_.size() < oldPortCount) {
+        Q_EMIT portsDeleted();
+    }
+    Q_EMIT requestNodeUpdate();
+}
+
+std::vector<NodeAPI::Port> VisibleInputPorts(
+    const NodeAPI::NodeType& nodeType,
+    const std::vector<std::string>& parameterInputs,
+    const std::set<std::string>& connectedInputs) {
+    std::vector<NodeAPI::Port> ports;
+    for (const auto& port : nodeType.inputPorts) {
+        // Optional ports that fall back to a same-named parameter are hidden
+        // while the parameter is neither wired nor connected.
+        const bool hasParameterFallback = nodeType.parameterTypes.count(port.name) != 0;
+        const bool wired = std::find(parameterInputs.begin(),
+                                     parameterInputs.end(),
+                                     port.name) != parameterInputs.end();
+        if (port.optional && hasParameterFallback && !wired
+            && !connectedInputs.count(port.name)) {
+            continue;
         }
-
-        parameterWidget_ = new QWidget;
-        // Tinted, rounded panel so the parameter block reads as a distinct
-        // region inside the node rather than more port captions. The widget
-        // stays hidden until the scene embeds it; showing it beforehand would
-        // make it a top-level window and break the node's size computation.
-        parameterWidget_->setStyleSheet(QStringLiteral(
-            "background: rgba(255, 255, 255, 14);"
-            "border: 1px solid rgba(255, 255, 255, 45);"
-            "border-radius: 4px;"));
-
-        auto* layout = new QVBoxLayout(parameterWidget_);
-        layout->setContentsMargins(6, 3, 6, 3);
-        layout->setSpacing(1);
+        ports.push_back(port);
     }
 
-    // Rebuild the rows in place so the widget can be refreshed after an edit
-    // without re-embedding it into the scene.
-    auto* layout = parameterWidget_->layout();
-    while (QLayoutItem* item = layout->takeAt(0)) {
-        delete item->widget();
-        delete item;
-    }
-
-    // Visibility may only be toggled once the widget is embedded (i.e. on a
-    // refresh), so an emptied parameter map collapses the panel.
-    if (refreshing) {
-        parameterWidget_->setVisible(!parameters.empty());
-    }
-
-    for (const auto& [name, value] : parameters) {
-        auto* row = new QLabel(QStringLiteral("%1: %2")
-                                   .arg(QString::fromStdString(name),
-                                        QString::fromStdString(value)),
-                               parameterWidget_);
-        // Amber italic monospace contrasts with the plain white port captions.
-        row->setStyleSheet(QStringLiteral(
-            "color: #e8c07a;"
-            "font-style: italic;"
-            "font-family: monospace;"
-            "background: transparent;"
-            "border: none;"));
-
-        const auto typeIt = parameterTypes.find(name);
-        if (typeIt != parameterTypes.end()) {
-            row->setToolTip(WireTypeToString(typeIt->second));
+    // Synthesized parameter input ports, skipping names a type port covers.
+    for (const auto& name : parameterInputs) {
+        const bool covered = std::any_of(ports.begin(), ports.end(), [&](const NodeAPI::Port& p) {
+            return p.name == name;
+        });
+        if (covered) {
+            continue;
         }
-
-        layout->addWidget(row);
+        const auto typeIt = nodeType.parameterTypes.find(name);
+        ports.push_back(NodeAPI::Port{.name = name,
+                                      .direction = NodeAPI::PortDirection::Input,
+                                      .type = typeIt != nodeType.parameterTypes.end()
+                                                  ? typeIt->second
+                                                  : NodeAPI::WireType{}});
     }
+    return ports;
+}
+
+std::set<std::string> ConnectedOptionalInputs(const NodeAPI::Graph& graph,
+                                              const NodeAPI::Node& node,
+                                              const NodeAPI::NodeType& nodeType) {
+    std::set<std::string> connected;
+    for (const auto& port : nodeType.inputPorts) {
+        if (!port.optional || nodeType.parameterTypes.count(port.name) == 0) {
+            continue;
+        }
+        const NodeAPI::PortRef ref{node.id, port.name};
+        for (const auto& connection : graph.GetConnections()) {
+            if (connection.to == ref) {
+                connected.insert(port.name);
+            }
+        }
+        for (const auto& bridge : graph.GetBridges()) {
+            if (bridge.consumer == ref) {
+                connected.insert(port.name);
+            }
+        }
+    }
+    return connected;
+}
+
+void NodeInstanceModel::SetConnectedInputs(std::set<std::string> connectedInputs) {
+    if (connectedInputs == connectedInputs_) {
+        return;
+    }
+    const std::size_t oldPortCount = inputPorts_.size();
+    connectedInputs_ = std::move(connectedInputs);
+    RebuildPortsAndBlock();
+
+    if (inputPorts_.size() > oldPortCount) {
+        Q_EMIT portsInserted();
+    } else if (inputPorts_.size() < oldPortCount) {
+        Q_EMIT portsDeleted();
+    }
+    Q_EMIT requestNodeUpdate();
+}
+
+void NodeInstanceModel::RebuildPortsAndBlock() {
+    // Type ports (optional ones visible only when wired or connected), then
+    // synthesized parameter ports (same order GraphScene::FindPortIndex
+    // uses).
+    inputPorts_ = VisibleInputPorts(nodeType_, parameterInputs_, connectedInputs_);
+
+    // Wired parameters leave the painted panel; they are bound by connection.
+    std::map<std::string, std::string> constants = parameters_;
+    for (const auto& name : parameterInputs_) {
+        constants.erase(name);
+    }
+    parameterBlock_ = PrepareParameterBlock(constants);
 }
 
 void NodeInstanceModel::setInData(std::shared_ptr<QtNodes::NodeData> /*nodeData*/,

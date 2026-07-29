@@ -39,6 +39,10 @@ public:
     void addConnection(QtNodes::ConnectionId const connectionId) override;
     bool deleteConnection(QtNodes::ConnectionId const connectionId) override;
 
+    // Removes the node from the NodeAPI graph (which cascades to its
+    // connections and bridges) before letting QtNodes tear down its side.
+    bool deleteNode(QtNodes::NodeId const nodeId) override;
+
     // Returns true if the QtNodes connection id maps to a NodeAPI Bridge.
     bool IsBridge(QtNodes::ConnectionId const connectionId) const;
 
@@ -47,6 +51,11 @@ public:
     QString TakeLastRejectionReason();
 
     void ClearRejectionState();
+
+Q_SIGNALS:
+    // Emitted when a domainless node adopts its peer's domain on connect, so
+    // the scene can refresh the node's caption and the domain outlines.
+    void nodeDomainAssigned(QtNodes::NodeId qtId, const std::string& domain);
 
 private:
     struct GraphConnection {
@@ -60,6 +69,10 @@ private:
     std::optional<NodeAPI::PortRef> MakePortRef(QtNodes::NodeId qtId,
                                                 QtNodes::PortIndex index,
                                                 QtNodes::PortType type) const;
+
+    // Recomputes which optional, parameter-backed input ports of a node are
+    // connected and updates the delegate's visible ports.
+    void RefreshOptionalPortVisibility(const std::string& nodeId);
 
     std::string GenerateId() const;
     QString Validate(QtNodes::ConnectionId const connectionId,
