@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LegacyTelemetryClient.h"
 #include "TelemetryStore.h"
 
 #include <inverter_protocol/host/host_client.h>
@@ -17,7 +18,16 @@ class QTimer;
 
 namespace NodeGUI::runtime {
 
-// Bridges the threaded ivp::InverterClient into the Qt world. Client callbacks
+// Which wire protocol the device speaks.
+//  Legacy   - the protocol the current firmware runs (ported from the old
+//             ImGui client). Default.
+//  Inverter - the new Lib/InverterProtocol stack (ivp), for future firmware.
+enum class Protocol {
+    Legacy,
+    Inverter,
+};
+
+// Bridges the threaded telemetry client into the Qt world. Client callbacks
 // fire on the client's worker thread; they only append to a pending queue. A
 // ~33 ms QTimer on the GUI thread drains the queue into the TelemetryStore and
 // emits storeChanged() once per batch.
@@ -28,7 +38,10 @@ class RuntimeController : public QObject {
     Q_OBJECT
 
 public:
-    RuntimeController(QString port, bool simulate, QObject* parent = nullptr);
+    RuntimeController(QString port,
+                      bool simulate,
+                      Protocol protocol = Protocol::Legacy,
+                      QObject* parent = nullptr);
     ~RuntimeController() override;
 
     void Start();
@@ -47,6 +60,7 @@ public:
 
     QString Port() const { return port_; }
     bool IsSimulating() const { return simulate_; }
+    Protocol GetProtocol() const { return protocol_; }
 
     // Frees the serial port for the firmware updater and back.
     void SuspendForFlash();
@@ -77,6 +91,8 @@ private:
         uint64_t rejectCrc;
         uint64_t rejectHdr;
         uint64_t rejectLen;
+        uint64_t rejectPayloadParse;
+        uint64_t rejectUnknownId;
         uint32_t seq;
     };
     using PendingItem = std::variant<F32Item, StringItem, ConsoleItem, StatsItem>;
@@ -85,12 +101,16 @@ private:
     void DrainQueue();
     void TickSimulator();
     float NowSec() const;
+    bool SendLine(const std::string& line);
 
     QString port_;
     bool simulate_ = false;
+    Protocol protocol_;
     bool suspended_ = false;
 
-    ivp::InverterClient client_;
+    // Only the backend matching protocol_ is started.
+    LegacyTelemetryClient legacyClient_;
+    ivp::InverterClient ivpClient_;
     TelemetryStore store_;
     QTimer* drainTimer_ = nullptr;
 

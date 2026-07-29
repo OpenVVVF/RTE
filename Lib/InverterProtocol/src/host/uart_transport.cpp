@@ -191,36 +191,56 @@ bool UartTransport::sendPacket(const uint8_t* packet, size_t len) {
 int UartTransport::receivePacket(uint8_t* out, size_t cap) {
     if (!out || cap == 0) return -1;
 
+    // rx_buf_ persists across calls: one read() chunk usually contains
+    // several frames (or a partial one), and any bytes past the first
+    // delimiter must be kept for the next call rather than dropped.
+    int ready = extractFrame(out, cap);
+    if (ready != 0) return ready;
+
     uint8_t raw[RX_RAW_CAP];
     int n = port_.read(raw, static_cast<int>(RX_RAW_CAP));
     if (n <= 0) return 0;
 
-    for (int i = 0; i < n; ++i) {
-        uint8_t b = raw[i];
+    if (rx_len_ + static_cast<size_t>(n) > sizeof(rx_buf_)) {
+        // No delimiter within a whole buffer: garbage stream, resync.
+        rx_len_ = 0;
+        return -1;
+    }
+    std::memcpy(rx_buf_ + rx_len_, raw, static_cast<size_t>(n));
+    rx_len_ += static_cast<size_t>(n);
 
-        if (b == 0x00) {
-            if (frame_len_ == 0) continue; /* empty frame, keep going */
+    return extractFrame(out, cap);
+}
 
-            uint8_t decoded[RX_FRAME_CAP];
-            size_t dec_len = ivp_cobs_decode(frame_buf_, frame_len_, decoded, RX_FRAME_CAP);
-            frame_len_ = 0;
+int UartTransport::extractFrame(uint8_t* out, size_t cap) {
+    // Skip leading delimiters (empty frames between packets).
+    size_t skip = 0;
+    while (skip < rx_len_ && rx_buf_[skip] == 0x00) ++skip;
+    if (skip > 0) {
+        std::memmove(rx_buf_, rx_buf_ + skip, rx_len_ - skip);
+        rx_len_ -= skip;
+    }
+    if (rx_len_ == 0) return 0;
 
-            if (dec_len == 0) return -1;
-            if (dec_len < IVP_HEADER_SIZE + 2) return -1;
-            if (dec_len > cap) return -1;
+    for (size_t p = 0; p < rx_len_; ++p) {
+        if (rx_buf_[p] != 0x00) continue;
 
-            std::memcpy(out, decoded, dec_len);
-            return static_cast<int>(dec_len);
-        } else {
-            if (frame_len_ < RX_FRAME_CAP) {
-                frame_buf_[frame_len_++] = b;
-            } else {
-                frame_len_ = 0; /* oversize, drop and resync */
-            }
-        }
+        uint8_t decoded[RX_FRAME_CAP];
+        const size_t dec_len = ivp_cobs_decode(rx_buf_, p, decoded, RX_FRAME_CAP);
+
+        // Consume the frame bytes and the delimiter, keep the rest.
+        std::memmove(rx_buf_, rx_buf_ + p + 1, rx_len_ - p - 1);
+        rx_len_ -= p + 1;
+
+        if (dec_len == 0) return -1;
+        if (dec_len < IVP_HEADER_SIZE + 2) return -1;
+        if (dec_len > cap) return -1;
+
+        std::memcpy(out, decoded, dec_len);
+        return static_cast<int>(dec_len);
     }
 
-    return 0;
+    return 0;  // no complete frame buffered yet
 }
 
 bool UartTransport::sendLine(const std::string& line) {

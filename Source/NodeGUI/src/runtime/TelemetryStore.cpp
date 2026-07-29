@@ -38,6 +38,8 @@ void TelemetryStore::SetStats(float rxHz,
                               uint64_t rejectCrc,
                               uint64_t rejectHdr,
                               uint64_t rejectLen,
+                              uint64_t rejectPayloadParse,
+                              uint64_t rejectUnknownId,
                               uint32_t lastSeq) {
     std::lock_guard lock(mtx_);
     snap_.rxHz = rxHz;
@@ -47,12 +49,31 @@ void TelemetryStore::SetStats(float rxHz,
     snap_.rejectCrc = rejectCrc;
     snap_.rejectHdr = rejectHdr;
     snap_.rejectLen = rejectLen;
+    snap_.rejectPayloadParse = rejectPayloadParse;
+    snap_.rejectUnknownId = rejectUnknownId;
     snap_.lastSeq = lastSeq;
 }
 
 void TelemetryStore::SetSuspended(bool suspended) {
     std::lock_guard lock(mtx_);
     snap_.suspended = suspended;
+}
+
+TelemetryStore::StatsLine TelemetryStore::GetStatsLine() const {
+    std::lock_guard lock(mtx_);
+    StatsLine line;
+    line.rxHz = snap_.rxHz;
+    line.rxBytesPerSec = snap_.rxBytesPerSec;
+    line.goodFrames = snap_.goodFrames;
+    line.badFrames = snap_.badFrames;
+    line.rejectCrc = snap_.rejectCrc;
+    line.rejectHdr = snap_.rejectHdr;
+    line.rejectLen = snap_.rejectLen;
+    line.rejectPayloadParse = snap_.rejectPayloadParse;
+    line.rejectUnknownId = snap_.rejectUnknownId;
+    line.lastSeq = snap_.lastSeq;
+    line.suspended = snap_.suspended;
+    return line;
 }
 
 TelemetrySnapshot TelemetryStore::Snapshot() const {
@@ -70,6 +91,19 @@ bool TelemetryStore::CopyHistory(const std::string& key,
     }
     t = it->second.t;
     y = it->second.y;
+    return true;
+}
+
+bool TelemetryStore::CopyHistoryInto(const std::string& key,
+                                     std::vector<float>& t,
+                                     std::vector<float>& y) const {
+    std::lock_guard lock(mtx_);
+    const auto it = snap_.hist.find(key);
+    if (it == snap_.hist.end()) {
+        return false;
+    }
+    t.assign(it->second.t.begin(), it->second.t.end());
+    y.assign(it->second.y.begin(), it->second.y.end());
     return true;
 }
 

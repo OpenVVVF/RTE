@@ -33,19 +33,42 @@ constexpr SimWave kSimWaves[] = {
 
 }  // namespace
 
-RuntimeController::RuntimeController(QString port, bool simulate, QObject* parent)
+RuntimeController::RuntimeController(QString port,
+                                     bool simulate,
+                                     Protocol protocol,
+                                     QObject* parent)
     : QObject(parent)
     , port_(std::move(port))
     , simulate_(simulate)
+    , protocol_(protocol)
     , startTime_(std::chrono::steady_clock::now()) {
-    client_.onF32Value([this](uint16_t, const std::string& key, float value, uint32_t) {
+    legacyClient_.onF32 = [this](const std::string& key, float value, float tsec) {
+        Push(F32Item{key, value, tsec});
+    };
+    legacyClient_.onString = [this](const std::string& key, const std::string& value) {
+        Push(StringItem{key, value});
+    };
+    legacyClient_.onConsole = [this](const std::string& line) { Push(ConsoleItem{line}); };
+    legacyClient_.onStats = [this](const LegacyTelemetryClient::Stats& s) {
+        Push(StatsItem{s.rxHz,
+                       s.rxBytesPerSec,
+                       s.goodFrames,
+                       s.badFrames,
+                       s.rejectCrc,
+                       s.rejectHdr,
+                       s.rejectLen,
+                       s.rejectPayloadParse,
+                       s.rejectUnknownId,
+                       s.lastSeq});
+    };
+
+    ivpClient_.onF32Value([this](uint16_t, const std::string& key, float value, uint32_t) {
         Push(F32Item{key, value, NowSec()});
     });
-    client_.onStringValue([this](uint16_t, const std::string& key, const std::string& value,
-                                 uint32_t) { Push(StringItem{key, value}); });
-    client_.onConsoleLine(
-        [this](const std::string& line) { Push(ConsoleItem{line}); });
-    client_.onStats([this](const ivp::ClientStats& s) {
+    ivpClient_.onStringValue([this](uint16_t, const std::string& key, const std::string& value,
+                                    uint32_t) { Push(StringItem{key, value}); });
+    ivpClient_.onConsoleLine([this](const std::string& line) { Push(ConsoleItem{line}); });
+    ivpClient_.onStats([this](const ivp::ClientStats& s) {
         Push(StatsItem{s.rx_hz,
                        s.rx_bytes_per_sec,
                        s.good_frames,
@@ -53,12 +76,15 @@ RuntimeController::RuntimeController(QString port, bool simulate, QObject* paren
                        s.reject_crc,
                        s.reject_hdr,
                        s.reject_len,
-                       0});
+                       0,
+                       0,
+                       s.last_seq});
     });
 }
 
 RuntimeController::~RuntimeController() {
-    client_.stop();
+    legacyClient_.stop();
+    ivpClient_.stop();
 }
 
 void RuntimeController::Start() {
@@ -67,8 +93,10 @@ void RuntimeController::Start() {
         simTimer_->setInterval(10);  // 100 Hz
         connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
         simTimer_->start();
+    } else if (protocol_ == Protocol::Legacy) {
+        legacyClient_.start(port_.toStdString());
     } else {
-        client_.start(port_.toStdString());
+        ivpClient_.start(port_.toStdString());
     }
 
     drainTimer_ = new QTimer(this);
@@ -77,22 +105,28 @@ void RuntimeController::Start() {
     drainTimer_->start();
 }
 
-bool RuntimeController::SendCommand(const QString& line) {
-    store_.AddConsoleLine("> " + line.toStdString());
+bool RuntimeController::SendLine(const std::string& line) {
     if (suspended_ || simulate_) {
-        store_.AddConsoleLine(simulate_ ? "(simulated: no device)" : "(suspended)");
         return false;
     }
-    const bool ok = client_.sendCommandLine(line.toStdString());
-    store_.AddConsoleLine(ok ? "(sent)" : "(FAILED to send)");
-    return ok;
+    return protocol_ == Protocol::Legacy ? legacyClient_.sendLine(line)
+                                         : ivpClient_.sendCommandLine(line);
+}
+
+bool RuntimeController::SendCommand(const QString& line) {
+    store_.AddConsoleLine("> " + line.toStdString());
+    const bool ok = SendLine(line.toStdString());
+    if (!ok) {
+        store_.AddConsoleLine(simulate_ ? "(simulated: no device)"
+                                        : (suspended_ ? "(suspended)" : "(FAILED to send)"));
+        return false;
+    }
+    store_.AddConsoleLine("(sent)");
+    return true;
 }
 
 bool RuntimeController::SendCommandRaw(const std::string& line) {
-    if (suspended_ || simulate_) {
-        return false;
-    }
-    return client_.sendCommandLine(line);
+    return SendLine(line);
 }
 
 void RuntimeController::SuspendForFlash() {
@@ -101,8 +135,13 @@ void RuntimeController::SuspendForFlash() {
     }
     suspended_ = true;
     store_.SetSuspended(true);
-    if (!simulate_) {
-        client_.stop();
+    if (simulate_) {
+        return;
+    }
+    if (protocol_ == Protocol::Legacy) {
+        legacyClient_.suspend();
+    } else {
+        ivpClient_.stop();
     }
 }
 
@@ -111,7 +150,11 @@ void RuntimeController::ResumeAfterFlash() {
         return;
     }
     if (!simulate_) {
-        client_.start(port_.toStdString());
+        if (protocol_ == Protocol::Legacy) {
+            legacyClient_.resume();
+        } else {
+            ivpClient_.start(port_.toStdString());
+        }
     }
     suspended_ = false;
     store_.SetSuspended(false);
@@ -150,6 +193,8 @@ void RuntimeController::DrainQueue() {
                                     v.rejectCrc,
                                     v.rejectHdr,
                                     v.rejectLen,
+                                    v.rejectPayloadParse,
+                                    v.rejectUnknownId,
                                     v.seq);
                 }
             },
@@ -184,6 +229,8 @@ void RuntimeController::TickSimulator() {
         Push(StatsItem{100.0f,
                        100.0f * 40.0f,
                        simTick_ / 100 * 100,
+                       0,
+                       0,
                        0,
                        0,
                        0,

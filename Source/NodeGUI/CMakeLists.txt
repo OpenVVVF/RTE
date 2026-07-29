@@ -30,6 +30,8 @@ add_executable(NodeGUI
     src/FrameRateMonitor.h
     src/runtime/TelemetryStore.cpp
     src/runtime/TelemetryStore.h
+    src/runtime/LegacyTelemetryClient.cpp
+    src/runtime/LegacyTelemetryClient.h
     src/runtime/RuntimeController.cpp
     src/runtime/RuntimeController.h
     src/runtime/SignalPlotWidget.cpp

@@ -174,6 +174,7 @@ void InverterClient::threadMain(const std::string& port, int baud) {
         {
             std::lock_guard<std::mutex> lk(stats_mtx_);
             ++stats_.good_frames;
+            stats_.last_seq = h.seq;
         }
         last_good = std::chrono::steady_clock::now();
 

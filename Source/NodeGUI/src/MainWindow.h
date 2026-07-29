@@ -12,6 +12,7 @@
 #include <memory>
 
 class QLabel;
+class QDockWidget;
 class QTabWidget;
 class QTimer;
 
@@ -37,7 +38,9 @@ public:
 
     // Adds the "Runtime" tab (telemetry + firmware update) and starts the
     // telemetry client and HTTP API server.
-    void SetupRuntime(const QString& serialPort, bool simulate);
+    void SetupRuntime(const QString& serialPort,
+                      bool simulate,
+                      runtime::Protocol protocol = runtime::Protocol::Legacy);
 
 private slots:
     void OnOpen();
@@ -83,6 +86,8 @@ private:
     bool connectionCreatedThisDrag_ = false;
 
     QTabWidget* tabs_ = nullptr;
+    QPointer<QDockWidget> toolboxDock_;
+    QPointer<QDockWidget> inspectorDock_;
     std::unique_ptr<runtime::RuntimeController> runtimeController_;
     std::unique_ptr<runtime::FirmwareUpdater> firmwareUpdater_;
     std::unique_ptr<runtime::HttpApiServer> httpApiServer_;

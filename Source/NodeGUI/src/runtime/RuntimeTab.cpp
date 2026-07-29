@@ -71,24 +71,29 @@ RuntimeTab::RuntimeTab(RuntimeController* controller,
 }
 
 void RuntimeTab::OnStoreChanged() {
-    const auto snap = controller_->Store().Snapshot();
+    // Cheap scalar read — the full Snapshot() copies every history and is far
+    // too expensive for the ~30 Hz header refresh.
+    const auto stats = controller_->Store().GetStatsLine();
 
     // Same bandwidth estimate as the old app: fraction of the 460800 8N1 link.
     const double bandwidthPct =
-        static_cast<double>(snap.rxBytesPerSec) * 10.0 / 460800.0 * 100.0;
+        static_cast<double>(stats.rxBytesPerSec) * 10.0 / 460800.0 * 100.0;
 
     headerLabel_->setText(
         QStringLiteral("Port: %1 | RX: %2 Hz | Bandwidth: %3% | Seq: %4 | "
-                       "Good: %5 | Bad: %6 | Reject: crc %7 / hdr %8 / len %9")
+                       "Good: %5 | Bad: %6 | Reject: crc %7 / hdr %8 / len %9 / "
+                       "parse %10 / unknown_id %11")
             .arg(controller_->Port())
-            .arg(snap.rxHz, 0, 'f', 1)
+            .arg(stats.rxHz, 0, 'f', 1)
             .arg(bandwidthPct, 0, 'f', 1)
-            .arg(snap.lastSeq)
-            .arg(snap.goodFrames)
-            .arg(snap.badFrames)
-            .arg(snap.rejectCrc)
-            .arg(snap.rejectHdr)
-            .arg(snap.rejectLen));
+            .arg(stats.lastSeq)
+            .arg(stats.goodFrames)
+            .arg(stats.badFrames)
+            .arg(stats.rejectCrc)
+            .arg(stats.rejectHdr)
+            .arg(stats.rejectLen)
+            .arg(stats.rejectPayloadParse)
+            .arg(stats.rejectUnknownId));
 }
 
 void RuntimeTab::OnSavePreset() {

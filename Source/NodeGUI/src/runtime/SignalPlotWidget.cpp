@@ -76,14 +76,26 @@ void SignalPlotWidget::SetViewSeconds(double seconds)
 
 void SignalPlotWidget::Refresh()
 {
-    series_.clear();
-    if (store_) {
+    // Rebuild the series list only when the assignment changed; otherwise
+    // refill the existing vectors in place so repeated refreshes do not
+    // reallocate.
+    QStringList have;
+    have.reserve(static_cast<qsizetype>(series_.size()));
+    for (const Series& s : series_) {
+        have.push_back(s.name);
+    }
+    if (have != signals_) {
+        series_.clear();
         series_.reserve(static_cast<std::size_t>(signals_.size()));
         for (const QString& name : signals_) {
             Series s;
             s.name = name;
-            store_->CopyHistory(name.toStdString(), s.t, s.y);
             series_.push_back(std::move(s));
+        }
+    }
+    if (store_) {
+        for (Series& s : series_) {
+            store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y);
         }
     }
     update();

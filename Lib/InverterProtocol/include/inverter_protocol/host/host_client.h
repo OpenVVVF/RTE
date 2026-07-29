@@ -24,6 +24,7 @@ struct ClientStats {
     uint64_t rx_bytes = 0;
     float    rx_hz = 0.0f;
     float    rx_bytes_per_sec = 0.0f;
+    uint32_t last_seq = 0;
 };
 
 /* Host-side client for the Inverter Protocol.

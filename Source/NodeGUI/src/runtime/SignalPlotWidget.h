@@ -6,7 +6,6 @@
 #include <QOpenGLWidget>
 #include <QStringList>
 
-#include <deque>
 #include <vector>
 
 class QColor;
@@ -47,8 +46,8 @@ protected:
 private:
     struct Series {
         QString name;
-        std::deque<float> t;
-        std::deque<float> y;
+        std::vector<float> t;
+        std::vector<float> y;
     };
 
     void DrawVertices(const std::vector<float>& xy, unsigned int mode, const QColor& color);

@@ -138,20 +138,31 @@ MainWindow::MainWindow(QWidget* parent)
     // the view to instantiate them. Populated at startup (below) and on
     // OpenGraph.
     palette_ = new NodePalette(this);
-    auto* toolboxDock = new QDockWidget(QStringLiteral("Node Toolbox"), this);
-    toolboxDock->setObjectName(QStringLiteral("nodeToolboxDock"));
-    toolboxDock->setWidget(palette_);
-    addDockWidget(Qt::LeftDockWidgetArea, toolboxDock);
+    toolboxDock_ = new QDockWidget(QStringLiteral("Node Toolbox"), this);
+    toolboxDock_->setObjectName(QStringLiteral("nodeToolboxDock"));
+    toolboxDock_->setWidget(palette_);
+    addDockWidget(Qt::LeftDockWidgetArea, toolboxDock_);
 
     // Inspector dock reflecting the selected node (replaces the old
     // double-click properties popup).
     inspector_ = new InspectorPanel(this);
     inspector_->Attach(graphScene_.get());
     inspector_->onError = [this](const QString& message) { ShowToast(message); };
-    auto* inspectorDock = new QDockWidget(QStringLiteral("Inspector"), this);
-    inspectorDock->setObjectName(QStringLiteral("inspectorDock"));
-    inspectorDock->setWidget(inspector_);
-    addDockWidget(Qt::RightDockWidgetArea, inspectorDock);
+    inspectorDock_ = new QDockWidget(QStringLiteral("Inspector"), this);
+    inspectorDock_->setObjectName(QStringLiteral("inspectorDock"));
+    inspectorDock_->setWidget(inspector_);
+    addDockWidget(Qt::RightDockWidgetArea, inspectorDock_);
+
+    // The node-editing docks only belong on the Node Editor tab.
+    connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
+        const bool editing = (index == 0);
+        if (toolboxDock_) {
+            toolboxDock_->setVisible(editing);
+        }
+        if (inspectorDock_) {
+            inspectorDock_->setVisible(editing);
+        }
+    });
 
     // Load the node-type templates right away so the toolbox and node
     // creation work before any graph file is opened.
@@ -182,8 +193,11 @@ MainWindow::MainWindow(QWidget* parent)
     }
 }
 
-void MainWindow::SetupRuntime(const QString& serialPort, bool simulate) {
-    runtimeController_ = std::make_unique<runtime::RuntimeController>(serialPort, simulate);
+void MainWindow::SetupRuntime(const QString& serialPort,
+                              bool simulate,
+                              runtime::Protocol protocol) {
+    runtimeController_ =
+        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
     firmwareUpdater_ = std::make_unique<runtime::FirmwareUpdater>();
     httpApiServer_ = std::make_unique<runtime::HttpApiServer>(*firmwareUpdater_,
                                                               runtimeController_->Store());

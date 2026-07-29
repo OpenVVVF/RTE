@@ -22,6 +22,8 @@ struct ConsoleLine {
 
 // Point-in-time copy of everything the runtime knows. Mirrors the old ImGui
 // client's TelemetryState so the HTTP API can keep its exact JSON contract.
+// NOTE: expensive to produce (full history copies) — use GetStatsLine() for
+// high-frequency polling.
 struct TelemetrySnapshot {
     std::deque<ConsoleLine> console;
     std::unordered_map<std::string, float> latest;
@@ -67,8 +69,27 @@ public:
                   uint64_t rejectCrc,
                   uint64_t rejectHdr,
                   uint64_t rejectLen,
+                  uint64_t rejectPayloadParse,
+                  uint64_t rejectUnknownId,
                   uint32_t lastSeq);
     void SetSuspended(bool suspended);
+
+    // Lightweight scalar stats (no histories) — cheap enough for ~30 Hz UI
+    // header updates, unlike Snapshot().
+    struct StatsLine {
+        float rxHz = 0.0f;
+        float rxBytesPerSec = 0.0f;
+        uint64_t goodFrames = 0;
+        uint64_t badFrames = 0;
+        uint64_t rejectCrc = 0;
+        uint64_t rejectHdr = 0;
+        uint64_t rejectLen = 0;
+        uint64_t rejectPayloadParse = 0;
+        uint64_t rejectUnknownId = 0;
+        uint32_t lastSeq = 0;
+        bool suspended = false;
+    };
+    StatsLine GetStatsLine() const;
 
     TelemetrySnapshot Snapshot() const;
 
@@ -76,6 +97,12 @@ public:
     bool CopyHistory(const std::string& key,
                      std::deque<float>& t,
                      std::deque<float>& y) const;
+
+    // Same as CopyHistory but fills reusable vectors (avoids the allocation
+    // churn of deque copies in the ~30 Hz plot refresh path).
+    bool CopyHistoryInto(const std::string& key,
+                         std::vector<float>& t,
+                         std::vector<float>& y) const;
 
     // Latest float value of one signal. Returns false if unknown.
     bool LatestValue(const std::string& key, float& value) const;

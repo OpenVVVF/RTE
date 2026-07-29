@@ -9,9 +9,12 @@
 namespace {
 
 void PrintUsage(const char* exe) {
-    std::cerr << "usage: " << exe << " [graph.json] [--serial <port>] [--simulate]\n"
-              << "  --serial <port>  telemetry serial port (default /dev/ttyACM0)\n"
-              << "  --simulate       feed synthetic 100 Hz telemetry instead of the serial port\n";
+    std::cerr << "usage: " << exe
+              << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--simulate]\n"
+              << "  --serial <port>      telemetry serial port (default /dev/ttyACM0)\n"
+              << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
+              << "                       or 'ivp' (new InverterProtocol stack)\n"
+              << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n";
 }
 
 }  // namespace
@@ -29,6 +32,7 @@ int main(int argc, char* argv[]) {
 
     QString serialPort = QStringLiteral("/dev/ttyACM0");
     bool simulate = false;
+    auto protocol = NodeGUI::runtime::Protocol::Legacy;
     std::string graphPath;
 
     for (int i = 1; i < argc; ++i) {
@@ -39,6 +43,21 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             serialPort = QString::fromStdString(argv[i]);
+        } else if (arg == "--protocol") {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            const std::string mode = argv[i];
+            if (mode == "legacy") {
+                protocol = NodeGUI::runtime::Protocol::Legacy;
+            } else if (mode == "ivp") {
+                protocol = NodeGUI::runtime::Protocol::Inverter;
+            } else {
+                std::cerr << "unknown protocol: " << mode << "\n";
+                PrintUsage(argv[0]);
+                return 1;
+            }
         } else if (arg == "--simulate") {
             simulate = true;
         } else if (arg == "--help" || arg == "-h") {
@@ -53,7 +72,7 @@ int main(int argc, char* argv[]) {
     }
 
     NodeGUI::MainWindow window;
-    window.SetupRuntime(serialPort, simulate);
+    window.SetupRuntime(serialPort, simulate, protocol);
     window.showNormal();
 
     if (!graphPath.empty()) {
