@@ -5,17 +5,15 @@
 #include <QStringList>
 
 class QCheckBox;
+class QDoubleSpinBox;
 class QLineEdit;
 class QPlainTextEdit;
+class QPushButton;
 
 namespace NodeGUI::runtime {
 
 class RuntimeController;
 
-// Reusable device-console panel: scrollback view with Clear/Autoscroll and a
-// command row with Up/Down history. Bound to the RuntimeController; multiple
-// instances can coexist (e.g. one on the Runtime screen, one docked on the
-// Node Editor screen) — each keeps its own view state.
 class ConsolePanel : public QWidget {
     Q_OBJECT
 
@@ -26,6 +24,11 @@ private slots:
     void OnStoreChanged();
     void OnSendCommand();
     void OnSessionCleared();
+    void OnSendThrottle();
+    void OnSendDuty();
+    void OnClearOverrides();
+    void OnTogglePause();
+    void OnSimPauseChanged(bool paused);
 
 private:
     RuntimeController* controller_;
@@ -33,8 +36,14 @@ private:
     QPlainTextEdit* consoleView_ = nullptr;
     QLineEdit* commandEdit_ = nullptr;
     QCheckBox* autoscrollCheck_ = nullptr;
+    QPushButton* pauseButton_ = nullptr;
+    QDoubleSpinBox* throttleASpin_ = nullptr;
+    QDoubleSpinBox* throttleBSpin_ = nullptr;
+    QDoubleSpinBox* dutyUSpin_ = nullptr;
+    QDoubleSpinBox* dutyVSpin_ = nullptr;
+    QDoubleSpinBox* dutyWSpin_ = nullptr;
+    bool simPaused_ = false;
 
-    // Console drain position (store console seq).
     uint64_t lastConsoleSeq_ = 0;
 
     QStringList commandHistory_;

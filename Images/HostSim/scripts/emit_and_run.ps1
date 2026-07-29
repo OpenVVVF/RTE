@@ -18,8 +18,19 @@ function To-WslPath([string]$p) {
 $wslRepo = To-WslPath $repoRoot
 $wslGraph = To-WslPath $Graph
 $emitter = "/opt/rtehost/build/Source/RTECodeEmitter/RTECodeEmitter"
+$emittedRel = "build/hostsim_emitted"
 
-wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && rm -rf build/hostsim_emitted && $emitter --base-src Images/HostSim --graph $wslGraph --output build/hostsim_emitted --verbosity info"
+Get-Process | Where-Object { $_.ProcessName -match '^(host_sim|NodeGUI)$' } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
+$winEmitted = Join-Path $repoRoot "build\hostsim_emitted"
+if (Test-Path $winEmitted) {
+    Remove-Item -LiteralPath $winEmitted -Recurse -Force -ErrorAction SilentlyContinue
+}
+wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && rm -rf $emittedRel" 2>$null
+
+wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && $emitter --base-src Images/HostSim --graph $wslGraph --output $emittedRel --verbosity info"
 if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
 
 $emitted = Join-Path $repoRoot "build\hostsim_emitted"

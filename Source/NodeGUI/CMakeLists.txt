@@ -44,6 +44,8 @@ add_executable(RTEStudio
     src/runtime/SignalTablePanel.h
     src/runtime/ConsolePanel.cpp
     src/runtime/ConsolePanel.h
+    src/runtime/SimSpeedControl.cpp
+    src/runtime/SimSpeedControl.h
     src/runtime/TelemetryPanel.cpp
     src/runtime/TelemetryPanel.h
     src/runtime/FlashPanel.cpp

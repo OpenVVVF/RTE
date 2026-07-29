@@ -53,7 +53,9 @@ public:
     // telemetry client and authenticated local automation session.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
-                      runtime::Protocol protocol = runtime::Protocol::Legacy);
+                      runtime::Protocol protocol = runtime::Protocol::Legacy,
+                      const QString& tcpHost = {},
+                      int tcpPort = 0);
 
 private slots:
     void OnOpen();
@@ -64,6 +66,7 @@ private slots:
     void OnRedo();
     void OnPreferences();
     void OnAutoArrange();
+    void OnOpenSpwmDemo();
     void OnExit();
     void CheckForRejectionReason();
     void OnTabChanged(int index);

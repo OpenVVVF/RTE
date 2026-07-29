@@ -98,19 +98,23 @@ The **Runtime** tab connects to hardware or a simulated feed and visualizes live
 
 `RuntimeController` supports `simulate=true` for UI verification without hardware.
 
-### Connecting HostSim traces later
+### Connecting HostSim live (Path A)
 
-`Images/HostSim/` emits CSV traces and optional `platform_telemetry_log_f32` keys.
-To feed NodeGUI live plots without custom glue:
-
-1. Run HostSim with telemetry keys in the graph (`app.telemetry_log` nodes).
-2. Bridge HostSim stdout/serial to the port NodeGUI opens, or extend HostSim to
-   publish `InverterProtocol` frames (same path as `Protocol::Inverter`).
-3. Open the Runtime tab, select the port, and choose the matching protocol.
+1. Build and run HostSim in live mode:
+   ```powershell
+   Images\HostSim\build\Debug\host_sim.exe Images\HostSim\scenarios\default_motor.json --live
+   ```
+2. Launch NodeGUI against the TCP publisher:
+   ```powershell
+   NodeGUI --tcp 127.0.0.1:14608 --protocol ivp
+   ```
+3. Open the **Runtime** tab — plots receive `throttle_*`, `duty_*`, `i_*`,
+   `theta_e`, `omega_e`, `vdc_v`.
+4. Use the console to adjust: `throttle a 0.5`, `clear`, `quit`.
 
 Offline inspection: `Images/HostSim/scripts/plot_sim.py trace.csv`.
 
 ## What it does not do yet
 
 - No packaged project/archive format or closed-loop plant simulator.
-- HostSim does not yet stream `InverterProtocol` by default (CSV first).
+- HostSim live mode uses TCP + InverterProtocol (not the legacy UART framing).

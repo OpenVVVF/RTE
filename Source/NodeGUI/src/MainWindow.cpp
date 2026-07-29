@@ -12,6 +12,7 @@
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Platform.h>
 
+#include <QCoreApplication>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -108,6 +109,31 @@ QString RteCliPath() {
     }
 #endif
     return QStringLiteral("rte");
+}
+
+std::string FindSpwmDemoGraph() {
+    namespace fs = std::filesystem;
+    const fs::path rel = fs::path("Images") / "HostSim" / "graphs" / "spwm_demo_graph.json";
+    std::vector<fs::path> roots;
+    roots.push_back(fs::current_path());
+    if (auto exe = QCoreApplication::applicationDirPath(); !exe.isEmpty()) {
+        roots.push_back(fs::path(exe.toStdString()));
+        auto p = fs::path(exe.toStdString());
+        for (int i = 0; i < 6; ++i) {
+            p = p.parent_path();
+            if (p.empty() || p == p.parent_path()) {
+                break;
+            }
+            roots.push_back(p);
+        }
+    }
+    for (const fs::path& root : roots) {
+        const fs::path candidate = root / rel;
+        if (fs::exists(candidate)) {
+            return candidate.string();
+        }
+    }
+    return {};
 }
 
 // Native dialogs (QMessageBox statics and, on this system, QMessageBox in
@@ -418,9 +444,12 @@ MainWindow::MainWindow(QWidget* parent)
 
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
-                              runtime::Protocol protocol) {
+                              runtime::Protocol protocol,
+                              const QString& tcpHost,
+                              int tcpPort) {
     runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
+        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol,
+                                                     tcpHost, tcpPort);
     localSessionServer_ = std::make_unique<runtime::LocalSessionServer>(
         runtimeController_->Store(), this);
 
@@ -645,6 +674,14 @@ void MainWindow::SetupMenu() {
                      QStringLiteral("Save Graph As"),
                      QKeySequence(QKeySequence::SaveAs));
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::OnSaveAs);
+
+    fileMenu->addSeparator();
+
+    QAction* spwmAction = fileMenu->addAction(QStringLiteral("Open SPWM &Demo Graph..."));
+    spwmAction->setToolTip(QStringLiteral(
+        "Load Images/HostSim/graphs/spwm_demo_graph.json. "
+        "Run: powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));
+    connect(spwmAction, &QAction::triggered, this, &MainWindow::OnOpenSpwmDemo);
 
     fileMenu->addSeparator();
 
@@ -1304,6 +1341,25 @@ void MainWindow::UpdateStatus() {
             .arg(graph.GetConnections().size())
             .arg(graph.GetBridges().size());
     statusBar()->showMessage(message);
+}
+
+void MainWindow::OnOpenSpwmDemo() {
+    const std::string path = FindSpwmDemoGraph();
+    if (path.empty()) {
+        ShowToast(QStringLiteral(
+            "SPWM graph not found. Run from the repo root or use "
+            "Images/HostSim/scripts/run_spwm_live.ps1"));
+        OnOpen();
+        return;
+    }
+    if (!OpenGraph(path)) {
+        ShowToast(QStringLiteral("Failed to open SPWM demo graph"));
+    } else {
+        appSwitcher_->setCurrentIndex(0);
+        ShowToast(QStringLiteral(
+            "SPWM graph loaded. Start live sim: "
+            "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));
+    }
 }
 
 void MainWindow::OnOpen() {

@@ -14,11 +14,25 @@ namespace {
 
 void PrintUsage(const char* exe) {
     std::cerr << "usage: " << exe
-              << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--simulate]\n"
+              << " [graph.json] [--serial <port>] [--tcp <host:port>] "
+                 "[--protocol legacy|ivp] [--simulate]\n"
               << "  --serial <port>      telemetry serial port (default /dev/ttyACM0)\n"
+              << "  --tcp <host:port>    connect InverterProtocol over TCP "
+                 "(implies --protocol ivp)\n"
+              << "                       e.g. --tcp 127.0.0.1:14608 for HostSim --live\n"
               << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
               << "                       or 'ivp' (new InverterProtocol stack)\n"
               << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n";
+}
+
+bool ParseHostPort(const std::string& spec, QString* host, int* port) {
+    const auto colon = spec.rfind(':');
+    if (colon == std::string::npos || colon == 0 || colon + 1 >= spec.size()) {
+        return false;
+    }
+    *host = QString::fromStdString(spec.substr(0, colon));
+    *port = std::stoi(spec.substr(colon + 1));
+    return *port > 0 && *port < 65536;
 }
 
 }  // namespace
@@ -54,6 +68,8 @@ int main(int argc, char* argv[]) {
 #else
     QString serialPort = QStringLiteral("/dev/ttyACM0");
 #endif
+    QString tcpHost;
+    int tcpPort = 0;
     bool simulate = false;
     auto protocol = NodeGUI::runtime::Protocol::Legacy;
     std::string graphPath;
@@ -66,6 +82,17 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             serialPort = QString::fromStdString(argv[i]);
+        } else if (arg == "--tcp") {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            if (!ParseHostPort(argv[i], &tcpHost, &tcpPort)) {
+                std::cerr << "invalid --tcp spec (expected host:port)\n";
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            protocol = NodeGUI::runtime::Protocol::Inverter;
         } else if (arg == "--protocol") {
             if (++i >= argc) {
                 PrintUsage(argv[0]);
@@ -95,7 +122,7 @@ int main(int argc, char* argv[]) {
     }
 
     NodeGUI::MainWindow window;
-    window.SetupRuntime(serialPort, simulate, protocol);
+    window.SetupRuntime(serialPort, simulate, protocol, tcpHost, tcpPort);
     window.showNormal();
 
     if (!graphPath.empty()) {

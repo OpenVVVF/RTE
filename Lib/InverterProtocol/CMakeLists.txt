@@ -41,6 +41,7 @@ target_link_libraries(InverterProtocolCore
 # ========================================================================
 set(INVERTERPROTOCOL_HOST_SOURCES
     src/host/uart_transport.cpp
+    src/host/tcp_transport.cpp
     src/host/host_client.cpp
 )
 
@@ -54,6 +55,10 @@ target_link_libraries(InverterProtocol
     PUBLIC InverterProtocolCore
     PRIVATE ivp_warnings
 )
+
+if(WIN32)
+    target_link_libraries(InverterProtocol PRIVATE ws2_32)
+endif()
 
 # ========================================================================
 # Tests

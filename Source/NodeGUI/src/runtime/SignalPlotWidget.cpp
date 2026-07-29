@@ -1,7 +1,10 @@
 #include "SignalPlotWidget.h"
 
+#include "SignalUnits.h"
+
 #include <QColor>
 #include <QMatrix4x4>
+#include <QMouseEvent>
 #include <QOpenGLBuffer>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
@@ -19,8 +22,12 @@ constexpr int kGridDivisionsX = 8;
 constexpr int kGridDivisionsY = 6;
 
 // Widget margins around the plot area: the title strip on top, Y tick labels
-// on the left, X tick labels on the bottom.
-constexpr int kMarginTop = 30;
+// on the left, X tick labels on the bottom. The strip carries two rows — name
+// and time stamp above, legend below — so the legend no longer paints over the
+// traces it describes.
+constexpr int kTitleRowHeight = 20;
+constexpr int kLegendRowHeight = 18;
+constexpr int kMarginTop = kTitleRowHeight + kLegendRowHeight + 4;
 constexpr int kMarginLeft = 64;
 constexpr int kMarginRight = 12;
 constexpr int kMarginBottom = 26;
@@ -45,22 +52,76 @@ void main()
 }
 )";
 
-// Unit guess for a single signal name (ported from the old app's GuessYLabel,
-// with the substring checks first: "I_ROTOR_speed" is rotor speed, not amps).
-QString UnitForSignal(const QString& name) {
-    if (name.contains(QStringLiteral("ROTOR"))) {
-        return QStringLiteral("Degrees (deg)");
+bool IsStepSignal(const QString& name) {
+    return name.startsWith(QStringLiteral("pwm_gate_"));
+}
+
+void BuildStepVertices(const std::vector<float>& t,
+                       const std::vector<float>& y,
+                       double x0,
+                       double x1,
+                       std::vector<float>& xy) {
+    if (t.empty() || y.empty() || t.size() != y.size()) {
+        return;
     }
-    if (name.contains(QStringLiteral("RATE"))) {
-        return QStringLiteral("kHz");
+
+    std::size_t i0 = 0;
+    while (i0 < t.size() && static_cast<double>(t[i0]) < x0) {
+        ++i0;
     }
-    if (name.startsWith(QStringLiteral("V_"))) {
-        return QStringLiteral("Volts (V)");
+
+    float y_level = (i0 > 0) ? y[i0 - 1] : y[i0];
+    xy.push_back(static_cast<float>(x0));
+    xy.push_back(y_level);
+
+    for (std::size_t i = i0; i < t.size(); ++i) {
+        const double ti = static_cast<double>(t[i]);
+        if (ti > x1) {
+            break;
+        }
+
+        const float yi = y[i];
+        if (yi != y_level) {
+            xy.push_back(static_cast<float>(ti));
+            xy.push_back(y_level);
+            xy.push_back(static_cast<float>(ti));
+            xy.push_back(yi);
+            y_level = yi;
+        }
+
+        const double t_next =
+            (i + 1 < t.size()) ? std::min(static_cast<double>(t[i + 1]), x1) : x1;
+        if (t_next > ti) {
+            xy.push_back(static_cast<float>(ti));
+            xy.push_back(y_level);
+            xy.push_back(static_cast<float>(t_next));
+            xy.push_back(y_level);
+        }
     }
-    if (name.startsWith(QStringLiteral("I_"))) {
-        return QStringLiteral("Amps (A)");
+
+    if (xy.size() >= 2) {
+        const float last_x = xy[xy.size() - 2];
+        if (static_cast<double>(last_x) < x1) {
+            xy.push_back(static_cast<float>(x1));
+            xy.push_back(y_level);
+        }
     }
-    return QStringLiteral("Value");
+}
+
+int TimeAxisDecimals(double viewSeconds) {
+    if (viewSeconds < 0.05) {
+        return 3;
+    }
+    if (viewSeconds < 0.5) {
+        return 2;
+    }
+    if (viewSeconds < 2.0) {
+        return 2;
+    }
+    if (viewSeconds < 15.0) {
+        return 1;
+    }
+    return 0;
 }
 
 }  // namespace
@@ -68,6 +129,18 @@ QString UnitForSignal(const QString& name) {
 SignalPlotWidget::SignalPlotWidget(QString title, QWidget* parent)
     : QOpenGLWidget(parent), title_(std::move(title))
 {
+    setMouseTracking(true);  // cursor readout without holding a button
+    setCursor(Qt::CrossCursor);
+    setToolTip(QStringLiteral(
+        "Drag horizontally to set the time window, vertically to lock the Y range.\n"
+        "Double-click to release the Y lock."));
+}
+
+QRect SignalPlotWidget::PlotRect() const
+{
+    const int pw = std::max(1, width() - kMarginLeft - kMarginRight);
+    const int ph = std::max(1, height() - kMarginTop - kMarginBottom);
+    return QRect(kMarginLeft, kMarginTop, pw, ph);
 }
 
 SignalPlotWidget::~SignalPlotWidget()
@@ -95,7 +168,14 @@ void SignalPlotWidget::SetSignals(const QStringList& names)
 
 void SignalPlotWidget::SetViewSeconds(double seconds)
 {
-    viewSeconds_ = std::clamp(seconds, 0.5, 60.0);
+    viewSeconds_ = std::clamp(seconds, 0.01, 60.0);
+    update();
+}
+
+void SignalPlotWidget::SetTimeFrozen(bool frozen, double anchorSimSec)
+{
+    timeFrozen_ = frozen;
+    freezeAnchorT_ = anchorSimSec;
     update();
 }
 
@@ -120,7 +200,12 @@ void SignalPlotWidget::Refresh()
     }
     if (store_) {
         for (Series& s : series_) {
-            store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y);
+            const bool isGate = IsStepSignal(s.name);
+            const bool highRate = isGate || s.name.startsWith(QStringLiteral("pwm_v_"));
+            const double hz = isGate ? 8000.0 : (highRate ? 2000.0 : 500.0);
+            const std::size_t maxPts = static_cast<std::size_t>(
+                std::min(isGate ? 8000.0 : 4000.0, std::max(300.0, viewSeconds_ * hz)));
+            store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y, maxPts);
         }
     }
     update();
@@ -172,13 +257,24 @@ void SignalPlotWidget::paintGL()
             haveData = true;
         }
     }
-    const double x1 = newest;
+    const double x1 = timeFrozen_ ? freezeAnchorT_ : newest;
     const double x0 = x1 - viewSeconds_;
 
     // Y autorange over the visible data with 5% padding.
     double y0 = 0.0;
     double y1 = 1.0;
-    if (haveData) {
+    bool allGateSignals =
+        !signals_.isEmpty() &&
+        std::all_of(signals_.begin(), signals_.end(), [](const QString& name) {
+            return IsStepSignal(name);
+        });
+    if (yLocked_) {
+        y0 = yLockLow_;
+        y1 = yLockHigh_;
+    } else if (allGateSignals) {
+        y0 = -0.05;
+        y1 = 1.05;
+    } else if (haveData) {
         double lo = std::numeric_limits<double>::max();
         double hi = std::numeric_limits<double>::lowest();
         for (const Series& s : series_) {
@@ -197,6 +293,8 @@ void SignalPlotWidget::paintGL()
         y0 = lo - pad;
         y1 = hi + pad;
     }
+    lastY0_ = y0;
+    lastY1_ = y1;
 
     if (program_ && program_->isLinked()) {
         QMatrix4x4 mvp;
@@ -229,15 +327,26 @@ void SignalPlotWidget::paintGL()
                     continue;
                 }
                 std::vector<float> xy;
-                xy.reserve(s.t.size() * 2);
-                for (std::size_t i = 0; i < s.t.size(); ++i) {
-                    if (s.t[i] < x0) {
-                        continue;
+                if (IsStepSignal(s.name)) {
+                    BuildStepVertices(s.t, s.y, x0, x1, xy);
+                    glLineWidth(2.0f);
+                } else {
+                    xy.reserve(s.t.size() * 2);
+                    for (std::size_t i = 0; i < s.t.size(); ++i) {
+                        if (s.t[i] < x0) {
+                            continue;
+                        }
+                        if (static_cast<double>(s.t[i]) > x1) {
+                            break;
+                        }
+                        xy.push_back(s.t[i]);
+                        xy.push_back(s.y[i]);
                     }
-                    xy.push_back(s.t[i]);
-                    xy.push_back(s.y[i]);
                 }
                 DrawVertices(xy, GL_LINE_STRIP, SignalColor(static_cast<int>(si)));
+                if (IsStepSignal(s.name)) {
+                    glLineWidth(1.75f);
+                }
             }
             glLineWidth(1.0f);
         }
@@ -262,7 +371,7 @@ void SignalPlotWidget::paintGL()
     // Title strip. The "Graph N" titles stay plain white; the strip's darker
     // background plus the neutral separator provide the contrast.
     painter.fillRect(QRectF(0, 0, w, kMarginTop - 4), QColor(48, 51, 56));
-    painter.fillRect(QRectF(0, kMarginTop - 4, w, 1), QColor(86, 90, 96));
+    painter.fillRect(QRectF(0, kMarginTop - 4, w, 2), accentColor_);
 
     const QFontMetrics fm = painter.fontMetrics();
 
@@ -270,57 +379,33 @@ void SignalPlotWidget::paintGL()
     bold.setBold(true);
     painter.setFont(bold);
     painter.setPen(QColor(235, 235, 235));
-    painter.drawText(QRect(10, 0, w / 2, kMarginTop - 4),
+    painter.drawText(QRect(10, 0, w / 3, kTitleRowHeight),
                      Qt::AlignLeft | Qt::AlignVCenter, title_);
     painter.setFont(normalFont);
 
-    // Right side of the strip: unit label (if any) then the color-coded
-    // legend, fitted into the space left of the title. Fitting order: legend
-    // names are elided per-item first, the unit label is dropped next, and
-    // leftmost legend entries are dropped last — nothing ever overflows the
-    // strip or covers the plot.
-    const int titleWidth = fm.horizontalAdvance(title_);
-    int available = w - 12 - (10 + titleWidth + 20);
-
-    struct StripItem {
-        QString text;
-        QColor color;
-        int width;
-    };
-    QList<StripItem> legend;
-    int legendWidth = 0;
-    for (int i = 0; i < signals_.size(); ++i) {
-        const QString elided = fm.elidedText(signals_[i], Qt::ElideMiddle, 110);
-        const int itemWidth = fm.horizontalAdvance(elided) + 14;
-        legend.push_back({elided, SignalColor(i), itemWidth});
-        legendWidth += itemWidth;
+    // Center: absolute sim time at the right edge plus the window width, so
+    // the negative tick labels below have an anchor to be relative to.
+    if (haveData) {
+        const QString stamp =
+            QStringLiteral("%1t = %2 s   last %3 s")
+                .arg(timeFrozen_ ? QStringLiteral("PAUSED  ") : QString())
+                .arg(x1, 0, 'f', 3)
+                .arg(viewSeconds_, 0, 'f', TimeAxisDecimals(viewSeconds_));
+        painter.setPen(timeFrozen_ ? QColor(255, 190, 90) : QColor(170, 176, 184));
+        painter.drawText(QRect(w / 3, 0, w / 3, kTitleRowHeight),
+                         Qt::AlignHCenter | Qt::AlignVCenter, stamp);
     }
 
+    // Unit label, only when every assigned signal resolves to the same unit.
     QString units = UnitLabel();
-    int unitsWidth = units.isEmpty() ? 0 : fm.horizontalAdvance(units) + 14;
-    if (legendWidth + unitsWidth > available) {
-        units.clear();
-        unitsWidth = 0;
-    }
-    while (legendWidth > available && !legend.isEmpty()) {
-        legendWidth -= legend.first().width;
-        legend.removeFirst();
-    }
-
-    int rightEdge = w - 12;
-    for (int i = legend.size() - 1; i >= 0; --i) {
-        const auto& item = legend[i];
-        rightEdge -= item.width - 14;
-        painter.setPen(item.color);
-        painter.drawText(rightEdge, 0, item.width - 14 + 1, kMarginTop - 4,
-                         Qt::AlignLeft | Qt::AlignVCenter, item.text);
-        rightEdge -= 14;
+    if (yLocked_) {
+        units = units.isEmpty() ? QStringLiteral("Y LOCK")
+                                : units + QStringLiteral("  ·  Y LOCK");
     }
     if (!units.isEmpty()) {
-        rightEdge -= unitsWidth - 14;
-        painter.setPen(QColor(190, 190, 190));
-        painter.drawText(rightEdge, 0, unitsWidth - 14 + 1, kMarginTop - 4,
-                         Qt::AlignLeft | Qt::AlignVCenter, units);
+        painter.setPen(yLocked_ ? QColor(255, 190, 90) : QColor(190, 190, 190));
+        painter.drawText(QRect(w - w / 3 - 10, 0, w / 3, kTitleRowHeight),
+                         Qt::AlignRight | Qt::AlignVCenter, units);
     }
 
     if (signals_.isEmpty()) {
@@ -333,23 +418,67 @@ void SignalPlotWidget::paintGL()
         painter.drawText(plotRect, Qt::AlignCenter, QStringLiteral("No history yet."));
     }
 
+    // Color-coded legend on the strip's second row, laid out horizontally with
+    // a swatch per signal. When the cursor is over the plot each entry also
+    // carries the sampled value at that instant.
+    const int legendBaseline = kTitleRowHeight + (kLegendRowHeight + fm.ascent()) / 2 - 1;
+    int legendX = 10;
+    for (int i = 0; i < signals_.size(); ++i) {
+        QString entry = signals_[i];
+        if (hovering_ && haveData && i < static_cast<int>(series_.size())) {
+            const Series& s = series_[i];
+            if (!s.t.empty()) {
+                const double frac =
+                    static_cast<double>(hoverPos_.x() - kMarginLeft) / pw;
+                const double tCursor = x0 + (x1 - x0) * std::clamp(frac, 0.0, 1.0);
+                const auto it = std::lower_bound(s.t.begin(), s.t.end(),
+                                                 static_cast<float>(tCursor));
+                std::size_t idx = static_cast<std::size_t>(it - s.t.begin());
+                if (idx >= s.y.size()) {
+                    idx = s.y.size() - 1;
+                }
+                entry += QStringLiteral(" = ") + FormatSignalValue(s.y[idx]);
+            }
+        }
+        const int textWidth = fm.horizontalAdvance(entry);
+        if (legendX + textWidth + 16 > w - kMarginRight) {
+            break;
+        }
+        painter.fillRect(QRect(legendX, legendBaseline - fm.ascent() + 3, 8, 8),
+                         SignalColor(i));
+        painter.setPen(SignalColor(i));
+        painter.drawText(legendX + 12, legendBaseline, entry);
+        legendX += textWidth + 24;
+    }
+
     // Axes: bright left/bottom lines with outward tick marks.
     painter.setPen(QColor(160, 166, 173));
     painter.drawLine(plotRect.topLeft(), plotRect.bottomLeft());
     painter.drawLine(plotRect.bottomLeft(), plotRect.bottomRight());
 
     painter.setPen(QColor(215, 215, 215));
+    const int timeDecimals = TimeAxisDecimals(viewSeconds_);
+    QString lastTimeLabel;
     for (int i = 0; i <= kGridDivisionsX; ++i) {
         const double fx = static_cast<double>(i) / kGridDivisionsX;
         const int px = kMarginLeft + static_cast<int>(fx * pw);
         painter.drawLine(px, kMarginTop + ph, px, kMarginTop + ph + 4);
-        // The rightmost label (0.0) would clip at the widget edge and collide
-        // with the "Time (s)" caption, so it is skipped.
-        if (haveData && i < kGridDivisionsX) {
-            const double rel = -viewSeconds_ + viewSeconds_ * fx;
-            painter.drawText(QRect(px - 30, h - kMarginBottom + 5, 60, 16),
-                             Qt::AlignHCenter, QString::number(rel, 'f', 1));
+        if (!haveData) {
+            continue;
         }
+        const double rel = -viewSeconds_ + viewSeconds_ * fx;
+        // The right edge is "now": label it 0 rather than a rounded -0.00.
+        const bool isNow = (i == kGridDivisionsX);
+        const QString label =
+            isNow ? QStringLiteral("0") : QString::number(rel, 'f', timeDecimals);
+        if (label == lastTimeLabel) {
+            continue;
+        }
+        lastTimeLabel = label;
+        // The last label would overflow the widget if centered on its tick.
+        const QRect box = isNow ? QRect(px - 56, h - kMarginBottom + 5, 56, 16)
+                                : QRect(px - 30, h - kMarginBottom + 5, 60, 16);
+        painter.drawText(box, isNow ? Qt::AlignRight : Qt::AlignHCenter, label);
     }
     for (int j = 0; j <= kGridDivisionsY; ++j) {
         const double fy = static_cast<double>(j) / kGridDivisionsY;
@@ -366,14 +495,119 @@ void SignalPlotWidget::paintGL()
         }
     }
 
-    // X axis caption.
-    painter.setPen(QColor(190, 190, 190));
-    painter.drawText(QRect(kMarginLeft + pw - 80, h - kMarginBottom + 5, 80, 16),
-                     Qt::AlignRight, QStringLiteral("Time (s)"));
+    // Cursor crosshair with the time it points at.
+    if (hovering_ && haveData && !dragging_) {
+        const double frac = static_cast<double>(hoverPos_.x() - kMarginLeft) / pw;
+        const double tCursor = x0 + (x1 - x0) * std::clamp(frac, 0.0, 1.0);
+        painter.setPen(QPen(QColor(220, 220, 220, 130), 1, Qt::DashLine));
+        painter.drawLine(hoverPos_.x(), kMarginTop, hoverPos_.x(), kMarginTop + ph);
+        painter.setPen(QColor(230, 230, 230));
+        painter.drawText(QRect(hoverPos_.x() - 60, kMarginTop + ph - 18, 56, 16),
+                         Qt::AlignRight,
+                         QStringLiteral("%1 s").arg(tCursor, 0, 'f', 3));
+    }
+
+    // Rubber band: horizontal extent picks the new time window, vertical
+    // extent locks the Y range.
+    if (dragging_) {
+        const QRect band = QRect(dragStart_, dragCurrent_).normalized() & plotRect.toRect();
+        painter.setPen(QPen(QColor(255, 220, 120), 1, Qt::DashLine));
+        painter.setBrush(QColor(255, 220, 120, 40));
+        painter.drawRect(band);
+        painter.setBrush(Qt::NoBrush);
+    }
 
     // Frame around the plot area.
     painter.setPen(QColor(86, 90, 96));
     painter.drawRect(plotRect);
+
+    if (timeFrozen_) {
+        // A frozen trace is otherwise indistinguishable from a dead link.
+        QFont badgeFont = normalFont;
+        badgeFont.setBold(true);
+        painter.setFont(badgeFont);
+        const QString badge = QStringLiteral("PAUSED");
+        const QFontMetrics badgeFm(badgeFont);
+        const QRect textRect = badgeFm.boundingRect(badge);
+        const QRectF box(plotRect.left() + 8, plotRect.top() + 8,
+                         textRect.width() + 18, textRect.height() + 8);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(183, 121, 31, 210));
+        painter.drawRoundedRect(box, 4, 4);
+        painter.setPen(QColor(20, 18, 12));
+        painter.drawText(box, Qt::AlignCenter, badge);
+        painter.setFont(normalFont);
+    }
+}
+
+void SignalPlotWidget::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && PlotRect().contains(event->pos())) {
+        dragging_ = true;
+        dragStart_ = event->pos();
+        dragCurrent_ = event->pos();
+        update();
+    }
+    QOpenGLWidget::mousePressEvent(event);
+}
+
+void SignalPlotWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    hovering_ = PlotRect().contains(event->pos());
+    hoverPos_ = event->pos();
+    if (dragging_) {
+        dragCurrent_ = event->pos();
+    }
+    update();
+    QOpenGLWidget::mouseMoveEvent(event);
+}
+
+void SignalPlotWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (dragging_ && event->button() == Qt::LeftButton) {
+        dragging_ = false;
+        const QRect plotRect = PlotRect();
+        const QRect band = QRect(dragStart_, event->pos()).normalized() & plotRect;
+
+        // A drag has to clear a few pixels on an axis to count, so a stray
+        // click does not collapse the window or pin the Y range.
+        constexpr int kMinDragPx = 8;
+
+        if (band.height() >= kMinDragPx) {
+            // Screen Y grows downward while the data axis grows upward.
+            const double top = static_cast<double>(band.top() - plotRect.top()) /
+                               plotRect.height();
+            const double bottom = static_cast<double>(band.bottom() - plotRect.top()) /
+                                  plotRect.height();
+            const double span = lastY1_ - lastY0_;
+            yLockLow_ = lastY0_ + (1.0 - bottom) * span;
+            yLockHigh_ = lastY0_ + (1.0 - top) * span;
+            yLocked_ = yLockHigh_ > yLockLow_;
+        }
+        if (band.width() >= kMinDragPx) {
+            const double seconds =
+                viewSeconds_ * static_cast<double>(band.width()) / plotRect.width();
+            emit viewSecondsRequested(std::clamp(seconds, 0.01, 60.0));
+        }
+        update();
+    }
+    QOpenGLWidget::mouseReleaseEvent(event);
+}
+
+void SignalPlotWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        yLocked_ = false;
+        update();
+    }
+    QOpenGLWidget::mouseDoubleClickEvent(event);
+}
+
+void SignalPlotWidget::leaveEvent(QEvent* event)
+{
+    hovering_ = false;
+    update();
+    QOpenGLWidget::leaveEvent(event);
 }
 
 void SignalPlotWidget::DrawVertices(const std::vector<float>& xy, unsigned int mode, const QColor& color)
