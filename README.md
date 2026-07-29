@@ -200,6 +200,31 @@ never blocks on an ADC — `update()` only harvests finished conversions.
 - Rate telemetry (`hz_app_loop`, `hz_vsense`, `hz_tim_isr`, `hz_adc_isr`)
   is always on as a throughput canary.
 
+## CAN bus
+
+Two FDCANs (FDCAN1 "A" on PA11/PA12, FDCAN2 "B" on PB12/PB6, classic
+frames; transceiver rail on PC8). Per-bus KV enables (`Can.A.En`/`Can.B.En`),
+KV bit rate (`Can.BitRate`, default 500 kbit/s).
+
+- **Graph nodes**: `hw.can_tx` (Bus/Id/Ext/Dlc/Rate + D0..D7 bytes),
+  `hw.can_rx` (Bus/Id mailbox, `Fresh` on new frame). `can` shell command:
+  status/send/rxdump, bus-off auto-recovery.
+- **Session protocol** (KV `Can.Proto.*`, master `Can.Proto.En`): a host
+  attaches (HELLO), the device answers with its info and the KV allow mask,
+  the host requests capabilities (telemetry / commands / flash-reserved),
+  and keeps the session alive with heartbeats (timeout drops it — fail-safe
+  on host loss). Telemetry streams to the session only while granted
+  (decimated, `Can.Proto.TelemDiv`); shell commands ride the same transport
+  into the shared `CommandManager`. Packets use the shared
+  `Lib/InverterProtocol` format segmented over classic CAN frames; AUTH
+  message IDs are reserved for a future password gate. IDs default
+  0x700/0x701 (`Can.Proto.IdBase`).
+- `Tools/can_session_client.py` — dependency-free socketcan test client
+  that runs the full attach/capability/telemetry/command dance.
+- Flashing over CAN: not pursued on this board. The H723 ROM FDCAN
+  bootloader listens on PD0/PD1, which is not where Gen6 routes CAN; the
+  planned dual-MCU hardware will let the MCUs reflash each other instead.
+
 ## Roadmap
 
 Done recently:
