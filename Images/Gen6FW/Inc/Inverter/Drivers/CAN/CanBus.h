@@ -48,6 +48,9 @@ public:
      */
     bool rxLatest(uint8_t bus, uint32_t id, Frame& out, uint32_t* seqOut = nullptr);
 
+    /** @brief Free slots in the TX ring (main-loop pacing decisions). */
+    size_t txFree(uint8_t bus) const;
+
     /** @brief Register the protocol-layer sniffer (one slot, stage 3). */
     void setRxHook(RxHook hook, void* user);
 

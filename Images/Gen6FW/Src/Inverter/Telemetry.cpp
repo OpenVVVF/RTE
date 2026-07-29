@@ -249,6 +249,7 @@ static uint16_t g_sensor_chunk_limit = 0;
 static uint32_t g_last_send_us   = 0;
 static uint32_t g_last_define_us = 0;
 static uint32_t g_frame_seq      = 0;
+static bool (*g_extra_frame_sink)(const uint8_t*, size_t) = nullptr;
 
 // ============================================================
 // Time source
@@ -468,6 +469,10 @@ static size_t build_data_payload(uint8_t* payload, size_t cap) {
 // ============================================================
 // Frame sender
 // ============================================================
+void set_extra_frame_sink(bool (*sink)(const uint8_t* packet, size_t len)) {
+    g_extra_frame_sink = sink;
+}
+
 static bool send_frame(MsgType type, const uint8_t* payload, size_t payload_len, uint32_t now_us) {
     ivp_header_t h{};
     h.magic = IVP_MAGIC;
@@ -491,6 +496,12 @@ static bool send_frame(MsgType type, const uint8_t* payload, size_t payload_len,
     const uint16_t crc = ivp_crc16_ccitt(raw, raw_len);
     raw[raw_len++] = (uint8_t)(crc & 0xFF);
     raw[raw_len++] = (uint8_t)((crc >> 8) & 0xFF);
+
+    if (g_extra_frame_sink != nullptr) {
+        /* Secondary transport (e.g. CAN session): gets the raw packet,
+         * never affects the UART path. */
+        g_extra_frame_sink(raw, raw_len);
+    }
 
     constexpr size_t RAW_MAX  = sizeof(raw);
     constexpr size_t COBS_MAX = RAW_MAX + (RAW_MAX / 254) + 2;

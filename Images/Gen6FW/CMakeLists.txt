@@ -119,6 +119,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp
     Src/Inverter/Drivers/Sensors/SpikeRecorder.cpp
     Src/Inverter/Drivers/CAN/CanBus.cpp
+    Src/Inverter/Drivers/CAN/CanProtocolTransport.cpp
+    Src/Inverter/Drivers/CAN/CanSession.cpp
 )
 
 # Add RTE-generated domain sources if they exist. These are produced by
