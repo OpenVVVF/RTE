@@ -463,3 +463,42 @@ TEST(UartTransport, SplitFrameCompletes) {
 }
 
 #endif  // _WIN32
+
+/* ========================================================================
+ * Session/capability message type tests (protocol v1, msg types 7-14)
+ * ======================================================================== */
+TEST(SessionMessages, NewTypesAccepted) {
+    /* Every msg type in the session range must pass header validation. */
+    for (uint8_t type = IVP_MSG_HELLO; type <= IVP_MSG_AUTH_RSP; ++type) {
+        uint8_t packet[64];
+        size_t len = 0;
+        ASSERT_EQ(ivp_packet_encode(type, 1, 0, nullptr, 0,
+                                    packet, sizeof(packet), &len),
+                  IVP_OK);
+
+        ivp_header_t h;
+        const uint8_t* payload = nullptr;
+        uint16_t payload_len = 0;
+        ASSERT_EQ(ivp_packet_parse(packet, len, &h, &payload, &payload_len), IVP_OK)
+            << "msg_type " << static_cast<int>(type) << " rejected";
+        EXPECT_EQ(h.msg_type, type);
+        EXPECT_EQ(h.payload_len, 0u);
+    }
+}
+
+TEST(SessionMessages, OutOfRangeTypeRejected) {
+    uint8_t packet[64];
+    size_t len = 0;
+    ASSERT_EQ(ivp_packet_encode(IVP_MSG_HEARTBEAT, 1, 0, nullptr, 0,
+                                packet, sizeof(packet), &len),
+              IVP_OK);
+
+    /* One past the last defined type must still be rejected. */
+    packet[5] = IVP_MSG_AUTH_RSP + 1;  /* msg_type field offset in header */
+
+    ivp_header_t h;
+    const uint8_t* payload = nullptr;
+    uint16_t payload_len = 0;
+    EXPECT_EQ(ivp_packet_parse(packet, len, &h, &payload, &payload_len),
+              IVP_ERR_BAD_MSG_TYPE);
+}
