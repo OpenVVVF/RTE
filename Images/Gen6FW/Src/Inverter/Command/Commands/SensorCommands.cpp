@@ -33,6 +33,24 @@ public:
     }
 };
 
+class DclRawCommand : public CommandInterface {
+public:
+    DclRawCommand()
+      : CommandInterface("dclraw", "DC-link current sensor raw ADC counts (sig/ref/diff)") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        const uint32_t sig = dcLinkCurrentSensor().lastRawSig();
+        const uint32_t ref = dcLinkCurrentSensor().lastRawRef();
+        Telemetry::printf("[SHELL] dclink raw sig=%lu ref=%lu diff=%ld offset=%.3f A valid=%d",
+                          static_cast<unsigned long>(sig),
+                          static_cast<unsigned long>(ref),
+                          static_cast<long>(static_cast<int32_t>(sig) -
+                                            static_cast<int32_t>(ref)),
+                          static_cast<double>(dcLinkCurrentSensor().lastOffset()),
+                          dcLinkCurrentSensor().offsetValid() ? 1 : 0);
+    }
+};
+
 class OcSetCommand : public CommandInterface {
 public:
     OcSetCommand()
@@ -173,6 +191,7 @@ public:
 
 static OcSetCommand             sOcSetCmd;
 static DclZeroCommand           sDclZeroCmd;
+static DclRawCommand            sDclRawCmd;
 static HwOcSetCommand           sHwOcSetCmd;
 static MaxCfgOvCommand          sMaxCfgOvCmd;
 static MaxCfgUvCommand          sMaxCfgUvCmd;
@@ -187,6 +206,7 @@ static MaxCfgFilteredCommand    sMaxCfgFilteredCmd;
 void registerSensorCommands(CommandManager& mgr) {
     mgr.registerCommand(&sOcSetCmd);
     mgr.registerCommand(&sDclZeroCmd);
+    mgr.registerCommand(&sDclRawCmd);
     mgr.registerCommand(&sHwOcSetCmd);
     mgr.registerCommand(&sMaxCfgOvCmd);
     mgr.registerCommand(&sMaxCfgUvCmd);

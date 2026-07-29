@@ -200,6 +200,18 @@ bool Builder::Configure(const BuilderOptions& options,
     args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + toolchain.toolchainFile.string());
     args.push_back("-DCMAKE_BUILD_TYPE=" + options.buildType);
 
+    /* The emitted tree lives outside the repo: point the firmware at the
+     * shared InverterProtocol library explicitly (default in the firmware
+     * CMake only covers in-tree builds). */
+    {
+        std::error_code ec;
+        const auto ivpCore = std::filesystem::weakly_canonical(
+            options.fwSrc / ".." / ".." / "Lib" / "InverterProtocol", ec);
+        if (!ec && std::filesystem::is_directory(ivpCore)) {
+            args.push_back("-DIVP_CORE_DIR=" + ivpCore.string());
+        }
+    }
+
     return RunCommand("Configuring firmware", args, options.dryRun, toolchain.compilerDir);
 }
 

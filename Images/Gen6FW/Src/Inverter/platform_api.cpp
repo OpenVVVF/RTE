@@ -4,7 +4,9 @@
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/CAN/CanBus.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Telemetry.h"
@@ -74,6 +76,14 @@ float platform_get_encoder_angle_latest(void) {
 
 float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
+}
+
+float platform_get_dc_link_current(void) {
+    return Inverter::dcLinkCurrentSensor().current();
+}
+
+float platform_get_dc_link_power(void) {
+    return Inverter::dcLinkCurrentSensor().power();
 }
 
 /* Read the driver's 20 kHz DMA snapshot directly - never an ad-hoc SPI
@@ -171,6 +181,40 @@ void platform_digital_write(uint8_t pin, bool value) {
     }
     HAL_GPIO_WritePin(DOUT_MAP[pin - 1].port, DOUT_MAP[pin - 1].pin,
                       value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+/* --------------------------------------------------------------------------
+ * CAN bus
+ * -------------------------------------------------------------------------- */
+
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc) {
+    /* Graph/shell-facing bus numbering is 1-based (1 = "A"/FDCAN1,
+     * 2 = "B"/FDCAN2); the driver is 0-based. */
+    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
+    return Inverter::canBus().send(b, id, ext, data, dlc);
+}
+
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out) {
+    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
+    Inverter::CanBus::Frame f;
+    uint32_t seq = 0;
+    if (!Inverter::canBus().rxLatest(b, id, f, &seq)) {
+        if (seq_out != nullptr) {
+            *seq_out = seq;
+        }
+        return -1;
+    }
+    const uint8_t n = f.dlc > 8 ? 8 : f.dlc;
+    if (data != nullptr) {
+        for (uint8_t i = 0; i < n; ++i) {
+            data[i] = f.data[i];
+        }
+    }
+    if (seq_out != nullptr) {
+        *seq_out = seq;
+    }
+    return n;
 }
 
 /* --------------------------------------------------------------------------

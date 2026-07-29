@@ -81,6 +81,13 @@ float platform_get_encoder_angle_latest(void);
  */
 float platform_get_dc_link_voltage(void);
 
+/**
+ * @brief Latest DC-link current [A] and input power [W].
+ * Zero until the startup zero-offset capture completes (~2 s).
+ */
+float platform_get_dc_link_current(void);
+float platform_get_dc_link_power(void);
+
 /* Phase voltages from the MAX22530 isolated ADC (filtered reads).
  * Channel map: 0=U, 1=V, 2=W, 3=DC link. */
 float platform_phase_voltage_u(void);
@@ -122,6 +129,24 @@ float platform_get_inverter_temperature(uint8_t channel);
  * -------------------------------------------------------------------------- */
 bool platform_digital_read(uint8_t pin);
 void platform_digital_write(uint8_t pin, bool value);
+
+/* --------------------------------------------------------------------------
+ * CAN bus (CanBus driver; buses: 0 = FDCAN1 "A", 1 = FDCAN2 "B")
+ * -------------------------------------------------------------------------- */
+
+/** @brief Queue a classic CAN frame for transmission (never blocks).
+ *  @param bus  1 = "A"/FDCAN1, 2 = "B"/FDCAN2. */
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc);
+
+/**
+ * @brief Latest received frame with an exact ID match.
+ * Writes up to 8 payload bytes into data (may be stale; use seq_out to
+ * detect new arrivals) and the mailbox sequence counter into seq_out.
+ * @param bus  1 = "A"/FDCAN1, 2 = "B"/FDCAN2.
+ * @return payload length 0..8, or -1 if no frame with this ID yet.
+ */
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out);
 
 /* --------------------------------------------------------------------------
  * Safety / faults

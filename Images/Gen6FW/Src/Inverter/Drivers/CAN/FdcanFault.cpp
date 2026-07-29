@@ -9,6 +9,11 @@ bool fdcanFaultInit() {
     constexpr uint32_t kNotify = FDCAN_IT_BUS_OFF |
                                  FDCAN_IT_ERROR_PASSIVE |
                                  FDCAN_IT_ERROR_LOGGING_OVERFLOW;
+    /* Both buses: error interrupts ride the IT0 line, whose NVIC is owned
+     * by the CanBus driver. */
+    if (HAL_FDCAN_ActivateNotification(&hfdcan1, kNotify, 0) != HAL_OK) {
+        return false;
+    }
     if (HAL_FDCAN_ActivateNotification(&hfdcan2, kNotify, 0) != HAL_OK) {
         return false;
     }
@@ -27,7 +32,7 @@ extern "C" void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef* hfdcan,
     if (hfdcan == nullptr) {
         return;
     }
-    if (hfdcan->Instance == FDCAN2) {
+    if (hfdcan->Instance == FDCAN1 || hfdcan->Instance == FDCAN2) {
         if ((ErrorStatusITs & FDCAN_FLAG_BUS_OFF) != 0) {
             Inverter::FaultManager::instance().raise(
                 Inverter::FaultSource::CanBusOff, Inverter::FaultReason::CanBusOff);
@@ -45,7 +50,8 @@ extern "C" void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef* hfdcan,
 }
 
 extern "C" void HAL_FDCAN_ErrorCallback(FDCAN_HandleTypeDef* hfdcan) {
-    if (hfdcan != nullptr && hfdcan->Instance == FDCAN2) {
+    if (hfdcan != nullptr &&
+        (hfdcan->Instance == FDCAN1 || hfdcan->Instance == FDCAN2)) {
         Inverter::FaultManager::instance().raise(
             Inverter::FaultSource::CanProtocolError, Inverter::FaultReason::CanHalError);
     }

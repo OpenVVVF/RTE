@@ -85,12 +85,8 @@ ivp_result_t ivp_header_decode(const uint8_t* buf, ivp_header_t* out) {
 
     if (h.magic != IVP_MAGIC)   return IVP_ERR_BAD_MAGIC;
     if (h.version != IVP_VERSION) return IVP_ERR_BAD_VERSION;
-    if (h.msg_type != IVP_MSG_TELEMETRY_DATA &&
-        h.msg_type != IVP_MSG_TELEMETRY_DEFINE &&
-        h.msg_type != IVP_MSG_COMMAND_REQ &&
-        h.msg_type != IVP_MSG_COMMAND_RSP &&
-        h.msg_type != IVP_MSG_ACK &&
-        h.msg_type != IVP_MSG_NACK) {
+    if (h.msg_type < IVP_MSG_TELEMETRY_DATA ||
+        h.msg_type > IVP_MSG_AUTH_RSP) {
         return IVP_ERR_BAD_MSG_TYPE;
     }
 

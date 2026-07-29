@@ -636,6 +636,17 @@
         "nodeId": "PiQ",
         "portName": "Ki"
       }
+    },
+    {
+      "from": {
+        "nodeId": "CanRx1",
+        "portName": "D0"
+      },
+      "id": "c_can_d0",
+      "to": {
+        "nodeId": "LogCanD0",
+        "portName": "Value"
+      }
     }
   ],
   "name": "foc_demo",
@@ -2114,6 +2125,293 @@
           "dtype": "f32"
         }
       }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "CAN TX",
+      "domain": "",
+      "id": "hw.can_tx",
+      "inlineCode": "/* CAN transmit, rate-limited by wall clock: sends when 1000/Rate ms have\n * elapsed since the previous send (Rate <= 0 sends every step).\n * D0..D7 = payload bytes (unconnected = 0), Dlc = how many of the 8 to\n * send, Ext: 0 std / 1 ext. */\nconst uint32_t period_ms = (Rate > 0.0f) ? static_cast<uint32_t>(1000.0f / Rate) : 0U;\nconst uint32_t now_ms = platform_millis();\nif (period_ms == 0U || (now_ms - static_cast<uint32_t>(LastMs)) >= period_ms) {\n    LastMs = static_cast<float>(now_ms);\n    const uint8_t b[8] = {\n        static_cast<uint8_t>(D0), static_cast<uint8_t>(D1),\n        static_cast<uint8_t>(D2), static_cast<uint8_t>(D3),\n        static_cast<uint8_t>(D4), static_cast<uint8_t>(D5),\n        static_cast<uint8_t>(D6), static_cast<uint8_t>(D7),\n    };\n    uint8_t n = static_cast<uint8_t>(Dlc);\n    if (n > 8) n = 8;\n    platform_can_send(static_cast<uint8_t>(Bus), static_cast<uint32_t>(Id),\n                      Ext > 0.5f, b, n);\n}\n",
+      "inputPorts": [
+        {
+          "name": "D0",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D1",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D2",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D3",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D4",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D5",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D6",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D7",
+          "direction": "input",
+          "optional": true,
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Bus": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Id": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Ext": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Dlc": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Rate": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "LastMs": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D0": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D1": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D2": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D3": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D4": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D5": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D6": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "D7": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "CAN RX",
+      "domain": "",
+      "id": "hw.can_rx",
+      "inlineCode": "/* CAN receive mailbox for Id on Bus (1=A/FDCAN1, 2=B/FDCAN2).\n * Fresh is true for one step when a new frame arrived; Dlc/bytes hold the\n * latest payload otherwise. */\nuint8_t buf[8] = {};\nuint32_t seq = 0;\nconst int dlc = platform_can_rx(static_cast<uint8_t>(Bus),\n                                static_cast<uint32_t>(Id), buf, &seq);\nFresh = (seq != LastSeq);\nLastSeq = static_cast<float>(seq);\nif (dlc > 0) {\n    Dlc = static_cast<float>(dlc);\n    D0 = buf[0]; D1 = buf[1]; D2 = buf[2]; D3 = buf[3];\n    D4 = buf[4]; D5 = buf[5]; D6 = buf[6]; D7 = buf[7];\n} else {\n    Dlc = 0.0f;\n}\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "name": "D0",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D1",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D2",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D3",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D4",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D5",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D6",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "D7",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Dlc",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Fresh",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Bus": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Id": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "LastSeq": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
     }
   ],
   "nodes": [
@@ -2870,6 +3168,60 @@
         "y": 350.0
       },
       "type": "config.value"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "CanTx1",
+      "parameters": {
+        "Bus": "2.0",
+        "Id": "291.0",
+        "Ext": "0.0",
+        "Dlc": "3.0",
+        "Rate": "10.0",
+        "LastMs": "0.0",
+        "D0": "222.0",
+        "D1": "173.0",
+        "D2": "190.0",
+        "D3": "0.0",
+        "D4": "0.0",
+        "D5": "0.0",
+        "D6": "0.0",
+        "D7": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1550.0
+      },
+      "type": "hw.can_tx"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "CanRx1",
+      "parameters": {
+        "Bus": "2.0",
+        "Id": "801.0",
+        "LastSeq": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 1650.0
+      },
+      "type": "hw.can_rx"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogCanD0",
+      "parameters": {
+        "Key": "can_rx_d0"
+      },
+      "position": {
+        "x": 300.0,
+        "y": 1650.0
+      },
+      "type": "app.telemetry_log"
     }
   ]
 }

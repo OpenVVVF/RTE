@@ -6,6 +6,7 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Sensors/SpikeRecorder.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -414,6 +415,49 @@ bool PhaseCurrentADC::latest(float& iu, float& iv, float& iw) const {
 
     iw = -(iu + iv);
     return true;
+}
+
+} // namespace Inverter
+
+namespace Inverter {
+
+void PhaseCurrentADC::diagnose() {
+    constexpr float COUNTS_TO_V = 3.3f / 65535.0f;
+    const float u_ref_v = static_cast<float>(m_raw_u_ref) * COUNTS_TO_V;
+    const float v_ref_v = static_cast<float>(m_raw_v_ref) * COUNTS_TO_V;
+
+    float lo = 1.4f, hi = 1.9f;
+    if (RteParamStore::isReady()) {
+        RteParamStore::get("Hw.PhCur.RefMinV", &lo);
+        RteParamStore::get("Hw.PhCur.RefMaxV", &hi);
+    }
+
+    const bool plausible = (u_ref_v >= lo && u_ref_v <= hi &&
+                            v_ref_v >= lo && v_ref_v <= hi);
+    if (plausible) {
+        m_ref_armed = true;  /* boot-time rail settle can't false-trip */
+        m_ref_implausible_since_ms = 0;
+        m_ref_fault_raised = false;
+        return;
+    }
+    if (!m_ref_armed) {
+        return;
+    }
+    if (m_ref_implausible_since_ms == 0) {
+        m_ref_implausible_since_ms = HAL_GetTick();
+        return;
+    }
+    if (!m_ref_fault_raised &&
+        (HAL_GetTick() - m_ref_implausible_since_ms) >= 500U) {
+        m_ref_fault_raised = true;
+        FaultManager::instance().raise(FaultSource::CurrentSensorRef,
+                                       FaultReason::SensorRefOutOfRange);
+        Telemetry::printf("[CUR] sensor ref implausible: U=%.2f V V=%.2f V (window %.1f..%.1f)",
+                          static_cast<double>(u_ref_v),
+                          static_cast<double>(v_ref_v),
+                          static_cast<double>(lo),
+                          static_cast<double>(hi));
+    }
 }
 
 } // namespace Inverter

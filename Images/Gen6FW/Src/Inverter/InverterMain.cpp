@@ -16,9 +16,12 @@
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/CAN/CanBus.h"
+#include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -138,6 +141,12 @@ static void init()
      * conversions and never blocks. */
     Inverter::appSensors().init();
 
+    /* CAN buses (KV enables; no-op when both disabled). */
+    Inverter::canBus().init();
+
+    /* CAN session protocol (KV Can.Proto.*; no-op unless enabled). */
+    Inverter::canSession().init();
+
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
@@ -210,9 +219,17 @@ static void loop()
     /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
     Inverter::appSensors().update();
 
+    /* CAN: drain TX queues, bus-off recovery, session heartbeat watch. */
+    Inverter::canBus().update();
+    Inverter::canSession().update();
+
     /* Encoder: RPM estimate + signal-quality fault evaluation (the DMA ISR
      * only decodes and publishes the angle snapshot). */
     Inverter::encoderADC().diagnose();
+
+    /* Phase-current sensors: reference-channel plausibility (armed after
+     * first healthy sighting, so boot rail settle can't false-trip). */
+    Inverter::phaseCurrentADC().diagnose();
 
     /* Calibration machinery: pump the open-loop controller and every
      * calibrator state machine.  All early-out when inactive. */

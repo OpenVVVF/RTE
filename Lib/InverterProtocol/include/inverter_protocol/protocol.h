@@ -28,7 +28,8 @@ extern "C" {
 #define IVP_STR_MAX_LEN 48u
 
 /* Message types. Values 1-2 are the existing TLM1 telemetry frames.
- * Values 3-6 reserve room for a structured host->device command protocol. */
+ * Values 3-6 reserve room for a structured host->device command protocol.
+ * Values 7-14 are the CAN session/capability negotiation. */
 typedef enum {
     IVP_MSG_TELEMETRY_DATA   = 1,
     IVP_MSG_TELEMETRY_DEFINE = 2,
@@ -36,7 +37,23 @@ typedef enum {
     IVP_MSG_COMMAND_RSP      = 4,
     IVP_MSG_ACK              = 5,
     IVP_MSG_NACK             = 6,
+    /* Session/capability negotiation (CAN, reserved for other transports). */
+    IVP_MSG_HELLO            = 7,  /* host->dev: attach request        */
+    IVP_MSG_ATTACH_RSP       = 8,  /* dev->host: device info + allow mask */
+    IVP_MSG_CAP_REQ          = 9,  /* host->dev: requested cap mask (u8) */
+    IVP_MSG_CAP_RSP          = 10, /* dev->host: granted cap mask (u8)   */
+    IVP_MSG_DETACH           = 11, /* either: session end                */
+    IVP_MSG_HEARTBEAT        = 12, /* host->dev: keepalive (empty)       */
+    IVP_MSG_AUTH_REQ         = 13, /* reserved: future password gate     */
+    IVP_MSG_AUTH_RSP         = 14, /* reserved: future password gate     */
 } ivp_msg_type_t;
+
+/* Capability bits for CAP_REQ/CAP_RSP and the ATTACH_RSP allow mask. */
+typedef enum {
+    IVP_CAP_TELEMETRY = 0x01,  /* device streams telemetry to the session */
+    IVP_CAP_COMMANDS  = 0x02,  /* device accepts shell commands from it   */
+    IVP_CAP_FLASH     = 0x04,  /* reserved: in-app firmware update        */
+} ivp_capability_t;
 
 /* Value types carried inside telemetry DATA frames. */
 typedef enum {
