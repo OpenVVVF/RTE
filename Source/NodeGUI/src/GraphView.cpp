@@ -59,4 +59,13 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event) {
     QtNodes::GraphicsView::contextMenuEvent(event);
 }
 
+void GraphView::showEvent(QShowEvent* event) {
+    if (firstShow_) {
+        firstShow_ = false;
+        QtNodes::GraphicsView::showEvent(event);  // performs the initial centerScene()
+        return;
+    }
+    QGraphicsView::showEvent(event);
+}
+
 }  // namespace NodeGUI

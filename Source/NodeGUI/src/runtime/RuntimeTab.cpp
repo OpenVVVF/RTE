@@ -1,8 +1,10 @@
 #include "RuntimeTab.h"
 
+#include "ConsolePanel.h"
 #include "FlashPanel.h"
 #include "HttpApiServer.h"
 #include "RuntimeController.h"
+#include "SignalTablePanel.h"
 #include "TelemetryPanel.h"
 
 #include <QComboBox>
@@ -56,12 +58,23 @@ RuntimeTab::RuntimeTab(RuntimeController* controller,
     presetRow->addStretch(1);
     layout->addLayout(presetRow);
 
+    // The plots are the central content; the signal table and console are
+    // dockable panels hosted by the main window (created here, fetched via
+    // GetSignalTable()/GetConsole()).
+    signalTablePanel_ = new SignalTablePanel(controller_);
+    consolePanel_ = new ConsolePanel(controller_);
+
     auto* tabs = new QTabWidget(this);
     telemetryPanel_ = new TelemetryPanel(controller_, tabs);
     tabs->addTab(telemetryPanel_, QStringLiteral("Telemetry"));
     flashPanel_ = new FlashPanel(updater, controller_, httpServer, tabs);
     tabs->addTab(flashPanel_, QStringLiteral("Firmware Update"));
     layout->addWidget(tabs, 1);
+
+    connect(signalTablePanel_, &SignalTablePanel::graphSignalsChanged,
+            telemetryPanel_, &TelemetryPanel::SetGraphSignals);
+    connect(signalTablePanel_, &SignalTablePanel::viewSecondsChanged,
+            telemetryPanel_, &TelemetryPanel::SetViewSeconds);
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &RuntimeTab::OnStoreChanged);
@@ -105,7 +118,7 @@ void RuntimeTab::OnSavePreset() {
     name.replace('/', '_');
 
     auto settings = MakeSettings();
-    const auto sets = telemetryPanel_->GraphSignalSets();
+    const auto sets = signalTablePanel_->GraphSignalSets();
     settings.beginGroup(QStringLiteral("runtime/presets/") + name);
     for (int i = 0; i < 3; ++i) {
         settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);
@@ -141,7 +154,7 @@ void RuntimeTab::OnLoadPreset() {
     }
     settings.endGroup();
 
-    telemetryPanel_->SetGraphSignalSets(sets);
+    signalTablePanel_->SetGraphSignalSets(sets);
     presetStatus_->setText(QStringLiteral("loaded '%1'").arg(name));
 }
 
@@ -162,12 +175,12 @@ void RuntimeTab::LoadAutosave() {
         sets[i] = settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList();
     }
     settings.endGroup();
-    telemetryPanel_->SetGraphSignalSets(sets);
+    signalTablePanel_->SetGraphSignalSets(sets);
 }
 
 void RuntimeTab::SaveAutosave() {
     auto settings = MakeSettings();
-    const auto sets = telemetryPanel_->GraphSignalSets();
+    const auto sets = signalTablePanel_->GraphSignalSets();
     settings.beginGroup(QStringLiteral("runtime/autosave"));
     for (int i = 0; i < 3; ++i) {
         settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);

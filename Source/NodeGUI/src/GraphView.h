@@ -29,6 +29,14 @@ protected:
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+
+    // QtNodes' showEvent recenters and re-fits the scene on EVERY show, which
+    // destroys the user's pan/zoom when switching back from another tab.
+    // Only allow that initial centering on the first show.
+    void showEvent(QShowEvent* event) override;
+
+private:
+    bool firstShow_ = true;
 };
 
 }  // namespace NodeGUI

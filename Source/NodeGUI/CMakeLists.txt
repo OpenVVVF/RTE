@@ -36,6 +36,10 @@ add_executable(NodeGUI
     src/runtime/RuntimeController.h
     src/runtime/SignalPlotWidget.cpp
     src/runtime/SignalPlotWidget.h
+    src/runtime/SignalTablePanel.cpp
+    src/runtime/SignalTablePanel.h
+    src/runtime/ConsolePanel.cpp
+    src/runtime/ConsolePanel.h
     src/runtime/TelemetryPanel.cpp
     src/runtime/TelemetryPanel.h
     src/runtime/FirmwareUpdater.cpp

@@ -4,7 +4,9 @@
 #include "InspectorPanel.h"
 #include "NodePalette.h"
 
+#include "runtime/ConsolePanel.h"
 #include "runtime/RuntimeTab.h"
+#include "runtime/SignalTablePanel.h"
 
 #include <QAction>
 #include <QApplication>
@@ -153,16 +155,9 @@ MainWindow::MainWindow(QWidget* parent)
     inspectorDock_->setWidget(inspector_);
     addDockWidget(Qt::RightDockWidgetArea, inspectorDock_);
 
-    // The node-editing docks only belong on the Node Editor tab.
-    connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
-        const bool editing = (index == 0);
-        if (toolboxDock_) {
-            toolboxDock_->setVisible(editing);
-        }
-        if (inspectorDock_) {
-            inspectorDock_->setVisible(editing);
-        }
-    });
+    // Each tab screen has its own set of dockable panels; switching tabs
+    // saves/restores the dock layout and rebuilds the View menu.
+    connect(tabs_, &QTabWidget::currentChanged, this, &MainWindow::OnTabChanged);
 
     // Load the node-type templates right away so the toolbox and node
     // creation work before any graph file is opened.
@@ -222,8 +217,34 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     tabs_->addTab(runtimeTab_, QStringLiteral("Runtime"));
     runtimeTab_->LoadAutosave();
 
+    // Runtime-screen docks: the signal table and the device console. Hidden
+    // while the Node Editor tab is active (see OnTabChanged).
+    signalTableDock_ = new QDockWidget(QStringLiteral("Signal Table"), this);
+    signalTableDock_->setObjectName(QStringLiteral("signalTableDock"));
+    signalTableDock_->setWidget(runtimeTab_->GetSignalTable());
+    addDockWidget(Qt::LeftDockWidgetArea, signalTableDock_);
+    signalTableDock_->hide();
+
+    telemetryConsoleDock_ = new QDockWidget(QStringLiteral("Console"), this);
+    telemetryConsoleDock_->setObjectName(QStringLiteral("telemetryConsoleDock"));
+    telemetryConsoleDock_->setWidget(runtimeTab_->GetConsole());
+    addDockWidget(Qt::LeftDockWidgetArea, telemetryConsoleDock_);
+    telemetryConsoleDock_->hide();
+
+    // Node-screen console: same device console, docked at the bottom of the
+    // Node Editor screen, off by default — enabled via the View menu.
+    editorConsoleDock_ = new QDockWidget(QStringLiteral("Console"), this);
+    editorConsoleDock_->setObjectName(QStringLiteral("editorConsoleDock"));
+    editorConsoleDock_->setWidget(
+        new runtime::ConsolePanel(runtimeController_.get(), editorConsoleDock_));
+    addDockWidget(Qt::BottomDockWidgetArea, editorConsoleDock_);
+    editorConsoleDock_->hide();
+
     runtimeController_->Start();
     httpApiServer_->start();
+
+    // The View menu gains the new docks' toggle actions.
+    RebuildViewMenu();
 }
 
 bool MainWindow::OpenGraph(const std::string& path) {
@@ -331,10 +352,63 @@ void MainWindow::SetupMenu() {
     connect(exitAction, &QAction::triggered, this, &MainWindow::OnExit);
 
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
+    viewMenu_ = viewMenu;
 
-    QAction* arrangeAction = viewMenu->addAction(QStringLiteral("&Auto Arrange"));
-    arrangeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
-    connect(arrangeAction, &QAction::triggered, this, &MainWindow::OnAutoArrange);
+    arrangeAction_ = new QAction(QStringLiteral("&Auto Arrange"), this);
+    arrangeAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
+    connect(arrangeAction_, &QAction::triggered, this, &MainWindow::OnAutoArrange);
+
+    RebuildViewMenu();
+}
+
+void MainWindow::RebuildViewMenu() {
+    if (!viewMenu_) {
+        return;
+    }
+    viewMenu_->clear();
+
+    const bool nodeTab = !tabs_ || tabs_->currentIndex() == 0;
+    if (nodeTab) {
+        viewMenu_->addAction(arrangeAction_);
+        viewMenu_->addSeparator();
+        for (auto* dock : {toolboxDock_.data(), inspectorDock_.data(),
+                           editorConsoleDock_.data()}) {
+            if (dock) {
+                viewMenu_->addAction(dock->toggleViewAction());
+            }
+        }
+    } else {
+        for (auto* dock : {signalTableDock_.data(), telemetryConsoleDock_.data()}) {
+            if (dock) {
+                viewMenu_->addAction(dock->toggleViewAction());
+            }
+        }
+    }
+}
+
+void MainWindow::OnTabChanged(int index) {
+    // Preserve each screen's dock layout (which panels, where) across
+    // switches; the first visit of a screen gets its default arrangement.
+    if (previousTab_ >= 0 && previousTab_ < 2) {
+        screenStates_[previousTab_] = saveState();
+    }
+    previousTab_ = index;
+
+    if (index >= 0 && index < 2 && !screenStates_[index].isEmpty()) {
+        restoreState(screenStates_[index]);
+    } else {
+        // Defaults: node screen shows toolbox + inspector; runtime screen
+        // shows the signal table + telemetry console. Panels from the other
+        // screen and the (opt-in) node-screen console stay hidden.
+        const bool nodeTab = (index == 0);
+        if (toolboxDock_) toolboxDock_->setVisible(nodeTab);
+        if (inspectorDock_) inspectorDock_->setVisible(nodeTab);
+        if (editorConsoleDock_) editorConsoleDock_->setVisible(false);
+        if (signalTableDock_) signalTableDock_->setVisible(!nodeTab);
+        if (telemetryConsoleDock_) telemetryConsoleDock_->setVisible(!nodeTab);
+    }
+
+    RebuildViewMenu();
 }
 
 bool MainWindow::DoSave(const std::string& path) {

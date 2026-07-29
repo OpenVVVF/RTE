@@ -113,6 +113,10 @@ public:
     // Console lines with seq > sinceSeq (for incremental console drains).
     std::vector<ConsoleLine> ConsoleSince(uint64_t sinceSeq) const;
 
+    // Seq of the most recent console line, 0 when the console is empty. Used
+    // by console views to detect a ClearConsole() (seq goes backwards).
+    uint64_t LatestConsoleSeq() const;
+
 private:
     void TrimHistoryLocked(SignalHistory& hist) const;
 

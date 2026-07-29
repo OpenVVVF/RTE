@@ -140,6 +140,11 @@ std::vector<ConsoleLine> TelemetryStore::ConsoleSince(uint64_t sinceSeq) const {
     return lines;
 }
 
+uint64_t TelemetryStore::LatestConsoleSeq() const {
+    std::lock_guard lock(mtx_);
+    return snap_.console.empty() ? 0 : snap_.console.back().seq;
+}
+
 void TelemetryStore::TrimHistoryLocked(SignalHistory& hist) const {
     while (hist.t.size() > kMaxSamples) {
         hist.t.pop_front();

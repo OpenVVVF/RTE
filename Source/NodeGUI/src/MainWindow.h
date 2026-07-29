@@ -7,12 +7,15 @@
 #include "runtime/HttpApiServer.h"
 #include "runtime/RuntimeController.h"
 
+#include <QByteArray>
 #include <QMainWindow>
 #include <QPointer>
 #include <memory>
 
-class QLabel;
+class QAction;
 class QDockWidget;
+class QLabel;
+class QMenu;
 class QTabWidget;
 class QTimer;
 
@@ -50,6 +53,7 @@ private slots:
     void OnAutoArrange();
     void OnExit();
     void CheckForRejectionReason();
+    void OnTabChanged(int index);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -61,6 +65,9 @@ private:
     void UpdateStatus();
     bool DoSave(const std::string& path);
     void ConnectModelSignals();
+    // Rebuilds the View menu for the active tab: each screen has its own set
+    // of dockable panels, and Auto Arrange only exists on the Node Editor.
+    void RebuildViewMenu();
     // Right-click menu on a node: rename + pick its timing domain.
     void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
     // Forwards scene selection to the inspector dock.
@@ -88,6 +95,16 @@ private:
     QTabWidget* tabs_ = nullptr;
     QPointer<QDockWidget> toolboxDock_;
     QPointer<QDockWidget> inspectorDock_;
+    // Runtime-screen docks (created in SetupRuntime).
+    QPointer<QDockWidget> signalTableDock_;
+    QPointer<QDockWidget> telemetryConsoleDock_;
+    // Node-screen console dock (bottom area, hidden by default).
+    QPointer<QDockWidget> editorConsoleDock_;
+    QMenu* viewMenu_ = nullptr;
+    QAction* arrangeAction_ = nullptr;
+    // Per-tab QMainWindow dock layouts, saved/restored on tab switches.
+    QByteArray screenStates_[2];
+    int previousTab_ = 0;
     std::unique_ptr<runtime::RuntimeController> runtimeController_;
     std::unique_ptr<runtime::FirmwareUpdater> firmwareUpdater_;
     std::unique_ptr<runtime::HttpApiServer> httpApiServer_;
