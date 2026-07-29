@@ -28,6 +28,22 @@ add_executable(NodeGUI
     src/PortStyle.h
     src/FrameRateMonitor.cpp
     src/FrameRateMonitor.h
+    src/runtime/TelemetryStore.cpp
+    src/runtime/TelemetryStore.h
+    src/runtime/RuntimeController.cpp
+    src/runtime/RuntimeController.h
+    src/runtime/SignalPlotWidget.cpp
+    src/runtime/SignalPlotWidget.h
+    src/runtime/TelemetryPanel.cpp
+    src/runtime/TelemetryPanel.h
+    src/runtime/FirmwareUpdater.cpp
+    src/runtime/FirmwareUpdater.h
+    src/runtime/FlashPanel.cpp
+    src/runtime/FlashPanel.h
+    src/runtime/HttpApiServer.cpp
+    src/runtime/HttpApiServer.h
+    src/runtime/RuntimeTab.cpp
+    src/runtime/RuntimeTab.h
 )
 
 set_target_properties(NodeGUI PROPERTIES
@@ -50,6 +66,7 @@ add_subdirectory(third_party/QtNodes)
 target_compile_definitions(NodeGUI
     PRIVATE
         RTE_NODE_TEMPLATES_DIR="${CMAKE_SOURCE_DIR}/Assets/NodeTemplates"
+        RTE_TOOLS_DIR="${CMAKE_SOURCE_DIR}/Tools"
 )
 
 if(NODEGUI_ENABLE_FPS_OVERLAY)
@@ -66,6 +83,7 @@ target_include_directories(NodeGUI
 target_link_libraries(NodeGUI
     PRIVATE
         NodeAPI
+        InverterProtocol
         QtNodes::QtNodes
         Qt6::Core
         Qt6::Gui

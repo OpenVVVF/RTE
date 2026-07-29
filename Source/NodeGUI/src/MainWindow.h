@@ -3,17 +3,26 @@
 #include "GraphScene.h"
 #include "GraphView.h"
 
+#include "runtime/FirmwareUpdater.h"
+#include "runtime/HttpApiServer.h"
+#include "runtime/RuntimeController.h"
+
 #include <QMainWindow>
 #include <QPointer>
 #include <memory>
 
 class QLabel;
+class QTabWidget;
 class QTimer;
 
 namespace NodeGUI {
 
 class InspectorPanel;
 class NodePalette;
+
+namespace runtime {
+class RuntimeTab;
+}
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -25,6 +34,10 @@ public:
     bool OpenGraph(const std::string& path);
 
     GraphScene* Scene() const { return graphScene_.get(); }
+
+    // Adds the "Runtime" tab (telemetry + firmware update) and starts the
+    // telemetry client and HTTP API server.
+    void SetupRuntime(const QString& serialPort, bool simulate);
 
 private slots:
     void OnOpen();
@@ -38,6 +51,7 @@ private slots:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     void SetupMenu();
@@ -67,6 +81,12 @@ private:
     QTimer* toastTimer_ = nullptr;
     std::string currentPath_;
     bool connectionCreatedThisDrag_ = false;
+
+    QTabWidget* tabs_ = nullptr;
+    std::unique_ptr<runtime::RuntimeController> runtimeController_;
+    std::unique_ptr<runtime::FirmwareUpdater> firmwareUpdater_;
+    std::unique_ptr<runtime::HttpApiServer> httpApiServer_;
+    QPointer<runtime::RuntimeTab> runtimeTab_;
 };
 
 }  // namespace NodeGUI

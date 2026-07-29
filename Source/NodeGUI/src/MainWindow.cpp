@@ -4,8 +4,11 @@
 #include "InspectorPanel.h"
 #include "NodePalette.h"
 
+#include "runtime/RuntimeTab.h"
+
 #include <QAction>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -21,6 +24,7 @@
 #include <QResizeEvent>
 #include <QScreen>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTimer>
 #include <QToolTip>
 #include <QVBoxLayout>
@@ -100,7 +104,12 @@ MainWindow::MainWindow(QWidget* parent)
     };
 
     layout->addWidget(view_);
-    setCentralWidget(central);
+
+    // Tabs: the node editor (existing content) and the runtime view
+    // (telemetry + flashing), added by SetupRuntime().
+    tabs_ = new QTabWidget(this);
+    tabs_->addTab(central, QStringLiteral("Node Editor"));
+    setCentralWidget(tabs_);
 
     StripBrokenSceneActions();
 
@@ -171,6 +180,36 @@ MainWindow::MainWindow(QWidget* parent)
     if (QScreen* screen = QApplication::primaryScreen()) {
         move(screen->availableGeometry().center() - frameGeometry().center());
     }
+}
+
+void MainWindow::SetupRuntime(const QString& serialPort, bool simulate) {
+    runtimeController_ = std::make_unique<runtime::RuntimeController>(serialPort, simulate);
+    firmwareUpdater_ = std::make_unique<runtime::FirmwareUpdater>();
+    httpApiServer_ = std::make_unique<runtime::HttpApiServer>(*firmwareUpdater_,
+                                                              runtimeController_->Store());
+
+    firmwareUpdater_->setSuspendCallback([this](bool suspend) {
+        if (suspend) {
+            runtimeController_->SuspendForFlash();
+        } else {
+            runtimeController_->ResumeAfterFlash();
+        }
+    });
+    firmwareUpdater_->setCurrentPort(serialPort.toStdString());
+
+    httpApiServer_->setDevicePort(serialPort.toStdString());
+    httpApiServer_->setCommandHandler(
+        [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
+
+    runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(),
+                                          firmwareUpdater_.get(),
+                                          httpApiServer_.get(),
+                                          this);
+    tabs_->addTab(runtimeTab_, QStringLiteral("Runtime"));
+    runtimeTab_->LoadAutosave();
+
+    runtimeController_->Start();
+    httpApiServer_->start();
 }
 
 bool MainWindow::OpenGraph(const std::string& path) {
@@ -409,6 +448,13 @@ void MainWindow::RepositionToast() {
 void MainWindow::resizeEvent(QResizeEvent* event) {
     QMainWindow::resizeEvent(event);
     RepositionToast();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (runtimeTab_) {
+        runtimeTab_->SaveAutosave();
+    }
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::UpdateStatus() {
