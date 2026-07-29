@@ -18,6 +18,13 @@ namespace {
 constexpr int kGridDivisionsX = 8;
 constexpr int kGridDivisionsY = 6;
 
+// Widget margins around the plot area: the title strip on top, Y tick labels
+// on the left, X tick labels on the bottom.
+constexpr int kMarginTop = 26;
+constexpr int kMarginLeft = 64;
+constexpr int kMarginRight = 12;
+constexpr int kMarginBottom = 26;
+
 // GLSL 130 works on every default-constructed Qt GL context (no core profile
 // is requested app-wide).
 const char* kVertexShader = R"(#version 130
@@ -37,6 +44,24 @@ void main()
     fragColor = lineColor;
 }
 )";
+
+// Unit guess for a single signal name (ported from the old app's GuessYLabel,
+// with the substring checks first: "I_ROTOR_speed" is rotor speed, not amps).
+QString UnitForSignal(const QString& name) {
+    if (name.contains(QStringLiteral("ROTOR"))) {
+        return QStringLiteral("Degrees (deg)");
+    }
+    if (name.contains(QStringLiteral("RATE"))) {
+        return QStringLiteral("kHz");
+    }
+    if (name.startsWith(QStringLiteral("V_"))) {
+        return QStringLiteral("Volts (V)");
+    }
+    if (name.startsWith(QStringLiteral("I_"))) {
+        return QStringLiteral("Amps (A)");
+    }
+    return QStringLiteral("Value");
+}
 
 }  // namespace
 
@@ -121,7 +146,19 @@ void SignalPlotWidget::initializeGL()
 void SignalPlotWidget::paintGL()
 {
     const qreal dpr = devicePixelRatioF();
-    glViewport(0, 0, static_cast<int>(width() * dpr), static_cast<int>(height() * dpr));
+    const int w = width();
+    const int h = height();
+
+    // Plot area inside the margins.
+    const int pw = std::max(1, w - kMarginLeft - kMarginRight);
+    const int ph = std::max(1, h - kMarginTop - kMarginBottom);
+    const QRectF plotRect(kMarginLeft, kMarginTop, pw, ph);
+
+    // GL renders only into the plot area (GL origin is bottom-left).
+    glViewport(static_cast<int>(kMarginLeft * dpr),
+               static_cast<int>(kMarginBottom * dpr),
+               static_cast<int>(pw * dpr),
+               static_cast<int>(ph * dpr));
     glClearColor(45.0f / 255.0f, 45.0f / 255.0f, 48.0f / 255.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -181,9 +218,11 @@ void SignalPlotWidget::paintGL()
             const float y = static_cast<float>(y0 + (y1 - y0) * j / kGridDivisionsY);
             grid.insert(grid.end(), {static_cast<float>(x0), y, static_cast<float>(x1), y});
         }
-        DrawVertices(grid, GL_LINES, QColor(75, 75, 80));
+        glLineWidth(1.0f);
+        DrawVertices(grid, GL_LINES, QColor(88, 93, 100));
 
         if (haveData) {
+            glLineWidth(1.75f);
             for (std::size_t si = 0; si < series_.size(); ++si) {
                 const Series& s = series_[si];
                 if (s.t.empty()) {
@@ -200,62 +239,105 @@ void SignalPlotWidget::paintGL()
                 }
                 DrawVertices(xy, GL_LINE_STRIP, SignalColor(static_cast<int>(si)));
             }
+            glLineWidth(1.0f);
         }
 
         vao_->release();
         program_->release();
     }
 
-    // Text overlay (QPainter paints into the widget's FBO after the GL pass).
+    // Everything outside the GL pass: background, title strip, axes, labels.
+    // The margins are filled around the plot area — painting over it would
+    // erase the GL traces.
     QPainter painter(this);
     painter.setRenderHint(QPainter::TextAntialiasing);
-    const int w = width();
-    const int h = height();
+    const QFont normalFont = painter.font();
+
+    const QColor marginColor(38, 38, 41);
+    painter.fillRect(QRectF(0, 0, w, kMarginTop), marginColor);
+    painter.fillRect(QRectF(0, h - kMarginBottom, w, kMarginBottom), marginColor);
+    painter.fillRect(QRectF(0, kMarginTop, kMarginLeft, ph), marginColor);
+    painter.fillRect(QRectF(w - kMarginRight, kMarginTop, kMarginRight, ph), marginColor);
+
+    // Title strip with a per-graph accent line underneath.
+    painter.fillRect(QRectF(0, 0, w, kMarginTop - 4), QColor(48, 51, 56));
+    painter.fillRect(QRectF(0, kMarginTop - 4, w, 2), accentColor_);
+
+    QFont bold = normalFont;
+    bold.setBold(true);
+    painter.setFont(bold);
+    painter.setPen(QColor(235, 235, 235));
+    painter.drawText(QRect(10, 0, w / 2, kMarginTop - 4),
+                     Qt::AlignLeft | Qt::AlignVCenter, title_);
+    painter.setFont(normalFont);
+
+    // Unit label, only when every assigned signal resolves to the same unit.
+    const QString units = UnitLabel();
+    if (!units.isEmpty()) {
+        painter.setPen(QColor(190, 190, 190));
+        painter.drawText(QRect(w / 2, 0, w / 2 - 10, kMarginTop - 4),
+                         Qt::AlignRight | Qt::AlignVCenter, units);
+    }
 
     if (signals_.isEmpty()) {
         painter.setPen(QColor(150, 150, 150));
-        painter.drawText(rect(), Qt::AlignCenter, QStringLiteral("No signals selected."));
+        painter.drawText(plotRect, Qt::AlignCenter, QStringLiteral("No signals selected."));
         return;
     }
     if (!haveData) {
         painter.setPen(QColor(150, 150, 150));
-        painter.drawText(rect(), Qt::AlignCenter, QStringLiteral("No history yet."));
+        painter.drawText(plotRect, Qt::AlignCenter, QStringLiteral("No history yet."));
     }
 
-    // Title, top-left.
-    painter.setPen(QColor(220, 220, 220));
-    painter.drawText(QRect(8, 4, w - 16, 20), Qt::AlignLeft | Qt::AlignVCenter, title_);
-
-    // Y-axis unit label under the title.
-    painter.setPen(QColor(170, 170, 170));
-    painter.drawText(QRect(8, 24, w - 16, 18), Qt::AlignLeft | Qt::AlignVCenter, GuessUnits());
-
-    // Color-coded legend, top-right.
+    // Color-coded legend, top-right inside the plot area.
     const QFontMetrics fm = painter.fontMetrics();
-    int legendY = 6;
+    int legendY = kMarginTop + 4;
     for (int i = 0; i < signals_.size(); ++i) {
         const QString& name = signals_[i];
         const int textWidth = fm.horizontalAdvance(name);
         painter.setPen(SignalColor(i));
-        painter.drawText(w - 8 - textWidth, legendY + fm.ascent(), name);
+        painter.drawText(w - kMarginRight - 4 - textWidth, legendY + fm.ascent(), name);
         legendY += fm.height() + 2;
     }
 
-    if (haveData) {
-        // X ticks: seconds relative to the newest sample (right edge = 0.0).
-        painter.setPen(QColor(170, 170, 170));
-        for (int i = 0; i <= kGridDivisionsX; ++i) {
-            const int px = i * w / kGridDivisionsX;
-            const double rel = -viewSeconds_ + viewSeconds_ * i / kGridDivisionsX;
-            painter.drawText(px + 3, h - 6, QString::number(rel, 'f', 1));
-        }
-        // Y ticks: value at each horizontal grid line.
-        for (int j = 0; j <= kGridDivisionsY; ++j) {
-            const int py = h - j * h / kGridDivisionsY;
-            const double v = y0 + (y1 - y0) * j / kGridDivisionsY;
-            painter.drawText(6, py - 4, QString::number(v, 'g', 4));
+    // Axes: bright left/bottom lines with outward tick marks.
+    painter.setPen(QColor(160, 166, 173));
+    painter.drawLine(plotRect.topLeft(), plotRect.bottomLeft());
+    painter.drawLine(plotRect.bottomLeft(), plotRect.bottomRight());
+
+    painter.setPen(QColor(215, 215, 215));
+    for (int i = 0; i <= kGridDivisionsX; ++i) {
+        const double fx = static_cast<double>(i) / kGridDivisionsX;
+        const int px = kMarginLeft + static_cast<int>(fx * pw);
+        painter.drawLine(px, kMarginTop + ph, px, kMarginTop + ph + 4);
+        // The rightmost label (0.0) would clip at the widget edge and collide
+        // with the "Time (s)" caption, so it is skipped.
+        if (haveData && i < kGridDivisionsX) {
+            const double rel = -viewSeconds_ + viewSeconds_ * fx;
+            painter.drawText(QRect(px - 30, h - kMarginBottom + 5, 60, 16),
+                             Qt::AlignHCenter, QString::number(rel, 'f', 1));
         }
     }
+    for (int j = 0; j <= kGridDivisionsY; ++j) {
+        const double fy = static_cast<double>(j) / kGridDivisionsY;
+        const int py = kMarginTop + ph - static_cast<int>(fy * ph);
+        painter.drawLine(kMarginLeft - 4, py, kMarginLeft, py);
+        if (haveData) {
+            const double v = y0 + (y1 - y0) * fy;
+            painter.drawText(QRect(2, py - 8, kMarginLeft - 10, 16),
+                             Qt::AlignRight | Qt::AlignVCenter,
+                             QString::number(v, 'g', 3));
+        }
+    }
+
+    // X axis caption.
+    painter.setPen(QColor(190, 190, 190));
+    painter.drawText(QRect(kMarginLeft + pw - 80, h - kMarginBottom + 5, 80, 16),
+                     Qt::AlignRight, QStringLiteral("Time (s)"));
+
+    // Frame around the plot area.
+    painter.setPen(QColor(86, 90, 96));
+    painter.drawRect(plotRect);
 }
 
 void SignalPlotWidget::DrawVertices(const std::vector<float>& xy, unsigned int mode, const QColor& color)
@@ -287,32 +369,20 @@ QColor SignalPlotWidget::SignalColor(int index) const
     return colors[index % 8];
 }
 
-QString SignalPlotWidget::GuessUnits() const
+QString SignalPlotWidget::UnitLabel() const
 {
-    if (signals_.size() > 1) {
-        return QStringLiteral("Mixed units");
+    // Only meaningful when every assigned signal resolves to the same unit;
+    // otherwise the label would be wrong, so show nothing.
+    if (signals_.isEmpty()) {
+        return QString();
     }
+    const QString first = UnitForSignal(signals_.front());
     for (const QString& name : signals_) {
-        if (name.startsWith(QStringLiteral("V_"))) {
-            return QStringLiteral("Volts (V)");
+        if (UnitForSignal(name) != first) {
+            return QString();
         }
     }
-    for (const QString& name : signals_) {
-        if (name.startsWith(QStringLiteral("I_"))) {
-            return QStringLiteral("Amps (A)");
-        }
-    }
-    for (const QString& name : signals_) {
-        if (name.contains(QStringLiteral("ROTOR"))) {
-            return QStringLiteral("Degrees (deg)");
-        }
-    }
-    for (const QString& name : signals_) {
-        if (name.contains(QStringLiteral("RATE"))) {
-            return QStringLiteral("kHz");
-        }
-    }
-    return QStringLiteral("Value");
+    return first;
 }
 
 }  // namespace NodeGUI::runtime
