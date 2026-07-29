@@ -1,0 +1,32 @@
+{
+  "motor": {
+    "name": "generic_pmsm",
+    "comment": "Replace with calibrated values for your machine (e.g. 75-5 bench motor).",
+    "rs_ohm": 0.08,
+    "ld_h": 0.00012,
+    "lq_h": 0.00012,
+    "flux_wb": 0.0085,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 1.2e-5,
+    "friction_nm_per_rad_s": 2.0e-4,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 0.5,
+    "tim_isr_hz": 10000,
+    "adc_isr_hz": 10000,
+    "app_loop_hz": 1000,
+    "trace_csv": "trace.csv"
+  },
+  "throttle_a": {
+    "type": "ramp",
+    "start": 0.0,
+    "end": 0.75,
+    "start_s": 0.05,
+    "end_s": 0.4
+  },
+  "throttle_b": {
+    "type": "constant",
+    "value": 0.0
+  }
+}
