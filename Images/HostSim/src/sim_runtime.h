@@ -30,7 +30,7 @@ struct SimConfig {
     float telem_hz = 500.0f;
     float pwm_telem_hz = 0.0f; /* 0 = auto from carrier when pwm scope live */
     float realtime_factor = 1.0f;
-    bool pwm_scope_enabled = true;
+    bool pwm_scope_enabled = false;
     float pwm_carrier_hz = 800.0f;
     bool live = false;
     std::string listen_host = "127.0.0.1";
