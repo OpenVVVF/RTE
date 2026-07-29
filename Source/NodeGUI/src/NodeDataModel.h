@@ -8,6 +8,7 @@
 #include <QtNodes/NodeDelegateModel>
 
 #include <memory>
+#include <set>
 #include <vector>
 
 namespace NodeGUI {
@@ -22,6 +23,23 @@ public:
 private:
     QtNodes::NodeDataType type_;
 };
+
+// The input ports a node instance actually shows: the type's input ports,
+// except optional ports that share a name with a parameter and are neither
+// wired nor connected (those fall back to the parameter), then synthesized
+// parameter input ports not already covered by a type port.
+// GraphScene::FindPortIndex and NodeGraphModel::MakePortRef use this same
+// ordering.
+std::vector<NodeAPI::Port> VisibleInputPorts(
+    const NodeAPI::NodeType& nodeType,
+    const std::vector<std::string>& parameterInputs,
+    const std::set<std::string>& connectedInputs);
+
+// Names of optional, parameter-backed input ports of this node that are the
+// consumer of a connection or bridge.
+std::set<std::string> ConnectedOptionalInputs(const NodeAPI::Graph& graph,
+                                              const NodeAPI::Node& node,
+                                              const NodeAPI::NodeType& nodeType);
 
 // QtNodes delegate model that represents one NodeAPI node instance.
 // The node type determines the port layout; the instance supplies the caption.
@@ -68,6 +86,12 @@ public:
 
     const std::vector<std::string>& ParameterInputs() const { return parameterInputs_; }
 
+    // Updates which optional, parameter-backed input ports currently have a
+    // connection. Those stay visible even when their parameter is not wired;
+    // unwired and unconnected ones are hidden (the parameter is used
+    // instead). No-ops when unchanged.
+    void SetConnectedInputs(std::set<std::string> connectedInputs);
+
     QString portCaption(QtNodes::PortType portType,
                         QtNodes::PortIndex portIndex) const override;
 
@@ -92,6 +116,7 @@ private:
 
     std::map<std::string, std::string> parameters_;
     std::vector<std::string> parameterInputs_;
+    std::set<std::string> connectedInputs_;
 
     // Rebuilds inputPorts_ from the type's ports plus the synthesized
     // parameter input ports, and refreshes the painted parameter block.

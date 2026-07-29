@@ -4,6 +4,8 @@
 
 #include <QString>
 
+#include <algorithm>
+
 namespace NodeGUI {
 
 namespace {
@@ -124,19 +126,87 @@ void NodeInstanceModel::SetParameterInputs(std::vector<std::string> parameterInp
     Q_EMIT requestNodeUpdate();
 }
 
-void NodeInstanceModel::RebuildPortsAndBlock() {
-    // Type ports first, then synthesized parameter input ports (same order
-    // GraphScene::FindPortIndex uses).
-    inputPorts_ = nodeType_.inputPorts;
-    for (const auto& name : parameterInputs_) {
-        const auto typeIt = nodeType_.parameterTypes.find(name);
-        inputPorts_.push_back(
-            NodeAPI::Port{.name = name,
-                          .direction = NodeAPI::PortDirection::Input,
-                          .type = typeIt != nodeType_.parameterTypes.end()
-                                      ? typeIt->second
-                                      : NodeAPI::WireType{}});
+std::vector<NodeAPI::Port> VisibleInputPorts(
+    const NodeAPI::NodeType& nodeType,
+    const std::vector<std::string>& parameterInputs,
+    const std::set<std::string>& connectedInputs) {
+    std::vector<NodeAPI::Port> ports;
+    for (const auto& port : nodeType.inputPorts) {
+        // Optional ports that fall back to a same-named parameter are hidden
+        // while the parameter is neither wired nor connected.
+        const bool hasParameterFallback = nodeType.parameterTypes.count(port.name) != 0;
+        const bool wired = std::find(parameterInputs.begin(),
+                                     parameterInputs.end(),
+                                     port.name) != parameterInputs.end();
+        if (port.optional && hasParameterFallback && !wired
+            && !connectedInputs.count(port.name)) {
+            continue;
+        }
+        ports.push_back(port);
     }
+
+    // Synthesized parameter input ports, skipping names a type port covers.
+    for (const auto& name : parameterInputs) {
+        const bool covered = std::any_of(ports.begin(), ports.end(), [&](const NodeAPI::Port& p) {
+            return p.name == name;
+        });
+        if (covered) {
+            continue;
+        }
+        const auto typeIt = nodeType.parameterTypes.find(name);
+        ports.push_back(NodeAPI::Port{.name = name,
+                                      .direction = NodeAPI::PortDirection::Input,
+                                      .type = typeIt != nodeType.parameterTypes.end()
+                                                  ? typeIt->second
+                                                  : NodeAPI::WireType{}});
+    }
+    return ports;
+}
+
+std::set<std::string> ConnectedOptionalInputs(const NodeAPI::Graph& graph,
+                                              const NodeAPI::Node& node,
+                                              const NodeAPI::NodeType& nodeType) {
+    std::set<std::string> connected;
+    for (const auto& port : nodeType.inputPorts) {
+        if (!port.optional || nodeType.parameterTypes.count(port.name) == 0) {
+            continue;
+        }
+        const NodeAPI::PortRef ref{node.id, port.name};
+        for (const auto& connection : graph.GetConnections()) {
+            if (connection.to == ref) {
+                connected.insert(port.name);
+            }
+        }
+        for (const auto& bridge : graph.GetBridges()) {
+            if (bridge.consumer == ref) {
+                connected.insert(port.name);
+            }
+        }
+    }
+    return connected;
+}
+
+void NodeInstanceModel::SetConnectedInputs(std::set<std::string> connectedInputs) {
+    if (connectedInputs == connectedInputs_) {
+        return;
+    }
+    const std::size_t oldPortCount = inputPorts_.size();
+    connectedInputs_ = std::move(connectedInputs);
+    RebuildPortsAndBlock();
+
+    if (inputPorts_.size() > oldPortCount) {
+        Q_EMIT portsInserted();
+    } else if (inputPorts_.size() < oldPortCount) {
+        Q_EMIT portsDeleted();
+    }
+    Q_EMIT requestNodeUpdate();
+}
+
+void NodeInstanceModel::RebuildPortsAndBlock() {
+    // Type ports (optional ones visible only when wired or connected), then
+    // synthesized parameter ports (same order GraphScene::FindPortIndex
+    // uses).
+    inputPorts_ = VisibleInputPorts(nodeType_, parameterInputs_, connectedInputs_);
 
     // Wired parameters leave the painted panel; they are bound by connection.
     std::map<std::string, std::string> constants = parameters_;

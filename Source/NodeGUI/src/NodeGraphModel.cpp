@@ -1,5 +1,7 @@
 #include "NodeGraphModel.h"
 
+#include "NodeDataModel.h"
+
 #include <NodeAPI/Timing.h>
 
 #include <QPointF>
@@ -9,17 +11,6 @@
 namespace NodeGUI {
 
 namespace {
-
-QString PortName(const NodeAPI::NodeType& nodeType,
-                 QtNodes::PortType type,
-                 QtNodes::PortIndex index) {
-    const auto& ports = (type == QtNodes::PortType::In) ? nodeType.inputPorts
-                                                        : nodeType.outputPorts;
-    if (index >= ports.size()) {
-        return QString{};
-    }
-    return QString::fromStdString(ports[index].name);
-}
 
 bool ConsumerHasConnection(const NodeAPI::Graph& graph,
                            const NodeAPI::PortRef& consumer) {
@@ -84,22 +75,20 @@ std::optional<NodeAPI::PortRef> NodeGraphModel::MakePortRef(QtNodes::NodeId qtId
         return std::nullopt;
     }
 
-    const QString name = PortName(*nodeType, type, index);
-    if (!name.isEmpty()) {
-        return NodeAPI::PortRef{nodeId, name.toStdString()};
-    }
-
-    // Indices beyond the type's input ports are synthesized parameter input
-    // ports (same order NodeInstanceModel/FindPortIndex use).
-    if (type == QtNodes::PortType::In
-        && static_cast<std::size_t>(index) >= nodeType->inputPorts.size()) {
-        const std::size_t synthIndex =
-            static_cast<std::size_t>(index) - nodeType->inputPorts.size();
-        if (synthIndex < node->parameterInputs.size()) {
-            return NodeAPI::PortRef{nodeId, node->parameterInputs[synthIndex]};
+    if (type == QtNodes::PortType::In) {
+        // Same ordering as the delegate: visible type ports (optional ones
+        // only when wired or connected), then synthesized parameter ports.
+        const auto connected = ConnectedOptionalInputs(graph_, *node, *nodeType);
+        const auto ports = VisibleInputPorts(*nodeType, node->parameterInputs, connected);
+        if (static_cast<std::size_t>(index) < ports.size()) {
+            return NodeAPI::PortRef{nodeId, ports[static_cast<std::size_t>(index)].name};
         }
+        return std::nullopt;
     }
 
+    if (static_cast<std::size_t>(index) < nodeType->outputPorts.size()) {
+        return NodeAPI::PortRef{nodeId, nodeType->outputPorts[static_cast<std::size_t>(index)].name};
+    }
     return std::nullopt;
 }
 
@@ -353,9 +342,42 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
             DataFlowGraphModel::deleteConnection(connectionId);
         }
     }
+
+    // A new connection may make an optional, parameter-backed port visible.
+    RefreshOptionalPortVisibility(consumerRef->nodeId);
+}
+
+void NodeGraphModel::RefreshOptionalPortVisibility(const std::string& nodeId) {
+    QtNodes::NodeId qtId = QtNodes::InvalidNodeId;
+    for (const auto& [qt, id] : qtIdToNodeId_) {
+        if (id == nodeId) {
+            qtId = qt;
+            break;
+        }
+    }
+    if (qtId == QtNodes::InvalidNodeId) {
+        return;
+    }
+
+    auto* delegate = delegateModel<NodeInstanceModel>(qtId);
+    const auto node = graph_.FindNode(nodeId);
+    if (!delegate || !node) {
+        return;
+    }
+    const auto nodeType = graph_.FindNodeType(node->type);
+    if (!nodeType) {
+        return;
+    }
+    delegate->SetConnectedInputs(ConnectedOptionalInputs(graph_, *node, *nodeType));
 }
 
 bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) {
+    // Resolve the consumer before teardown so we can refresh its optional
+    // port visibility afterwards (a freed optional port may hide again).
+    const auto consumerRef = MakePortRef(connectionId.inNodeId,
+                                         connectionId.inPortIndex,
+                                         QtNodes::PortType::In);
+
     const auto it = connectionMap_.find(connectionId);
     if (it != connectionMap_.end()) {
         if (it->second.isBridge) {
@@ -366,7 +388,12 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
         connectionMap_.erase(it);
     }
 
-    return DataFlowGraphModel::deleteConnection(connectionId);
+    const bool result = DataFlowGraphModel::deleteConnection(connectionId);
+
+    if (consumerRef) {
+        RefreshOptionalPortVisibility(consumerRef->nodeId);
+    }
+    return result;
 }
 
 bool NodeGraphModel::deleteNode(QtNodes::NodeId const nodeId) {

@@ -70,6 +70,10 @@ private:
                                                 QtNodes::PortIndex index,
                                                 QtNodes::PortType type) const;
 
+    // Recomputes which optional, parameter-backed input ports of a node are
+    // connected and updates the delegate's visible ports.
+    void RefreshOptionalPortVisibility(const std::string& nodeId);
+
     std::string GenerateId() const;
     QString Validate(QtNodes::ConnectionId const connectionId,
                      bool& asBridge) const;

@@ -953,6 +953,12 @@ QtNodes::NodeId GraphScene::CreateNodeItem(const NodeAPI::Node& node) {
 
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
 
+    // Optional, parameter-backed ports with existing connections stay visible
+    // even though their parameter is not flagged as wired.
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        delegate->SetConnectedInputs(ConnectedOptionalInputs(graph_, node, *nodeType));
+    }
+
     // Cache the rendered node as a pixmap: panning and dragging then blit
     // the cache instead of re-running the (relatively expensive) node
     // painter for every node on every frame. The cache invalidates itself
@@ -1177,21 +1183,23 @@ QtNodes::PortIndex GraphScene::FindPortIndex(const std::string& nodeId,
         return QtNodes::InvalidPortIndex;
     }
 
-    const auto& ports = (portType == QtNodes::PortType::In) ? nodeType->inputPorts
-                                                            : nodeType->outputPorts;
+    // Visible input ports first (optional ones only when wired or
+    // connected), matching the delegate's port ordering.
+    if (portType == QtNodes::PortType::In) {
+        const auto connected = ConnectedOptionalInputs(graph_, *node, *nodeType);
+        const auto ports = VisibleInputPorts(*nodeType, node->parameterInputs, connected);
+        for (std::size_t i = 0; i < ports.size(); ++i) {
+            if (ports[i].name == portName) {
+                return static_cast<QtNodes::PortIndex>(i);
+            }
+        }
+        return QtNodes::InvalidPortIndex;
+    }
+
+    const auto& ports = nodeType->outputPorts;
     for (std::size_t i = 0; i < ports.size(); ++i) {
         if (ports[i].name == portName) {
             return static_cast<QtNodes::PortIndex>(i);
-        }
-    }
-
-    // Synthesized parameter input ports follow the type's input ports (same
-    // order NodeInstanceModel uses).
-    if (portType == QtNodes::PortType::In) {
-        for (std::size_t i = 0; i < node->parameterInputs.size(); ++i) {
-            if (node->parameterInputs[i] == portName) {
-                return static_cast<QtNodes::PortIndex>(ports.size() + i);
-            }
         }
     }
 
