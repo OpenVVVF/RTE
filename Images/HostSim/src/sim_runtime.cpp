@@ -1,16 +1,23 @@
 #include "sim_runtime.h"
 
 #include "AppState.h"
+#include "pwm_scope.h"
 #include "sim_context.h"
+#include "telemetry_publisher.h"
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdlib>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>
+
+#include "realtime_platform.h"
 
 namespace hostsim {
 namespace {
@@ -92,6 +99,42 @@ StimulusProfile ParseStimulus(const std::string& blob) {
 
 SimRuntime& GlobalSimRuntime() { return g_runtime; }
 
+void SimRuntime::SetRealtimeFactor(float factor) {
+    config_.realtime_factor = factor;
+    GlobalTelemetryPublisher().LogF32(
+        "sim_speed", factor <= 0.0f ? -1.0f : factor);
+}
+
+void SimRuntime::ResetWallClockAnchor() {
+    wall_anchor_ = std::chrono::steady_clock::now();
+    sim_anchor_s_ = time_s_;
+}
+
+float SimRuntime::EffectivePwmTelemHz() const {
+    if (!config_.pwm_scope_enabled) {
+        return 0.0f;
+    }
+
+    float base = config_.pwm_telem_hz;
+    if (base <= 0.0f) {
+        base = std::clamp(config_.pwm_carrier_hz * 20.0f, 800.0f, 1500.0f);
+    }
+
+    constexpr float kCap = 1500.0f;
+    if (config_.realtime_factor <= 0.0f) {
+        return kCap;
+    }
+
+    const float speed = std::max(config_.realtime_factor, 0.05f);
+    return std::clamp(base / speed, 400.0f, kCap);
+}
+
+void SimRuntime::PublishPwmScopeFrame() {
+    PublishPwmScopeTelemetry();
+    GlobalTelemetryPublisher().PublishPrefixCycle(static_cast<uint32_t>(TimeMicros()),
+                                                  "pwm_");
+}
+
 float SimRuntime::EvaluateStimulus(const StimulusProfile& profile) const {
     switch (profile.type) {
     case StimulusType::Constant:
@@ -138,6 +181,46 @@ bool SimRuntime::ParseScenario(const char* path) {
     if (ExtractNumber(sim, "tim_isr_hz", &v)) config_.tim_isr_hz = v;
     if (ExtractNumber(sim, "adc_isr_hz", &v)) config_.adc_isr_hz = v;
     if (ExtractNumber(sim, "app_loop_hz", &v)) config_.app_loop_hz = v;
+    if (ExtractNumber(sim, "telem_hz", &v)) config_.telem_hz = v;
+    if (ExtractNumber(sim, "realtime_factor", &v)) config_.realtime_factor = v;
+    {
+        const std::string pwm_scope = ExtractObject(blob, "pwm_scope");
+        if (!pwm_scope.empty()) {
+            float enabled = 1.0f;
+            if (ExtractNumber(pwm_scope, "enabled", &enabled)) {
+                config_.pwm_scope_enabled = enabled != 0.0f;
+            }
+            const std::string enabled_s = ExtractString(pwm_scope, "enabled");
+            if (enabled_s == "false" || enabled_s == "0") {
+                config_.pwm_scope_enabled = false;
+            }
+            if (ExtractNumber(pwm_scope, "carrier_hz", &v)) {
+                config_.pwm_carrier_hz = v;
+            }
+            if (ExtractNumber(pwm_scope, "telem_hz", &v)) {
+                config_.pwm_telem_hz = v;
+            }
+        }
+        float carrier = 0.0f;
+        if (ExtractNumber(sim, "pwm_carrier_hz", &carrier)) {
+            config_.pwm_carrier_hz = carrier;
+            config_.pwm_scope_enabled = true;
+        }
+    }
+    {
+        float live = 0.0f;
+        if (ExtractNumber(sim, "live", &live)) config_.live = live != 0.0f;
+        const std::string live_s = ExtractString(sim, "live");
+        if (live_s == "true" || live_s == "1") config_.live = true;
+    }
+    {
+        float port = 0.0f;
+        if (ExtractNumber(sim, "listen_port", &port)) {
+            config_.listen_port = static_cast<int>(port);
+        }
+        const std::string host = ExtractString(sim, "listen_host");
+        if (!host.empty()) config_.listen_host = host;
+    }
     const std::string trace = ExtractString(sim, "trace_csv");
     if (!trace.empty()) config_.trace_csv = trace;
 
@@ -171,9 +254,22 @@ void SimRuntime::OpenTrace() {
 }
 
 void SimRuntime::InitDomains() {
-    OpenTrace();
+    if (!config_.live) {
+        OpenTrace();
+    } else if (config_.telem_hz < 400.0f) {
+        /* Live plots need more than ~10 samples/cycle for smooth waveforms. */
+        config_.telem_hz = 500.0f;
+    }
+    auto& pwm = GlobalPwmScope();
+    pwm.SetCarrierHz(config_.pwm_carrier_hz);
+    pwm.SetVdc(config_.motor.vdc_v);
+    if (config_.pwm_scope_enabled && config_.live && config_.pwm_telem_hz <= 0.0f) {
+        config_.pwm_telem_hz =
+            std::clamp(config_.pwm_carrier_hz * 12.0f, 1000.0f, 4000.0f);
+    }
     GetSimContext().vdc_v = config_.motor.vdc_v;
     SimRuntime_RegisterMotor(&motor_);
+    next_telem_s_ = 0.0f;
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
@@ -191,10 +287,15 @@ void SimRuntime::WriteTraceRow() {
 }
 
 bool SimRuntime::StepOnce() {
-    if (time_s_ > config_.duration_s) return false;
+    if (!config_.live && time_s_ > config_.duration_s) return false;
 
     throttle_a_ = EvaluateStimulus(config_.throttle_a);
     throttle_b_ = EvaluateStimulus(config_.throttle_b);
+
+    auto& pub = GlobalTelemetryPublisher();
+    if (pub.HasThrottleOverrideA()) throttle_a_ = pub.ThrottleOverrideA();
+    if (pub.HasThrottleOverrideB()) throttle_b_ = pub.ThrottleOverrideB();
+
     auto& ctx = GetSimContext();
     ctx.throttle_a = throttle_a_;
     ctx.throttle_b = throttle_b_;
@@ -205,6 +306,15 @@ bool SimRuntime::StepOnce() {
         duty_u_ = ctx.duty_u;
         duty_v_ = ctx.duty_v;
         duty_w_ = ctx.duty_w;
+        if (pub.HasDutyOverrideU()) duty_u_ = pub.DutyOverrideU();
+        if (pub.HasDutyOverrideV()) duty_v_ = pub.DutyOverrideV();
+        if (pub.HasDutyOverrideW()) duty_w_ = pub.DutyOverrideW();
+        if (config_.pwm_scope_enabled) {
+            auto& pwm = GlobalPwmScope();
+            pwm.SetVdc(ctx.vdc_v);
+            pwm.SetDuties(duty_u_, duty_v_, duty_w_);
+            pwm.AdvanceInterval(tim_dt_s_);
+        }
         motor_.Step(duty_u_, duty_v_, duty_w_, tim_dt_s_);
         SimNotifyEncoderSample();
         next_tim_s_ += tim_dt_s_;
@@ -220,9 +330,145 @@ bool SimRuntime::StepOnce() {
         next_app_s_ += app_dt_s_;
     }
 
-    WriteTraceRow();
+    if (time_s_ + 1e-9f >= next_telem_s_) {
+        PublishTelemetry();
+        const float telem_dt = 1.0f / std::max(1.0f, config_.telem_hz);
+        next_telem_s_ += telem_dt;
+    }
+
+    if (config_.pwm_scope_enabled && EffectivePwmTelemHz() > 0.0f &&
+        time_s_ + 1e-9f >= next_pwm_telem_s_) {
+        PublishPwmScopeFrame();
+        const float pwm_hz = EffectivePwmTelemHz();
+        next_pwm_telem_s_ += 1.0f / std::max(1.0f, pwm_hz);
+    }
+
+    if (!config_.live) {
+        WriteTraceRow();
+    }
+
     time_s_ += tim_dt_s_;
+    if (config_.live) return true;
     return time_s_ <= config_.duration_s;
+}
+
+void SimRuntime::PublishPwmScopeTelemetry() {
+    auto& pub = GlobalTelemetryPublisher();
+    if (!pub.IsListening() || !config_.pwm_scope_enabled) return;
+    const auto& pwm = GlobalPwmScope();
+    pub.LogF32("pwm_gate_u", pwm.GateU());
+    pub.LogF32("pwm_gate_v", pwm.GateV());
+    pub.LogF32("pwm_gate_w", pwm.GateW());
+    pub.LogF32("pwm_v_u", pwm.VoltageU());
+    pub.LogF32("pwm_v_v", pwm.VoltageV());
+    pub.LogF32("pwm_v_w", pwm.VoltageW());
+    pub.LogF32("pwm_v_uv", pwm.VoltageUV());
+    pub.LogF32("pwm_v_vw", pwm.VoltageVW());
+    pub.LogF32("pwm_v_wu", pwm.VoltageWU());
+}
+
+void SimRuntime::PublishTelemetry() {
+    auto& pub = GlobalTelemetryPublisher();
+    if (!pub.IsListening()) return;
+    const auto& st = motor_.State();
+    pub.SetBuiltin(throttle_a_, throttle_b_, duty_u_, duty_v_, duty_w_, st.ia_a, st.ib_a,
+                   st.ic_a, motor_.ThetaElectricalDeg(), motor_.OmegaElectricalRadPerSec(),
+                   GetSimContext().vdc_v);
+    pub.LogF32("sim_speed",
+               config_.realtime_factor <= 0.0f ? -1.0f : config_.realtime_factor);
+    if (config_.pwm_scope_enabled) {
+        pub.LogF32("pwm_telem_hz", EffectivePwmTelemHz());
+    }
+    if (!config_.pwm_scope_enabled || EffectivePwmTelemHz() <= 0.0f) {
+        PublishPwmScopeTelemetry();
+    }
+    if (config_.pwm_scope_enabled) {
+        pub.PublishPlantCycle(static_cast<uint32_t>(TimeMicros()), "pwm_");
+    } else {
+        pub.PublishCycle(static_cast<uint32_t>(TimeMicros()));
+    }
+}
+
+void SimRuntime::PaceRealtimeWallClock() const {
+    if (config_.realtime_factor <= 0.0f) return;
+
+    const double sim_delta_s = static_cast<double>(time_s_ - sim_anchor_s_);
+    const auto target =
+        wall_anchor_ + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                           std::chrono::duration<double>(sim_delta_s /
+                                                           static_cast<double>(
+                                                               config_.realtime_factor)));
+    auto now = std::chrono::steady_clock::now();
+    if (now >= target) return;
+
+    const auto remaining = target - now;
+    constexpr auto kSpinThreshold = std::chrono::milliseconds(2);
+    if (remaining > kSpinThreshold) {
+        std::this_thread::sleep_for(remaining - kSpinThreshold);
+    }
+    while (std::chrono::steady_clock::now() < target) {
+        std::this_thread::yield();
+    }
+}
+
+int SimRuntime::Run() {
+    InitDomains();
+
+    if (config_.live) {
+        auto& pub = GlobalTelemetryPublisher();
+        if (!pub.Start(config_.listen_host, config_.listen_port)) {
+            std::cerr << "HostSim: failed to listen on " << config_.listen_host << ':'
+                      << config_.listen_port << '\n';
+            return 1;
+        }
+        std::printf("HostSim live: realtime_factor=%.2f telem_hz=%.0f\n",
+                    static_cast<double>(config_.realtime_factor),
+                    static_cast<double>(config_.telem_hz));
+        if (config_.pwm_scope_enabled) {
+            std::printf("HostSim live: PWM scope carrier=%.0f Hz base_telem=%.0f Hz (scales with speed)\n",
+                        static_cast<double>(config_.pwm_carrier_hz),
+                        static_cast<double>(config_.pwm_telem_hz));
+        }
+        std::printf("HostSim live: commands via NodeGUI console: throttle a 0.5 | duty u 60 | pause | clear | quit\n");
+        std::fflush(stdout);
+
+        RealtimeSession realtime_session;
+        ResetWallClockAnchor();
+        float last_pace_sim_s = 0.0f;
+        constexpr float kPaceIntervalSimS = 0.001f;
+        bool was_paused = false;
+        while (true) {
+            if (!pub.PollCommands()) break;
+
+            if (pub.IsPaused()) {
+                if (!was_paused) {
+                    PublishTelemetry();
+                    was_paused = true;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            was_paused = false;
+
+            if (!StepOnce()) break;
+
+            if (config_.realtime_factor > 0.0f &&
+                (time_s_ - last_pace_sim_s) >= kPaceIntervalSimS) {
+                PaceRealtimeWallClock();
+                last_pace_sim_s = time_s_;
+            }
+        }
+        pub.Stop();
+        Shutdown();
+        std::printf("HostSim live: stopped at t=%.3f s\n", static_cast<double>(time_s_));
+        return 0;
+    }
+
+    while (StepOnce()) {
+    }
+    Shutdown();
+    std::printf("HostSim: wrote %s\n", config_.trace_csv.c_str());
+    return 0;
 }
 
 void SimRuntime::Shutdown() {

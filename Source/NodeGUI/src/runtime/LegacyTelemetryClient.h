@@ -68,7 +68,11 @@ private:
         bool drain();
 
     private:
+#ifdef _WIN32
+        void* h_ = nullptr; // HANDLE
+#else
         int h_ = -1; // INVALID_SERIAL
+#endif
     };
 
     void threadMain(const std::string& port);

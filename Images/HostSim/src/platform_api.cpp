@@ -1,10 +1,16 @@
 #include "platform_api.h"
 
 #include "motor_model.h"
+#include "pwm_scope.h"
 #include "sim_context.h"
+#include "telemetry_publisher.h"
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#if defined(_MSC_VER)
+#include <stdlib.h>
+#endif
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -16,6 +22,14 @@ MotorModel* g_motor = nullptr;
 namespace {
 std::mutex g_cfg_mu;
 std::unordered_map<std::string, float> g_config;
+
+struct SpwmState {
+    float angle_rad = 0.0f;
+};
+
+SpwmState g_spwm;
+constexpr float kTwoPi = 6.28318530718f;
+constexpr float kPhase120Rad = 2.09439510239f;
 } // namespace
 
 SimContext g_sim_ctx{};
@@ -35,7 +49,60 @@ void platform_pwm_set(float du, float dv, float dw) {
     c.duty_u = du;
     c.duty_v = dv;
     c.duty_w = dw;
+    hostsim::GlobalPwmScope().SetDuties(du, dv, dw);
 }
+
+void platform_spwm_step(float modulation_index, float electrical_freq_hz, float dt_s,
+                        float* duty_u, float* duty_v, float* duty_w) {
+    float m = modulation_index;
+    if (m < 0.0f) m = 0.0f;
+    if (m > 1.0f) m = 1.0f;
+
+    hostsim::g_spwm.angle_rad += hostsim::kTwoPi * electrical_freq_hz * dt_s;
+    while (hostsim::g_spwm.angle_rad >= hostsim::kTwoPi) {
+        hostsim::g_spwm.angle_rad -= hostsim::kTwoPi;
+    }
+
+    const float angle = hostsim::g_spwm.angle_rad;
+    const float u = m * std::sin(angle);
+    const float v = m * std::sin(angle - hostsim::kPhase120Rad);
+    const float w = m * std::sin(angle + hostsim::kPhase120Rad);
+
+    float du = 50.0f + 50.0f * u;
+    float dv = 50.0f + 50.0f * v;
+    float dw = 50.0f + 50.0f * w;
+    du = std::max(0.0f, std::min(100.0f, du));
+    dv = std::max(0.0f, std::min(100.0f, dv));
+    dw = std::max(0.0f, std::min(100.0f, dw));
+
+    if (duty_u) *duty_u = du;
+    if (duty_v) *duty_v = dv;
+    if (duty_w) *duty_w = dw;
+}
+
+float platform_spwm_get_angle_rad(void) { return hostsim::g_spwm.angle_rad; }
+
+float platform_spwm_get_angle_deg(void) {
+    return hostsim::g_spwm.angle_rad * 57.2957795131f;
+}
+
+void platform_spwm_reset(void) { hostsim::g_spwm.angle_rad = 0.0f; }
+
+float platform_pwm_scope_get_gate_u(void) {
+    return hostsim::GlobalPwmScope().GateU();
+}
+float platform_pwm_scope_get_gate_v(void) {
+    return hostsim::GlobalPwmScope().GateV();
+}
+float platform_pwm_scope_get_gate_w(void) {
+    return hostsim::GlobalPwmScope().GateW();
+}
+float platform_pwm_scope_get_v_u(void) { return hostsim::GlobalPwmScope().VoltageU(); }
+float platform_pwm_scope_get_v_v(void) { return hostsim::GlobalPwmScope().VoltageV(); }
+float platform_pwm_scope_get_v_w(void) { return hostsim::GlobalPwmScope().VoltageW(); }
+float platform_pwm_scope_get_v_uv(void) { return hostsim::GlobalPwmScope().VoltageUV(); }
+float platform_pwm_scope_get_v_vw(void) { return hostsim::GlobalPwmScope().VoltageVW(); }
+float platform_pwm_scope_get_v_wu(void) { return hostsim::GlobalPwmScope().VoltageWU(); }
 
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
     const float v_max = vdc / std::sqrt(3.0f);
@@ -140,7 +207,25 @@ float platform_config_get(const char* key) {
 
 void platform_telemetry_log_f32(const char* key, float value) {
     if (!key) return;
-    std::fprintf(stderr, "telemetry %s=%g\n", key, static_cast<double>(value));
+    hostsim::GlobalTelemetryPublisher().LogF32(key, value);
+    static bool stderr_env_checked = false;
+    static bool stderr_enabled = false;
+    if (!stderr_env_checked) {
+        stderr_env_checked = true;
+#if defined(_MSC_VER)
+        char* env_value = nullptr;
+        size_t len = 0;
+        if (_dupenv_s(&env_value, &len, "HOSTSIM_TELEM_STDERR") == 0 && env_value != nullptr) {
+            stderr_enabled = true;
+            free(env_value);
+        }
+#else
+        stderr_enabled = std::getenv("HOSTSIM_TELEM_STDERR") != nullptr;
+#endif
+    }
+    if (stderr_enabled) {
+        std::fprintf(stderr, "telemetry %s=%g\n", key, static_cast<double>(value));
+    }
 }
 
 uint32_t platform_millis(void) {

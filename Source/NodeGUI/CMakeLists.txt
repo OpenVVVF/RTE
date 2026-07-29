@@ -40,17 +40,31 @@ add_executable(NodeGUI
     src/runtime/SignalTablePanel.h
     src/runtime/ConsolePanel.cpp
     src/runtime/ConsolePanel.h
+    src/runtime/SimSpeedControl.cpp
+    src/runtime/SimSpeedControl.h
     src/runtime/TelemetryPanel.cpp
     src/runtime/TelemetryPanel.h
-    src/runtime/FirmwareUpdater.cpp
-    src/runtime/FirmwareUpdater.h
     src/runtime/FlashPanel.cpp
     src/runtime/FlashPanel.h
-    src/runtime/HttpApiServer.cpp
-    src/runtime/HttpApiServer.h
     src/runtime/RuntimeTab.cpp
     src/runtime/RuntimeTab.h
 )
+
+if(WIN32)
+    target_sources(NodeGUI PRIVATE
+        src/runtime/FirmwareUpdater_win.cpp
+        src/runtime/FirmwareUpdater.h
+        src/runtime/HttpApiServer_win.cpp
+        src/runtime/HttpApiServer.h
+    )
+else()
+    target_sources(NodeGUI PRIVATE
+        src/runtime/FirmwareUpdater.cpp
+        src/runtime/FirmwareUpdater.h
+        src/runtime/HttpApiServer.cpp
+        src/runtime/HttpApiServer.h
+    )
+endif()
 
 set_target_properties(NodeGUI PROPERTIES
     AUTOMOC ON

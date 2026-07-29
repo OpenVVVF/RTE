@@ -2,6 +2,7 @@
 
 #include "motor_model.h"
 
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -26,6 +27,14 @@ struct SimConfig {
     float tim_isr_hz = 10000.0f;
     float adc_isr_hz = 10000.0f;
     float app_loop_hz = 1000.0f;
+    float telem_hz = 500.0f;
+    float pwm_telem_hz = 0.0f; /* 0 = auto from carrier when pwm scope live */
+    float realtime_factor = 1.0f;
+    bool pwm_scope_enabled = true;
+    float pwm_carrier_hz = 800.0f;
+    bool live = false;
+    std::string listen_host = "127.0.0.1";
+    int listen_port = 14608;
     std::string trace_csv = "trace.csv";
     MotorParams motor{};
     StimulusProfile throttle_a{};
@@ -39,6 +48,18 @@ public:
     bool StepOnce();
     void Shutdown();
 
+    /* Batch: run until duration_s. Live: run until quit / Ctrl-C with TCP telemetry. */
+    int Run();
+
+    void SetLive(bool live) { config_.live = live; }
+    void SetListen(const std::string& host, int port) {
+        config_.listen_host = host;
+        config_.listen_port = port;
+    }
+    void SetRealtimeFactor(float factor);
+    void SetTelemetryHz(float hz) { config_.telem_hz = hz; }
+    void ResetWallClockAnchor();
+
     const SimConfig& Config() const { return config_; }
     MotorModel& Motor() { return motor_; }
     const MotorModel& Motor() const { return motor_; }
@@ -49,6 +70,11 @@ public:
     }
 
     float EvaluateStimulus(const StimulusProfile& profile) const;
+
+    /* PWM scope publish rate scaled by 1/speed so slow motion keeps sample density. */
+    float EffectivePwmTelemHz() const;
+
+    void PublishPwmScopeFrame();
 
 private:
     SimConfig config_{};
@@ -68,10 +94,18 @@ private:
     float duty_u_ = 0.0f;
     float duty_v_ = 0.0f;
     float duty_w_ = 0.0f;
+    float next_telem_s_ = 0.0f;
+    float next_pwm_telem_s_ = 0.0f;
 
     bool ParseScenario(const char* path);
     void OpenTrace();
     void WriteTraceRow();
+    void PublishTelemetry();
+    void PublishPwmScopeTelemetry();
+    void PaceRealtimeWallClock() const;
+
+    std::chrono::steady_clock::time_point wall_anchor_{};
+    float sim_anchor_s_ = 0.0f;
 };
 
 SimRuntime& GlobalSimRuntime();

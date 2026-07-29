@@ -62,7 +62,14 @@ typedef enum {
 } ivp_arg_type_t;
 
 /* 16-byte packed header. The device and host must agree on this layout. */
-typedef struct __attribute__((packed)) {
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+#endif
+typedef struct
+#if defined(__GNUC__) || defined(__clang__)
+    __attribute__((packed))
+#endif
+{
     uint32_t magic;       /* IVP_MAGIC */
     uint8_t  version;     /* IVP_VERSION */
     uint8_t  msg_type;    /* ivp_msg_type_t */
@@ -70,6 +77,9 @@ typedef struct __attribute__((packed)) {
     uint32_t seq;
     uint32_t time_us;
 } ivp_header_t;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
 /* Compile-time size check (usable from C and C++). */
 #define IVP_HEADER_SIZE 16u

@@ -5,9 +5,16 @@
 #include <stdexcept>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
+#endif
 
 namespace NodeGUI::runtime {
 
@@ -102,20 +109,62 @@ inline float rd_f32(const uint8_t*& p, const uint8_t* end) {
 LegacyTelemetryClient::SerialPort::~SerialPort() { close(); }
 
 bool LegacyTelemetryClient::SerialPort::isOpen() const {
+#ifdef _WIN32
+    return h_ != nullptr && h_ != INVALID_HANDLE_VALUE;
+#else
     return h_ >= 0;
+#endif
 }
 
 void LegacyTelemetryClient::SerialPort::close() {
+#ifdef _WIN32
+    if (h_ && h_ != INVALID_HANDLE_VALUE) {
+        ::CloseHandle(static_cast<HANDLE>(h_));
+        h_ = nullptr;
+    }
+#else
     if (h_ >= 0) {
         ::close(h_);
         h_ = -1;
     }
+#endif
 }
 
 bool LegacyTelemetryClient::SerialPort::open(const std::string& port, int baud) {
     (void)baud; // fixed at 460800 below
     close();
 
+#ifdef _WIN32
+    std::string full = "\\\\.\\" + port;
+    HANDLE h = CreateFileA(full.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                           OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+
+    DCB dcb{};
+    dcb.DCBlength = sizeof(dcb);
+    if (!GetCommState(h, &dcb)) {
+        CloseHandle(h);
+        return false;
+    }
+    dcb.BaudRate = 460800;
+    dcb.ByteSize = 8;
+    dcb.Parity = NOPARITY;
+    dcb.StopBits = ONESTOPBIT;
+    dcb.fDtrControl = DTR_CONTROL_ENABLE;
+    dcb.fRtsControl = RTS_CONTROL_ENABLE;
+    if (!SetCommState(h, &dcb)) {
+        CloseHandle(h);
+        return false;
+    }
+
+    COMMTIMEOUTS t{};
+    t.ReadIntervalTimeout = 1;
+    t.ReadTotalTimeoutConstant = 1;
+    SetCommTimeouts(h, &t);
+    PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
+    h_ = h;
+    return true;
+#else
     int fd = ::open(port.c_str(), O_RDWR | O_NOCTTY);
     if (fd < 0) return false;
 
@@ -138,16 +187,38 @@ bool LegacyTelemetryClient::SerialPort::open(const std::string& port, int baud) 
     tcflush(fd, TCIOFLUSH);
     h_ = fd;
     return true;
+#endif
 }
 
 int LegacyTelemetryClient::SerialPort::read(uint8_t* buf, int cap) {
     if (!isOpen()) return 0;
+#ifdef _WIN32
+    DWORD got = 0;
+    if (!ReadFile(static_cast<HANDLE>(h_), buf, static_cast<DWORD>(cap), &got, nullptr)) {
+        return 0;
+    }
+    return static_cast<int>(got);
+#else
     int n = (int)::read(h_, buf, (size_t)cap);
     return n > 0 ? n : 0;
+#endif
 }
 
 bool LegacyTelemetryClient::SerialPort::write(const uint8_t* data, int n) {
     if (!isOpen() || !data || n <= 0) return false;
+#ifdef _WIN32
+    int total = 0;
+    while (total < n) {
+        DWORD wrote = 0;
+        if (!WriteFile(static_cast<HANDLE>(h_), data + total,
+                       static_cast<DWORD>(n - total), &wrote, nullptr)) {
+            return false;
+        }
+        if (wrote == 0) return false;
+        total += static_cast<int>(wrote);
+    }
+    return true;
+#else
     int total = 0;
     while (total < n) {
         int wrote = (int)::write(h_, data + total, (size_t)(n - total));
@@ -159,11 +230,16 @@ bool LegacyTelemetryClient::SerialPort::write(const uint8_t* data, int n) {
         total += wrote;
     }
     return true;
+#endif
 }
 
 bool LegacyTelemetryClient::SerialPort::drain() {
     if (!isOpen()) return false;
+#ifdef _WIN32
+    return FlushFileBuffers(static_cast<HANDLE>(h_)) != 0;
+#else
     return ::tcdrain(h_) == 0;
+#endif
 }
 
 // ---------------- LegacyTelemetryClient ----------------

@@ -43,7 +43,9 @@ public:
     // telemetry client and HTTP API server.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
-                      runtime::Protocol protocol = runtime::Protocol::Legacy);
+                      runtime::Protocol protocol = runtime::Protocol::Legacy,
+                      const QString& tcpHost = {},
+                      int tcpPort = 0);
 
 private slots:
     void OnOpen();
@@ -51,6 +53,7 @@ private slots:
     void OnSave();
     void OnSaveAs();
     void OnAutoArrange();
+    void OnOpenSpwmDemo();
     void OnExit();
     void CheckForRejectionReason();
     void OnTabChanged(int index);

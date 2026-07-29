@@ -38,18 +38,33 @@ public:
     // Persisted graph-layout presets (signal sets of the three plots).
     void LoadAutosave();
     void SaveAutosave();
+    static std::array<QStringList, 3> BuiltinSpwmLayout();
+    void EnsureBuiltinPresets();
+    void ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout);
+    void ApplySpwmViewWindows();
 
 private slots:
     void OnStoreChanged();
     void OnSavePreset();
     void OnLoadPreset();
+    void OnLoadBuiltinSpwm();
+    void OnTogglePause();
+    void OnSimPauseChanged(bool paused);
 
 private:
     void RefreshRecentCombo();
+    void UpdatePauseButton(bool paused);
+
+    bool applied_spwm_layout_ = false;
 
     RuntimeController* controller_;
 
-    QLabel* headerLabel_ = nullptr;
+    // Compact status chips replacing the old single-line wall of counters.
+    QLabel* linkChip_ = nullptr;
+    QLabel* stateChip_ = nullptr;
+    QLabel* rateChip_ = nullptr;
+    QLabel* healthChip_ = nullptr;
+    QPushButton* pauseButton_ = nullptr;
     QLineEdit* presetNameEdit_ = nullptr;
     QComboBox* recentCombo_ = nullptr;
     QLabel* presetStatus_ = nullptr;

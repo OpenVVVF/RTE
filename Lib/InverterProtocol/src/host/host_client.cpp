@@ -16,8 +16,17 @@ InverterClient::~InverterClient() {
 
 bool InverterClient::start(const std::string& port, int baud) {
     stop();
+    link_ = LinkKind::Uart;
     running_.store(true);
-    thread_ = std::thread(&InverterClient::threadMain, this, port, baud);
+    thread_ = std::thread(&InverterClient::threadMainUart, this, port, baud);
+    return true;
+}
+
+bool InverterClient::startTcp(const std::string& host, int port) {
+    stop();
+    link_ = LinkKind::Tcp;
+    running_.store(true);
+    thread_ = std::thread(&InverterClient::threadMainTcp, this, host, port);
     return true;
 }
 
@@ -26,7 +35,8 @@ void InverterClient::stop() {
     if (thread_.joinable()) {
         thread_.join();
     }
-    transport_.close();
+    uart_.close();
+    tcp_.close();
 }
 
 bool InverterClient::isRunning() const {
@@ -34,7 +44,12 @@ bool InverterClient::isRunning() const {
 }
 
 bool InverterClient::sendCommandLine(const std::string& line) {
-    return transport_.sendLine(line);
+    return link_ == LinkKind::Tcp ? tcp_.sendLine(line) : uart_.sendLine(line);
+}
+
+bool InverterClient::sendPacket(const uint8_t* packet, size_t len) {
+    return link_ == LinkKind::Tcp ? tcp_.sendPacket(packet, len)
+                                  : uart_.sendPacket(packet, len);
 }
 
 bool InverterClient::sendCommand(uint8_t opcode, uint8_t req_id) {
@@ -49,7 +64,7 @@ bool InverterClient::sendCommand(uint8_t opcode, uint8_t req_id) {
                           packet, sizeof(packet), &packet_len) != IVP_OK)
         return false;
 
-    return transport_.sendPacket(packet, packet_len);
+    return sendPacket(packet, packet_len);
 }
 
 bool InverterClient::sendCommand(uint8_t opcode, uint8_t req_id, float a) {
@@ -65,7 +80,7 @@ bool InverterClient::sendCommand(uint8_t opcode, uint8_t req_id, float a) {
                           packet, sizeof(packet), &packet_len) != IVP_OK)
         return false;
 
-    return transport_.sendPacket(packet, packet_len);
+    return sendPacket(packet, packet_len);
 }
 
 bool InverterClient::sendCommand(uint8_t opcode, uint8_t req_id, float a, float b) {
@@ -82,7 +97,7 @@ bool InverterClient::sendCommand(uint8_t opcode, uint8_t req_id, float a, float 
                           packet, sizeof(packet), &packet_len) != IVP_OK)
         return false;
 
-    return transport_.sendPacket(packet, packet_len);
+    return sendPacket(packet, packet_len);
 }
 
 ClientStats InverterClient::stats() const {
@@ -90,94 +105,96 @@ ClientStats InverterClient::stats() const {
     return stats_;
 }
 
-void InverterClient::threadMain(const std::string& port, int baud) {
-    auto reopen = [&](bool first) -> bool {
-        transport_.close();
-        std::this_thread::sleep_for(std::chrono::milliseconds(first ? 200 : 150));
-
-        while (running_.load()) {
-            if (transport_.open(port, baud)) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        }
-        if (!running_.load()) return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        return true;
-    };
-
-    if (!reopen(true)) return;
-
+void InverterClient::pumpTransport() {
     auto t0 = std::chrono::steady_clock::now();
     auto last_good = t0;
     uint64_t frames_in_window = 0;
     uint64_t bytes_in_window = 0;
     auto window_start = t0;
 
-    while (running_.load()) {
+    bool disconnect = false;
+
+    while (running_.load() && !disconnect) {
         auto now = std::chrono::steady_clock::now();
-        if (now - last_good > std::chrono::seconds(2)) {
-            if (!reopen(false)) break;
-            last_good = std::chrono::steady_clock::now();
-        }
 
-        uint8_t packet[UartTransport::RX_FRAME_CAP];
-        int n = transport_.receivePacket(packet, sizeof(packet));
-        if (n < 0) {
-            std::lock_guard<std::mutex> lk(stats_mtx_);
-            ++stats_.bad_frames;
-            continue;
-        }
-        if (n == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
-        }
-
-        bytes_in_window += static_cast<uint64_t>(n);
-        stats_.rx_bytes += static_cast<uint64_t>(n);
-
-        ivp_header_t h;
-        const uint8_t* payload = nullptr;
-        uint16_t payload_len = 0;
-        ivp_result_t r = ivp_packet_parse(packet, static_cast<size_t>(n), &h, &payload, &payload_len);
-
-        if (r != IVP_OK) {
-            std::lock_guard<std::mutex> lk(stats_mtx_);
-            ++stats_.bad_frames;
-            if (r == IVP_ERR_BAD_CRC) ++stats_.reject_crc;
-            else if (r == IVP_ERR_BAD_MAGIC || r == IVP_ERR_BAD_VERSION || r == IVP_ERR_BAD_MSG_TYPE)
-                ++stats_.reject_hdr;
-            else if (r == IVP_ERR_BAD_LENGTH)
-                ++stats_.reject_len;
-            continue;
-        }
-
-        if (h.msg_type == IVP_MSG_TELEMETRY_DEFINE) {
-            ivp_define_iter_t it;
-            if (ivp_telemetry_define_iter_init(payload, payload_len, &it) == IVP_OK) {
-                std::lock_guard<std::mutex> lk(reg_mtx_);
-                uint16_t id;
-                uint8_t type;
-                const char* key;
-                uint8_t key_len;
-                while (ivp_telemetry_define_iter_next(&it, &id, &type, &key, &key_len)) {
-                    KeyDef def;
-                    def.type = type;
-                    def.key.assign(key, key_len);
-                    registry_[id] = std::move(def);
+        bool got_packet = false;
+        for (;;) {
+            uint8_t packet[4096];
+            const int n = (link_ == LinkKind::Tcp)
+                              ? tcp_.receivePacket(packet, sizeof(packet))
+                              : uart_.receivePacket(packet, sizeof(packet));
+            if (n < 0) {
+                std::lock_guard<std::mutex> lk(stats_mtx_);
+                ++stats_.bad_frames;
+                if (link_ == LinkKind::Tcp) {
+                    disconnect = true;
                 }
+                break;
             }
-        } else if (h.msg_type == IVP_MSG_TELEMETRY_DATA) {
-            handleTelemetryData(payload, payload_len, h.time_us);
-        } else if (h.msg_type == IVP_MSG_COMMAND_RSP) {
-            handleCommandResponse(payload, payload_len);
+            if (n == 0) {
+                break;
+            }
+
+            got_packet = true;
+            bytes_in_window += static_cast<uint64_t>(n);
+            stats_.rx_bytes += static_cast<uint64_t>(n);
+
+            ivp_header_t h;
+            const uint8_t* payload = nullptr;
+            uint16_t payload_len = 0;
+            ivp_result_t r =
+                ivp_packet_parse(packet, static_cast<size_t>(n), &h, &payload, &payload_len);
+
+            if (r != IVP_OK) {
+                std::lock_guard<std::mutex> lk(stats_mtx_);
+                ++stats_.bad_frames;
+                if (r == IVP_ERR_BAD_CRC) ++stats_.reject_crc;
+                else if (r == IVP_ERR_BAD_MAGIC || r == IVP_ERR_BAD_VERSION ||
+                         r == IVP_ERR_BAD_MSG_TYPE)
+                    ++stats_.reject_hdr;
+                else if (r == IVP_ERR_BAD_LENGTH)
+                    ++stats_.reject_len;
+                continue;
+            }
+
+            if (h.msg_type == IVP_MSG_TELEMETRY_DEFINE) {
+                ivp_define_iter_t it;
+                if (ivp_telemetry_define_iter_init(payload, payload_len, &it) == IVP_OK) {
+                    std::lock_guard<std::mutex> lk(reg_mtx_);
+                    uint16_t id;
+                    uint8_t type;
+                    const char* key;
+                    uint8_t key_len;
+                    while (ivp_telemetry_define_iter_next(&it, &id, &type, &key, &key_len)) {
+                        KeyDef def;
+                        def.type = type;
+                        def.key.assign(key, key_len);
+                        registry_[id] = std::move(def);
+                    }
+                }
+            } else if (h.msg_type == IVP_MSG_TELEMETRY_DATA) {
+                handleTelemetryData(payload, payload_len, h.time_us);
+            } else if (h.msg_type == IVP_MSG_COMMAND_RSP) {
+                handleCommandResponse(payload, payload_len);
+            }
+
+            {
+                std::lock_guard<std::mutex> lk(stats_mtx_);
+                ++stats_.good_frames;
+                stats_.last_seq = h.seq;
+            }
+            last_good = std::chrono::steady_clock::now();
+            ++frames_in_window;
         }
 
-        {
-            std::lock_guard<std::mutex> lk(stats_mtx_);
-            ++stats_.good_frames;
+        if (!got_packet) {
+            if (link_ == LinkKind::Tcp && now - last_good > std::chrono::seconds(5)) {
+                // Still connected but idle; keep waiting.
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        last_good = std::chrono::steady_clock::now();
 
-        ++frames_in_window;
+        now = std::chrono::steady_clock::now();
         float dt = std::chrono::duration<float>(now - window_start).count();
         if (dt >= 1.0f) {
             float hz = frames_in_window / dt;
@@ -195,7 +212,49 @@ void InverterClient::threadMain(const std::string& port, int baud) {
     }
 }
 
-void InverterClient::handleTelemetryData(const uint8_t* payload, uint16_t payload_len, uint32_t time_us) {
+void InverterClient::threadMainUart(const std::string& port, int baud) {
+    auto reopen = [&](bool first) -> bool {
+        uart_.close();
+        std::this_thread::sleep_for(std::chrono::milliseconds(first ? 200 : 150));
+
+        while (running_.load()) {
+            if (uart_.open(port, baud)) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        if (!running_.load()) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        return true;
+    };
+
+    while (running_.load()) {
+        if (!reopen(true)) return;
+        pumpTransport();
+        if (!running_.load()) break;
+        // UART drop — try reopen.
+    }
+}
+
+void InverterClient::threadMainTcp(const std::string& host, int port) {
+    while (running_.load()) {
+        tcp_.close();
+        while (running_.load()) {
+            if (tcp_.open(host, port)) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        if (!running_.load()) return;
+        {
+            std::lock_guard<std::mutex> lk(reg_mtx_);
+            registry_.clear();
+        }
+        pumpTransport();
+        tcp_.close();
+        if (!running_.load()) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+}
+
+void InverterClient::handleTelemetryData(const uint8_t* payload, uint16_t payload_len,
+                                         uint32_t time_us) {
     ivp_data_iter_t it;
     if (ivp_telemetry_data_iter_init(payload, payload_len, &it) != IVP_OK) return;
 
@@ -241,7 +300,7 @@ void InverterClient::handleCommandResponse(const uint8_t* payload, uint16_t payl
     ivp_arg_t arg;
     while (ivp_arg_iter_next(&args, &arg)) {
         if (arg.type == IVP_ARG_F32) fargs.push_back(arg.v.f32);
-        else if (arg.type == IVP_ARG_U8)  fargs.push_back(static_cast<float>(arg.v.u8));
+        else if (arg.type == IVP_ARG_U8) fargs.push_back(static_cast<float>(arg.v.u8));
         else if (arg.type == IVP_ARG_U16) fargs.push_back(static_cast<float>(arg.v.u16));
         else if (arg.type == IVP_ARG_U32) fargs.push_back(static_cast<float>(arg.v.u32));
     }
