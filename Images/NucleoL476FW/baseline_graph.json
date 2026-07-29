@@ -1,0 +1,152 @@
+{
+  "name": "nucleo_l476_baseline",
+  "nodeTypes": [
+    {
+      "id": "constant.duty",
+      "displayName": "Constant Duty",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {
+        "Duty": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+      },
+      "inlineCode": "Value = Duty;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "hw.pwm.set_duty",
+      "displayName": "Set PWM Duty Cycles",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "tim_isr",
+      "inputPorts": [
+        {
+          "name": "Duty_A",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "Duty_B",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "Duty_C",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "outputPorts": [],
+      "parameterTypes": {},
+      "inlineCode": "platform_pwm_set(Duty_A, Duty_B, Duty_C);",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "app.telemetry_log",
+      "displayName": "Telemetry Log",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "Value",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "outputPorts": [],
+      "parameterTypes": {
+        "Key": {"quantity": "string", "frame": "scalar", "dtype": "f32"}
+      },
+      "inlineCode": "platform_telemetry_log_f32(Key, Value);",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    }
+  ],
+  "nodes": [
+    {
+      "id": "DutyU",
+      "type": "constant.duty",
+      "displayName": "Duty U",
+      "domain": "tim_isr",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {"Duty": "60.0"}
+    },
+    {
+      "id": "DutyV",
+      "type": "constant.duty",
+      "displayName": "Duty V",
+      "domain": "tim_isr",
+      "position": {"x": 0.0, "y": 120.0},
+      "parameters": {"Duty": "35.0"}
+    },
+    {
+      "id": "DutyW",
+      "type": "constant.duty",
+      "displayName": "Duty W",
+      "domain": "tim_isr",
+      "position": {"x": 0.0, "y": 240.0},
+      "parameters": {"Duty": "85.0"}
+    },
+    {
+      "id": "PwmOut",
+      "type": "hw.pwm.set_duty",
+      "displayName": "PWM Out",
+      "domain": "tim_isr",
+      "position": {"x": 300.0, "y": 120.0},
+      "parameters": {}
+    },
+    {
+      "id": "Heartbeat",
+      "type": "constant.duty",
+      "displayName": "Heartbeat Constant",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 400.0},
+      "parameters": {"Duty": "1.0"}
+    },
+    {
+      "id": "LogHeartbeat",
+      "type": "app.telemetry_log",
+      "displayName": "Log Heartbeat",
+      "domain": "app_loop",
+      "position": {"x": 300.0, "y": 400.0},
+      "parameters": {"Key": "cg_heartbeat"}
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {"nodeId": "DutyU", "portName": "Value"},
+      "to": {"nodeId": "PwmOut", "portName": "Duty_A"}
+    },
+    {
+      "id": "c2",
+      "from": {"nodeId": "DutyV", "portName": "Value"},
+      "to": {"nodeId": "PwmOut", "portName": "Duty_B"}
+    },
+    {
+      "id": "c3",
+      "from": {"nodeId": "DutyW", "portName": "Value"},
+      "to": {"nodeId": "PwmOut", "portName": "Duty_C"}
+    },
+    {
+      "id": "c4",
+      "from": {"nodeId": "Heartbeat", "portName": "Value"},
+      "to": {"nodeId": "LogHeartbeat", "portName": "Value"}
+    }
+  ],
+  "bridges": []
+}
