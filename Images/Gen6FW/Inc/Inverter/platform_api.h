@@ -131,6 +131,24 @@ bool platform_digital_read(uint8_t pin);
 void platform_digital_write(uint8_t pin, bool value);
 
 /* --------------------------------------------------------------------------
+ * CAN bus (CanBus driver; buses: 0 = FDCAN1 "A", 1 = FDCAN2 "B")
+ * -------------------------------------------------------------------------- */
+
+/** @brief Queue a classic CAN frame for transmission (never blocks).
+ *  @param bus  1 = "A"/FDCAN1, 2 = "B"/FDCAN2. */
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc);
+
+/**
+ * @brief Latest received frame with an exact ID match.
+ * Writes up to 8 payload bytes into data (may be stale; use seq_out to
+ * detect new arrivals) and the mailbox sequence counter into seq_out.
+ * @param bus  1 = "A"/FDCAN1, 2 = "B"/FDCAN2.
+ * @return payload length 0..8, or -1 if no frame with this ID yet.
+ */
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out);
+
+/* --------------------------------------------------------------------------
  * Safety / faults
  * -------------------------------------------------------------------------- */
 
