@@ -1,9 +1,12 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/CAN/CanBus.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Telemetry.h"
@@ -66,59 +69,152 @@ bool platform_get_encoder_angle(float* angle_deg) {
 }
 
 float platform_get_encoder_angle_latest(void) {
-    return Inverter::encoderADC().lastAngle();
+    /* Extrapolated to the read instant: smooths the sample staircase between
+     * the 5 kHz encoder stream and the 10 kHz FOC steps. */
+    return Inverter::encoderADC().extrapolatedAngleDeg();
 }
 
 float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }
 
+float platform_get_dc_link_current(void) {
+    return Inverter::dcLinkCurrentSensor().current();
+}
+
+float platform_get_dc_link_power(void) {
+    return Inverter::dcLinkCurrentSensor().power();
+}
+
+/* Read the driver's 20 kHz DMA snapshot directly - never an ad-hoc SPI
+ * transaction from the main loop (racing the burst path corrupts frames and
+ * can block for the SPI timeout). */
+float platform_phase_voltage_u(void) {
+    return Inverter::dcLinkVoltageSensor().adc().voltage(0);
+}
+
+float platform_phase_voltage_v(void) {
+    return Inverter::dcLinkVoltageSensor().adc().voltage(1);
+}
+
+float platform_phase_voltage_w(void) {
+    return Inverter::dcLinkVoltageSensor().adc().voltage(2);
+}
+
 /* --------------------------------------------------------------------------
- * Application sensors — placeholders for codegen layer to fill.
- * --------------------------------------------------------------------------
- * The analog pins are already configured in Src/adc.c:
- *   AIN_THROTTLE_A  = PA3 / ADC2_INP15
- *   AIN_THROTTLE_B  = PA4 / ADC2_INP18
+ * Application sensors — backed by the ApplicationSensors base-image driver.
+ *
+ * The analog pins are configured in Src/adc.c:
+ *   AIN_THROTTLE_A  = PA3 / ADC1_INP15 (shared ADC1/ADC2)
+ *   AIN_THROTTLE_B  = PA4 / ADC1_INP18 (shared ADC1/ADC2)
  *   AIN_TMP_SENSE_1 = PA5 / ADC1_INP19
  *   AIN_TMP_SENSE_2 = PA1 / ADC1_INP17
  *   AIN_TMP_SENSE_3 = PA0 / ADC1_INP16
  *   AIN_MOTOR_TMP   = PF4 / ADC3_INP9
- *
- * Codegen is expected to add a slow ADC sampler in the app_loop domain and
- * update these variables (or replace these stubs with direct reads).
  * -------------------------------------------------------------------------- */
 
-static float s_throttle_a = 0.0f;
-static float s_throttle_b = 0.0f;
-static float s_motor_temp = 0.0f;
-static float s_inverter_temp[3] = {0.0f, 0.0f, 0.0f};
-
 float platform_get_throttle_a(void) {
-    return s_throttle_a;
+    return Inverter::appSensors().throttleA();
 }
 
 float platform_get_throttle_b(void) {
-    return s_throttle_b;
+    return Inverter::appSensors().throttleB();
+}
+
+bool platform_get_throttle_valid(void) {
+    return Inverter::appSensors().throttlePlausible();
 }
 
 float platform_get_motor_temperature(void) {
-    return s_motor_temp;
+    return Inverter::appSensors().motorTemperatureC();
 }
 
 float platform_get_inverter_temperature(uint8_t channel) {
-    if (channel > 2) {
-        return 0.0f;
-    }
-    return s_inverter_temp[channel];
+    return Inverter::appSensors().inverterTemperatureC(channel);
 }
 
-void platform_sample_application_sensors(void) {
-    /* CODEGEN TODO: Add slow ADC sampling here for:
-     *   AIN_THROTTLE_A, AIN_THROTTLE_B
-     *   AIN_TMP_SENSE_1/2/3
-     *   AIN_MOTOR_TMP
-     * Update s_throttle_a/b, s_motor_temp, s_inverter_temp[].
-     */
+/* --------------------------------------------------------------------------
+ * User digital IO
+ *
+ * Pins 1..8  -> USER_DIN_1..8  (inputs)
+ * Pins 1..4  -> USER_DOUT_1..4 (outputs)
+ * Pin  5     -> DEBUG_GREEN_LED, pin 6 -> DEBUG_ORANGE_LED (outputs)
+ * -------------------------------------------------------------------------- */
+
+namespace {
+struct DioMapEntry {
+    GPIO_TypeDef* port;
+    uint16_t      pin;
+};
+
+constexpr DioMapEntry DIN_MAP[8] = {
+    {USER_DIN_1_GPIO_Port, USER_DIN_1_Pin},
+    {USER_DIN_2_GPIO_Port, USER_DIN_2_Pin},
+    {USER_DIN_3_GPIO_Port, USER_DIN_3_Pin},
+    {USER_DIN_4_GPIO_Port, USER_DIN_4_Pin},
+    {USER_DIN_5_GPIO_Port, USER_DIN_5_Pin},
+    {USER_DIN_6_GPIO_Port, USER_DIN_6_Pin},
+    {USER_DIN_7_GPIO_Port, USER_DIN_7_Pin},
+    {USER_DIN_8_GPIO_Port, USER_DIN_8_Pin},
+};
+
+constexpr DioMapEntry DOUT_MAP[6] = {
+    {USER_DOUT_1_GPIO_Port, USER_DOUT_1_Pin},
+    {USER_DOUT_2_GPIO_Port, USER_DOUT_2_Pin},
+    {USER_DOUT_3_GPIO_Port, USER_DOUT_3_Pin},
+    {USER_DOUT_4_GPIO_Port, USER_DOUT_4_Pin},
+    {DEBUG_GREEN_LED_GPIO_Port, DEBUG_GREEN_LED_Pin},
+    {DEBUG_ORANGE_LED_GPIO_Port, DEBUG_ORANGE_LED_Pin},
+};
+} // namespace
+
+bool platform_digital_read(uint8_t pin) {
+    if (pin < 1 || pin > 8) {
+        return false;
+    }
+    return HAL_GPIO_ReadPin(DIN_MAP[pin - 1].port, DIN_MAP[pin - 1].pin) == GPIO_PIN_SET;
+}
+
+void platform_digital_write(uint8_t pin, bool value) {
+    if (pin < 1 || pin > 6) {
+        return;
+    }
+    HAL_GPIO_WritePin(DOUT_MAP[pin - 1].port, DOUT_MAP[pin - 1].pin,
+                      value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+/* --------------------------------------------------------------------------
+ * CAN bus
+ * -------------------------------------------------------------------------- */
+
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc) {
+    /* Graph/shell-facing bus numbering is 1-based (1 = "A"/FDCAN1,
+     * 2 = "B"/FDCAN2); the driver is 0-based. */
+    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
+    return Inverter::canBus().send(b, id, ext, data, dlc);
+}
+
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out) {
+    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
+    Inverter::CanBus::Frame f;
+    uint32_t seq = 0;
+    if (!Inverter::canBus().rxLatest(b, id, f, &seq)) {
+        if (seq_out != nullptr) {
+            *seq_out = seq;
+        }
+        return -1;
+    }
+    const uint8_t n = f.dlc > 8 ? 8 : f.dlc;
+    if (data != nullptr) {
+        for (uint8_t i = 0; i < n; ++i) {
+            data[i] = f.data[i];
+        }
+    }
+    if (seq_out != nullptr) {
+        *seq_out = seq;
+    }
+    return n;
 }
 
 /* --------------------------------------------------------------------------

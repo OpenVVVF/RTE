@@ -1,5 +1,6 @@
 #include "Inverter/InverterMain.h"
 #include "Inverter/AppState.h"
+#include "Inverter/LoopStats.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
 #include "Inverter/Calibration/CalKvStore.h"
@@ -13,10 +14,14 @@
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/CurrentSensorTest.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/CAN/CanBus.h"
+#include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -82,6 +87,10 @@ static void init()
         /* Restore learned encoder envelope bounds (written by calibration) so
          * the angle decoder is correct from boot without re-running cal. */
         Inverter::CalKvStore::loadEncoderBounds();
+
+        /* Populate the runtime motor calibration from the KV store so no
+         * code path ever falls back to the debug-default angle/sign. */
+        Inverter::CalKvStore::loadMotorCalibration();
     }
 
     /* Telemetry over the MCP2221A USB-UART bridge (USART3). */
@@ -127,11 +136,23 @@ static void init()
     /* Isolated high-voltage DC-link sensor on SPI2 (VSENSE_ISO_ADC_INTERRUPT = PD1). */
     Inverter::dcLinkVoltageSensor().init();
 
+    /* Slow application sensors (temperatures now, throttle in a later stage).
+     * ADC3 free-runs; the update() call in loop() only harvests completed
+     * conversions and never blocks. */
+    Inverter::appSensors().init();
+
+    /* CAN buses (KV enables; no-op when both disabled). */
+    Inverter::canBus().init();
+
+    /* CAN session protocol (KV Can.Proto.*; no-op unless enabled). */
+    Inverter::canSession().init();
+
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
+    // RTE_EMIT: vsense init
 
     /* The supervisor owns gate-driver sequencing and PWM start/stop for the
      * generated control loop.  It does NOT start PWM at boot; use the shell
@@ -151,11 +172,34 @@ static void loop()
 {
     static uint32_t s_last_ontime_ms = 0;
 
+    /* Per-domain rate instrumentation: permanent canary for anything that
+     * degrades loop throughput (a blocking driver shows up here immediately).
+     * ISR domains are hardware-timed; a starving ISR shows up as app_loop
+     * collapsing instead. */
+    static uint32_t s_last_hz_ms = 0;
+    ++Inverter::LoopStats::app_loop;
+
     const uint32_t now_ms = HAL_GetTick();
+
+    if ((now_ms - s_last_hz_ms) >= 1000U) {
+        Telemetry::log("hz_app_loop", static_cast<float>(Inverter::LoopStats::app_loop));
+        Telemetry::log("hz_vsense", static_cast<float>(Inverter::LoopStats::vsense));
+        Telemetry::log("hz_tim_isr", static_cast<float>(Inverter::LoopStats::tim_isr));
+        Telemetry::log("hz_adc_isr", static_cast<float>(Inverter::LoopStats::adc_isr));
+        Inverter::LoopStats::app_loop = 0;
+        Inverter::LoopStats::vsense = 0;
+        Inverter::LoopStats::tim_isr = 0;
+        Inverter::LoopStats::adc_isr = 0;
+        s_last_hz_ms = now_ms;
+    }
 
     /* RTE codegen: application-domain step (throttle, temperature, CAN command
      * dispatch, state machines, etc.).  Runs at main-loop cadence. */
     // RTE_EMIT: app_loop step
+
+    /* Voltage-sense domain step (MAX22530 phase + DC-link voltages). */
+    ++Inverter::LoopStats::vsense;
+    // RTE_EMIT: vsense step
 
     /* TIME_DOMAIN: HOUSEKEEPING_1HZ
      *   Persistent on-time counter and boot count.  Non-volatile storage write.
@@ -171,6 +215,21 @@ static void loop()
     Inverter::dcLinkVoltageSensor().update();
     Inverter::dcLinkCurrentSensor().update();
     Inverter::supplyMonitorUpdate();
+
+    /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
+    Inverter::appSensors().update();
+
+    /* CAN: drain TX queues, bus-off recovery, session heartbeat watch. */
+    Inverter::canBus().update();
+    Inverter::canSession().update();
+
+    /* Encoder: RPM estimate + signal-quality fault evaluation (the DMA ISR
+     * only decodes and publishes the angle snapshot). */
+    Inverter::encoderADC().diagnose();
+
+    /* Phase-current sensors: reference-channel plausibility (armed after
+     * first healthy sighting, so boot rail settle can't false-trip). */
+    Inverter::phaseCurrentADC().diagnose();
 
     /* Calibration machinery: pump the open-loop controller and every
      * calibrator state machine.  All early-out when inactive. */

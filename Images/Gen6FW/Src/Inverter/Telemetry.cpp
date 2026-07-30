@@ -1,5 +1,7 @@
 #include "Inverter/Telemetry.h"
 
+#include <inverter_protocol/protocol.h>
+
 #include "main.h"
 #include "usart.h"
 
@@ -19,18 +21,10 @@ namespace Telemetry {
 // ============================================================
 // Wire protocol
 // ============================================================
-#pragma pack(push, 1)
-struct TelemetryHeader {
-    uint32_t magic;
-    uint8_t  version;
-    uint8_t  msg_type;
-    uint16_t payload_len;
-    uint32_t seq;
-    uint32_t time_us;
-};
-#pragma pack(pop)
-
-static_assert(sizeof(TelemetryHeader) == 16, "TelemetryHeader must be 16 bytes");
+/* The packet format (header, CRC, COBS) is owned by the shared
+ * InverterProtocol library (Lib/InverterProtocol); this file keeps only the
+ * device-side scheduling, key registry, and UART transport. */
+static_assert(sizeof(ivp_header_t) == 16, "ivp header must be 16 bytes");
 
 enum ValueType : uint8_t {
     VT_F32      = 1,
@@ -71,50 +65,6 @@ static constexpr size_t   TX_BUF_SIZE           = 8192;
 // ============================================================
 // Helpers
 // ============================================================
-static uint16_t crc16_ccitt(const uint8_t* data, size_t len) {
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; ++i) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int b = 0; b < 8; ++b) {
-            crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
-        }
-    }
-    return crc;
-}
-
-static size_t cobs_encode(const uint8_t* in, size_t len, uint8_t* out, size_t out_cap) {
-    if (out_cap == 0) return 0;
-
-    size_t read_i = 0;
-    size_t write_i = 1;
-    size_t code_i = 0;
-    uint8_t code = 1;
-
-    while (read_i < len) {
-        if (in[read_i] == 0) {
-            if (write_i >= out_cap) return 0;
-            out[code_i] = code;
-            code = 1;
-            code_i = write_i++;
-            ++read_i;
-            continue;
-        }
-
-        if (write_i >= out_cap) return 0;
-        out[write_i++] = in[read_i++];
-        if (++code == 0xFF) {
-            if (write_i >= out_cap) return 0;
-            out[code_i] = code;
-            code = 1;
-            code_i = write_i++;
-        }
-    }
-
-    if (code_i >= out_cap) return 0;
-    out[code_i] = code;
-    return write_i;
-}
-
 static inline void put_u16(uint8_t*& w, uint16_t v) {
     *w++ = (uint8_t)(v & 0xFF);
     *w++ = (uint8_t)((v >> 8) & 0xFF);
@@ -299,6 +249,7 @@ static uint16_t g_sensor_chunk_limit = 0;
 static uint32_t g_last_send_us   = 0;
 static uint32_t g_last_define_us = 0;
 static uint32_t g_frame_seq      = 0;
+static bool (*g_extra_frame_sink)(const uint8_t*, size_t) = nullptr;
 
 // ============================================================
 // Time source
@@ -518,16 +469,20 @@ static size_t build_data_payload(uint8_t* payload, size_t cap) {
 // ============================================================
 // Frame sender
 // ============================================================
+void set_extra_frame_sink(bool (*sink)(const uint8_t* packet, size_t len)) {
+    g_extra_frame_sink = sink;
+}
+
 static bool send_frame(MsgType type, const uint8_t* payload, size_t payload_len, uint32_t now_us) {
-    TelemetryHeader h{};
-    h.magic = MAGIC;
-    h.version = VERSION;
+    ivp_header_t h{};
+    h.magic = IVP_MAGIC;
+    h.version = IVP_VERSION;
     h.msg_type = (uint8_t)type;
     h.payload_len = (uint16_t)payload_len;
     h.seq = g_frame_seq++;
     h.time_us = now_us;
 
-    uint8_t raw[sizeof(TelemetryHeader) + DATA_PAYLOAD_MAX + 2];
+    uint8_t raw[sizeof(ivp_header_t) + DATA_PAYLOAD_MAX + 2];
     size_t raw_len = 0;
 
     std::memcpy(raw + raw_len, &h, sizeof(h));
@@ -538,15 +493,21 @@ static bool send_frame(MsgType type, const uint8_t* payload, size_t payload_len,
         raw_len += payload_len;
     }
 
-    const uint16_t crc = crc16_ccitt(raw, raw_len);
+    const uint16_t crc = ivp_crc16_ccitt(raw, raw_len);
     raw[raw_len++] = (uint8_t)(crc & 0xFF);
     raw[raw_len++] = (uint8_t)((crc >> 8) & 0xFF);
+
+    if (g_extra_frame_sink != nullptr) {
+        /* Secondary transport (e.g. CAN session): gets the raw packet,
+         * never affects the UART path. */
+        g_extra_frame_sink(raw, raw_len);
+    }
 
     constexpr size_t RAW_MAX  = sizeof(raw);
     constexpr size_t COBS_MAX = RAW_MAX + (RAW_MAX / 254) + 2;
     uint8_t encoded[COBS_MAX + 1];
 
-    const size_t enc_len = cobs_encode(raw, raw_len, encoded, sizeof(encoded) - 1);
+    const size_t enc_len = ivp_cobs_encode(raw, raw_len, encoded, sizeof(encoded) - 1);
     if (!enc_len) return false;
 
     encoded[enc_len] = 0;

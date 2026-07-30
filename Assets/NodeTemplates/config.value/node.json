@@ -1,6 +1,7 @@
 {
   "id": "config.value",
   "displayName": "Config Value",
+  "defaultName": "Cfg",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",

@@ -1,0 +1,48 @@
+{
+  "id": "hw.temperatures",
+  "displayName": "Temperatures",
+  "defaultName": "Temps",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "T_Motor",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Inv1",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Inv2",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Inv3",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

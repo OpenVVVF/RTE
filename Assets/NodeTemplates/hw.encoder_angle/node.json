@@ -1,6 +1,7 @@
 {
   "id": "hw.encoder_angle",
   "displayName": "Encoder Angle",
+  "defaultName": "Encoder",
   "maxInstances": 0,
   "isEntryPoint": true,
   "domain": "",

@@ -1,6 +1,7 @@
 {
   "id": "hw.phase_current_reader",
   "displayName": "Phase Current Reader",
+  "defaultName": "Currents",
   "maxInstances": 1,
   "isEntryPoint": true,
   "domain": "app_loop",

@@ -1,14 +1,19 @@
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/AppState.h"
+#include "Inverter/LoopStats.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
+#include "Inverter/Drivers/Sensors/SpikeRecorder.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
 #include "adc.h"
 #include "tim.h"
+
+#include "../../../generated/domain_tim_isr_generated.h"
 
 #include <cstdio>
 #include <cmath>
@@ -129,6 +134,12 @@ bool PhaseCurrentADC::initTrigger() {
     }
 
     MODIFY_REG(htim1.Instance->CR2, TIM_CR2_MMS, TIM_TRGO_OC4REF);
+
+    /* TRGO2 = update event: triggers the encoder's ADC2 regular scan so the
+     * angle stream is synchronous with the control timebase while running
+     * (ControlSupervisor switches the encoder between TIM2 at idle and
+     * TIM1 TRGO2 in control). */
+    MODIFY_REG(htim1.Instance->CR2, TIM_CR2_MMS2, TIM_TRGO2_UPDATE);
     return true;
 }
 
@@ -313,6 +324,7 @@ bool PhaseCurrentADC::calibrateOffsets() {
 }
 
 void PhaseCurrentADC::onInjectedConversionComplete() {
+    ++LoopStats::adc_isr;
     /* RTE codegen: ADC current-sense step.  Generated code can consume the raw
      * or scaled phase currents for protection, observers, or logging.
      * The base image continues to perform safety overcurrent checks below. */
@@ -330,6 +342,21 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
 
     m_current_u = m_iu - m_offset_u;
     m_current_v = m_iv - m_offset_v;
+
+    /* Spike event recorder: synchronized raw currents + encoder snapshot for
+     * glitch forensics (see `spikes` shell command). */
+    spikeRecorder().onSample(HAL_GetTick(),
+                             static_cast<uint16_t>(m_raw_u_sig),
+                             static_cast<uint16_t>(m_raw_v_sig),
+                             static_cast<uint16_t>(m_raw_u_ref),
+                             static_cast<uint16_t>(m_raw_v_ref),
+                             m_current_u, m_current_v,
+                             encoderADC().extrapolatedAngleDeg(),
+                             static_cast<uint16_t>(encoderADC().lastRawSin()),
+                             static_cast<uint16_t>(encoderADC().lastRawCos()),
+                             appState.tim_isr.Svpwm.Duty_A,
+                             appState.tim_isr.Svpwm.Duty_B,
+                             appState.tim_isr.Svpwm.Duty_C);
 
     /* Software overcurrent protection.  Requires several consecutive
      * samples over threshold: at high bus voltage a single switching
@@ -388,6 +415,49 @@ bool PhaseCurrentADC::latest(float& iu, float& iv, float& iw) const {
 
     iw = -(iu + iv);
     return true;
+}
+
+} // namespace Inverter
+
+namespace Inverter {
+
+void PhaseCurrentADC::diagnose() {
+    constexpr float COUNTS_TO_V = 3.3f / 65535.0f;
+    const float u_ref_v = static_cast<float>(m_raw_u_ref) * COUNTS_TO_V;
+    const float v_ref_v = static_cast<float>(m_raw_v_ref) * COUNTS_TO_V;
+
+    float lo = 1.4f, hi = 1.9f;
+    if (RteParamStore::isReady()) {
+        RteParamStore::get("Hw.PhCur.RefMinV", &lo);
+        RteParamStore::get("Hw.PhCur.RefMaxV", &hi);
+    }
+
+    const bool plausible = (u_ref_v >= lo && u_ref_v <= hi &&
+                            v_ref_v >= lo && v_ref_v <= hi);
+    if (plausible) {
+        m_ref_armed = true;  /* boot-time rail settle can't false-trip */
+        m_ref_implausible_since_ms = 0;
+        m_ref_fault_raised = false;
+        return;
+    }
+    if (!m_ref_armed) {
+        return;
+    }
+    if (m_ref_implausible_since_ms == 0) {
+        m_ref_implausible_since_ms = HAL_GetTick();
+        return;
+    }
+    if (!m_ref_fault_raised &&
+        (HAL_GetTick() - m_ref_implausible_since_ms) >= 500U) {
+        m_ref_fault_raised = true;
+        FaultManager::instance().raise(FaultSource::CurrentSensorRef,
+                                       FaultReason::SensorRefOutOfRange);
+        Telemetry::printf("[CUR] sensor ref implausible: U=%.2f V V=%.2f V (window %.1f..%.1f)",
+                          static_cast<double>(u_ref_v),
+                          static_cast<double>(v_ref_v),
+                          static_cast<double>(lo),
+                          static_cast<double>(hi));
+    }
 }
 
 } // namespace Inverter

@@ -1,6 +1,7 @@
 {
   "id": "math.park",
   "displayName": "Park Transform",
+  "defaultName": "Park",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

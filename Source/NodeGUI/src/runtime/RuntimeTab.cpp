@@ -1,8 +1,6 @@
 #include "RuntimeTab.h"
 
 #include "ConsolePanel.h"
-#include "FlashPanel.h"
-#include "HttpApiServer.h"
 #include "RuntimeController.h"
 #include "SignalTablePanel.h"
 #include "SimSpeedControl.h"
@@ -14,7 +12,6 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
-#include <QTabWidget>
 #include <QVBoxLayout>
 
 namespace NodeGUI::runtime {
@@ -106,10 +103,7 @@ void RuntimeTab::ApplySpwmViewWindows() {
     signalTablePanel_->SetViewSeconds(1.0);
 }
 
-RuntimeTab::RuntimeTab(RuntimeController* controller,
-                       FirmwareUpdater* updater,
-                       HttpApiServer* httpServer,
-                       QWidget* parent)
+RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     : QWidget(parent)
     , controller_(controller) {
     auto* layout = new QVBoxLayout(this);
@@ -162,12 +156,8 @@ RuntimeTab::RuntimeTab(RuntimeController* controller,
     signalTablePanel_ = new SignalTablePanel(controller_);
     consolePanel_ = new ConsolePanel(controller_);
 
-    auto* tabs = new QTabWidget(this);
-    telemetryPanel_ = new TelemetryPanel(controller_, tabs);
-    tabs->addTab(telemetryPanel_, QStringLiteral("Telemetry"));
-    flashPanel_ = new FlashPanel(updater, controller_, httpServer, tabs);
-    tabs->addTab(flashPanel_, QStringLiteral("Firmware Update"));
-    layout->addWidget(tabs, 1);
+    telemetryPanel_ = new TelemetryPanel(controller_, this);
+    layout->addWidget(telemetryPanel_, 1);
 
     connect(signalTablePanel_, &SignalTablePanel::graphSignalsChanged,
             telemetryPanel_, &TelemetryPanel::SetGraphSignals);

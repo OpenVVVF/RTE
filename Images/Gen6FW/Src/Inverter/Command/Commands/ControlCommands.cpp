@@ -4,6 +4,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
@@ -11,6 +12,7 @@
 #include "../../../generated/domain_app_loop_generated.h"
 #include "../../../generated/domain_adc_isr_generated.h"
 
+#include <cmath>
 #include <cstring>
 #include <strings.h>
 
@@ -174,7 +176,16 @@ private:
         void* state = nullptr;
         const RteParamDesc* desc = find(key, &state);
         if (desc == nullptr) {
-            Telemetry::printf("[SHELL] unknown config key '%s'", key);
+            /* Not a graph config node: fall back to the raw KV store so
+             * base-image driver keys (Hw.Temp.*, Hw.Thr*, Motor.Temp.*) are
+             * settable too.  Writes flush immediately; drivers re-read them
+             * on their reload path (e.g. `temp reload`) or at boot. */
+            if (!storeReady()) return;
+            if (!Inverter::RteParamStore::set(key, value)) {
+                Telemetry::printf("[SHELL] ERROR: KV store full or invalid key '%s'", key);
+                return;
+            }
+            reportFlush("config value saved to FRAM", 1);
             return;
         }
         desc->set(state, value);
@@ -186,7 +197,13 @@ private:
         void* state = nullptr;
         const RteParamDesc* desc = find(key, &state);
         if (desc == nullptr) {
-            Telemetry::printf("[SHELL] unknown config key '%s'", key);
+            float value = 0.0f;
+            if (Inverter::RteParamStore::isReady() &&
+                Inverter::RteParamStore::get(key, &value)) {
+                Telemetry::printf("[SHELL] %s = %.4f", key, static_cast<double>(value));
+            } else {
+                Telemetry::printf("[SHELL] unknown config key '%s'", key);
+            }
             return;
         }
         Telemetry::printf("[SHELL] %s = %.4f", key,
@@ -254,10 +271,163 @@ private:
     }
 };
 
+/**
+ * @brief `var <subcommand> [args...]` for graph-owned variables.
+ *
+ * RAM-only, machine-owned state (not persisted to FRAM).
+ *   var set <name> <value>   Set a var's Stored value.
+ *   var get <name>           Read it back.
+ *   var list                 List all vars and their values.
+ */
+class VarCommand : public CommandInterface {
+public:
+    VarCommand()
+      : CommandInterface("var", "Graph variables: set/get/list",
+            {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"name", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING},
+             ArgSpec{"value", "", -1e6f, 1e6f, 0.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* sub = args[0].s_val;
+        if (strcasecmp(sub, "set") == 0) {
+            if (!args[1].present || !args[2].present) {
+                Telemetry::printf("[SHELL] usage: var set <name> <value>");
+                return;
+            }
+            setVar(args[1].s_val, args[2].f_val);
+        } else if (strcasecmp(sub, "get") == 0) {
+            getVar(args[1].s_val);
+        } else if (strcasecmp(sub, "list") == 0) {
+            listVars();
+        } else {
+            Telemetry::printf("[SHELL] Unknown var subcommand '%s'. Use: set/get/list", sub);
+        }
+    }
+
+private:
+    struct VarDomain {
+        const RteParamDesc* descs;
+        size_t count;
+        void* state;
+    };
+
+    /* NOTE: no initializer_list return-by-value here (dangling backing
+     * array = wild iteration = main-loop hang).  Plain static array. */
+    static const VarDomain* allDomains(size_t& outCount) {
+        static const VarDomain kDomains[] = {
+            {app::g_app_loop_vars, app::g_app_loop_var_count, &appState.app_loop},
+            {app::g_tim_isr_vars, app::g_tim_isr_var_count, &appState.tim_isr},
+            {app::g_adc_isr_vars, app::g_adc_isr_var_count, &appState.adc_isr},
+        };
+        outCount = sizeof(kDomains) / sizeof(kDomains[0]);
+        return kDomains;
+    }
+
+    static const RteParamDesc* find(const char* name, void** stateOut) {
+        size_t domainCount = 0;
+        const VarDomain* domains = allDomains(domainCount);
+        for (size_t d = 0; d < domainCount; ++d) {
+            const VarDomain& domain = domains[d];
+            for (size_t i = 0; i < domain.count; ++i) {
+                if (strcasecmp(name, domain.descs[i].name) == 0) {
+                    *stateOut = domain.state;
+                    return &domain.descs[i];
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    void setVar(const char* name, float value) const {
+        void* state = nullptr;
+        const RteParamDesc* desc = find(name, &state);
+        if (desc == nullptr) {
+            Telemetry::printf("[SHELL] unknown var '%s'", name);
+            return;
+        }
+        desc->set(state, value);
+        Telemetry::printf("[SHELL] %s = %.4f", name, static_cast<double>(value));
+    }
+
+    void getVar(const char* name) const {
+        void* state = nullptr;
+        const RteParamDesc* desc = find(name, &state);
+        if (desc == nullptr) {
+            Telemetry::printf("[SHELL] unknown var '%s'", name);
+            return;
+        }
+        Telemetry::printf("[SHELL] %s = %.4f", name,
+                          static_cast<double>(desc->get(state)));
+    }
+
+    void listVars() const {
+        size_t domainCount = 0;
+        const VarDomain* domains = allDomains(domainCount);
+        for (size_t d = 0; d < domainCount; ++d) {
+            const VarDomain& domain = domains[d];
+            for (size_t i = 0; i < domain.count; ++i) {
+                Telemetry::printf("[SHELL]   %s = %.4f", domain.descs[i].name,
+                                  static_cast<double>(domain.descs[i].get(domain.state)));
+            }
+        }
+    }
+};
+
+/**
+ * @brief `temp [types|reload]` live view of the temperature channels.
+ */
+class TempCommand : public CommandInterface {
+public:
+    TempCommand()
+      : CommandInterface("temp", "Temperature channels: V / ohm / degC live view",
+            {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        if (args[0].present && strcasecmp(args[0].s_val, "types") == 0) {
+            Telemetry::printf("[SHELL] sensor types: 0=disabled 1=NTC-beta 2=PTC-beta "
+                              "3=KTY84-130/150 4=linear-RTD 5=PT1000 6=PT100 7=KTY83-110");
+            return;
+        }
+        if (args[0].present && strcasecmp(args[0].s_val, "reload") == 0) {
+            Inverter::appSensors().reloadConfig();
+            return;
+        }
+        if (args[0].present && strcasecmp(args[0].s_val, "debug") == 0) {
+            Inverter::appSensors().debugStatus();
+            return;
+        }
+        static const char* NAMES[Inverter::ApplicationSensors::NUM_CHANNELS] = {
+            "inv1", "inv2", "inv3", "motor",
+        };
+        for (uint8_t ch = 0; ch < Inverter::ApplicationSensors::NUM_CHANNELS; ++ch) {
+            bool enabled = false, oor = false;
+            uint8_t type = 0;
+            float volts = NAN, ohms = NAN, tempC = NAN;
+            Inverter::appSensors().channelStatus(ch, enabled, type, volts,
+                                                 ohms, tempC, oor);
+            Telemetry::printf("[SHELL] %s: en=%d type=%s V=%.3f R=%.0f ohm T=%.1f C%s",
+                              NAMES[ch], enabled ? 1 : 0,
+                              Inverter::ApplicationSensors::typeName(type),
+                              static_cast<double>(volts), static_cast<double>(ohms),
+                              static_cast<double>(tempC), oor ? " OUT-OF-RANGE" : "");
+        }
+        Telemetry::printf("[SHELL] throttle: A=%.3f V (%.2f) B=%.3f V (%.2f)%s",
+                          static_cast<double>(Inverter::appSensors().throttleAVoltage()),
+                          static_cast<double>(Inverter::appSensors().throttleA()),
+                          static_cast<double>(Inverter::appSensors().throttleBVoltage()),
+                          static_cast<double>(Inverter::appSensors().throttleB()),
+                          Inverter::appSensors().throttlePlausible() ? "" : " IMPLAUSIBLE");
+    }
+};
+
 static ControlCommand sControlCmd;
 static ConfigCommand sConfigCmd;
+static VarCommand sVarCmd;
+static TempCommand sTempCmd;
 
 void registerControlCommands(CommandManager& mgr) {
     mgr.registerCommand(&sControlCmd);
     mgr.registerCommand(&sConfigCmd);
+    mgr.registerCommand(&sVarCmd);
+    mgr.registerCommand(&sTempCmd);
 }

@@ -18,6 +18,7 @@ namespace NodeAPI {
 struct NodeType {
     std::string id;
     std::string displayName;
+    std::string defaultName;  // Default instance name for GUI node creation.
     std::vector<Port> inputPorts;
     std::vector<Port> outputPorts;
 

@@ -1,6 +1,7 @@
 {
   "id": "hw.pwm.set_duty",
   "displayName": "Set PWM Duty Cycles",
+  "defaultName": "PwmOut",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "tim_isr",

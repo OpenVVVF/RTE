@@ -1,6 +1,7 @@
 {
   "id": "control.pi_current",
   "displayName": "PI Controller (Current)",
+  "defaultName": "Pi",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

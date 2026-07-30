@@ -6,7 +6,7 @@ float raw_output = Kp * error + Ki * Integral;
 /* Dynamic voltage limit derived from DC-link voltage, matching the base
  * image's VectorPIController convention: max = Vdc * 0.5 * MaxModulation. */
 const float vdc = platform_get_dc_link_voltage();
-const float dynamic_max = vdc * 0.5f * 0.9f;
+const float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;
 const float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;
 const float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;
 

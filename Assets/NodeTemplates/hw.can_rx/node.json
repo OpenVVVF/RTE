@@ -1,0 +1,26 @@
+{
+  "id": "hw.can_rx",
+  "displayName": "CAN RX",
+  "defaultName": "CanRx",
+  "maxInstances": 0,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    { "name": "D0", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D1", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D2", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D3", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D4", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D5", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D6", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "D7", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "Dlc", "direction": "output", "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" } },
+    { "name": "Fresh", "direction": "output", "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" } }
+  ],
+  "parameterTypes": {
+    "Bus":     { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+    "Id":      { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+    "LastSeq": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" }
+  }
+}

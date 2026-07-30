@@ -10,6 +10,7 @@
 #include "pwm.h"
 #include "tim.h"
 #include "Inverter/AppState.h"
+#include "Inverter/LoopStats.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
 #include <stdbool.h>
@@ -320,6 +321,7 @@ void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance != TIM1) return;
+    ++Inverter::LoopStats::tim_isr;
 
     /* RTE codegen: PWM-synchronous control + modulation step.
      * Generated code reads sensors, runs the selected control law, and writes

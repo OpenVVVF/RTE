@@ -1,6 +1,7 @@
 {
   "id": "math.clarke",
   "displayName": "Clarke Transform",
+  "defaultName": "Clarke",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

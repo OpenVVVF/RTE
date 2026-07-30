@@ -1,8 +1,20 @@
 # RTE
 
-Source for the RTE motor inverter project. This repo holds the STM32 base firmware
-image, the node-graph toolchain libraries, and the tools that turn a graph into a
-flashable firmware binary.
+RTE is an open-source model-based development toolchain for motor drives:
+design control as a node graph, and the toolchain turns the graph into
+flashable firmware. It ships with the base image for our OpenVVVF
+STM32H723 inverter, but it is not tied to our hardware — **any platform
+can be targeted by writing your own base image**: the HAL/driver layer,
+plus the small `platform_api` contract the generated code calls.
+
+This repo holds the STM32H723 base firmware image, the node-graph
+libraries, the Qt NodeGUI editor, and the tools that turn a graph into a
+flashable firmware binary. A plant/inverter simulator based on
+[ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
+exercised in closed loop before touching hardware.
+
+Hardware designs and safety documentation live in
+[OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
 
 > **A note on the name:** *VVVF* stands for Variable Voltage Variable Frequency — it describes the output, not the control strategy. This platform is **not** limited to scalar V/Hz control; it supports vector control (FOC), arbitrary modulation schemes, and any control scheme you can express through the node graph.
 
@@ -10,6 +22,9 @@ flashable firmware binary.
 
 ```
 RTE/
+├── Assets/
+│   ├── Examples/           # Example NodeAPI graphs
+│   └── NodeTemplates/      # Reusable node types for GUI + codegen
 ├── Images/
 │   └── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
 ├── Lib/
@@ -18,22 +33,46 @@ RTE/
 │   ├── RTELogger/          # Shared logging used by the host tools
 │   └── InverterProtocol/   # Shared host/device telemetry + command protocol
 └── Source/
+    ├── NodeGUI/            # Qt6 + QtNodes node editor
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
     └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
 ```
 
+- `Assets/` holds graphs and node-type templates shared by NodeGUI and codegen.
 - `Images/` contains the base firmware image that the emitter copies and modifies.
-- `Lib/` contains reusable CMake libraries used by the host tools, future GUI, and device firmware.
+- `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
 - `Source/` contains end-user executables.
+
+## Porting to your platform
+
+A base image is a normal firmware tree (HAL, startup, linker, drivers) with
+three additions: `// RTE_EMIT:` markers at the timing-domain dispatch points,
+an `AppState` global for the generated domain state, and an implementation
+of `Images/Gen6FW/Inc/Inverter/platform_api.h` — the only contract between
+generated code and hardware (PWM out, sensor reads, faults, config,
+telemetry, time). `RTECodeEmitter --base-src <your-tree>` then produces a
+flashable image from any graph. `Images/Gen6FW` is the reference
+implementation.
 
 ## Build host tools
 
-Requires CMake 3.24+ and a C++20 compiler.
+Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for NodeGUI). Clone with
+`--recurse-submodules` (or run `git submodule update --init --recursive`) so the
+QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
 ```bash
 cmake -B build -G Ninja
 cmake --build build -j8
 ```
+
+### NodeGUI
+
+```bash
+cmake --build build --target NodeGUI -j8
+./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
+```
+
+On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
 
 ## Test
 
@@ -107,31 +146,122 @@ build/rtetest-fw/
 
 ## Tools
 
+- `NodeGUI` — Qt node editor for NodeAPI graphs (open/save, domains, bridges,
+  parameter edit, auto-arrange).
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the
   firmware, generates domain code, and inserts it at `// RTE_EMIT:` markers.
 - `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally
   runs `RTECodeEmitter`, and builds the STM32 firmware.
 
-See `Source/RTECodeEmitter/README.md` and `Source/RTEFirmwareBuilder/README.md`
-for detailed usage.
+## Calibration
+
+The `cal` command runs hierarchical calibration routines; results persist to
+the FRAM KV store under `Motor.*` and are consumed by graph config nodes at
+boot:
+
+- `cal list` — routine tree + stored values
+- `cal all` — full profile in dependency order (poles+encoder, resistance,
+  PMSM inductance/flux)
+- `cal Motor.Poles`, `cal Motor.Encoder.SinCos`, `cal Motor.Resistance`,
+  `cal Motor.PMSM[.Inductance|.FluxLinkage]`, `cal stop`, `cal status`
+
+Flux linkage is measured two ways: a FOC back-EMF sweep with a joint
+least-squares fit for (psi_m, V_off) — V_off captures inverter deadtime/IGBT
+drop — and stores to `Motor.PMSM.FluxLinkage.Wb`, which enables the
+flying-start feature (resume-into-spin with a back-EMF-matched pre-seed;
+without a flux value, live starts are refused).
+
+## Voltage sensing
+
+`hw.phase_voltages` exposes all MAX22530 channels as graph outputs
+(`V_U`, `V_V`, `V_W`, `V_Dc`, filtered reads) in the `vsense` timing domain.
+Telemetered as `cg_vu_v`, `cg_vv_v`, `cg_vw_v` in the demo graph.
+
+## Temperature, throttle, and user IO
+
+The base-image `ApplicationSensors` driver samples all slow analog inputs
+with zero CPU involvement: TIM3 TRGO at 100 Hz triggers an ADC1 regular
+scan (board temps 1..3 on INP19/17/16, throttle A/B on INP15/18) into
+circular DMA, and ADC3 free-runs on the motor temp channel (INP9). The CPU
+never blocks on an ADC — `update()` only harvests finished conversions.
+
+- `hw.temperatures` (motor + 3 board channels, °C; NAN when a channel is
+  disabled or open/short). Per-channel KV config: `Hw.Temp.Bx.*` /
+  `Motor.Temp.*` (`En`, `Type`, `R25`, `Beta`, `RSer`, `Orient`, `CritC`;
+  types via `temp types`). Board channels default disabled (not populated).
+  Open/short sustained 500 ms raises a Warning; over-`CritC` raises Critical.
+- `hw.throttle` (dual channels normalized 0..1 via `Hw.ThrA/B.MinV/MaxV` +
+  `Valid`). |A−B| > 0.10 sustained 100 ms raises Critical and zeroes both.
+- `hw.digital_in` (USER_DIN_1..8) / `hw.digital_out` (USER_DOUT_1..4, pins
+  5/6 = green/orange debug LEDs), pin selected by node parameter.
+- Shell: `temp` (live V/ohm/°C + throttle), `temp types`, `temp reload`,
+  `temp debug`. `config set/get` also reach raw KV keys (driver config).
+- Rate telemetry (`hz_app_loop`, `hz_vsense`, `hz_tim_isr`, `hz_adc_isr`)
+  is always on as a throughput canary.
+
+## CAN bus
+
+Two FDCANs (FDCAN1 "A" on PA11/PA12, FDCAN2 "B" on PB12/PB6, classic
+frames; transceiver rail on PC8). Per-bus KV enables (`Can.A.En`/`Can.B.En`),
+KV bit rate (`Can.BitRate`, default 500 kbit/s).
+
+- **Graph nodes**: `hw.can_tx` (Bus/Id/Ext/Dlc/Rate + D0..D7 bytes),
+  `hw.can_rx` (Bus/Id mailbox, `Fresh` on new frame). `can` shell command:
+  status/send/rxdump, bus-off auto-recovery.
+- **Session protocol** (KV `Can.Proto.*`, master `Can.Proto.En`): a host
+  attaches (HELLO), the device answers with its info and the KV allow mask,
+  the host requests capabilities (telemetry / commands / flash-reserved),
+  and keeps the session alive with heartbeats (timeout drops it — fail-safe
+  on host loss). Telemetry streams to the session only while granted
+  (decimated, `Can.Proto.TelemDiv`); shell commands ride the same transport
+  into the shared `CommandManager`. Packets use the shared
+  `Lib/InverterProtocol` format segmented over classic CAN frames; AUTH
+  message IDs are reserved for a future password gate. IDs default
+  0x700/0x701 (`Can.Proto.IdBase`).
+- `Tools/can_session_client.py` — dependency-free socketcan test client
+  that runs the full attach/capability/telemetry/command dance.
+- Flashing over CAN: not pursued on this board. The H723 ROM FDCAN
+  bootloader listens on PD0/PD1, which is not where Gen6 routes CAN; the
+  planned dual-MCU hardware will let the MCUs reflash each other instead.
 
 ## Roadmap
 
-Medium-term goals, roughly in priority order:
+Done recently:
 
-- Restore the calibration suite (hierarchical `cal` command, results in the
-  `Motor.*` KV namespace)
-- Node parameter-as-input support in NodeAPI/codegen, so internal settings can
-  be wired and programmatically controlled
-- Default node instance name in templates (GUI team request)
-- Graph-owned variables (latches) for modes/enables and future conditional
-  logic
+- Calibration suite restored (hierarchical `cal`, results in the `Motor.*`
+  KV namespace; flux via LS fit with V_off; flying start)
+- Phase voltage sensing (`hw.phase_voltages`, `vsense` domain, snapshot reads)
+- Implicit unit extraction (dimensionless inputs accept voltage/current;
+  ToDim converters deleted)
+- Config node persistence (FRAM KV store, `config set/save/list/delete`)
+- PI voltage limit is now the true SVPWM linear limit (`Vdc/sqrt(3) * 0.95`)
+- Temperature sensing, dual throttle with plausibility check, and user
+  digital IO (`hw.temperatures`, `hw.throttle`, `hw.digital_in/out`)
+- Graph-owned variables (`var.bool/var.float/var.current` + `var` shell),
+  parameter-as-input, default node instance names
+- Encoder/control timebase sync + angle extrapolation: killed the
+  speed-dependent commutation "crackle" (encoder and FOC ran on independent
+  clocks; the consumed angle stalled then caught up in speed-proportional
+  steps). On-target instruments that found it are permanent: spike event
+  recorder (`spikes`), encoder linearity trace (`enc_trace`), per-domain
+  rate telemetry (`hz_*`)
+- Bench builds default to Release — at `-O0` the CPU cannot service the
+  control ISR load (`hz_app_loop` collapses to <100 Hz)
+
+Next up, roughly in priority order:
+
+- Current-loop tuning from measured motor parameters: run the R/L
+  calibrators, compute PI gains for a target bandwidth, slew-limit the
+  current references (the `control.slew` node exists, unwired)
+- ngspice-based plant/inverter simulator for closed-loop graph testing
+  before hardware
+- Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no
   inline code) into a renamed zip
-- Node library expansion: CAN bus (CAN1/CAN2), digital inputs, digital outputs
+- Node library expansion: CAN bus (CAN1/CAN2)
+- NodeGUI: node create/delete palette, emit/flash actions, live telemetry
 - Safety: compare against HARA/TARA/SWAD, verify base-image safety subsystems,
   then bring the docs in line
-- Firmware/system documentation
 - Full dyno validation

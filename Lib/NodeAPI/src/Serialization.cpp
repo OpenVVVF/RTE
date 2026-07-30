@@ -61,6 +61,7 @@ json ToJson(const NodeType& nodeType) {
     auto j = json::object({
         {"id", nodeType.id},
         {"displayName", nodeType.displayName},
+        {"defaultName", nodeType.defaultName},
         {"inlineCode", nodeType.inlineCode},
         {"constructorCode", nodeType.constructorCode},
         {"classHeader", nodeType.classHeader},
@@ -94,6 +95,7 @@ NodeType NodeTypeFromJson(const json& j) {
     NodeType nodeType;
     nodeType.id = j.at("id").get<std::string>();
     nodeType.displayName = j.value("displayName", "");
+    nodeType.defaultName = j.value("defaultName", "");
     nodeType.inlineCode = j.value("inlineCode", "");
     nodeType.constructorCode = j.value("constructorCode", "");
     nodeType.classHeader = j.value("classHeader", "");
@@ -124,7 +126,7 @@ json ToJson(const Node& node) {
         params[key] = value;
     }
 
-    return json::object({
+    auto j = json::object({
         {"id", node.id},
         {"type", node.type},
         {"displayName", node.displayName},
@@ -132,6 +134,10 @@ json ToJson(const Node& node) {
         {"position", ToJson(node.position)},
         {"parameters", params},
     });
+    if (!node.parameterInputs.empty()) {
+        j["parameterInputs"] = node.parameterInputs;
+    }
+    return j;
 }
 
 Node NodeFromJson(const json& j) {
@@ -145,6 +151,11 @@ Node NodeFromJson(const json& j) {
     if (j.contains("parameters") && j.at("parameters").is_object()) {
         for (const auto& [key, value] : j.at("parameters").items()) {
             node.parameters[key] = value.get<std::string>();
+        }
+    }
+    if (j.contains("parameterInputs") && j.at("parameterInputs").is_array()) {
+        for (const auto& item : j.at("parameterInputs")) {
+            node.parameterInputs.push_back(item.get<std::string>());
         }
     }
 

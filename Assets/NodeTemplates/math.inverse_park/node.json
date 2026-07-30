@@ -1,6 +1,7 @@
 {
   "id": "math.inverse_park",
   "displayName": "Inverse Park Transform",
+  "defaultName": "InvPark",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

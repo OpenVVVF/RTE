@@ -1,0 +1,1 @@
+Out = Sel ? A : B;

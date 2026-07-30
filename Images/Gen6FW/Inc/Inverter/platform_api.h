@@ -82,14 +82,32 @@ float platform_get_encoder_angle_latest(void);
 float platform_get_dc_link_voltage(void);
 
 /**
- * @brief Throttle A input [0..1] (codegen application layer fills the sampler).
+ * @brief Latest DC-link current [A] and input power [W].
+ * Zero until the startup zero-offset capture completes (~2 s).
+ */
+float platform_get_dc_link_current(void);
+float platform_get_dc_link_power(void);
+
+/* Phase voltages from the MAX22530 isolated ADC (filtered reads).
+ * Channel map: 0=U, 1=V, 2=W, 3=DC link. */
+float platform_phase_voltage_u(void);
+float platform_phase_voltage_v(void);
+float platform_phase_voltage_w(void);
+
+/**
+ * @brief Throttle A input, normalized [0..1] (0 while implausible).
  */
 float platform_get_throttle_a(void);
 
 /**
- * @brief Throttle B input [0..1] (codegen application layer fills the sampler).
+ * @brief Throttle B input, normalized [0..1] (0 while implausible).
  */
 float platform_get_throttle_b(void);
+
+/**
+ * @brief true while throttle A/B agree within the plausibility tolerance.
+ */
+bool platform_get_throttle_valid(void);
 
 /**
  * @brief Motor temperature [degC] (codegen application layer fills the sampler).
@@ -102,14 +120,33 @@ float platform_get_motor_temperature(void);
  */
 float platform_get_inverter_temperature(uint8_t channel);
 
-/**
- * @brief Trigger a one-shot sample of all slow application analog inputs.
+/* --------------------------------------------------------------------------
+ * User digital IO
  *
- * This is a codegen insertion point: the base image provides the sampler, and
- * the app_loop domain may call it once per iteration.  Until the sampler is
- * implemented the getters above return 0.
+ * platform_digital_read:  pin 1..8 -> USER_DIN_1..8; invalid pin returns false.
+ * platform_digital_write: pin 1..4 -> USER_DOUT_1..4, 5 -> green LED,
+ *                         6 -> orange LED; invalid pin is ignored.
+ * -------------------------------------------------------------------------- */
+bool platform_digital_read(uint8_t pin);
+void platform_digital_write(uint8_t pin, bool value);
+
+/* --------------------------------------------------------------------------
+ * CAN bus (CanBus driver; buses: 0 = FDCAN1 "A", 1 = FDCAN2 "B")
+ * -------------------------------------------------------------------------- */
+
+/** @brief Queue a classic CAN frame for transmission (never blocks).
+ *  @param bus  1 = "A"/FDCAN1, 2 = "B"/FDCAN2. */
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc);
+
+/**
+ * @brief Latest received frame with an exact ID match.
+ * Writes up to 8 payload bytes into data (may be stale; use seq_out to
+ * detect new arrivals) and the mailbox sequence counter into seq_out.
+ * @param bus  1 = "A"/FDCAN1, 2 = "B"/FDCAN2.
+ * @return payload length 0..8, or -1 if no frame with this ID yet.
  */
-void platform_sample_application_sensors(void);
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out);
 
 /* --------------------------------------------------------------------------
  * Safety / faults

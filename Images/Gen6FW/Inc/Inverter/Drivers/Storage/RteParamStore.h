@@ -23,7 +23,7 @@ namespace RteParamStore {
 constexpr uint32_t MAGIC          = 0x5254454BUL; /* 'RTEK' */
 constexpr uint16_t NODE_HEADER    = 2U;
 constexpr uint16_t NODE_FIRST_KV  = 3U;
-constexpr uint16_t MAX_ENTRIES    = 64U;
+constexpr uint16_t MAX_ENTRIES    = 128U;
 constexpr uint16_t MAX_KEY_LEN    = 32U;
 constexpr uint16_t ENTRY_SIZE     = 48U; /* 1+1+2+32+4+4+4 pad */
 constexpr uint16_t ENTRIES_PER_SLOT = FramStore::SLOT_SIZE / ENTRY_SIZE;

@@ -37,6 +37,12 @@ void saveEncoderBounds(uint16_t sinMin, uint16_t sinMax,
 /** Restore saved bounds into the decoder.  Returns false if not stored. */
 bool loadEncoderBounds();
 
+/** Populate the RAM MotorCalibration struct from KV store values (angle
+ * offset/sign, poles, resistance) so legacy-FOC-driven code uses the real
+ * calibrated values instead of the debug defaults (wrong sign/offset).
+ * OffsetDeg (electrical) is converted back to mechanical degrees. */
+bool loadMotorCalibration();
+
 /** Persist the RAM cache to FRAM. */
 bool flush();
 

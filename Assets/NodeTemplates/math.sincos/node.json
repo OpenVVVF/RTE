@@ -1,6 +1,7 @@
 {
   "id": "math.sincos",
   "displayName": "Sin/Cos",
+  "defaultName": "SinCos",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

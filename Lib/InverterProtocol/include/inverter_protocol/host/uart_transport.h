@@ -60,16 +60,21 @@ public:
 
     /* Try to receive one complete packet into `out`.
      * Returns packet length on success, 0 if no complete packet is available,
-     * or -1 on a framing/CRC error (caller should resync). */
+     * or -1 on a framing/CRC error (caller should resync). Bytes past the
+     * first complete frame stay buffered for the next call. */
     int receivePacket(uint8_t* out, size_t cap);
 
     /* Send a text command line followed by \n. Used by the text shell. */
     bool sendLine(const std::string& line);
 
 private:
+    /* Extracts one complete frame from rx_buf_. Same return contract as
+     * receivePacket; 0 when no full frame is buffered yet. */
+    int extractFrame(uint8_t* out, size_t cap);
+
     SerialPort port_;
-    uint8_t frame_buf_[RX_FRAME_CAP];
-    size_t frame_len_ = 0;
+    uint8_t rx_buf_[RX_FRAME_CAP * 2];
+    size_t rx_len_ = 0;
 };
 
 } // namespace ivp

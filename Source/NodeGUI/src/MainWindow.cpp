@@ -5,6 +5,7 @@
 #include "NodePalette.h"
 
 #include "runtime/ConsolePanel.h"
+#include "runtime/FlashPanel.h"
 #include "runtime/RuntimeTab.h"
 #include "runtime/SignalTablePanel.h"
 
@@ -26,15 +27,20 @@
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QScreen>
+#include <QShortcut>
+#include <QSizePolicy>
+#include <QStackedWidget>
 #include <QStatusBar>
-#include <QTabWidget>
+#include <QTabBar>
 #include <QTimer>
+#include <QToolBar>
 #include <QToolTip>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include <filesystem>
 #include <set>
+#include <vector>
 
 namespace NodeGUI {
 
@@ -133,11 +139,28 @@ MainWindow::MainWindow(QWidget* parent)
 
     layout->addWidget(view_);
 
-    // Tabs: the node editor (existing content) and the runtime view
-    // (telemetry + flashing), added by SetupRuntime().
-    tabs_ = new QTabWidget(this);
-    tabs_->addTab(central, QStringLiteral("Node Editor"));
-    setCentralWidget(tabs_);
+    // The application switcher belongs to the main-window shell, above the
+    // docks and central content. The stack below it holds only the central
+    // content for each screen.
+    auto* switcherBar = new QToolBar(QStringLiteral("Application Switcher"), this);
+    switcherBar->setObjectName(QStringLiteral("applicationSwitcherToolBar"));
+    switcherBar->setMovable(false);
+    switcherBar->setFloatable(false);
+    switcherBar->setAllowedAreas(Qt::TopToolBarArea);
+
+    appSwitcher_ = new QTabBar(switcherBar);
+    appSwitcher_->setDocumentMode(true);
+    appSwitcher_->setDrawBase(true);
+    appSwitcher_->setExpanding(false);
+    appSwitcher_->setUsesScrollButtons(false);
+    appSwitcher_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+    appSwitcher_->addTab(QStringLiteral("Node Editor"));
+    switcherBar->addWidget(appSwitcher_);
+    addToolBar(Qt::TopToolBarArea, switcherBar);
+
+    screens_ = new QStackedWidget(this);
+    screens_->addWidget(central);
+    setCentralWidget(screens_);
 
     StripBrokenSceneActions();
 
@@ -181,9 +204,24 @@ MainWindow::MainWindow(QWidget* parent)
     inspectorDock_->setWidget(inspector_);
     addDockWidget(Qt::RightDockWidgetArea, inspectorDock_);
 
-    // Each tab screen has its own set of dockable panels; switching tabs
+    // Each app screen has its own set of dockable panels; switching screens
     // saves/restores the dock layout and rebuilds the View menu.
-    connect(tabs_, &QTabWidget::currentChanged, this, &MainWindow::OnTabChanged);
+    connect(appSwitcher_, &QTabBar::currentChanged,
+            screens_, &QStackedWidget::setCurrentIndex);
+    connect(appSwitcher_, &QTabBar::currentChanged,
+            this, &MainWindow::OnTabChanged);
+
+    auto addScreenShortcut = [this](const QKeySequence& key, int screenIndex) {
+        auto* shortcut = new QShortcut(key, this);
+        connect(shortcut, &QShortcut::activated, this, [this, screenIndex] {
+            if (screenIndex < appSwitcher_->count()) {
+                appSwitcher_->setCurrentIndex(screenIndex);
+            }
+        });
+    };
+    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+1")), 0);
+    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+2")), 1);
+    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+3")), 2);
 
     // Load the node-type templates right away so the toolbox and node
     // creation work before any graph file is opened.
@@ -239,13 +277,19 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     httpApiServer_->setCommandHandler(
         [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
 
-    runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(),
-                                          firmwareUpdater_.get(),
-                                          httpApiServer_.get(),
-                                          this);
-    tabs_->addTab(runtimeTab_, QStringLiteral("Runtime"));
+    runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(), this);
+    screens_->addWidget(runtimeTab_);
+    appSwitcher_->addTab(QStringLiteral("Runtime"));
+    runtimeTab_->LoadAutosave();
 
-    // Runtime-screen docks:
+    firmwareUpdateTab_ = new runtime::FlashPanel(firmwareUpdater_.get(),
+                                                  runtimeController_.get(),
+                                                  httpApiServer_.get(),
+                                                  this);
+    screens_->addWidget(firmwareUpdateTab_);
+    appSwitcher_->addTab(QStringLiteral("Firmware Update"));
+
+    // Runtime-screen docks: the signal table and the device console. Hidden
     // while the Node Editor tab is active (see OnTabChanged).
     signalTableDock_ = new QDockWidget(QStringLiteral("Signal Table"), this);
     signalTableDock_->setObjectName(QStringLiteral("signalTableDock"));
@@ -260,7 +304,7 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     telemetryConsoleDock_->hide();
 
     // Node-screen console: same device console, docked at the bottom of the
-    // Node Editor screen, off by default — enabled via the View menu.
+    // Node Editor screen, off by default ? enabled via the View menu.
     editorConsoleDock_ = new QDockWidget(QStringLiteral("Console"), this);
     editorConsoleDock_->setObjectName(QStringLiteral("editorConsoleDock"));
     editorConsoleDock_->setWidget(
@@ -403,7 +447,9 @@ void MainWindow::RebuildViewMenu() {
     }
     viewMenu_->clear();
 
-    const bool nodeTab = !tabs_ || tabs_->currentIndex() == 0;
+    const int tabIndex = appSwitcher_ ? appSwitcher_->currentIndex() : 0;
+    const bool nodeTab = tabIndex == 0;
+    const bool runtimeTab = tabIndex == 1;
     if (nodeTab) {
         viewMenu_->addAction(arrangeAction_);
         viewMenu_->addSeparator();
@@ -413,7 +459,7 @@ void MainWindow::RebuildViewMenu() {
                 viewMenu_->addAction(dock->toggleViewAction());
             }
         }
-    } else {
+    } else if (runtimeTab) {
         for (auto* dock : {signalTableDock_.data(), telemetryConsoleDock_.data()}) {
             if (dock) {
                 viewMenu_->addAction(dock->toggleViewAction());
@@ -425,23 +471,25 @@ void MainWindow::RebuildViewMenu() {
 void MainWindow::OnTabChanged(int index) {
     // Preserve each screen's dock layout (which panels, where) across
     // switches; the first visit of a screen gets its default arrangement.
-    if (previousTab_ >= 0 && previousTab_ < 2) {
+    if (previousTab_ >= 0 && previousTab_ < 3) {
         screenStates_[previousTab_] = saveState();
     }
     previousTab_ = index;
 
-    if (index >= 0 && index < 2 && !screenStates_[index].isEmpty()) {
+    if (index >= 0 && index < 3 && !screenStates_[index].isEmpty()) {
         restoreState(screenStates_[index]);
     } else {
-        // Defaults: node screen shows toolbox + inspector; runtime screen
-        // shows the signal table + telemetry console. Panels from the other
-        // screen and the (opt-in) node-screen console stay hidden.
+        // Defaults: node screen shows toolbox + inspector, runtime shows the
+        // signal table + telemetry console, and firmware update has no docks.
+        // Panels from the other screens and the opt-in node console stay
+        // hidden.
         const bool nodeTab = (index == 0);
+        const bool runtimeTab = (index == 1);
         if (toolboxDock_) toolboxDock_->setVisible(nodeTab);
         if (inspectorDock_) inspectorDock_->setVisible(nodeTab);
         if (editorConsoleDock_) editorConsoleDock_->setVisible(false);
-        if (signalTableDock_) signalTableDock_->setVisible(!nodeTab);
-        if (telemetryConsoleDock_) telemetryConsoleDock_->setVisible(!nodeTab);
+        if (signalTableDock_) signalTableDock_->setVisible(runtimeTab);
+        if (telemetryConsoleDock_) telemetryConsoleDock_->setVisible(runtimeTab);
     }
 
     RebuildViewMenu();
@@ -603,7 +651,9 @@ void MainWindow::OnOpenSpwmDemo() {
     if (!OpenGraph(path)) {
         ShowToast(QStringLiteral("Failed to open SPWM demo graph"));
     } else {
-        tabs_->setCurrentIndex(0);
+        if (appSwitcher_) {
+            appSwitcher_->setCurrentIndex(0);
+        }
         ShowToast(QStringLiteral(
             "SPWM graph loaded. Start live sim: "
             "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));

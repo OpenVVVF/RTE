@@ -326,3 +326,179 @@ TEST(EndToEnd, DefineFrameCobsUartStyle) {
     EXPECT_EQ(type, IVP_VT_F32);
     EXPECT_EQ(std::string(key, key_len), "temp");
 }
+
+/* ========================================================================
+ * UartTransport receive-path tests (POSIX pty based)
+ * ======================================================================== */
+#ifndef _WIN32
+
+#include "inverter_protocol/host/uart_transport.h"
+
+#include <fcntl.h>
+#include <pty.h>
+#include <unistd.h>
+
+namespace {
+
+struct Pty {
+    int master = -1;
+    char slaveName[128] = {};
+
+    ~Pty() {
+        if (master >= 0) ::close(master);
+    }
+};
+
+// Opens a pty pair; the slave side is closed immediately since UartTransport
+// reopens it by path.
+bool OpenPty(Pty& pty) {
+    int slave = -1;
+    if (openpty(&pty.master, &slave, pty.slaveName, nullptr, nullptr) != 0) {
+        return false;
+    }
+    ::close(slave);
+    return true;
+}
+
+std::vector<uint8_t> MakePacket(uint32_t seq) {
+    uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
+    uint8_t packet[64];
+    size_t len = 0;
+    EXPECT_EQ(ivp_packet_encode(IVP_MSG_TELEMETRY_DATA, seq, 1000,
+                                payload, sizeof(payload),
+                                packet, sizeof(packet), &len),
+              IVP_OK);
+    return std::vector<uint8_t>(packet, packet + len);
+}
+
+void AppendFramed(std::vector<uint8_t>& stream, const std::vector<uint8_t>& packet) {
+    uint8_t encoded[128];
+    const size_t encLen = ivp_cobs_encode(packet.data(), packet.size(),
+                                          encoded, sizeof(encoded));
+    stream.insert(stream.end(), encoded, encoded + encLen);
+    stream.push_back(0x00);
+}
+
+void WriteAll(int fd, const std::vector<uint8_t>& data) {
+    size_t off = 0;
+    while (off < data.size()) {
+        const ssize_t n = ::write(fd, data.data() + off, data.size() - off);
+        ASSERT_GT(n, 0);
+        off += static_cast<size_t>(n);
+    }
+}
+
+}  // namespace
+
+// Regression test: one read() chunk at 100 Hz typically holds several frames.
+// Bytes past the first delimiter must stay buffered, not dropped.
+TEST(UartTransport, MultipleFramesInOneReadChunk) {
+    Pty pty;
+    ASSERT_TRUE(OpenPty(pty));
+
+    ivp::UartTransport transport;
+    ASSERT_TRUE(transport.open(pty.slaveName));
+
+    const auto p1 = MakePacket(1);
+    const auto p2 = MakePacket(2);
+    const auto p3 = MakePacket(3);
+
+    std::vector<uint8_t> stream;
+    AppendFramed(stream, p1);
+    AppendFramed(stream, p2);
+    AppendFramed(stream, p3);
+    WriteAll(pty.master, stream);
+
+    uint8_t out[ivp::UartTransport::RX_FRAME_CAP];
+    for (const auto& expected : {p1, p2, p3}) {
+        const int n = transport.receivePacket(out, sizeof(out));
+        ASSERT_EQ(n, static_cast<int>(expected.size()));
+        EXPECT_EQ(std::memcmp(out, expected.data(), expected.size()), 0);
+    }
+}
+
+// A garbage frame must not poison the frames that follow it.
+TEST(UartTransport, GarbageFrameResyncs) {
+    Pty pty;
+    ASSERT_TRUE(OpenPty(pty));
+
+    ivp::UartTransport transport;
+    ASSERT_TRUE(transport.open(pty.slaveName));
+
+    const auto p1 = MakePacket(7);
+    std::vector<uint8_t> stream = {0x41, 0x42, 0x00};  // invalid COBS frame
+    AppendFramed(stream, p1);
+    WriteAll(pty.master, stream);
+
+    uint8_t out[ivp::UartTransport::RX_FRAME_CAP];
+    EXPECT_EQ(transport.receivePacket(out, sizeof(out)), -1);
+
+    const int n = transport.receivePacket(out, sizeof(out));
+    ASSERT_EQ(n, static_cast<int>(p1.size()));
+    EXPECT_EQ(std::memcmp(out, p1.data(), p1.size()), 0);
+}
+
+// A frame split across two writes must complete once the tail arrives.
+TEST(UartTransport, SplitFrameCompletes) {
+    Pty pty;
+    ASSERT_TRUE(OpenPty(pty));
+
+    ivp::UartTransport transport;
+    ASSERT_TRUE(transport.open(pty.slaveName));
+
+    const auto p1 = MakePacket(9);
+    std::vector<uint8_t> stream;
+    AppendFramed(stream, p1);
+
+    const size_t half = stream.size() / 2;
+    WriteAll(pty.master, std::vector<uint8_t>(stream.begin(), stream.begin() + half));
+
+    uint8_t out[ivp::UartTransport::RX_FRAME_CAP];
+    EXPECT_EQ(transport.receivePacket(out, sizeof(out)), 0);
+
+    WriteAll(pty.master, std::vector<uint8_t>(stream.begin() + half, stream.end()));
+    const int n = transport.receivePacket(out, sizeof(out));
+    ASSERT_EQ(n, static_cast<int>(p1.size()));
+    EXPECT_EQ(std::memcmp(out, p1.data(), p1.size()), 0);
+}
+
+#endif  // _WIN32
+
+/* ========================================================================
+ * Session/capability message type tests (protocol v1, msg types 7-14)
+ * ======================================================================== */
+TEST(SessionMessages, NewTypesAccepted) {
+    /* Every msg type in the session range must pass header validation. */
+    for (uint8_t type = IVP_MSG_HELLO; type <= IVP_MSG_AUTH_RSP; ++type) {
+        uint8_t packet[64];
+        size_t len = 0;
+        ASSERT_EQ(ivp_packet_encode(type, 1, 0, nullptr, 0,
+                                    packet, sizeof(packet), &len),
+                  IVP_OK);
+
+        ivp_header_t h;
+        const uint8_t* payload = nullptr;
+        uint16_t payload_len = 0;
+        ASSERT_EQ(ivp_packet_parse(packet, len, &h, &payload, &payload_len), IVP_OK)
+            << "msg_type " << static_cast<int>(type) << " rejected";
+        EXPECT_EQ(h.msg_type, type);
+        EXPECT_EQ(h.payload_len, 0u);
+    }
+}
+
+TEST(SessionMessages, OutOfRangeTypeRejected) {
+    uint8_t packet[64];
+    size_t len = 0;
+    ASSERT_EQ(ivp_packet_encode(IVP_MSG_HEARTBEAT, 1, 0, nullptr, 0,
+                                packet, sizeof(packet), &len),
+              IVP_OK);
+
+    /* One past the last defined type must still be rejected. */
+    packet[5] = IVP_MSG_AUTH_RSP + 1;  /* msg_type field offset in header */
+
+    ivp_header_t h;
+    const uint8_t* payload = nullptr;
+    uint16_t payload_len = 0;
+    EXPECT_EQ(ivp_packet_parse(packet, len, &h, &payload, &payload_len),
+              IVP_ERR_BAD_MSG_TYPE);
+}

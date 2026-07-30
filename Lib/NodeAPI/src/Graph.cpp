@@ -93,6 +93,27 @@ bool Graph::SetNodeParameters(const std::string& nodeId,
     return false;
 }
 
+bool Graph::SetNodeDomain(const std::string& nodeId, std::string domain) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.domain = std::move(domain);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Graph::SetNodeParameterInputs(const std::string& nodeId,
+                                   std::vector<std::string> parameterInputs) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.parameterInputs = std::move(parameterInputs);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Graph::Connect(Connection connection) {
     if (connection.id.empty()) return false;
     if (ConnectionIdTaken(connection.id)) return false;
@@ -123,7 +144,20 @@ bool Graph::AddBridge(Bridge bridge) {
     const auto producerPort = FindPort(bridge.producer);
     const auto consumerPort = FindPort(bridge.consumer);
     if (!producerPort || !consumerPort) return false;
-    if (producerPort->type != bridge.type || consumerPort->type != bridge.type) return false;
+
+    /* The consumer's type must match the bridge exactly.  The producer may
+     * be a voltage/current scalar feeding a dimensionless bridge (implicit
+     * unit extraction at the store, same rule as connections). */
+    if (consumerPort->type != bridge.type) return false;
+    if (producerPort->type != bridge.type) {
+        const bool extractOk =
+            bridge.type.frame == Frame::Scalar &&
+            bridge.type.quantity == Quantity::Dimensionless &&
+            producerPort->type.frame == Frame::Scalar &&
+            (producerPort->type.quantity == Quantity::Voltage ||
+             producerPort->type.quantity == Quantity::Current);
+        if (!extractOk) return false;
+    }
 
     if (ConsumerHasConnection(bridge.consumer)) return false;
     if (ConsumerHasBridge(bridge.consumer)) return false;
@@ -164,7 +198,20 @@ std::optional<Port> Graph::FindPort(const PortRef& ref) const {
     if (!type) return std::nullopt;
 
     if (const auto port = type->FindOutputPort(ref.portName)) return *port;
-    return type->FindInputPort(ref.portName);
+    if (const auto port = type->FindInputPort(ref.portName)) return *port;
+
+    /* A parameter flagged as parameterInput on this instance is exposed as an
+     * input port, synthesized from its parameterType. */
+    for (const auto& name : node->parameterInputs) {
+        if (name == ref.portName) {
+            if (const auto paramType = type->FindParameterType(ref.portName)) {
+                return Port{.name = ref.portName,
+                            .direction = PortDirection::Input,
+                            .type = *paramType};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 bool Graph::TypeCheck(const Connection& connection) const {
@@ -172,7 +219,21 @@ bool Graph::TypeCheck(const Connection& connection) const {
     const auto toPort = FindPort(connection.to);
     if (!fromPort || !toPort) return false;
 
-    return fromPort->type == toPort->type;
+    if (fromPort->type == toPort->type) return true;
+
+    /* Implicit unit extraction: a dimensionless scalar input accepts a
+     * voltage, current, or temperature scalar output; codegen emits the
+     * .in(unit) extraction at the binding site. */
+    if (toPort->type.frame == Frame::Scalar &&
+        toPort->type.quantity == Quantity::Dimensionless &&
+        fromPort->type.frame == Frame::Scalar &&
+        (fromPort->type.quantity == Quantity::Voltage ||
+         fromPort->type.quantity == Quantity::Current ||
+         fromPort->type.quantity == Quantity::Temperature)) {
+        return true;
+    }
+
+    return false;
 }
 
 bool Graph::NodeIdTaken(const std::string& nodeId) const {
