@@ -5,8 +5,12 @@
 
 #include <QPointF>
 #include <QString>
+#include <Qt>
 
 #include <functional>
+
+class QMouseEvent;
+class QKeyEvent;
 
 namespace NodeGUI {
 
@@ -16,6 +20,11 @@ namespace NodeGUI {
 class GraphView : public QtNodes::GraphicsView {
 public:
     using QtNodes::GraphicsView::GraphicsView;
+
+    // Selects Left or Middle Mouse for canvas panning. Unsupported values
+    // safely fall back to Middle Mouse.
+    void SetPanMouseButton(Qt::MouseButton button);
+    Qt::MouseButton PanMouseButton() const { return panMouseButton_; }
 
     // Called with the dragged node-type id and the drop position in scene
     // coordinates.
@@ -29,6 +38,10 @@ protected:
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
 
     // QtNodes' showEvent recenters and re-fits the scene on EVERY show, which
     // destroys the user's pan/zoom when switching back from another tab.
@@ -37,6 +50,10 @@ protected:
 
 private:
     bool firstShow_ = true;
+    Qt::MouseButton panMouseButton_ = Qt::MiddleButton;
+    bool mousePanning_ = false;
+    bool nodeRubberBandSelecting_ = false;
+    QPoint panLastPosition_;
 };
 
 }  // namespace NodeGUI

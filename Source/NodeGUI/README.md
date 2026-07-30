@@ -49,8 +49,11 @@ Or launch with no arguments and use `File → Open`.
 - `Edit → Undo` / `Redo` restores complete graph snapshots, including nodes,
   connections, bridges, positions, domains, names, and parameter edits.
 - `Edit → Preferences` is the central settings window for application
-  keybindings, undo retention, window geometry, firmware build type, and build
-  log behavior. Preferences persist between launches.
+  keybindings, the canvas pan mouse button, undo retention, window geometry,
+  firmware build type, and build log behavior. Preferences persist between
+  launches. Middle-mouse drag pans the node canvas by default, while dragging
+  the empty canvas with the left button selects multiple nodes without
+  selecting their connections.
 - `Build → Generate Code`, `Flash`, and `Generate and Flash` operate on the
   current graph. The editor saves first, runs the firmware pipeline
   asynchronously, and streams output to the detachable Console → Logs panel.

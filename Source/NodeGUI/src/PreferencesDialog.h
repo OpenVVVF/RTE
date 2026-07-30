@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QString>
 #include <QVector>
+#include <Qt>
 
 class QAction;
 class QCheckBox;
@@ -22,6 +23,7 @@ struct AppPreferences {
     int undoHistoryLimit = 100;
     int buildLogLineLimit = 5000;
     QString firmwareBuildType = QStringLiteral("Release");
+    Qt::MouseButton panMouseButton = Qt::MiddleButton;
 };
 
 struct ShortcutBinding {
@@ -62,6 +64,7 @@ private:
     QSpinBox* undoHistoryLimitSpin_ = nullptr;
     QSpinBox* buildLogLineLimitSpin_ = nullptr;
     QComboBox* buildTypeCombo_ = nullptr;
+    QComboBox* panMouseButtonCombo_ = nullptr;
     QLabel* shortcutErrorLabel_ = nullptr;
 };
 

@@ -126,6 +126,7 @@ MainWindow::MainWindow(QWidget* parent)
     layout->setContentsMargins(0, 0, 0, 0);
 
     view_ = new GraphView(graphScene_->Scene());
+    view_->SetPanMouseButton(preferences_.panMouseButton);
     view_->installEventFilter(this);
 
     // Note: measured on the target machine, a QOpenGLWidget viewport was ~3x
@@ -701,6 +702,9 @@ void MainWindow::RegisterShortcut(QAction* action,
 
 void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     preferences_ = preferences;
+    if (view_) {
+        view_->SetPanMouseButton(preferences_.panMouseButton);
+    }
     if (buildLogView_) {
         buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     }
