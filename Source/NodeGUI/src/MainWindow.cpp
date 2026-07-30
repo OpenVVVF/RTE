@@ -33,7 +33,7 @@
 #include <QResizeEvent>
 #include <QScreen>
 #include <QScrollBar>
-#include <QShortcut>
+#include <QSettings>
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -143,6 +143,8 @@ bool AskYesNo(QWidget* parent, const QString& title, const QString& text) {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , graphScene_{std::make_unique<GraphScene>()} {
+    preferences_ = LoadAppPreferences();
+
     setWindowTitle(QStringLiteral("NodeGUI"));
     resize(1280, 800);
 
@@ -248,17 +250,36 @@ MainWindow::MainWindow(QWidget* parent)
     connect(appSwitcher_, &QTabBar::currentChanged,
             this, &MainWindow::OnTabChanged);
 
-    auto addScreenShortcut = [this](const QKeySequence& key, int screenIndex) {
-        auto* shortcut = new QShortcut(key, this);
-        connect(shortcut, &QShortcut::activated, this, [this, screenIndex] {
+    auto addScreenShortcut = [this](const QString& id,
+                                    const QString& label,
+                                    const QKeySequence& key,
+                                    int screenIndex) {
+        auto* action = new QAction(label, this);
+        action->setShortcutContext(Qt::WindowShortcut);
+        connect(action, &QAction::triggered, this, [this, screenIndex] {
             if (screenIndex < appSwitcher_->count()) {
                 appSwitcher_->setCurrentIndex(screenIndex);
             }
         });
+        addAction(action);
+        RegisterShortcut(action,
+                         id,
+                         QStringLiteral("Navigation"),
+                         label,
+                         key);
     };
-    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+1")), 0);
-    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+2")), 1);
-    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+3")), 2);
+    addScreenShortcut(QStringLiteral("navigation.nodeEditor"),
+                      QStringLiteral("Switch to Node Editor"),
+                      QKeySequence(QStringLiteral("Ctrl+1")),
+                      0);
+    addScreenShortcut(QStringLiteral("navigation.runtime"),
+                      QStringLiteral("Switch to Runtime"),
+                      QKeySequence(QStringLiteral("Ctrl+2")),
+                      1);
+    addScreenShortcut(QStringLiteral("navigation.firmwareUpdate"),
+                      QStringLiteral("Switch to Firmware Update"),
+                      QKeySequence(QStringLiteral("Ctrl+3")),
+                      2);
 
     buildProcess_ = new QProcess(this);
     buildProcess_->setProcessChannelMode(QProcess::MergedChannels);
@@ -315,9 +336,15 @@ MainWindow::MainWindow(QWidget* parent)
 #endif
 
     SetupMenu();
+    graphScene_->SetChangeCallback([this] { RecordHistorySnapshot(); });
+    ResetHistory();
     UpdateStatus();
 
-    if (QScreen* screen = QApplication::primaryScreen()) {
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    const QByteArray savedGeometry = settings.value(QStringLiteral("window/geometry")).toByteArray();
+    if (preferences_.rememberWindowGeometry && !savedGeometry.isEmpty()) {
+        restoreGeometry(savedGeometry);
+    } else if (QScreen* screen = QApplication::primaryScreen()) {
         move(screen->availableGeometry().center() - frameGeometry().center());
     }
 }
@@ -395,7 +422,7 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     logsLayout->addWidget(clearLogsButton, 0, Qt::AlignLeft);
     buildLogView_ = new QPlainTextEdit(logsPage);
     buildLogView_->setReadOnly(true);
-    buildLogView_->setMaximumBlockCount(5000);
+    buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     logsLayout->addWidget(buildLogView_, 1);
     editorConsoleTabs_->addTab(logsPage, QStringLiteral("Logs"));
 
@@ -433,14 +460,16 @@ bool MainWindow::OpenGraph(const std::string& path) {
 
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    ResetHistory();
     UpdateStatus();
     return true;
 }
 
 void MainWindow::OnNew() {
-    if (!AskYesNo(this,
-                  QStringLiteral("New Graph"),
-                  QStringLiteral("Discard the current graph and start a new empty one?"))) {
+    if (preferences_.confirmNewGraph
+        && !AskYesNo(this,
+                     QStringLiteral("New Graph"),
+                     QStringLiteral("Discard the current graph and start a new empty one?"))) {
         return;
     }
 
@@ -459,6 +488,7 @@ void MainWindow::OnNew() {
     ConnectModelSignals();
     currentPath_.clear();
     setWindowTitle(QStringLiteral("NodeGUI"));
+    ResetHistory();
     UpdateStatus();
 }
 
@@ -472,8 +502,24 @@ void MainWindow::StripBrokenSceneActions() {
         QKeySequence(QKeySequence::Paste),
         QKeySequence(Qt::CTRL | Qt::Key_D),
     };
+    const QStringList replacedEditorActions = {
+        QStringLiteral("Clear Selection"),
+        QStringLiteral("Delete Selection"),
+        QStringLiteral("Cut Selection"),
+        QStringLiteral("Copy Selection"),
+    };
     QList<QAction*> toRemove;
     for (QAction* action : view_->actions()) {
+        if (action == clearSelectionAction_
+            || action == deleteAction_
+            || action == cutAction_
+            || action == copyAction_) {
+            continue;
+        }
+        if (replacedEditorActions.contains(action->text())) {
+            toRemove.push_back(action);
+            continue;
+        }
         for (const QKeySequence& shortcut : action->shortcuts()) {
             if (broken.contains(shortcut)) {
                 toRemove.push_back(action);
@@ -493,19 +539,35 @@ void MainWindow::SetupMenu() {
     QMenu* fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
 
     QAction* newAction = fileMenu->addAction(QStringLiteral("&New"));
-    newAction->setShortcuts(QKeySequence::New);
+    RegisterShortcut(newAction,
+                     QStringLiteral("file.new"),
+                     QStringLiteral("File"),
+                     QStringLiteral("New Graph"),
+                     QKeySequence(QKeySequence::New));
     connect(newAction, &QAction::triggered, this, &MainWindow::OnNew);
 
     QAction* openAction = fileMenu->addAction(QStringLiteral("&Open..."));
-    openAction->setShortcuts(QKeySequence::Open);
+    RegisterShortcut(openAction,
+                     QStringLiteral("file.open"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Open Graph"),
+                     QKeySequence(QKeySequence::Open));
     connect(openAction, &QAction::triggered, this, &MainWindow::OnOpen);
 
     QAction* saveAction = fileMenu->addAction(QStringLiteral("&Save"));
-    saveAction->setShortcuts(QKeySequence::Save);
+    RegisterShortcut(saveAction,
+                     QStringLiteral("file.save"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Save Graph"),
+                     QKeySequence(QKeySequence::Save));
     connect(saveAction, &QAction::triggered, this, &MainWindow::OnSave);
 
     QAction* saveAsAction = fileMenu->addAction(QStringLiteral("Save &As..."));
-    saveAsAction->setShortcuts(QKeySequence::SaveAs);
+    RegisterShortcut(saveAsAction,
+                     QStringLiteral("file.saveAs"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Save Graph As"),
+                     QKeySequence(QKeySequence::SaveAs));
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::OnSaveAs);
 
     fileMenu->addSeparator();
@@ -519,17 +581,120 @@ void MainWindow::SetupMenu() {
     fileMenu->addSeparator();
 
     QAction* exitAction = fileMenu->addAction(QStringLiteral("E&xit"));
-    exitAction->setShortcuts(QKeySequence::Quit);
+    RegisterShortcut(exitAction,
+                     QStringLiteral("file.exit"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Exit"),
+                     QKeySequence(QKeySequence::Quit));
     connect(exitAction, &QAction::triggered, this, &MainWindow::OnExit);
+
+    QMenu* editMenu = menuBar()->addMenu(QStringLiteral("&Edit"));
+
+    undoAction_ = editMenu->addAction(QStringLiteral("&Undo"));
+    RegisterShortcut(undoAction_,
+                     QStringLiteral("edit.undo"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Undo"),
+                     QKeySequence(QKeySequence::Undo));
+    connect(undoAction_, &QAction::triggered, this, &MainWindow::OnUndo);
+
+    redoAction_ = editMenu->addAction(QStringLiteral("&Redo"));
+    RegisterShortcut(redoAction_,
+                     QStringLiteral("edit.redo"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Redo"),
+                     QKeySequence(QKeySequence::Redo));
+    connect(redoAction_, &QAction::triggered, this, &MainWindow::OnRedo);
+
+    editMenu->addSeparator();
+
+    cutAction_ = editMenu->addAction(QStringLiteral("Cu&t"));
+    cutAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(cutAction_,
+                     QStringLiteral("edit.cut"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Cut Selection"),
+                     QKeySequence(QKeySequence::Cut));
+    connect(cutAction_, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->onCopySelectedObjects();
+            view_->onDeleteSelectedObjects();
+        }
+    });
+    view_->addAction(cutAction_);
+
+    copyAction_ = editMenu->addAction(QStringLiteral("&Copy"));
+    copyAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(copyAction_,
+                     QStringLiteral("edit.copy"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Copy Selection"),
+                     QKeySequence(QKeySequence::Copy));
+    connect(copyAction_, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->onCopySelectedObjects();
+        }
+    });
+    view_->addAction(copyAction_);
+
+    deleteAction_ = editMenu->addAction(QStringLiteral("&Delete Selection"));
+    deleteAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(deleteAction_,
+                     QStringLiteral("edit.deleteSelection"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Delete Selection"),
+                     QKeySequence(QKeySequence::Delete));
+    connect(deleteAction_, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->onDeleteSelectedObjects();
+        }
+    });
+    view_->addAction(deleteAction_);
+
+    clearSelectionAction_ =
+        editMenu->addAction(QStringLiteral("Clear Selection"));
+    clearSelectionAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(clearSelectionAction_,
+                     QStringLiteral("edit.clearSelection"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Clear Selection"),
+                     QKeySequence(Qt::Key_Escape));
+    connect(clearSelectionAction_, &QAction::triggered, this, [this] {
+        if (graphScene_->Scene()) {
+            graphScene_->Scene()->clearSelection();
+        }
+    });
+    view_->addAction(clearSelectionAction_);
+
+    editMenu->addSeparator();
+    QAction* preferencesAction =
+        editMenu->addAction(QStringLiteral("&Preferences..."));
+    RegisterShortcut(preferencesAction,
+                     QStringLiteral("edit.preferences"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Preferences"),
+                     QKeySequence(QStringLiteral("Ctrl+,")));
+    connect(preferencesAction, &QAction::triggered,
+            this, &MainWindow::OnPreferences);
 
     QMenu* buildMenu = menuBar()->addMenu(QStringLiteral("&Build"));
 
     generateAction_ = buildMenu->addAction(QStringLiteral("&Generate Code"));
+    RegisterShortcut(generateAction_,
+                     QStringLiteral("build.generate"),
+                     QStringLiteral("Build"),
+                     QStringLiteral("Generate Code"),
+                     {});
     connect(generateAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::Generate);
     });
 
     flashAction_ = buildMenu->addAction(QStringLiteral("&Flash"));
+    RegisterShortcut(flashAction_,
+                     QStringLiteral("build.flash"),
+                     QStringLiteral("Build"),
+                     QStringLiteral("Flash"),
+                     {});
     connect(flashAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::Flash);
     });
@@ -537,7 +702,11 @@ void MainWindow::SetupMenu() {
     buildMenu->addSeparator();
 
     generateFlashAction_ = buildMenu->addAction(QStringLiteral("Generate and &Flash"));
-    generateFlashAction_->setShortcut(QKeySequence(Qt::Key_F5));
+    RegisterShortcut(generateFlashAction_,
+                     QStringLiteral("build.generateAndFlash"),
+                     QStringLiteral("Build"),
+                     QStringLiteral("Generate and Flash"),
+                     QKeySequence(Qt::Key_F5));
     connect(generateFlashAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
     });
@@ -555,10 +724,41 @@ void MainWindow::SetupMenu() {
     viewMenu_ = viewMenu;
 
     arrangeAction_ = new QAction(QStringLiteral("&Auto Arrange"), this);
-    arrangeAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
+    RegisterShortcut(arrangeAction_,
+                     QStringLiteral("view.autoArrange"),
+                     QStringLiteral("View"),
+                     QStringLiteral("Auto Arrange"),
+                     QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     connect(arrangeAction_, &QAction::triggered, this, &MainWindow::OnAutoArrange);
 
     RebuildViewMenu();
+}
+
+void MainWindow::RegisterShortcut(QAction* action,
+                                  const QString& id,
+                                  const QString& category,
+                                  const QString& label,
+                                  const QKeySequence& defaultSequence) {
+    if (!action) {
+        return;
+    }
+    action->setShortcut(LoadShortcutPreference(id, defaultSequence));
+    shortcutBindings_.push_back({id, category, label, defaultSequence, action});
+}
+
+void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
+    preferences_ = preferences;
+    if (buildLogView_) {
+        buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
+    }
+
+    const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);
+    if (undoHistory_.size() > limit) {
+        undoHistory_.erase(undoHistory_.begin(),
+                           undoHistory_.begin()
+                               + static_cast<std::ptrdiff_t>(undoHistory_.size() - limit));
+    }
+    UpdateHistoryActions();
 }
 
 void MainWindow::RebuildViewMenu() {
@@ -613,6 +813,7 @@ void MainWindow::OnTabChanged(int index) {
     }
 
     RebuildViewMenu();
+    UpdateHistoryActions();
 }
 
 bool MainWindow::DoSave(const std::string& path) {
@@ -681,7 +882,9 @@ void MainWindow::SetBuildActionsEnabled(bool enabled) {
 }
 
 void MainWindow::StartBuildCommand(BuildCommand command) {
-    ShowBuildLogs();
+    if (preferences_.automaticallyShowBuildLogs) {
+        ShowBuildLogs();
+    }
 
     if (!buildProcess_ || buildProcess_->state() != QProcess::NotRunning) {
         AppendBuildLog(QStringLiteral("\n[warning] A firmware operation is already running.\n"));
@@ -911,6 +1114,10 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }
+    if (preferences_.rememberWindowGeometry) {
+        QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+        settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
+    }
     QMainWindow::closeEvent(event);
 }
 
@@ -973,12 +1180,135 @@ void MainWindow::OnSaveAs() {
     }
 }
 
+void MainWindow::OnUndo() {
+    if (undoHistory_.empty()) {
+        return;
+    }
+
+    const std::string target = undoHistory_.back();
+    if (!RestoreHistorySnapshot(target)) {
+        return;
+    }
+
+    undoHistory_.pop_back();
+    redoHistory_.push_back(std::move(currentHistorySnapshot_));
+    currentHistorySnapshot_ = target;
+    UpdateHistoryActions();
+}
+
+void MainWindow::OnRedo() {
+    if (redoHistory_.empty()) {
+        return;
+    }
+
+    const std::string target = redoHistory_.back();
+    if (!RestoreHistorySnapshot(target)) {
+        return;
+    }
+
+    redoHistory_.pop_back();
+    undoHistory_.push_back(std::move(currentHistorySnapshot_));
+    currentHistorySnapshot_ = target;
+    UpdateHistoryActions();
+}
+
+void MainWindow::OnPreferences() {
+    PreferencesDialog dialog(preferences_, shortcutBindings_, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const AppPreferences updatedPreferences = dialog.Preferences();
+    const QMap<QString, QKeySequence> shortcuts = dialog.Shortcuts();
+    for (ShortcutBinding& binding : shortcutBindings_) {
+        const auto it = shortcuts.constFind(binding.id);
+        if (it != shortcuts.cend() && binding.action) {
+            binding.action->setShortcut(it.value());
+        }
+    }
+
+    SaveAppPreferences(updatedPreferences);
+    SaveShortcutPreferences(shortcuts);
+    ApplyPreferences(updatedPreferences);
+    statusBar()->showMessage(QStringLiteral("Preferences saved"), 3000);
+}
+
 void MainWindow::OnAutoArrange() {
     graphScene_->AutoArrange();
 }
 
 void MainWindow::OnExit() {
     close();
+}
+
+void MainWindow::ResetHistory() {
+    undoHistory_.clear();
+    redoHistory_.clear();
+    currentHistorySnapshot_ = graphScene_ ? graphScene_->Snapshot() : std::string{};
+    UpdateHistoryActions();
+}
+
+void MainWindow::RecordHistorySnapshot() {
+    if (restoringHistory_ || !graphScene_) {
+        return;
+    }
+
+    std::string snapshot = graphScene_->Snapshot();
+    if (snapshot == currentHistorySnapshot_) {
+        return;
+    }
+
+    if (!currentHistorySnapshot_.empty()) {
+        undoHistory_.push_back(std::move(currentHistorySnapshot_));
+    }
+    currentHistorySnapshot_ = std::move(snapshot);
+    redoHistory_.clear();
+
+    const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);
+    if (undoHistory_.size() > limit) {
+        undoHistory_.erase(undoHistory_.begin(),
+                           undoHistory_.begin()
+                               + static_cast<std::ptrdiff_t>(undoHistory_.size() - limit));
+    }
+    UpdateHistoryActions();
+}
+
+bool MainWindow::RestoreHistorySnapshot(const std::string& snapshot) {
+    if (!graphScene_ || !view_) {
+        return false;
+    }
+
+    restoringHistory_ = true;
+    view_->setScene(nullptr);
+    const QString error = graphScene_->RestoreSnapshot(snapshot);
+    view_->setScene(graphScene_->Scene());
+    StripBrokenSceneActions();
+    palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
+    ConnectModelSignals();
+    restoringHistory_ = false;
+
+    if (!error.isEmpty()) {
+        ShowToast(error);
+        return false;
+    }
+
+    UpdateStatus();
+    return true;
+}
+
+void MainWindow::UpdateHistoryActions() {
+    const bool nodeEditorActive = !appSwitcher_ || appSwitcher_->currentIndex() == 0;
+    if (undoAction_) {
+        undoAction_->setEnabled(nodeEditorActive && !undoHistory_.empty());
+    }
+    if (redoAction_) {
+        redoAction_->setEnabled(nodeEditorActive && !redoHistory_.empty());
+    }
+    for (QAction* action : {cutAction_, copyAction_, deleteAction_, clearSelectionAction_}) {
+        if (action) {
+            action->setEnabled(nodeEditorActive);
+        }
+    }
 }
 
 void MainWindow::ConnectModelSignals() {

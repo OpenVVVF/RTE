@@ -190,7 +190,11 @@ void GraphScene::RebuildScene() {
 
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeMoved,
-                     [this](QtNodes::NodeId) { UpdateDomainOutlines(); });
+                     [this](QtNodes::NodeId) {
+                         UpdateDomainOutlines();
+                         SyncPositionsFromScene();
+                         NotifyChanged();
+                     });
 
     // Keep our id maps and the domain outlines in sync when a node is
     // deleted (the model has already removed it from the graph at this
@@ -218,6 +222,14 @@ void GraphScene::RebuildScene() {
                          }
                          CreateDomainOutlines();
                      });
+
+    // QtNodes' own undo stack only restores its visual model. Record changes
+    // after NodeGraphModel has updated NodeAPI so MainWindow can restore a
+    // complete, serializable graph instead.
+    model_->onGraphChanged = [this] {
+        CreateDomainOutlines();
+        NotifyChanged();
+    };
 }
 
 GraphScene::Adjacency GraphScene::BuildAdjacency() const {
@@ -619,6 +631,7 @@ void GraphScene::AutoArrange() {
         }
         UpdateDomainOutlines();
         SyncPositionsFromScene();
+        NotifyChanged();
         return;
     }
 
@@ -732,6 +745,7 @@ void GraphScene::AutoArrange() {
 
     UpdateDomainOutlines();
     SyncPositionsFromScene();
+    NotifyChanged();
 }
 
 void GraphScene::SyncPositionsFromScene() {
@@ -902,6 +916,34 @@ QString GraphScene::SaveGraph(const std::string& path) const {
     return QString{};
 }
 
+std::string GraphScene::Snapshot() {
+    SyncPositionsFromScene();
+    return NodeAPI::SaveToJson(graph_);
+}
+
+QString GraphScene::RestoreSnapshot(const std::string& json) {
+    try {
+        NodeAPI::Graph restored = NodeAPI::LoadFromJson(json);
+        graph_ = std::move(restored);
+    } catch (const std::exception& e) {
+        return QStringLiteral("Failed to restore graph history: %1")
+            .arg(QString::fromStdString(e.what()));
+    }
+
+    RebuildScene();
+    return QString{};
+}
+
+void GraphScene::SetChangeCallback(std::function<void()> callback) {
+    changeCallback_ = std::move(callback);
+}
+
+void GraphScene::NotifyChanged() {
+    if (changeCallback_) {
+        changeCallback_();
+    }
+}
+
 void GraphScene::RegisterNodeTypes() {
     for (const auto& nodeType : graph_.GetNodeTypes()) {
         // Each creator captures a copy of its node type so the model can expose
@@ -995,6 +1037,7 @@ QString GraphScene::SetNodeParameters(
     }
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     UpdateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1010,6 +1053,7 @@ QString GraphScene::SetNodeParameterInputs(QtNodes::NodeId qtId,
     }
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     UpdateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1036,6 +1080,7 @@ QString GraphScene::SetNodeDomain(QtNodes::NodeId qtId, const std::string& domai
         delegate->SetDomain(domain);
     }
     CreateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1099,6 +1144,7 @@ QString GraphScene::RenameNode(QtNodes::NodeId qtId, const std::string& newId) {
                         QtNodes::NodeRole::Label,
                         QVariant::fromValue(QString::fromStdString(newId)));
     CreateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1166,6 +1212,7 @@ QString GraphScene::AddNodeAt(const std::string& typeId,
 
     // The new node may introduce a domain that has no outline yet.
     CreateDomainOutlines();
+    NotifyChanged();
 
     return QString{};
 }

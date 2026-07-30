@@ -18,6 +18,8 @@ add_executable(NodeGUI
     src/TypedNodePainter.h
     src/ParameterBlock.cpp
     src/ParameterBlock.h
+    src/PreferencesDialog.cpp
+    src/PreferencesDialog.h
     src/ParameterNodeGeometry.cpp
     src/ParameterNodeGeometry.h
     src/NodePalette.cpp

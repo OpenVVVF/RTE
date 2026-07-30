@@ -232,6 +232,17 @@ bool Graph::TypeCheck(const Connection& connection) const {
         return true;
     }
 
+    /* Implicit unit injection: a physical-quantity scalar input accepts a
+     * dimensionless scalar output; codegen wraps the value in the input's
+     * unit at the binding site.  Boolean stays strictly typed. */
+    if (toPort->type.frame == Frame::Scalar &&
+        toPort->type.quantity != Quantity::Dimensionless &&
+        toPort->type.quantity != Quantity::Boolean &&
+        fromPort->type.frame == Frame::Scalar &&
+        fromPort->type.quantity == Quantity::Dimensionless) {
+        return true;
+    }
+
     return false;
 }
 

@@ -1,10 +1,86 @@
 {
   "name": "sensor_telemetry_demo",
-  "nodeTypes": [],
+  "nodeTypes": [
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Encoder",
+      "domain": "",
+      "id": "Sensors.Encoder",
+      "inlineCode": "/* Mechanical angle [rad] and speed [rpm] from the base-image encoder driver. */\nTheta = platform_get_encoder_angle_latest() * 0.01745329251f;  // deg -> rad\nOmega = platform_get_motor_rpm();\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "name": "Theta",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Omega",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {}
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Phase Currents",
+      "domain": "app_loop",
+      "id": "Sensors.PhaseCurrents",
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    I_A = rte::Amperes(iu_f);\n    I_B = rte::Amperes(iv_f);\n    I_C = rte::Amperes(iw_f);\n}\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "name": "I_A",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "I_B",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "I_C",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {}
+    }
+  ],
   "nodes": [
     {
       "id": "Currents",
-      "type": "hw.adc.phase_currents",
+      "type": "Sensors.PhaseCurrents",
       "domain": "adc_isr",
       "position": {
         "x": 0,
@@ -17,7 +93,7 @@
     },
     {
       "id": "LogU",
-      "type": "app.telemetry_log",
+      "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
         "x": 0,
@@ -29,7 +105,7 @@
     },
     {
       "id": "LogV",
-      "type": "app.telemetry_log",
+      "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
         "x": 0,
@@ -41,7 +117,7 @@
     },
     {
       "id": "LogW",
-      "type": "app.telemetry_log",
+      "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
         "x": 0,
@@ -53,7 +129,7 @@
     },
     {
       "id": "VdcSense",
-      "type": "hw.dc_link_voltage",
+      "type": "Sensors.DcLinkVoltage",
       "domain": "app_loop",
       "position": {
         "x": 0,
@@ -63,7 +139,7 @@
     },
     {
       "id": "LogVdc",
-      "type": "app.telemetry_log",
+      "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
         "x": 0,
@@ -75,7 +151,7 @@
     },
     {
       "id": "Encoder",
-      "type": "hw.encoder_angle",
+      "type": "Sensors.Encoder",
       "domain": "app_loop",
       "position": {
         "x": 0,
@@ -85,7 +161,7 @@
     },
     {
       "id": "LogTheta",
-      "type": "app.telemetry_log",
+      "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
         "x": 0,

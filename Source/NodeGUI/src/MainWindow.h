@@ -2,6 +2,7 @@
 
 #include "GraphScene.h"
 #include "GraphView.h"
+#include "PreferencesDialog.h"
 
 #include "runtime/FirmwareUpdater.h"
 #include "runtime/HttpApiServer.h"
@@ -10,7 +11,10 @@
 #include <QByteArray>
 #include <QMainWindow>
 #include <QPointer>
+#include <QVector>
 #include <memory>
+#include <string>
+#include <vector>
 
 class QAction;
 class QDockWidget;
@@ -58,6 +62,9 @@ private slots:
     void OnNew();
     void OnSave();
     void OnSaveAs();
+    void OnUndo();
+    void OnRedo();
+    void OnPreferences();
     void OnAutoArrange();
     void OnOpenSpwmDemo();
     void OnExit();
@@ -78,6 +85,12 @@ private:
     };
 
     void SetupMenu();
+    void RegisterShortcut(QAction* action,
+                          const QString& id,
+                          const QString& category,
+                          const QString& label,
+                          const QKeySequence& defaultSequence);
+    void ApplyPreferences(const AppPreferences& preferences);
     void UpdateStatus();
     bool DoSave(const std::string& path);
     bool EnsureGraphSaved();
@@ -86,6 +99,10 @@ private:
     void AppendBuildLog(const QString& text);
     void SetBuildActionsEnabled(bool enabled);
     void ConnectModelSignals();
+    void ResetHistory();
+    void RecordHistorySnapshot();
+    bool RestoreHistorySnapshot(const std::string& snapshot);
+    void UpdateHistoryActions();
     // Rebuilds the View menu for the active tab: each screen has its own set
     // of dockable panels, and Auto Arrange only exists on the Node Editor.
     void RebuildViewMenu();
@@ -129,11 +146,23 @@ private:
     QPointer<QPlainTextEdit> buildLogView_;
     QMenu* viewMenu_ = nullptr;
     QAction* arrangeAction_ = nullptr;
+    QAction* undoAction_ = nullptr;
+    QAction* redoAction_ = nullptr;
+    QAction* cutAction_ = nullptr;
+    QAction* copyAction_ = nullptr;
+    QAction* deleteAction_ = nullptr;
+    QAction* clearSelectionAction_ = nullptr;
     QAction* generateAction_ = nullptr;
     QAction* flashAction_ = nullptr;
     QAction* generateFlashAction_ = nullptr;
     QAction* buildSimAction_ = nullptr;
     QProcess* buildProcess_ = nullptr;
+    QVector<ShortcutBinding> shortcutBindings_;
+    AppPreferences preferences_;
+    std::vector<std::string> undoHistory_;
+    std::vector<std::string> redoHistory_;
+    std::string currentHistorySnapshot_;
+    bool restoringHistory_ = false;
     // Per-tab QMainWindow dock layouts, saved/restored on tab switches.
     QByteArray screenStates_[3];
     int previousTab_ = 0;

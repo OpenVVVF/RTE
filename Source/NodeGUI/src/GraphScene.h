@@ -61,6 +61,15 @@ public:
     // Returns an empty string on success, otherwise an error message.
     QString SaveGraph(const std::string& path) const;
 
+    // Serialize/restore the complete live graph for application-level
+    // Undo/Redo. Snapshot synchronizes manual node movements first.
+    std::string Snapshot();
+    QString RestoreSnapshot(const std::string& json);
+
+    // Invoked after a user-visible graph mutation has fully reached the
+    // NodeAPI model.
+    void SetChangeCallback(std::function<void()> callback);
+
     // Instantiates a node of the given type at the given scene position.
     // When requestedId is non-empty it is used as the instance id (must be
     // unique); otherwise an id is generated from the display name.
@@ -134,6 +143,7 @@ private:
     void CreateBridges();
     // Rebuilds model and scene from graph_ (after load/new).
     void RebuildScene();
+    void NotifyChanged();
 
     // Visual domain grouping: colored outline + label per timing domain.
     void CreateDomainOutlines();
@@ -176,6 +186,7 @@ public:
     };
     std::map<std::string, DomainVisuals> domainVisuals_;
     std::vector<QColor> domainColors_;
+    std::function<void()> changeCallback_;
 };
 
 }  // namespace NodeGUI

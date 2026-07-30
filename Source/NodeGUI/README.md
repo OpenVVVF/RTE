@@ -47,6 +47,11 @@ Or launch with no arguments and use `File → Open`.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
+- `Edit → Undo` / `Redo` restores complete graph snapshots, including nodes,
+  connections, bridges, positions, domains, names, and parameter edits.
+- `Edit → Preferences` is the central settings window for application
+  keybindings, undo retention, window geometry, firmware build type, and build
+  log behavior. Preferences persist between launches.
 - `Build → Generate Code`, `Flash`, and `Generate and Flash` operate on the
   current graph. The editor saves first, runs the firmware pipeline
   asynchronously, and streams output to the detachable Console → Logs panel.
