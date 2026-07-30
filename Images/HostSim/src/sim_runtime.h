@@ -1,6 +1,7 @@
 #pragma once
 
 #include "motor_model.h"
+#include "plant/plant_backend.h"
 
 #include <chrono>
 #include <cstdint>
@@ -36,6 +37,9 @@ struct SimConfig {
     std::string listen_host = "127.0.0.1";
     int listen_port = 14608;
     std::string trace_csv = "trace.csv";
+    std::string plant_backend = "ode";
+    std::string ngspice_netlist = "";
+    int ngspice_substeps = 4;
     MotorParams motor{};
     StimulusProfile throttle_a{};
     StimulusProfile throttle_b{};
@@ -43,6 +47,9 @@ struct SimConfig {
 
 class SimRuntime {
 public:
+    SimRuntime();
+    ~SimRuntime();
+
     bool LoadScenario(const char* path);
     void InitDomains();
     bool StepOnce();
@@ -61,8 +68,8 @@ public:
     void ResetWallClockAnchor();
 
     const SimConfig& Config() const { return config_; }
-    MotorModel& Motor() { return motor_; }
-    const MotorModel& Motor() const { return motor_; }
+    IPlant& Plant() { return *plant_; }
+    const IPlant& Plant() const { return *plant_; }
 
     float TimeSeconds() const { return time_s_; }
     uint64_t TimeMicros() const {
@@ -78,7 +85,7 @@ public:
 
 private:
     SimConfig config_{};
-    MotorModel motor_{};
+    std::unique_ptr<IPlant> plant_{};
     std::ofstream trace_{};
 
     float time_s_ = 0.0f;

@@ -69,6 +69,12 @@ int main(int argc, char** argv) {
                 return 1;
             }
             telem_hz = static_cast<float>(std::atof(argv[i]));
+        } else if (std::strcmp(arg, "--scenario") == 0) {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            scenario = argv[i];
         } else if (std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0) {
             PrintUsage(argv[0]);
             return 0;

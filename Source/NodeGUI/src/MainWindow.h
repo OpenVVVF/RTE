@@ -74,6 +74,7 @@ private:
         Generate,
         Flash,
         GenerateAndFlash,
+        BuildSimulation,
     };
 
     void SetupMenu();
@@ -131,6 +132,7 @@ private:
     QAction* generateAction_ = nullptr;
     QAction* flashAction_ = nullptr;
     QAction* generateFlashAction_ = nullptr;
+    QAction* buildSimAction_ = nullptr;
     QProcess* buildProcess_ = nullptr;
     // Per-tab QMainWindow dock layouts, saved/restored on tab switches.
     QByteArray screenStates_[3];

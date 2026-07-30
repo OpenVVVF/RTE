@@ -1,9 +1,11 @@
 build/
+build_linux/
 out/
 .tools/
 .vs/
 *.user
 __pycache__/
 *.pyc
+*.csv
 .mxproject
 .vscode/

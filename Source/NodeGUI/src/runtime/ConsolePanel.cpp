@@ -151,9 +151,17 @@ void ConsolePanel::OnStoreChanged() {
     }
 
     const auto lines = controller_->Store().ConsoleSince(lastConsoleSeq_);
-    for (const auto& line : lines) {
-        consoleView_->appendPlainText(QString::fromStdString(line.text));
-        lastConsoleSeq_ = line.seq;
+    if (!lines.empty()) {
+        QString batch;
+        batch.reserve(lines.size() * 64);
+        for (std::size_t i = 0; i < lines.size(); ++i) {
+            batch += QString::fromStdString(lines[i].text);
+            if (i + 1 < lines.size()) {
+                batch += u'\n';
+            }
+            lastConsoleSeq_ = lines[i].seq;
+        }
+        consoleView_->appendPlainText(batch);
     }
     if (autoscrollCheck_->isChecked() && !lines.empty()) {
         auto bar = consoleView_->verticalScrollBar();

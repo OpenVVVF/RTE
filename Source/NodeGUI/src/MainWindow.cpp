@@ -95,7 +95,7 @@ std::filesystem::path ProjectRoot() {
 #endif
 }
 
-QString BuildKeyForGraph(const std::string& graphPath) {
+[[maybe_unused]] QString BuildKeyForGraph(const std::string& graphPath) {
     const QFileInfo graphInfo(QString::fromStdString(graphPath));
     QString stem = graphInfo.completeBaseName();
     for (qsizetype i = 0; i < stem.size(); ++i) {
@@ -542,6 +542,15 @@ void MainWindow::SetupMenu() {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
     });
 
+    buildMenu->addSeparator();
+
+    buildSimAction_ = buildMenu->addAction(QStringLiteral("Build &Reflect in Simulator"));
+    buildSimAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
+    buildSimAction_->setToolTip(QStringLiteral("Re-emit graph into HostSim, compile simulator, and restart live telemetry feed"));
+    connect(buildSimAction_, &QAction::triggered, this, [this] {
+        StartBuildCommand(BuildCommand::BuildSimulation);
+    });
+
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu_ = viewMenu;
 
@@ -668,6 +677,7 @@ void MainWindow::SetBuildActionsEnabled(bool enabled) {
     if (generateAction_) generateAction_->setEnabled(enabled);
     if (flashAction_) flashAction_->setEnabled(enabled);
     if (generateFlashAction_) generateFlashAction_->setEnabled(enabled);
+    if (buildSimAction_) buildSimAction_->setEnabled(enabled);
 }
 
 void MainWindow::StartBuildCommand(BuildCommand command) {
@@ -685,35 +695,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
-    const bool shouldBuild = command != BuildCommand::Flash;
-    const bool shouldFlash = command != BuildCommand::Generate;
-
-    if (shouldFlash) {
-        if (!httpApiServer_) {
-            AppendBuildLog(QStringLiteral("\n[error] Flash service is not available.\n"));
-            return;
-        }
-        if (!httpApiServer_->isRunning() && !httpApiServer_->start()) {
-            AppendBuildLog(QStringLiteral(
-                "\n[error] Could not start the local firmware flash API.\n"));
-            return;
-        }
-    }
-
     const std::filesystem::path projectRoot = ProjectRoot();
-    const std::filesystem::path script =
-        projectRoot / "Tools" / "build_flash_graph.sh";
-    if (!std::filesystem::is_regular_file(script)) {
-        AppendBuildLog(QStringLiteral("\n[error] Build workflow script not found: %1\n")
-                           .arg(QString::fromStdString(script.string())));
-        return;
-    }
-
-    const QString buildKey = BuildKeyForGraph(currentPath_);
-    const std::filesystem::path outputRoot =
-        projectRoot / "build" / "nodegui" / buildKey.toStdString();
-    const std::filesystem::path firmwareBuildDir = outputRoot / "firmware";
-    const std::filesystem::path firmwareSourceDir = outputRoot / "firmware-src";
     const QString absoluteGraphPath =
         QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
 
@@ -728,43 +710,88 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         case BuildCommand::GenerateAndFlash:
             operationName = QStringLiteral("Generate and Flash");
             break;
+        case BuildCommand::BuildSimulation:
+            operationName = QStringLiteral("Build Simulation");
+            break;
     }
 
     AppendBuildLog(
         QStringLiteral("\n============================================================\n"
                        "%1\n"
                        "Graph: %2\n"
-                       "Build: %3\n"
+                       "Project Root: %3\n"
                        "============================================================\n")
             .arg(operationName,
                  absoluteGraphPath,
-                 QString::fromStdString(firmwareBuildDir.string())));
+                 QString::fromStdString(projectRoot.string())));
 
+    QString program;
     QStringList arguments;
-    arguments << QStringLiteral("--graph")
-              << absoluteGraphPath
-              << QStringLiteral("--fw-build-dir")
-              << QString::fromStdString(firmwareBuildDir.string())
-              << QStringLiteral("--fw-src-dir")
-              << QString::fromStdString(firmwareSourceDir.string())
-              << QStringLiteral("--build-type")
-              << QStringLiteral("Release");
 
-    if (!shouldBuild) {
-        arguments << QStringLiteral("--flash-only");
-    } else if (!shouldFlash) {
-        arguments << QStringLiteral("--no-flash");
+#ifdef _WIN32
+    // Windows execution path: use PowerShell scripts for clean native execution
+    program = QStringLiteral("powershell.exe");
+    if (command == BuildCommand::BuildSimulation) {
+        const std::filesystem::path psScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+        arguments << QStringLiteral("-NoProfile")
+                  << QStringLiteral("-ExecutionPolicy") << QStringLiteral("Bypass")
+                  << QStringLiteral("-File") << QString::fromStdString(psScript.string())
+                  << QStringLiteral("-ForceEmit")
+                  << QStringLiteral("-KeepGui");
+    } else {
+        const std::filesystem::path psScript = projectRoot / "Images" / "NucleoL476FW" / "scripts" / "emit_and_build.ps1";
+        arguments << QStringLiteral("-NoProfile")
+                  << QStringLiteral("-ExecutionPolicy") << QStringLiteral("Bypass")
+                  << QStringLiteral("-File") << QString::fromStdString(psScript.string())
+                  << QStringLiteral("-Graph") << absoluteGraphPath;
+        if (command == BuildCommand::Flash || command == BuildCommand::GenerateAndFlash) {
+            arguments << QStringLiteral("-Flash");
+        }
     }
-    if (shouldFlash) {
-        arguments << QStringLiteral("--flash-url")
-                  << QStringLiteral("http://127.0.0.1:%1")
-                         .arg(httpApiServer_->actualPort());
+#else
+    // Linux / POSIX execution path
+    if (command == BuildCommand::BuildSimulation) {
+        program = QStringLiteral("bash");
+        const std::filesystem::path psScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+        arguments << QString::fromStdString(psScript.string()) << QStringLiteral("-ForceEmit");
+    } else {
+        const std::filesystem::path script = projectRoot / "Tools" / "build_flash_graph.sh";
+        if (!std::filesystem::is_regular_file(script)) {
+            AppendBuildLog(QStringLiteral("\n[error] Build workflow script not found: %1\n")
+                               .arg(QString::fromStdString(script.string())));
+            return;
+        }
+        program = QString::fromStdString(script.string());
+        const QString buildKey = BuildKeyForGraph(currentPath_);
+        const std::filesystem::path outputRoot =
+            projectRoot / "build" / "nodegui" / buildKey.toStdString();
+        const std::filesystem::path firmwareBuildDir = outputRoot / "firmware";
+        const std::filesystem::path firmwareSourceDir = outputRoot / "firmware-src";
+
+        arguments << QStringLiteral("--graph")
+                  << absoluteGraphPath
+                  << QStringLiteral("--fw-build-dir")
+                  << QString::fromStdString(firmwareBuildDir.string())
+                  << QStringLiteral("--fw-src-dir")
+                  << QString::fromStdString(firmwareSourceDir.string())
+                  << QStringLiteral("--build-type")
+                  << QStringLiteral("Release");
+
+        const bool shouldBuild = command != BuildCommand::Flash;
+        const bool shouldFlash = command != BuildCommand::Generate;
+        if (!shouldBuild) arguments << QStringLiteral("--flash-only");
+        else if (!shouldFlash) arguments << QStringLiteral("--no-flash");
+        if (shouldFlash && httpApiServer_) {
+            arguments << QStringLiteral("--flash-url")
+                      << QStringLiteral("http://127.0.0.1:%1").arg(httpApiServer_->actualPort());
+        }
     }
+#endif
 
     SetBuildActionsEnabled(false);
     statusBar()->showMessage(QStringLiteral("%1 in progress...").arg(operationName));
     buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
-    buildProcess_->start(QString::fromStdString(script.string()), arguments);
+    buildProcess_->start(program, arguments);
 }
 
 void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId) {

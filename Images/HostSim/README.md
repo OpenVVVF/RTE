@@ -156,6 +156,12 @@ live IVP publisher when `--live` is active.
 - No changes to `NodeAPI`, `InverterCodegen`, or `RTECodeEmitter` core.
 - Intended for contribution back to `OpenVVVF/RTE` as `Images/HostSim/`.
 
+## Roadmap
+
+Planned work (ODE plant today; optional **ngspice** plant backend behind the same
+`platform_api`) is documented in
+[docs/Implementation_Plan.md](docs/Implementation_Plan.md).
+
 ## Dependencies
 
 - CMake 3.24+, C++20 host compiler

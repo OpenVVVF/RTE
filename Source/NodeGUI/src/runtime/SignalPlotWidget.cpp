@@ -282,8 +282,11 @@ void SignalPlotWidget::paintGL()
                 if (s.t[i] < x0) {
                     continue;
                 }
-                lo = std::min(lo, static_cast<double>(s.y[i]));
-                hi = std::max(hi, static_cast<double>(s.y[i]));
+                const double val = static_cast<double>(s.y[i]);
+                if (std::isfinite(val)) {
+                    lo = std::min(lo, val);
+                    hi = std::max(hi, val);
+                }
             }
         }
         double pad = (hi - lo) * 0.05;

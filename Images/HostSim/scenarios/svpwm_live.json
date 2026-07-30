@@ -1,0 +1,44 @@
+{
+  "motor": {
+    "name": "generic_pmsm",
+    "comment": "SVPWM live demo with PWM scope enabled.",
+    "rs_ohm": 0.08,
+    "ld_h": 0.00012,
+    "lq_h": 0.00012,
+    "flux_wb": 0.0085,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 1.2e-5,
+    "friction_nm_per_rad_s": 2.0e-4,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 999999.0,
+    "tim_isr_hz": 10000,
+    "adc_isr_hz": 10000,
+    "app_loop_hz": 1000,
+    "telem_hz": 500,
+    "realtime_factor": 1.0,
+    "live": true,
+    "listen_host": "127.0.0.1",
+    "listen_port": 14608,
+    "pwm_scope": {
+      "enabled": 1,
+      "carrier_hz": 100,
+      "telem_hz": 2000
+    }
+  },
+  "throttle_a": {
+    "type": "ramp",
+    "start": 0.5,
+    "end": 0.85,
+    "start_s": 0.5,
+    "end_s": 2.0
+  },
+  "throttle_b": {
+    "type": "ramp",
+    "start": 0.2,
+    "end": 0.5,
+    "start_s": 0.5,
+    "end_s": 3.0
+  }
+}

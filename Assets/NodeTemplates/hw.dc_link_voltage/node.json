@@ -11,7 +11,7 @@
       "name": "V_Dc",
       "direction": "output",
       "type": {
-        "quantity": "voltage",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       }

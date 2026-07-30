@@ -15,8 +15,12 @@
 #include <string>
 #include <unordered_map>
 
+#include "plant/plant_backend.h"
+#include "plant/ode_plant.h"
+
 namespace hostsim {
 
+IPlant* g_plant = nullptr;
 MotorModel* g_motor = nullptr;
 
 namespace {
@@ -37,6 +41,16 @@ SimContext g_sim_ctx{};
 SimContext& GetSimContext() { return g_sim_ctx; }
 
 void SimNotifyEncoderSample() { g_sim_ctx.encoder_sample_new = true; }
+
+void SimRuntime_RegisterPlant(IPlant* plant) {
+    g_plant = plant;
+    auto* ode = dynamic_cast<OdePlant*>(plant);
+    if (ode) {
+        g_motor = &ode->Model();
+    } else {
+        g_motor = nullptr;
+    }
+}
 
 void SimRuntime_RegisterMotor(MotorModel* motor) { g_motor = motor; }
 
@@ -121,6 +135,13 @@ void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
 }
 
 bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a) {
+    if (hostsim::g_plant) {
+        const auto& st = hostsim::g_plant->State();
+        if (iu_a) *iu_a = st.ia_a;
+        if (iv_a) *iv_a = st.ib_a;
+        if (iw_a) *iw_a = st.ic_a;
+        return true;
+    }
     if (!hostsim::g_motor) return false;
     const auto& st = hostsim::g_motor->State();
     if (iu_a) *iu_a = st.ia_a;
@@ -137,6 +158,13 @@ float platform_adc_get_offset_u_a(void) { return 0.0f; }
 float platform_adc_get_offset_v_a(void) { return 0.0f; }
 
 bool platform_get_encoder_angle(float* angle_deg) {
+    if (hostsim::g_plant) {
+        if (angle_deg) *angle_deg = hostsim::g_plant->ThetaElectricalDeg();
+        auto& ctx = hostsim::GetSimContext();
+        const bool had = ctx.encoder_sample_new;
+        ctx.encoder_sample_new = false;
+        return had;
+    }
     if (!hostsim::g_motor) return false;
     if (angle_deg) *angle_deg = hostsim::g_motor->ThetaElectricalDeg();
     auto& ctx = hostsim::GetSimContext();
@@ -146,6 +174,7 @@ bool platform_get_encoder_angle(float* angle_deg) {
 }
 
 float platform_get_encoder_angle_latest(void) {
+    if (hostsim::g_plant) return hostsim::g_plant->ThetaElectricalDeg();
     if (!hostsim::g_motor) return 0.0f;
     return hostsim::g_motor->ThetaElectricalDeg();
 }
