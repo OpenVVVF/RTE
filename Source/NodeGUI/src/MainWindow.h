@@ -16,7 +16,8 @@ class QAction;
 class QDockWidget;
 class QLabel;
 class QMenu;
-class QTabWidget;
+class QStackedWidget;
+class QTabBar;
 class QTimer;
 
 namespace NodeGUI {
@@ -25,6 +26,7 @@ class InspectorPanel;
 class NodePalette;
 
 namespace runtime {
+class FlashPanel;
 class RuntimeTab;
 }
 
@@ -39,7 +41,7 @@ public:
 
     GraphScene* Scene() const { return graphScene_.get(); }
 
-    // Adds the "Runtime" tab (telemetry + firmware update) and starts the
+    // Adds the top-level Runtime and Firmware Update tabs, then starts the
     // telemetry client and HTTP API server.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
@@ -92,7 +94,11 @@ private:
     std::string currentPath_;
     bool connectionCreatedThisDrag_ = false;
 
-    QTabWidget* tabs_ = nullptr;
+    // Application-level screen switcher. The tab bar lives in the main-window
+    // chrome above all docks; the stack contains only each screen's central
+    // content.
+    QTabBar* appSwitcher_ = nullptr;
+    QStackedWidget* screens_ = nullptr;
     QPointer<QDockWidget> toolboxDock_;
     QPointer<QDockWidget> inspectorDock_;
     // Runtime-screen docks (created in SetupRuntime).
@@ -103,12 +109,13 @@ private:
     QMenu* viewMenu_ = nullptr;
     QAction* arrangeAction_ = nullptr;
     // Per-tab QMainWindow dock layouts, saved/restored on tab switches.
-    QByteArray screenStates_[2];
+    QByteArray screenStates_[3];
     int previousTab_ = 0;
     std::unique_ptr<runtime::RuntimeController> runtimeController_;
     std::unique_ptr<runtime::FirmwareUpdater> firmwareUpdater_;
     std::unique_ptr<runtime::HttpApiServer> httpApiServer_;
     QPointer<runtime::RuntimeTab> runtimeTab_;
+    QPointer<runtime::FlashPanel> firmwareUpdateTab_;
 };
 
 }  // namespace NodeGUI

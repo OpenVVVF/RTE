@@ -16,9 +16,9 @@ namespace NodeGUI::runtime {
 class HttpApiServer;
 class RuntimeController;
 
-// Firmware Update tab: firmware path + Flash button + Auto-GPIO toggle, HTTP
-// server controls, and the updater state/log. Mirrors the old ImGui
-// "Firmware Update" tab. Polls the Qt-free FirmwareUpdater on a timer.
+// Top-level Firmware Update tab: firmware path + Flash button + Auto-GPIO
+// toggle, HTTP server controls, and the updater state/log. Polls the Qt-free
+// FirmwareUpdater on a timer.
 class FlashPanel : public QWidget {
     Q_OBJECT
 
