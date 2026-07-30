@@ -1,0 +1,77 @@
+{
+  "id": "Transforms.ElecAngle",
+  "displayName": "Electrical Angle",
+  "defaultName": "ElecAngle",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "ThetaMech",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "OffsetDeg",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "EncoderSign",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Poles",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "ThetaElec",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "EncoderSign": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Poles": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OffsetDeg": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

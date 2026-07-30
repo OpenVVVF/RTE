@@ -1,0 +1,30 @@
+{
+  "id": "Sensors.Encoder",
+  "displayName": "Encoder",
+  "defaultName": "Encoder",
+  "maxInstances": 0,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "Theta",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Omega",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

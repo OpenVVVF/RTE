@@ -267,6 +267,67 @@ TEST(Graph, TypeCheckImplicitExtraction) {
     EXPECT_TRUE(graph.Connect(c));
 }
 
+TEST(Graph, TypeCheckImplicitInjection) {
+    /* A physical-quantity scalar input accepts a dimensionless scalar output
+     * (implicit unit injection at the codegen binding site). */
+    Graph graph;
+    graph.AddNodeType(NodeType{
+        .id = "constant.value",
+        .displayName = "Value",
+        .outputPorts = {Port{.name = "out",
+                             .direction = PortDirection::Output,
+                             .type = WireType{.quantity = Quantity::Dimensionless,
+                                              .frame = Frame::Scalar,
+                                              .dtype = DType::F32}}},
+    });
+    graph.AddNodeType(MakeCurrentSinkType());
+    graph.AddNode(Node{.id = "value", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "load.current", .domain = "app_loop"});
+
+    Connection c{
+        .id = "c1",
+        .from = PortRef{.nodeId = "value", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    };
+
+    EXPECT_TRUE(graph.TypeCheck(c));
+    EXPECT_TRUE(graph.Connect(c));
+}
+
+TEST(Graph, TypeCheckRejectsBooleanInjection) {
+    /* Boolean ports never participate in implicit conversions. */
+    Graph graph;
+    graph.AddNodeType(NodeType{
+        .id = "constant.value",
+        .displayName = "Value",
+        .outputPorts = {Port{.name = "out",
+                             .direction = PortDirection::Output,
+                             .type = WireType{.quantity = Quantity::Dimensionless,
+                                              .frame = Frame::Scalar,
+                                              .dtype = DType::F32}}},
+    });
+    graph.AddNodeType(NodeType{
+        .id = "load.flag",
+        .displayName = "Flag Sink",
+        .inputPorts = {Port{.name = "in",
+                            .direction = PortDirection::Input,
+                            .type = WireType{.quantity = Quantity::Boolean,
+                                             .frame = Frame::Scalar,
+                                             .dtype = DType::F32}}},
+    });
+    graph.AddNode(Node{.id = "value", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "load.flag", .domain = "app_loop"});
+
+    Connection c{
+        .id = "c1",
+        .from = PortRef{.nodeId = "value", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    };
+
+    EXPECT_FALSE(graph.TypeCheck(c));
+    EXPECT_FALSE(graph.Connect(c));
+}
+
 TEST(Graph, TypeCheckRejectsNonConvertibleMismatch) {
     /* voltage -> current is still a hard type error (no implicit rule). */
     Graph graph;

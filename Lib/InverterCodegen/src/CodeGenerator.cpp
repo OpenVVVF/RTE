@@ -302,10 +302,54 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
     return "";
 }
 
-// Var nodes (type id "var.*") hold machine-owned RAM state in their "Stored"
-// parameter; a runtime registry lets the shell adjust them by node id.
+/* Unit injection (mirror of ExtractionSuffix): when a physical-quantity
+ * scalar input binds from a dimensionless scalar source, the emitted
+ * expression must be wrapped in the input's unit.  Returns the wrapper
+ * function name (e.g. "rte::Amperes") or "" when no injection applies. */
+std::string InjectionWrapper(const NodeAPI::Graph& graph,
+                             const std::string& targetNodeId,
+                             const std::string& targetPortName) {
+    const auto targetNode = graph.FindNode(targetNodeId);
+    if (!targetNode) return "";
+    const auto targetType = graph.FindNodeType(targetNode->type);
+    if (!targetType) return "";
+    const auto targetPort = targetType->FindInputPort(targetPortName);
+    if (!targetPort) return "";
+    const auto q = targetPort->type.quantity;
+    if (targetPort->type.frame != NodeAPI::Frame::Scalar ||
+        q == NodeAPI::Quantity::Dimensionless ||
+        q == NodeAPI::Quantity::Boolean) {
+        return "";
+    }
+
+    for (const auto& c : graph.GetConnections()) {
+        if (c.to.nodeId == targetNodeId && c.to.portName == targetPortName) {
+            const auto srcNode = graph.FindNode(c.from.nodeId);
+            if (!srcNode) return "";
+            const auto srcType = graph.FindNodeType(srcNode->type);
+            if (!srcType) return "";
+            const auto srcPort = srcType->FindOutputPort(c.from.portName);
+            if (!srcPort || srcPort->type.quantity != NodeAPI::Quantity::Dimensionless ||
+                srcPort->type.frame != NodeAPI::Frame::Scalar) {
+                return "";
+            }
+            switch (q) {
+                case NodeAPI::Quantity::Voltage:         return "rte::Volts";
+                case NodeAPI::Quantity::Current:         return "rte::Amperes";
+                case NodeAPI::Quantity::Temperature:     return "rte::Celsius";
+                case NodeAPI::Quantity::Torque:          return "rte::NewtonMeters";
+                case NodeAPI::Quantity::AngularVelocity: return "rte::RadiansPerSecond";
+                default:                                 return "";
+            }
+        }
+    }
+    return "";
+}
+
+// Var nodes (type id "Values.Var*") hold machine-owned RAM state in their
+// "Stored" parameter; a runtime registry lets the shell adjust them by node id.
 bool IsVarNodeType(const NodeAPI::NodeType& nodeType) {
-    return nodeType.id.rfind("var.", 0) == 0;
+    return nodeType.id.rfind("Values.Var", 0) == 0;
 }
 
 /* True when the instance flags this parameter as a parameterInput (bound
@@ -594,9 +638,15 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                             "' is not connected";
                     return false;
                 }
-                source << "        const " << WireTypeToCpp(port.type) << " " << port.name
-                       << " = " << *src
-                       << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
+                const std::string wrap = InjectionWrapper(graph_, node->id, port.name);
+                if (!wrap.empty()) {
+                    source << "        const " << WireTypeToCpp(port.type) << " " << port.name
+                           << " = " << wrap << "(" << *src << ");\n";
+                } else {
+                    source << "        const " << WireTypeToCpp(port.type) << " " << port.name
+                           << " = " << *src
+                           << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
+                }
             }
 
             // Parameters flagged as parameterInputs bind from connections too.

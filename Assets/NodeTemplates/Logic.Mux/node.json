@@ -1,0 +1,49 @@
+{
+  "id": "Logic.Mux",
+  "displayName": "Mux",
+  "defaultName": "Mux",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "Sel",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "A",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "B",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Out",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}
