@@ -318,6 +318,7 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
 
     const std::string id = GenerateId();
 
+    bool graphChanged = false;
     if (asBridge) {
         NodeAPI::Bridge bridge;
         bridge.id = id;
@@ -328,6 +329,7 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
         bridge.consumer = *consumerRef;
         if (graph_.AddBridge(std::move(bridge))) {
             RegisterExistingConnection(connectionId, id, true);
+            graphChanged = true;
         } else {
             DataFlowGraphModel::deleteConnection(connectionId);
         }
@@ -338,6 +340,7 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
         connection.to = *consumerRef;
         if (graph_.Connect(std::move(connection))) {
             RegisterExistingConnection(connectionId, id, false);
+            graphChanged = true;
         } else {
             DataFlowGraphModel::deleteConnection(connectionId);
         }
@@ -345,6 +348,9 @@ void NodeGraphModel::addConnection(QtNodes::ConnectionId const connectionId) {
 
     // A new connection may make an optional, parameter-backed port visible.
     RefreshOptionalPortVisibility(consumerRef->nodeId);
+    if (graphChanged && onGraphChanged) {
+        onGraphChanged();
+    }
 }
 
 void NodeGraphModel::RefreshOptionalPortVisibility(const std::string& nodeId) {
@@ -378,12 +384,13 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
                                          connectionId.inPortIndex,
                                          QtNodes::PortType::In);
 
+    bool graphChanged = false;
     const auto it = connectionMap_.find(connectionId);
     if (it != connectionMap_.end()) {
         if (it->second.isBridge) {
-            graph_.RemoveBridge(it->second.graphId);
+            graphChanged = graph_.RemoveBridge(it->second.graphId);
         } else {
-            graph_.Disconnect(it->second.graphId);
+            graphChanged = graph_.Disconnect(it->second.graphId);
         }
         connectionMap_.erase(it);
     }
@@ -393,19 +400,27 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
     if (consumerRef) {
         RefreshOptionalPortVisibility(consumerRef->nodeId);
     }
+    if (graphChanged && onGraphChanged) {
+        onGraphChanged();
+    }
     return result;
 }
 
 bool NodeGraphModel::deleteNode(QtNodes::NodeId const nodeId) {
+    bool graphChanged = false;
     const auto it = qtIdToNodeId_.find(nodeId);
     if (it != qtIdToNodeId_.end()) {
         // NodeAPI::Graph::RemoveNode also removes the node's connections and
         // bridges. The base-class teardown below still emits connectionDeleted
         // for each QtNodes connection; our deleteConnection override then just
         // finds them already gone and cleans up the id map.
-        graph_.RemoveNode(it->second);
+        graphChanged = graph_.RemoveNode(it->second);
     }
-    return DataFlowGraphModel::deleteNode(nodeId);
+    const bool result = DataFlowGraphModel::deleteNode(nodeId);
+    if (graphChanged && onGraphChanged) {
+        onGraphChanged();
+    }
+    return result;
 }
 
 bool NodeGraphModel::IsBridge(QtNodes::ConnectionId const connectionId) const {

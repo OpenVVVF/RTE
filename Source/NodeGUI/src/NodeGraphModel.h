@@ -52,6 +52,11 @@ public:
 
     void ClearRejectionState();
 
+    // Called after the NodeAPI graph has been changed by an interactive
+    // connection or deletion. GraphScene uses this to record application-level
+    // undo history instead of QtNodes' visual-only undo stack.
+    std::function<void()> onGraphChanged;
+
 Q_SIGNALS:
     // Emitted when a domainless node adopts its peer's domain on connect, so
     // the scene can refresh the node's caption and the domain outlines.
