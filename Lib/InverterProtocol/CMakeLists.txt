@@ -73,7 +73,7 @@ if(INVERTERPROTOCOL_BUILD_TESTS)
     target_link_libraries(InverterProtocol_tests
         PRIVATE InverterProtocol InverterProtocolCore GTest::gtest_main ivp_warnings
     )
-    if(UNIX)
+    if(UNIX AND NOT APPLE)
         target_link_libraries(InverterProtocol_tests PRIVATE util)
     endif()
 

@@ -10,12 +10,19 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <cerrno>
+#include <cstring>
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace RTECodeEmitter {
 
@@ -80,9 +87,22 @@ std::string ReadFileText(const std::filesystem::path& path, std::string& error) 
 }
 
 bool WriteFileText(const std::filesystem::path& path, const std::string& content, std::string& error) {
-    std::ofstream file(path);
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+    chmod(path.c_str(), 0777);
+    unlink(path.c_str());
+#else
+    if (std::filesystem::exists(path, ec)) {
+        std::filesystem::permissions(path, std::filesystem::perms::owner_write, std::filesystem::perm_options::add, ec);
+        std::filesystem::remove(path, ec);
+    }
+#endif
+    std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
-        error = "Failed to write file: " + path.string();
+        error = "Failed to open file for writing: " + path.string() + " (errno: " + std::string(strerror(errno)) + ")";
         return false;
     }
     file << content;
@@ -126,11 +146,16 @@ bool IsInsideDirectory(const std::filesystem::path& candidate, const std::filesy
     return true;
 }
 
-bool ShouldSkipDirectory(const std::filesystem::path& dir) {
-    const std::string name = dir.filename().string();
+bool ShouldSkipDirectory(const std::filesystem::path& dir, const std::filesystem::path& baseDir) {
     static const std::unordered_set<std::string> kSkip = {
-        ".git", "build", "node_modules", ".vs", "out", "__pycache__"};
-    return kSkip.count(name) > 0;
+        ".git", "build", "generated", "node_modules", ".vs", "out", "__pycache__"};
+    std::error_code ec;
+    auto rel = std::filesystem::relative(dir, baseDir, ec);
+    if (ec) rel = dir;
+    for (const auto& part : rel) {
+        if (kSkip.count(part.string()) > 0) return true;
+    }
+    return false;
 }
 
 bool IsSourceFile(const std::filesystem::path& path) {
@@ -357,25 +382,30 @@ bool Emitter::Run(const EmitterOptions& options) const {
     logger_.Info("Copying base source tree to: " + options.outputDir.string());
     if (!options.dryRun) {
         std::filesystem::create_directories(options.outputDir);
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(
+        for (auto it = std::filesystem::recursive_directory_iterator(
                  options.baseSrc,
-                 std::filesystem::directory_options::skip_permission_denied)) {
-            if (entry.is_directory() && ShouldSkipDirectory(entry.path())) {
-                logger_.Debug("Skipping directory: " + entry.path().string());
+                 std::filesystem::directory_options::skip_permission_denied);
+             it != std::filesystem::recursive_directory_iterator();
+             ++it) {
+            if (ShouldSkipDirectory(it->path(), options.baseSrc)) {
+                logger_.Debug("Skipping entry: " + it->path().string());
+                if (it->is_directory()) {
+                    it.disable_recursion_pending();
+                }
                 continue;
             }
 
-            const auto relative = std::filesystem::relative(entry.path(), options.baseSrc);
+            const auto relative = std::filesystem::relative(it->path(), options.baseSrc);
             const auto dest = options.outputDir / relative;
 
-            if (entry.is_directory()) {
+            if (it->is_directory()) {
                 logger_.Debug("Creating directory: " + dest.string());
                 std::filesystem::create_directories(dest);
-            } else if (entry.is_regular_file()) {
+            } else if (it->is_regular_file()) {
                 logger_.Debug("Copying file: " + relative.string());
                 std::filesystem::create_directories(dest.parent_path());
                 std::filesystem::copy_file(
-                    entry.path(), dest,
+                    it->path(), dest,
                     std::filesystem::copy_options::overwrite_existing);
             }
         }
@@ -390,14 +420,19 @@ bool Emitter::Run(const EmitterOptions& options) const {
     std::vector<std::pair<std::filesystem::path, std::vector<Marker>>> fileMarkers;
     bool anyError = false;
 
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(
+    for (auto it = std::filesystem::recursive_directory_iterator(
              options.outputDir,
-             std::filesystem::directory_options::skip_permission_denied)) {
-        if (!entry.is_regular_file()) continue;
-        if (!IsSourceFile(entry.path())) continue;
+             std::filesystem::directory_options::skip_permission_denied);
+         it != std::filesystem::recursive_directory_iterator();
+         ++it) {
+        if (it->is_directory() && ShouldSkipDirectory(it->path(), options.outputDir)) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (!it->is_regular_file()) continue;
+        if (!IsSourceFile(it->path())) continue;
 
-        const auto filePath = entry.path();
+        const auto filePath = it->path();
         logger_.Debug("Scanning file: " + filePath.string());
 
         std::string readError;
@@ -597,7 +632,7 @@ bool Emitter::Run(const EmitterOptions& options) const {
                     snippet = "app::" + domainTitle + "Stop(" + stateAccess + ");";
                 }
 
-                const size_t adjustedLine = marker.lineNumber + linesAdded;
+                const size_t adjustedLine = marker.lineNumber + (marker.lineNumber >= includeInsertLine ? linesAdded : 0);
                 if (adjustedLine < lines.size()) {
                     // Preserve the indentation of the original marker line.
                     const std::string& originalLine = lines[adjustedLine];

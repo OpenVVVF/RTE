@@ -228,7 +228,10 @@ bool Graph::AddBridge(Bridge bridge) {
             bridge.type.quantity == Quantity::Dimensionless &&
             producerPort->type.frame == Frame::Scalar &&
             (producerPort->type.quantity == Quantity::Voltage ||
-             producerPort->type.quantity == Quantity::Current);
+             producerPort->type.quantity == Quantity::Current ||
+             producerPort->type.quantity == Quantity::Temperature ||
+             producerPort->type.quantity == Quantity::AngularVelocity ||
+             producerPort->type.quantity == Quantity::Torque);
         if (!extractOk) return false;
     }
 
@@ -294,15 +297,11 @@ bool Graph::TypeCheck(const Connection& connection) const {
 
     if (fromPort->type == toPort->type) return true;
 
-    /* Implicit unit extraction: a dimensionless scalar input accepts a
-     * voltage, current, or temperature scalar output; codegen emits the
-     * .in(unit) extraction at the binding site. */
+    /* Implicit unit extraction: a dimensionless scalar input accepts any
+     * scalar output; codegen emits the .in(unit) extraction at the binding site. */
     if (toPort->type.frame == Frame::Scalar &&
         toPort->type.quantity == Quantity::Dimensionless &&
-        fromPort->type.frame == Frame::Scalar &&
-        (fromPort->type.quantity == Quantity::Voltage ||
-         fromPort->type.quantity == Quantity::Current ||
-         fromPort->type.quantity == Quantity::Temperature)) {
+        fromPort->type.frame == Frame::Scalar) {
         return true;
     }
 

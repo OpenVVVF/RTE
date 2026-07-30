@@ -17,6 +17,8 @@ struct SimContext {
 SimContext& GetSimContext();
 void SimNotifyEncoderSample();
 
+class IPlant;
+void SimRuntime_RegisterPlant(IPlant* plant);
 void SimRuntime_RegisterMotor(MotorModel* motor);
 
 } // namespace hostsim

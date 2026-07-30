@@ -25,6 +25,8 @@ add_executable(host_sim
     src/sim_runtime.cpp
     src/motor_model.cpp
     src/pwm_scope.cpp
+    src/plant/plant_backend.cpp
+    src/plant/ngspice_plant.cpp
     src/telemetry_publisher.cpp
     src/realtime_platform.cpp
     # Portable IVP C core (no host serial layer needed for the publisher).
@@ -46,7 +48,7 @@ if(WIN32)
 endif()
 
 if(UNIX)
-    target_link_libraries(host_sim PRIVATE m)
+    target_link_libraries(host_sim PRIVATE m dl)
 endif()
 
 if(MSVC)

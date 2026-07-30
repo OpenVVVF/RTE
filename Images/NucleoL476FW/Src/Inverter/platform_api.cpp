@@ -42,11 +42,20 @@ float platform_get_dc_link_voltage(void) {
 }
 
 float platform_get_throttle_a(void) {
-    return 0.0f;
+    return 0.8f;
 }
 
 float platform_get_throttle_b(void) {
-    return 0.0f;
+    return 0.5f;
+}
+
+float platform_get_motor_temperature(void) {
+    return 25.0f;
+}
+
+float platform_get_inverter_temperature(uint8_t channel) {
+    (void)channel;
+    return 25.0f;
 }
 
 /* --------------------------------------------------------------------------

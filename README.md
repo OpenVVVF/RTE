@@ -269,7 +269,7 @@ Next up, roughly in priority order:
   calibrators, compute PI gains for a target bandwidth, slew-limit the
   current references (the `control.slew` node exists, unwired)
 - ngspice-based plant/inverter simulator for closed-loop graph testing
-  before hardware
+  before hardware — see [Images/HostSim/docs/Implementation_Plan.md](Images/HostSim/docs/Implementation_Plan.md)
 - Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no

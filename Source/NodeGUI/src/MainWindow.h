@@ -82,6 +82,7 @@ private:
         Generate,
         Flash,
         GenerateAndFlash,
+        BuildSimulation,
     };
     enum class CliStage { None, Generate, Build, Flash };
 
@@ -169,6 +170,7 @@ private:
     QAction* generateAction_ = nullptr;
     QAction* flashAction_ = nullptr;
     QAction* generateFlashAction_ = nullptr;
+    QAction* buildSimAction_ = nullptr;
     QProcess* buildProcess_ = nullptr;
     CliStage cliStage_ = CliStage::None;
     BuildCommand activeBuildCommand_ = BuildCommand::Generate;

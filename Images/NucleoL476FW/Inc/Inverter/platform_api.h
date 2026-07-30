@@ -72,6 +72,16 @@ float platform_get_throttle_a(void);
  */
 float platform_get_throttle_b(void);
 
+/**
+ * @brief Motor temperature [deg C]. Returns 25.
+ */
+float platform_get_motor_temperature(void);
+
+/**
+ * @brief Inverter temperature for channel [deg C]. Returns 25.
+ */
+float platform_get_inverter_temperature(uint8_t channel);
+
 /* --------------------------------------------------------------------------
  * Safety / faults
  * -------------------------------------------------------------------------- */

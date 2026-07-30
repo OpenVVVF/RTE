@@ -816,6 +816,15 @@ void MainWindow::SetupMenu() {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
     });
 
+    buildMenu->addSeparator();
+
+    buildSimAction_ = buildMenu->addAction(QStringLiteral("Build &Reflect in Simulator"));
+    buildSimAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
+    buildSimAction_->setToolTip(QStringLiteral("Re-emit graph into HostSim, compile simulator, and restart live telemetry feed"));
+    connect(buildSimAction_, &QAction::triggered, this, [this] {
+        StartBuildCommand(BuildCommand::BuildSimulation);
+    });
+
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu_ = viewMenu;
 
@@ -1047,6 +1056,7 @@ void MainWindow::SetBuildActionsEnabled(bool enabled) {
     if (generateAction_) generateAction_->setEnabled(enabled);
     if (flashAction_) flashAction_->setEnabled(enabled);
     if (generateFlashAction_) generateFlashAction_->setEnabled(enabled);
+    if (buildSimAction_) buildSimAction_->setEnabled(enabled);
 }
 
 void MainWindow::StartBuildCommand(BuildCommand command) {
@@ -1066,6 +1076,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
+    const std::filesystem::path projectRoot = ProjectRoot();
     const QString absoluteGraphPath =
         QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
     const auto workspace = RTEAutomation::WorkspaceForGraph(
@@ -1086,17 +1097,20 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         case BuildCommand::GenerateAndFlash:
             operationName = QStringLiteral("Generate and Flash");
             break;
+        case BuildCommand::BuildSimulation:
+            operationName = QStringLiteral("Build Simulation");
+            break;
     }
 
     AppendBuildLog(
         QStringLiteral("\n============================================================\n"
                        "%1\n"
                        "Graph: %2\n"
-                       "Build: %3\n"
+                       "Project Root: %3\n"
                        "============================================================\n")
             .arg(operationName,
                  absoluteGraphPath,
-                 QString::fromStdString(firmwareBuildDir.string())));
+                 QString::fromStdString(projectRoot.string())));
 
     activeBuildCommand_ = command;
     pendingFirmwarePath_ = QString::fromStdString(firmwareBinary.string());
@@ -1110,6 +1124,33 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
             return;
         }
         StartCliFlash(pendingFirmwarePath_);
+        return;
+    }
+
+    if (command == BuildCommand::BuildSimulation) {
+        // Re-emit the graph into HostSim, rebuild the simulator, and restart
+        // the live telemetry feed (see Images/HostSim/scripts).
+#ifdef _WIN32
+        const std::filesystem::path script =
+            projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+        const QStringList arguments{
+            QStringLiteral("-NoProfile"),
+            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+            QStringLiteral("-File"), QString::fromStdString(script.string()),
+            QStringLiteral("-ForceEmit"),
+            QStringLiteral("-KeepGui"),
+        };
+        buildProcess_->start(QStringLiteral("powershell.exe"), arguments);
+#else
+        const std::filesystem::path script =
+            projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+        const QStringList arguments{
+            QString::fromStdString(script.string()),
+            QStringLiteral("-ForceEmit"),
+        };
+        buildProcess_->start(QStringLiteral("bash"), arguments);
+#endif
+        buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
         return;
     }
 

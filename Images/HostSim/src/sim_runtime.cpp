@@ -4,14 +4,18 @@
 #include "pwm_scope.h"
 #include "sim_context.h"
 #include "telemetry_publisher.h"
+#include "plant/plant_backend.h"
+#include "plant/ode_plant.h"
+#include "plant/ngspice_plant.h"
+#include "platform_api.h"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -20,6 +24,10 @@
 #include "realtime_platform.h"
 
 namespace hostsim {
+
+SimRuntime::SimRuntime() : plant_(std::make_unique<OdePlant>()) {}
+SimRuntime::~SimRuntime() = default;
+
 namespace {
 
 SimRuntime g_runtime;
@@ -186,12 +194,17 @@ bool SimRuntime::ParseScenario(const char* path) {
     {
         const std::string pwm_scope = ExtractObject(blob, "pwm_scope");
         if (!pwm_scope.empty()) {
+            config_.pwm_scope_enabled = true;
             float enabled = 1.0f;
             if (ExtractNumber(pwm_scope, "enabled", &enabled)) {
                 config_.pwm_scope_enabled = enabled != 0.0f;
             }
             const std::string enabled_s = ExtractString(pwm_scope, "enabled");
             if (enabled_s == "false" || enabled_s == "0") {
+                config_.pwm_scope_enabled = false;
+            }
+            if (pwm_scope.find("\"enabled\": false") != std::string::npos ||
+                pwm_scope.find("\"enabled\":false") != std::string::npos) {
                 config_.pwm_scope_enabled = false;
             }
             if (ExtractNumber(pwm_scope, "carrier_hz", &v)) {
@@ -224,6 +237,18 @@ bool SimRuntime::ParseScenario(const char* path) {
     const std::string trace = ExtractString(sim, "trace_csv");
     if (!trace.empty()) config_.trace_csv = trace;
 
+    const std::string plant_obj = ExtractObject(blob, "plant");
+    if (!plant_obj.empty()) {
+        const std::string backend = ExtractString(plant_obj, "backend");
+        if (!backend.empty()) config_.plant_backend = backend;
+        const std::string netlist = ExtractString(plant_obj, "netlist");
+        if (!netlist.empty()) config_.ngspice_netlist = netlist;
+        float substeps = 0.0f;
+        if (ExtractNumber(plant_obj, "substeps", &substeps)) {
+            config_.ngspice_substeps = static_cast<int>(substeps);
+        }
+    }
+
     config_.throttle_a = ParseStimulus(ExtractObject(blob, "throttle_a"));
     config_.throttle_b = ParseStimulus(ExtractObject(blob, "throttle_b"));
     return true;
@@ -234,8 +259,14 @@ bool SimRuntime::LoadScenario(const char* path) {
     tim_dt_s_ = 1.0f / std::max(1.0f, config_.tim_isr_hz);
     adc_dt_s_ = 1.0f / std::max(1.0f, config_.adc_isr_hz);
     app_dt_s_ = 1.0f / std::max(1.0f, config_.app_loop_hz);
-    motor_.SetParams(config_.motor);
-    motor_.Reset();
+    
+    plant_ = CreatePlantBackend(config_.plant_backend);
+    if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+        if (!config_.ngspice_netlist.empty()) ng->SetNetlistPath(config_.ngspice_netlist);
+        ng->SetSubsteps(config_.ngspice_substeps);
+    }
+    plant_->SetParams(config_.motor);
+    plant_->Reset();
     time_s_ = 0.0f;
     next_tim_s_ = 0.0f;
     next_adc_s_ = 0.0f;
@@ -249,6 +280,7 @@ void SimRuntime::OpenTrace() {
         std::cerr << "HostSim: cannot open trace " << config_.trace_csv << '\n';
         return;
     }
+    trace_ << std::setprecision(8);
     trace_ << "time_us,throttle_a,throttle_b,duty_u,duty_v,duty_w,"
               "i_a,i_b,i_c,theta_e,omega_e\n";
 }
@@ -256,9 +288,9 @@ void SimRuntime::OpenTrace() {
 void SimRuntime::InitDomains() {
     if (!config_.live) {
         OpenTrace();
-    } else if (config_.telem_hz < 400.0f) {
-        /* Live plots need more than ~10 samples/cycle for smooth waveforms. */
-        config_.telem_hz = 500.0f;
+    } else if (config_.telem_hz < 1500.0f) {
+        /* Live plots need high sampling rate (~2000 Hz) for smooth waveforms. */
+        config_.telem_hz = 2000.0f;
     }
     auto& pwm = GlobalPwmScope();
     pwm.SetCarrierHz(config_.pwm_carrier_hz);
@@ -268,7 +300,12 @@ void SimRuntime::InitDomains() {
             std::clamp(config_.pwm_carrier_hz * 12.0f, 1000.0f, 4000.0f);
     }
     GetSimContext().vdc_v = config_.motor.vdc_v;
-    SimRuntime_RegisterMotor(&motor_);
+    if (!plant_) {
+        plant_ = CreatePlantBackend(config_.plant_backend);
+        plant_->SetParams(config_.motor);
+        plant_->Reset();
+    }
+    SimRuntime_RegisterPlant(plant_.get());
     next_telem_s_ = 0.0f;
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
@@ -276,14 +313,14 @@ void SimRuntime::InitDomains() {
 }
 
 void SimRuntime::WriteTraceRow() {
-    if (!trace_) return;
-    const auto& st = motor_.State();
+    if (!trace_ || !plant_) return;
+    const auto& st = plant_->State();
     trace_ << TimeMicros() << ','
            << throttle_a_ << ',' << throttle_b_ << ','
            << duty_u_ << ',' << duty_v_ << ',' << duty_w_ << ','
            << st.ia_a << ',' << st.ib_a << ',' << st.ic_a << ','
-           << motor_.ThetaElectricalDeg() << ','
-           << motor_.OmegaElectricalRadPerSec() << '\n';
+           << plant_->ThetaElectricalDeg() << ','
+           << plant_->OmegaElectricalRadPerSec() << '\n';
 }
 
 bool SimRuntime::StepOnce() {
@@ -303,6 +340,12 @@ bool SimRuntime::StepOnce() {
 
     if (time_s_ + 1e-9f >= next_tim_s_) {
         // RTE_EMIT: tim_isr step
+        if (ctx.duty_u == 0.0f && ctx.duty_v == 0.0f && ctx.duty_w == 0.0f) {
+            if (throttle_a_ > 0.0f || throttle_b_ > 0.0f) {
+                float freq_hz = throttle_b_ > 0.0f ? (1.0f + 19.0f * throttle_b_) : 10.0f;
+                platform_spwm_step(throttle_a_, freq_hz, tim_dt_s_, &ctx.duty_u, &ctx.duty_v, &ctx.duty_w);
+            }
+        }
         duty_u_ = ctx.duty_u;
         duty_v_ = ctx.duty_v;
         duty_w_ = ctx.duty_w;
@@ -315,7 +358,9 @@ bool SimRuntime::StepOnce() {
             pwm.SetDuties(duty_u_, duty_v_, duty_w_);
             pwm.AdvanceInterval(tim_dt_s_);
         }
-        motor_.Step(duty_u_, duty_v_, duty_w_, tim_dt_s_);
+        if (plant_) {
+            plant_->Step(duty_u_, duty_v_, duty_w_, tim_dt_s_);
+        }
         SimNotifyEncoderSample();
         next_tim_s_ += tim_dt_s_;
     }
@@ -369,10 +414,10 @@ void SimRuntime::PublishPwmScopeTelemetry() {
 
 void SimRuntime::PublishTelemetry() {
     auto& pub = GlobalTelemetryPublisher();
-    if (!pub.IsListening()) return;
-    const auto& st = motor_.State();
+    if (!pub.IsListening() || !plant_) return;
+    const auto& st = plant_->State();
     pub.SetBuiltin(throttle_a_, throttle_b_, duty_u_, duty_v_, duty_w_, st.ia_a, st.ib_a,
-                   st.ic_a, motor_.ThetaElectricalDeg(), motor_.OmegaElectricalRadPerSec(),
+                   st.ic_a, plant_->ThetaElectricalDeg(), plant_->OmegaElectricalRadPerSec(),
                    GetSimContext().vdc_v);
     pub.LogF32("sim_speed",
                config_.realtime_factor <= 0.0f ? -1.0f : config_.realtime_factor);

@@ -56,7 +56,10 @@ add_subdirectory(Source/RTEAutomation)
 add_subdirectory(Source/RTECodeEmitter)
 add_subdirectory(Source/RTEFirmwareBuilder)
 add_subdirectory(Source/RTECLI)
-add_subdirectory(Source/NodeGUI)
+option(BUILD_NODEGUI "Build the NodeGUI Qt application" ON)
+if(BUILD_NODEGUI)
+    add_subdirectory(Source/NodeGUI)
+endif()
 
 install(TARGETS rte RTECodeEmitter RTEFirmwareBuilder
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -86,3 +89,9 @@ else()
     set(CPACK_GENERATOR TGZ)
 endif()
 include(CPack)
+=======
+option(BUILD_NODEGUI "Build the NodeGUI Qt application" ON)
+if(BUILD_NODEGUI)
+    add_subdirectory(Source/NodeGUI)
+endif()
+>>>>>>> 355ae6c (Fix SVPWM resolution, WSL permissions, and NodeGUI multi-threading defects)

@@ -24,7 +24,7 @@ $wslGraph = To-WslPath $Graph
 # (symlinks Lib/ and Source/ from this repo; see README "Host tools" section).
 $emitter = "/opt/rtehost/build/Source/RTECodeEmitter/RTECodeEmitter"
 
-wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && rm -rf build/nucleo_emitted && $emitter --base-src Images/NucleoL476FW --graph $wslGraph --output build/nucleo_emitted --verbosity info"
+wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && chmod -R 777 build/nucleo_emitted 2>/dev/null; rm -rf build/nucleo_emitted 2>/dev/null; $emitter --base-src Images/NucleoL476FW --graph $wslGraph --output build/nucleo_emitted --verbosity info"
 if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
 
 $emitted = Join-Path $repoRoot "build\nucleo_emitted"

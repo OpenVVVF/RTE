@@ -8,7 +8,7 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
-#define PWM_DEFAULT_SWITCHING_FREQ_HZ   10000U  /* 10 kHz */
+#define PWM_DEFAULT_SWITCHING_FREQ_HZ   1000U   /* 1 kHz */
 #define PWM_DEFAULT_DEADTIME_NS         1000U   /* 1 us */
 
 void PWM_SetFrequency(uint32_t freq_hz);
