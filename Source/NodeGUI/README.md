@@ -44,17 +44,28 @@ Or launch with no arguments and use `File → Open`.
 - Draws each port as a filled shape: color = quantity, shape = frame.
 - Shows an FPS / frametime overlay in the top-right corner of the viewport.
 - Shows the node id, type, and timing domain in each node caption.
-- Draws a colored outline around each timing domain.
-- `View → Auto Arrange` lays out the graph left-to-right by dependency flow.
-- `File → Save` / `File → Save As` writes the graph back to JSON.
-- Interactive connection edits are validated against NodeAPI rules.
+- Draws a colored outline around each timing domain, with the domain name labeled above it.
+- `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
+- `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
+- `Build → Generate Code`, `Flash`, and `Generate and Flash` operate on the
+  current graph. The editor saves first, runs the firmware pipeline
+  asynchronously, and streams output to the detachable Console → Logs panel.
+  `F5` runs Generate and Flash.
+- Interactive connection edits are validated against NodeAPI rules and persisted to JSON:
+  - Producer must be an output port and consumer must be an input port.
+  - Port types must match.
+  - An input may have either one intra-domain connection or one bridge, not both.
+  - Connections must stay within the same timing domain; bridges must cross domains.
+  - Entry-point nodes cannot have incoming connections.
+  - All edits are checked against the NodeAPI timing/DAG validator.
+  - If a drag is rejected, the reason is shown in the status bar (bottom-left) for 4 seconds.
 - **Inspector panel** — edit node parameters in place.
 - **Node palette** — add new node instances from templates.
 - **Parameter blocks** — inline parameter editing on the canvas.
 
-## Runtime / telemetry (merged from upstream)
+## Runtime / telemetry
 
-The **Runtime** tab connects to hardware or a simulated feed and visualizes live values:
+The **Runtime** screen connects to hardware or a simulated feed and visualizes live values:
 
 | Component | Role |
 |-----------|------|
@@ -81,7 +92,7 @@ The **Runtime** tab connects to hardware or a simulated feed and visualizes live
    ```powershell
    NodeGUI --tcp 127.0.0.1:14608 --protocol ivp
    ```
-3. Open the **Runtime** tab — plots receive `throttle_*`, `duty_*`, `i_*`,
+3. Open the **Runtime** screen — plots receive `throttle_*`, `duty_*`, `i_*`,
    `theta_e`, `omega_e`, `vdc_v`.
 4. Use the console to adjust: `throttle a 0.5`, `clear`, `quit`.
 
@@ -89,5 +100,4 @@ Offline inspection: `Images/HostSim/scripts/plot_sim.py trace.csv`.
 
 ## What it does not do yet
 
-- No code generation from the GUI (use `RTECodeEmitter` separately).
-- HostSim live mode uses TCP + InverterProtocol (not the legacy UART framing).
+- No packaged project/archive format.

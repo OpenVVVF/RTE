@@ -16,8 +16,11 @@ class QAction;
 class QDockWidget;
 class QLabel;
 class QMenu;
+class QPlainTextEdit;
+class QProcess;
 class QStackedWidget;
 class QTabBar;
+class QTabWidget;
 class QTimer;
 
 namespace NodeGUI {
@@ -67,9 +70,20 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
+    enum class BuildCommand {
+        Generate,
+        Flash,
+        GenerateAndFlash,
+    };
+
     void SetupMenu();
     void UpdateStatus();
     bool DoSave(const std::string& path);
+    bool EnsureGraphSaved();
+    void StartBuildCommand(BuildCommand command);
+    void ShowBuildLogs();
+    void AppendBuildLog(const QString& text);
+    void SetBuildActionsEnabled(bool enabled);
     void ConnectModelSignals();
     // Rebuilds the View menu for the active tab: each screen has its own set
     // of dockable panels, and Auto Arrange only exists on the Node Editor.
@@ -108,10 +122,16 @@ private:
     // Runtime-screen docks (created in SetupRuntime).
     QPointer<QDockWidget> signalTableDock_;
     QPointer<QDockWidget> telemetryConsoleDock_;
-    // Node-screen console dock (bottom area, hidden by default).
+    // Node-screen detachable debug dock (device console + build logs).
     QPointer<QDockWidget> editorConsoleDock_;
+    QPointer<QTabWidget> editorConsoleTabs_;
+    QPointer<QPlainTextEdit> buildLogView_;
     QMenu* viewMenu_ = nullptr;
     QAction* arrangeAction_ = nullptr;
+    QAction* generateAction_ = nullptr;
+    QAction* flashAction_ = nullptr;
+    QAction* generateFlashAction_ = nullptr;
+    QProcess* buildProcess_ = nullptr;
     // Per-tab QMainWindow dock layouts, saved/restored on tab switches.
     QByteArray screenStates_[3];
     int previousTab_ = 0;
