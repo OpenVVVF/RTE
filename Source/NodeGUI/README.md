@@ -46,6 +46,10 @@ Or launch with no arguments and use `File → Open`.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
+- `Build → Generate Code`, `Flash`, and `Generate and Flash` operate on the
+  current graph. The editor saves first, runs the firmware pipeline
+  asynchronously, and streams output to the detachable Console → Logs panel.
+  `F5` runs Generate and Flash.
 - Interactive connection edits are validated against NodeAPI rules and persisted to JSON:
   - Producer must be an output port and consumer must be an input port.
   - Port types must match.
@@ -57,4 +61,4 @@ Or launch with no arguments and use `File → Open`.
 
 ## What it does not do yet
 
-- No parameter editing, node creation, or code generation.
+- No packaged project/archive format or closed-loop plant simulator.

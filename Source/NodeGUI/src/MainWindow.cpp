@@ -12,11 +12,13 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCryptographicHash>
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -24,13 +26,19 @@
 #include <QMenuBar>
 #include <QMetaObject>
 #include <QMouseEvent>
+#include <QPlainTextEdit>
+#include <QProcess>
+#include <QPushButton>
 #include <QResizeEvent>
 #include <QScreen>
+#include <QScrollBar>
 #include <QShortcut>
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QTabBar>
+#include <QTabWidget>
+#include <QTextCursor>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolTip>
@@ -50,6 +58,35 @@ std::string DefaultTemplatesDir() {
 #else
     return (std::filesystem::current_path() / "Assets" / "NodeTemplates").string();
 #endif
+}
+
+std::filesystem::path ProjectRoot() {
+#ifdef RTE_PROJECT_ROOT
+    return RTE_PROJECT_ROOT;
+#else
+    return std::filesystem::current_path();
+#endif
+}
+
+QString BuildKeyForGraph(const std::string& graphPath) {
+    const QFileInfo graphInfo(QString::fromStdString(graphPath));
+    QString stem = graphInfo.completeBaseName();
+    for (qsizetype i = 0; i < stem.size(); ++i) {
+        const QChar ch = stem.at(i);
+        if (!ch.isLetterOrNumber() && ch != u'_' && ch != u'-') {
+            stem[i] = u'_';
+        }
+    }
+    if (stem.isEmpty()) {
+        stem = QStringLiteral("graph");
+    }
+
+    const QByteArray digest =
+        QCryptographicHash::hash(graphInfo.absoluteFilePath().toUtf8(),
+                                 QCryptographicHash::Sha1)
+            .toHex()
+            .left(8);
+    return stem + QStringLiteral("-") + QString::fromLatin1(digest);
 }
 
 // Native dialogs (QMessageBox statics and, on this system, QMessageBox in
@@ -196,6 +233,39 @@ MainWindow::MainWindow(QWidget* parent)
     addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+2")), 1);
     addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+3")), 2);
 
+    buildProcess_ = new QProcess(this);
+    buildProcess_->setProcessChannelMode(QProcess::MergedChannels);
+    connect(buildProcess_, &QProcess::readyReadStandardOutput, this, [this] {
+        AppendBuildLog(QString::fromLocal8Bit(buildProcess_->readAllStandardOutput()));
+    });
+    connect(buildProcess_,
+            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this,
+            [this](int exitCode, QProcess::ExitStatus exitStatus) {
+                AppendBuildLog(
+                    QString::fromLocal8Bit(buildProcess_->readAllStandardOutput()));
+                const bool success =
+                    exitStatus == QProcess::NormalExit && exitCode == 0;
+                AppendBuildLog(
+                    success
+                        ? QStringLiteral("\n[finished] Operation completed successfully.\n")
+                        : QStringLiteral("\n[finished] Operation failed (exit code %1).\n")
+                              .arg(exitCode));
+                statusBar()->showMessage(
+                    success ? QStringLiteral("Firmware operation completed")
+                            : QStringLiteral("Firmware operation failed"),
+                    5000);
+                SetBuildActionsEnabled(true);
+            });
+    connect(buildProcess_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            AppendBuildLog(QStringLiteral("\n[error] Could not start build workflow: %1\n")
+                               .arg(buildProcess_->errorString()));
+            statusBar()->showMessage(QStringLiteral("Could not start firmware operation"), 5000);
+            SetBuildActionsEnabled(true);
+        }
+    });
+
     // Load the node-type templates right away so the toolbox and node
     // creation work before any graph file is opened.
     const QString templatesError = graphScene_->LoadTemplates(DefaultTemplatesDir());
@@ -273,12 +343,33 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     addDockWidget(Qt::LeftDockWidgetArea, telemetryConsoleDock_);
     telemetryConsoleDock_->hide();
 
-    // Node-screen console: same device console, docked at the bottom of the
-    // Node Editor screen, off by default — enabled via the View menu.
+    // Node-screen debug dock: device console and build logs share tabs inside
+    // one detachable dock. It stays off by default and is enabled via View or
+    // automatically when a firmware operation starts.
     editorConsoleDock_ = new QDockWidget(QStringLiteral("Console"), this);
     editorConsoleDock_->setObjectName(QStringLiteral("editorConsoleDock"));
-    editorConsoleDock_->setWidget(
-        new runtime::ConsolePanel(runtimeController_.get(), editorConsoleDock_));
+    editorConsoleTabs_ = new QTabWidget(editorConsoleDock_);
+    editorConsoleTabs_->addTab(
+        new runtime::ConsolePanel(runtimeController_.get(), editorConsoleTabs_),
+        QStringLiteral("Console"));
+
+    auto* logsPage = new QWidget(editorConsoleTabs_);
+    auto* logsLayout = new QVBoxLayout(logsPage);
+    logsLayout->setContentsMargins(0, 0, 0, 0);
+    auto* clearLogsButton = new QPushButton(QStringLiteral("Clear Logs"), logsPage);
+    connect(clearLogsButton, &QPushButton::clicked, this, [this] {
+        if (buildLogView_) {
+            buildLogView_->clear();
+        }
+    });
+    logsLayout->addWidget(clearLogsButton, 0, Qt::AlignLeft);
+    buildLogView_ = new QPlainTextEdit(logsPage);
+    buildLogView_->setReadOnly(true);
+    buildLogView_->setMaximumBlockCount(5000);
+    logsLayout->addWidget(buildLogView_, 1);
+    editorConsoleTabs_->addTab(logsPage, QStringLiteral("Logs"));
+
+    editorConsoleDock_->setWidget(editorConsoleTabs_);
     addDockWidget(Qt::BottomDockWidgetArea, editorConsoleDock_);
     editorConsoleDock_->hide();
 
@@ -393,6 +484,26 @@ void MainWindow::SetupMenu() {
     exitAction->setShortcuts(QKeySequence::Quit);
     connect(exitAction, &QAction::triggered, this, &MainWindow::OnExit);
 
+    QMenu* buildMenu = menuBar()->addMenu(QStringLiteral("&Build"));
+
+    generateAction_ = buildMenu->addAction(QStringLiteral("&Generate Code"));
+    connect(generateAction_, &QAction::triggered, this, [this] {
+        StartBuildCommand(BuildCommand::Generate);
+    });
+
+    flashAction_ = buildMenu->addAction(QStringLiteral("&Flash"));
+    connect(flashAction_, &QAction::triggered, this, [this] {
+        StartBuildCommand(BuildCommand::Flash);
+    });
+
+    buildMenu->addSeparator();
+
+    generateFlashAction_ = buildMenu->addAction(QStringLiteral("Generate and &Flash"));
+    generateFlashAction_->setShortcut(QKeySequence(Qt::Key_F5));
+    connect(generateFlashAction_, &QAction::triggered, this, [this] {
+        StartBuildCommand(BuildCommand::GenerateAndFlash);
+    });
+
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu_ = viewMenu;
 
@@ -469,6 +580,153 @@ bool MainWindow::DoSave(const std::string& path) {
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
     return true;
+}
+
+bool MainWindow::EnsureGraphSaved() {
+    if (!currentPath_.empty()) {
+        return DoSave(currentPath_);
+    }
+
+    const QString fileName = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Save Graph Before Building"),
+        QString{},
+        QStringLiteral("JSON (*.json)"));
+    if (fileName.isEmpty()) {
+        return false;
+    }
+    return DoSave(fileName.toStdString());
+}
+
+void MainWindow::ShowBuildLogs() {
+    if (!editorConsoleDock_ || !editorConsoleTabs_ || !buildLogView_) {
+        ShowToast(QStringLiteral("Build log panel is not available"));
+        return;
+    }
+
+    // Firmware operations belong to the editor workflow. Select that screen,
+    // reveal its detachable debug dock, and focus the Logs sub-tab.
+    if (appSwitcher_->currentIndex() != 0) {
+        appSwitcher_->setCurrentIndex(0);
+    }
+    editorConsoleDock_->show();
+    editorConsoleDock_->raise();
+    editorConsoleTabs_->setCurrentIndex(1);
+}
+
+void MainWindow::AppendBuildLog(const QString& text) {
+    if (!buildLogView_ || text.isEmpty()) {
+        return;
+    }
+    QTextCursor cursor = buildLogView_->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(text);
+    buildLogView_->setTextCursor(cursor);
+    buildLogView_->verticalScrollBar()->setValue(
+        buildLogView_->verticalScrollBar()->maximum());
+}
+
+void MainWindow::SetBuildActionsEnabled(bool enabled) {
+    if (generateAction_) generateAction_->setEnabled(enabled);
+    if (flashAction_) flashAction_->setEnabled(enabled);
+    if (generateFlashAction_) generateFlashAction_->setEnabled(enabled);
+}
+
+void MainWindow::StartBuildCommand(BuildCommand command) {
+    ShowBuildLogs();
+
+    if (!buildProcess_ || buildProcess_->state() != QProcess::NotRunning) {
+        AppendBuildLog(QStringLiteral("\n[warning] A firmware operation is already running.\n"));
+        return;
+    }
+
+    // Always serialize the live graph before invoking external tools. For a
+    // new graph this prompts for its first filename.
+    if (!EnsureGraphSaved()) {
+        AppendBuildLog(QStringLiteral("\n[cancelled] Graph was not saved.\n"));
+        return;
+    }
+
+    const bool shouldBuild = command != BuildCommand::Flash;
+    const bool shouldFlash = command != BuildCommand::Generate;
+
+    if (shouldFlash) {
+        if (!httpApiServer_) {
+            AppendBuildLog(QStringLiteral("\n[error] Flash service is not available.\n"));
+            return;
+        }
+        if (!httpApiServer_->isRunning() && !httpApiServer_->start()) {
+            AppendBuildLog(QStringLiteral(
+                "\n[error] Could not start the local firmware flash API.\n"));
+            return;
+        }
+    }
+
+    const std::filesystem::path projectRoot = ProjectRoot();
+    const std::filesystem::path script =
+        projectRoot / "Tools" / "build_flash_graph.sh";
+    if (!std::filesystem::is_regular_file(script)) {
+        AppendBuildLog(QStringLiteral("\n[error] Build workflow script not found: %1\n")
+                           .arg(QString::fromStdString(script.string())));
+        return;
+    }
+
+    const QString buildKey = BuildKeyForGraph(currentPath_);
+    const std::filesystem::path outputRoot =
+        projectRoot / "build" / "nodegui" / buildKey.toStdString();
+    const std::filesystem::path firmwareBuildDir = outputRoot / "firmware";
+    const std::filesystem::path firmwareSourceDir = outputRoot / "firmware-src";
+    const QString absoluteGraphPath =
+        QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
+
+    QString operationName;
+    switch (command) {
+        case BuildCommand::Generate:
+            operationName = QStringLiteral("Generate Code");
+            break;
+        case BuildCommand::Flash:
+            operationName = QStringLiteral("Flash");
+            break;
+        case BuildCommand::GenerateAndFlash:
+            operationName = QStringLiteral("Generate and Flash");
+            break;
+    }
+
+    AppendBuildLog(
+        QStringLiteral("\n============================================================\n"
+                       "%1\n"
+                       "Graph: %2\n"
+                       "Build: %3\n"
+                       "============================================================\n")
+            .arg(operationName,
+                 absoluteGraphPath,
+                 QString::fromStdString(firmwareBuildDir.string())));
+
+    QStringList arguments;
+    arguments << QStringLiteral("--graph")
+              << absoluteGraphPath
+              << QStringLiteral("--fw-build-dir")
+              << QString::fromStdString(firmwareBuildDir.string())
+              << QStringLiteral("--fw-src-dir")
+              << QString::fromStdString(firmwareSourceDir.string())
+              << QStringLiteral("--build-type")
+              << QStringLiteral("Release");
+
+    if (!shouldBuild) {
+        arguments << QStringLiteral("--flash-only");
+    } else if (!shouldFlash) {
+        arguments << QStringLiteral("--no-flash");
+    }
+    if (shouldFlash) {
+        arguments << QStringLiteral("--flash-url")
+                  << QStringLiteral("http://127.0.0.1:%1")
+                         .arg(httpApiServer_->actualPort());
+    }
+
+    SetBuildActionsEnabled(false);
+    statusBar()->showMessage(QStringLiteral("%1 in progress...").arg(operationName));
+    buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
+    buildProcess_->start(QString::fromStdString(script.string()), arguments);
 }
 
 void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId) {
