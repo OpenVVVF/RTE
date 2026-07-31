@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -18,6 +19,56 @@ struct SignalHistory {
 struct ConsoleLine {
     uint64_t seq = 0;
     std::string text;
+};
+
+struct TelemetryStats {
+    float rxHz = 0.0f;
+    float rxBytesPerSec = 0.0f;
+    uint64_t goodFrames = 0;
+    uint64_t badFrames = 0;
+    uint64_t rejectCrc = 0;
+    uint64_t rejectHdr = 0;
+    uint64_t rejectLen = 0;
+    uint64_t rejectPayloadParse = 0;
+    uint64_t rejectUnknownId = 0;
+    uint32_t lastSeq = 0;
+    bool suspended = false;
+};
+
+struct SessionSignalHistory {
+    std::vector<float> t;
+    std::vector<float> y;
+};
+
+struct SessionStringSample {
+    double tsec = 0.0;
+    std::string value;
+};
+
+struct SessionConsoleLine {
+    uint64_t seq = 0;
+    double tsec = 0.0;
+    std::string text;
+};
+
+struct SessionCommand {
+    double tsec = 0.0;
+    std::string source;
+    std::string text;
+    bool sent = false;
+};
+
+// Full, non-rolling capture used by "Export Session". Plot histories below
+// remain bounded for rendering performance, while this archive lasts for the
+// lifetime of the RuntimeController.
+struct RuntimeSessionSnapshot {
+    int64_t startedAtUnixMs = 0;
+    double durationSeconds = 0.0;
+    std::unordered_map<std::string, SessionSignalHistory> floatSignals;
+    std::unordered_map<std::string, std::vector<SessionStringSample>> stringSignals;
+    std::vector<SessionConsoleLine> console;
+    std::vector<SessionCommand> commands;
+    TelemetryStats stats;
 };
 
 // Point-in-time copy of everything the runtime knows. Mirrors the old ImGui
@@ -60,6 +111,9 @@ public:
     void AddF32(const std::string& key, float value, float tsec);
     void AddString(const std::string& key, const std::string& value);
     void AddConsoleLine(const std::string& text);
+    void AddCommand(const std::string& text,
+                    const std::string& source,
+                    bool sent);
     void ClearConsole();
 
     void SetStats(float rxHz,
@@ -76,22 +130,11 @@ public:
 
     // Lightweight scalar stats (no histories) — cheap enough for ~30 Hz UI
     // header updates, unlike Snapshot().
-    struct StatsLine {
-        float rxHz = 0.0f;
-        float rxBytesPerSec = 0.0f;
-        uint64_t goodFrames = 0;
-        uint64_t badFrames = 0;
-        uint64_t rejectCrc = 0;
-        uint64_t rejectHdr = 0;
-        uint64_t rejectLen = 0;
-        uint64_t rejectPayloadParse = 0;
-        uint64_t rejectUnknownId = 0;
-        uint32_t lastSeq = 0;
-        bool suspended = false;
-    };
+    using StatsLine = TelemetryStats;
     StatsLine GetStatsLine() const;
 
     TelemetrySnapshot Snapshot() const;
+    RuntimeSessionSnapshot SessionSnapshot() const;
 
     // Copies one signal's history. Returns false if the signal is unknown.
     bool CopyHistory(const std::string& key,
@@ -119,9 +162,19 @@ public:
 
 private:
     void TrimHistoryLocked(SignalHistory& hist) const;
+    double SessionElapsedSeconds() const;
 
     mutable std::mutex mtx_;
     TelemetrySnapshot snap_;
+    std::unordered_map<std::string, SessionSignalHistory> sessionFloatSignals_;
+    std::unordered_map<std::string, std::vector<SessionStringSample>>
+        sessionStringSignals_;
+    std::vector<SessionConsoleLine> sessionConsole_;
+    std::vector<SessionCommand> sessionCommands_;
+    const std::chrono::steady_clock::time_point sessionStartSteady_ =
+        std::chrono::steady_clock::now();
+    const std::chrono::system_clock::time_point sessionStartWall_ =
+        std::chrono::system_clock::now();
     // Starts at 1: the HTTP console API filters `seq > since` with a default
     // `since` of 0, so seq 0 would never be delivered.
     uint64_t nextConsoleSeq_ = 1;

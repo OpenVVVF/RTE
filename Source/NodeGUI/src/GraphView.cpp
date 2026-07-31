@@ -19,6 +19,7 @@
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QGraphicsProxyWidget>
 #include <QScrollBar>
 #include <QToolTip>
 
@@ -37,7 +38,42 @@ void KeepOnlyNodesSelected(QGraphicsScene* scene) {
     }
 }
 
+QtNodes::NodeGraphicsObject* MovableNodeAncestor(QGraphicsItem* item) {
+    for (; item; item = item->parentItem()) {
+        // Controls embedded in a node manage their own mouse gestures.
+        if (qgraphicsitem_cast<QGraphicsProxyWidget*>(item)) {
+            return nullptr;
+        }
+        if (auto* node =
+                qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+            return node->flags().testFlag(QGraphicsItem::ItemIsMovable)
+                       ? node
+                       : nullptr;
+        }
+    }
+    return nullptr;
+}
+
 }  // namespace
+
+void GraphView::TrackNodeDragAfterPress(QMouseEvent* event) {
+    nodeDragPending_ = false;
+    if (event->button() != Qt::LeftButton || !scene()) {
+        return;
+    }
+
+    auto* node = MovableNodeAncestor(scene()->mouseGrabberItem());
+    nodeDragPending_ = node && !node->nodeState().resizing();
+}
+
+void GraphView::ClearNodeDragCursor() {
+    nodeDragPending_ = false;
+    if (!nodeDragCursorActive_) {
+        return;
+    }
+    nodeDragCursorActive_ = false;
+    viewport()->unsetCursor();
+}
 
 void GraphView::SetPanMouseButton(Qt::MouseButton button) {
     panMouseButton_ =
@@ -99,6 +135,20 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void GraphView::mousePressEvent(QMouseEvent* event) {
+    ClearNodeDragCursor();
+
+    if (event->button() == Qt::LeftButton &&
+        onDomainDragStarted &&
+        onDomainDragStarted(
+            mapToScene(event->position().toPoint()))) {
+        domainDragging_ = true;
+        domainDragLastScenePosition_ =
+            mapToScene(event->position().toPoint());
+        viewport()->setCursor(Qt::SizeAllCursor);
+        event->accept();
+        return;
+    }
+
     // QtNodes already implements left-button background panning while still
     // allowing normal node selection and dragging. Only intercept the middle
     // button; delegating the Left Mouse preference preserves those semantics.
@@ -116,12 +166,44 @@ void GraphView::mousePressEvent(QMouseEvent* event) {
         // Skip QtNodes' left-button scene translation while retaining normal
         // QGraphicsView node selection, rubber-band selection, and dragging.
         QGraphicsView::mousePressEvent(event);
+        TrackNodeDragAfterPress(event);
         return;
     }
     QtNodes::GraphicsView::mousePressEvent(event);
+    TrackNodeDragAfterPress(event);
 }
 
 void GraphView::mouseMoveEvent(QMouseEvent* event) {
+    if (domainDragging_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            domainDragging_ = false;
+            viewport()->unsetCursor();
+            if (onDomainDragFinished) {
+                onDomainDragFinished();
+            }
+            event->accept();
+            return;
+        }
+        const QPointF currentScenePosition =
+            mapToScene(event->position().toPoint());
+        if (onDomainDragged) {
+            onDomainDragged(currentScenePosition -
+                            domainDragLastScenePosition_);
+        }
+        domainDragLastScenePosition_ = currentScenePosition;
+        event->accept();
+        return;
+    }
+
+    if (nodeDragPending_) {
+        if (event->buttons() & Qt::LeftButton) {
+            nodeDragCursorActive_ = true;
+            viewport()->setCursor(Qt::SizeAllCursor);
+        } else {
+            ClearNodeDragCursor();
+        }
+    }
+
     if (mousePanning_) {
         if (!(event->buttons() & panMouseButton_)) {
             mousePanning_ = false;
@@ -150,6 +232,22 @@ void GraphView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseReleaseEvent(QMouseEvent* event) {
+    if (domainDragging_ && event->button() == Qt::LeftButton) {
+        domainDragging_ = false;
+        viewport()->unsetCursor();
+        if (onDomainDragFinished) {
+            onDomainDragFinished();
+        }
+        event->accept();
+        return;
+    }
+    if (suppressDomainDoubleClickRelease_ &&
+        event->button() == Qt::LeftButton) {
+        suppressDomainDoubleClickRelease_ = false;
+        event->accept();
+        return;
+    }
+
     if (mousePanning_ && event->button() == panMouseButton_) {
         mousePanning_ = false;
         viewport()->unsetCursor();
@@ -159,12 +257,41 @@ void GraphView::mouseReleaseEvent(QMouseEvent* event) {
     const bool completedNodeRubberBand =
         nodeRubberBandSelecting_ && event->button() == Qt::LeftButton;
     QtNodes::GraphicsView::mouseReleaseEvent(event);
+    if (event->button() == Qt::LeftButton) {
+        ClearNodeDragCursor();
+    }
     if (completedNodeRubberBand) {
         KeepOnlyNodesSelected(scene());
     }
     if (event->button() == Qt::LeftButton) {
         nodeRubberBandSelecting_ = false;
     }
+}
+
+void GraphView::mouseDoubleClickEvent(QMouseEvent* event) {
+    ClearNodeDragCursor();
+
+    if (event->button() == Qt::LeftButton &&
+        onDomainDoubleClicked &&
+        onDomainDoubleClicked(
+            mapToScene(event->position().toPoint()))) {
+        const QPointF scenePosition =
+            mapToScene(event->position().toPoint());
+        domainDragging_ =
+            onDomainDragStarted &&
+            onDomainDragStarted(scenePosition);
+        if (domainDragging_) {
+            domainDragLastScenePosition_ = scenePosition;
+            viewport()->setCursor(Qt::SizeAllCursor);
+            suppressDomainDoubleClickRelease_ = false;
+        } else {
+            suppressDomainDoubleClickRelease_ = true;
+        }
+        event->accept();
+        return;
+    }
+    QtNodes::GraphicsView::mouseDoubleClickEvent(event);
+    TrackNodeDragAfterPress(event);
 }
 
 void GraphView::keyReleaseEvent(QKeyEvent* event) {
@@ -196,9 +323,7 @@ bool GraphView::viewportEvent(QEvent* event) {
     }
 
     if (!nodeObject) {
-        QToolTip::hideText();
-        event->ignore();
-        return true;
+        return QtNodes::GraphicsView::viewportEvent(event);
     }
 
     auto* graphModel =

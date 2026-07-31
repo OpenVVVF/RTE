@@ -154,6 +154,15 @@ public:
     // Public so the scene event filter can call it during node drags.
     void UpdateDomainOutlines();
 
+    // Domain group interaction used by GraphView. A domain is activated by
+    // double-clicking its outline/label or empty interior, then its background
+    // can be dragged to move every member node together.
+    bool SelectDomainAt(const QPointF& scenePos);
+    bool BeginSelectedDomainDrag(const QPointF& scenePos);
+    void MoveSelectedDomain(const QPointF& delta);
+    void EndSelectedDomainDrag();
+    void ClearDomainSelection();
+
     QtNodes::PortIndex FindPortIndex(const std::string& nodeId,
                                      const std::string& portName,
                                      QtNodes::PortType portType) const;
@@ -185,8 +194,13 @@ public:
         QColor color;
     };
     std::map<std::string, DomainVisuals> domainVisuals_;
+    std::string selectedDomain_;
+    bool selectedDomainMoved_ = false;
     std::vector<QColor> domainColors_;
     std::function<void()> changeCallback_;
+
+    bool PointHitsGraphContent(const QPointF& scenePos) const;
+    void UpdateDomainSelectionStyle();
 };
 
 }  // namespace NodeGUI

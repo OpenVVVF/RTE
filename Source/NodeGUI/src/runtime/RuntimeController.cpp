@@ -116,6 +116,7 @@ bool RuntimeController::SendLine(const std::string& line) {
 bool RuntimeController::SendCommand(const QString& line) {
     store_.AddConsoleLine("> " + line.toStdString());
     const bool ok = SendLine(line.toStdString());
+    store_.AddCommand(line.toStdString(), "ui", ok);
     if (!ok) {
         store_.AddConsoleLine(simulate_ ? "(simulated: no device)"
                                         : (suspended_ ? "(suspended)" : "(FAILED to send)"));
@@ -126,7 +127,14 @@ bool RuntimeController::SendCommand(const QString& line) {
 }
 
 bool RuntimeController::SendCommandRaw(const std::string& line) {
-    return SendLine(line);
+    const bool ok = SendLine(line);
+    store_.AddCommand(line, "api", ok);
+    return ok;
+}
+
+RuntimeSessionSnapshot RuntimeController::CaptureSession() {
+    DrainQueue();
+    return store_.SessionSnapshot();
 }
 
 void RuntimeController::SuspendForFlash() {
