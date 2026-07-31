@@ -62,6 +62,10 @@ public:
     // session accumulated since this controller was created.
     RuntimeSessionSnapshot CaptureSession();
 
+    // Discards both rolling UI data and the full export archive, then starts
+    // a new session at the current time.
+    void ClearSession();
+
     QString Port() const { return port_; }
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }
@@ -73,6 +77,7 @@ public:
 
 signals:
     void storeChanged();
+    void sessionCleared();
 
 private:
     struct F32Item {

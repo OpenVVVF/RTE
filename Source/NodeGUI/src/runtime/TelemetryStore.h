@@ -115,6 +115,7 @@ public:
                     const std::string& source,
                     bool sent);
     void ClearConsole();
+    void ClearSession();
 
     void SetStats(float rxHz,
                   float rxBytesPerSec,
@@ -171,9 +172,12 @@ private:
         sessionStringSignals_;
     std::vector<SessionConsoleLine> sessionConsole_;
     std::vector<SessionCommand> sessionCommands_;
-    const std::chrono::steady_clock::time_point sessionStartSteady_ =
+    bool sessionTelemetryClockInitialized_ = false;
+    float sessionTelemetrySourceOrigin_ = 0.0f;
+    double sessionTelemetryElapsedOrigin_ = 0.0;
+    std::chrono::steady_clock::time_point sessionStartSteady_ =
         std::chrono::steady_clock::now();
-    const std::chrono::system_clock::time_point sessionStartWall_ =
+    std::chrono::system_clock::time_point sessionStartWall_ =
         std::chrono::system_clock::now();
     // Starts at 1: the HTTP console API filters `seq > since` with a default
     // `since` of 0, so seq 0 would never be delivered.
