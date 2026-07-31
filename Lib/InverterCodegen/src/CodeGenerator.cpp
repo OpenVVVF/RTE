@@ -774,6 +774,10 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                     }
                     source << "        " << nodeType->constructorCode << "\n";
                 }
+                // Stop() zeroes output ports; publish Cached immediately so the
+                // first Step after start cannot see Ld/Poles/Sign = 0.
+                source << "        state." << node->id
+                       << ".Value = state." << node->id << ".Cached;\n";
                 source << "    }\n";
                 continue;
             }

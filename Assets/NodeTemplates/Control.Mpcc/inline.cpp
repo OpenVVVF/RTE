@@ -5,13 +5,9 @@
  *       3=Deadbeat-style voltage → SVPWM (use on Gen6 / low-L motors)
  *
  * Mode 3 notes (Gen6 hardware):
- * A pure one-step deadbeat with Ts_Eff = 0.1*Ts and a large residual Ki
- * is ~100–300× more aggressive than the working FOC PI (Kp≈0.03, Ki≈10).
- * That produces duty-cycle chatter and shaft vibration. We therefore:
- *   (1) use Kp = (L/Ts)*KpScale with KpScale < 1 (stability margin),
- *   (2) use FOC-like Ki,
- *   (3) low-pass the voltage command,
- *   (4) soft current foldback instead of a hard V=0 trip (bang-bang).
+ * Match FOC-like gains (Kp≈fraction of L/Ts, Ki≈10), low-pass Vdq, and soft
+ * current foldback. Sanitize Ld/Lq/Rs from FRAM: a zero inductance disables
+ * the controller (Vαβ=0 → duties stuck at 50%).
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -25,10 +21,16 @@ static float mpcc_vd_filt = 0.0f;
 static float mpcc_vq_filt = 0.0f;
 
 const float ts = Ts;
-const float rs = Rs;
-const float ld = Ld;
-const float lq = Lq;
-const float psi_f = PsiF;
+/* FRAM may hold 0 for uncalibrated / wiped inductance — never disable on that. */
+float rs = Rs;
+float ld = Ld;
+float lq = Lq;
+float psi_f = PsiF;
+if (!(rs > 0.0f)) rs = 0.1f;
+if (!(ld > 1.0e-7f)) ld = 0.0001f;
+if (!(lq > 1.0e-7f)) lq = 0.0002f;
+if (!(psi_f >= 0.0f)) psi_f = 0.01f;
+
 const float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;
 const float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;
 const float vdc = V_Dc.in(au::volts);
@@ -38,7 +40,8 @@ const float id_ref = I_D_Ref;
 const float iq_ref = I_Q_Ref;
 const float theta_e = Theta_E;
 const float omega_e = Omega_E;
-const bool enable = Enable > 0.5f;
+/* Enable is rte::Boolean (bool). Do not compare against 0.5f. */
+const bool enable = Enable;
 const int mode_i = (Mode >= 3.0f) ? 3 : ((Mode >= 2.0f) ? 2 : ((Mode >= 1.0f) ? 1 : 0));
 
 const float two_thirds = 2.0f / 3.0f;
@@ -48,11 +51,10 @@ const int switch_bits[8][3] = {
     {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}
 };
 
-/* Tracking cost always reflects the measured error (even when disabled). */
 const float cost_track = ((id_ref - id) / i_base) * ((id_ref - id) / i_base)
                        + ((iq_ref - iq) / i_base) * ((iq_ref - iq) / i_base);
 
-if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
+if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     S_A = 0.0f;
     S_B = 0.0f;
     S_C = 0.0f;
@@ -78,17 +80,15 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
     float cost = cost_track;
     if (i_meas > i_max) cost += 1.0e6f;
 
-    /* Proportional gain: fraction of deadbeat L/Ts. FOC uses ~0.03 V/A;
-     * full deadbeat on Gen6 L is ~1 V/A — still hot, so keep a margin. */
-    const float kp_scale = 0.25f;
+    /* Slightly hotter than FOC Kp≈0.03 so Iq tracks at low Vdc (~35 V bench). */
+    const float kp_scale = 0.5f;
     const float kp_d = (ld / ts) * kp_scale;
     const float kp_q = (lq / ts) * kp_scale;
-    const float ki = 10.0f; /* matches foc_demo default Ki */
+    const float ki = 10.0f;
 
     const float id_err = id_ref - id;
     const float iq_err = iq_ref - iq;
 
-    /* Integrate only while comfortably under the current limit. */
     const float i_lim_v = 0.25f * vdc;
     if (i_meas < i_max * 0.85f) {
         mpcc_id_int += ki * id_err * ts;
@@ -105,8 +105,6 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
     float vd_ref = rs * id - omega_e * lq * iq + kp_d * id_err + mpcc_id_int;
     float vq_ref = rs * iq + omega_e * ld * id + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
 
-    /* Soft foldback near I_Max — scales voltage down instead of V=0 trip,
-     * which previously bang-banged and vibrated the shaft. */
     if (i_meas > i_max * 0.85f && i_meas > 1.0e-3f) {
         const float scale = (i_max * 0.85f) / i_meas;
         vd_ref *= scale;
@@ -123,8 +121,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
         mpcc_iq_int *= 0.95f;
     }
 
-    /* First-order LPF on voltage (~α=0.2 @ 5 kHz → ~1.6 kHz bandwidth). */
-    const float alpha_v = 0.2f;
+    const float alpha_v = 0.35f;
     mpcc_vd_filt += alpha_v * (vd_ref - mpcc_vd_filt);
     mpcc_vq_filt += alpha_v * (vq_ref - mpcc_vq_filt);
     vd_ref = mpcc_vd_filt;
