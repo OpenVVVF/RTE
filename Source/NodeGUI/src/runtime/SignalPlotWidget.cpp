@@ -204,7 +204,7 @@ void SignalPlotWidget::Refresh()
             const bool highRate = isGate || s.name.startsWith(QStringLiteral("pwm_v_"));
             const double hz = isGate ? 8000.0 : (highRate ? 2000.0 : 500.0);
             const std::size_t maxPts = static_cast<std::size_t>(
-                std::min(isGate ? 8000.0 : 4000.0, std::max(300.0, viewSeconds_ * hz)));
+                std::min(60000.0, std::max(300.0, viewSeconds_ * hz)));
             store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y, maxPts);
         }
     }

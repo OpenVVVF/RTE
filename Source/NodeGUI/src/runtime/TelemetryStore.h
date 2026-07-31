@@ -107,8 +107,8 @@ class TelemetryStore {
 public:
     static constexpr float kRetainSeconds = 60.0f;
     static constexpr float kPwmRetainSeconds = 60.0f;
-    static constexpr std::size_t kMaxSamples = 20000;
-    static constexpr std::size_t kMaxPwmSamples = 20000;
+    static constexpr std::size_t kMaxSamples = 120000;
+    static constexpr std::size_t kMaxPwmSamples = 120000;
     static constexpr std::size_t kConsoleCapLines = 6000;
 
     void AddF32(const std::string& key, float value, float tsec);

@@ -5,10 +5,12 @@
 #include <QStringList>
 
 class QCheckBox;
+class QComboBox;
 class QDoubleSpinBox;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
+class QSpinBox;
 
 namespace NodeGUI::runtime {
 
@@ -29,6 +31,8 @@ private slots:
     void OnClearOverrides();
     void OnTogglePause();
     void OnSimPauseChanged(bool paused);
+    void OnApplyBackend();
+    void OnRenderSpice();
 
 private:
     RuntimeController* controller_;
@@ -42,6 +46,10 @@ private:
     QDoubleSpinBox* dutyUSpin_ = nullptr;
     QDoubleSpinBox* dutyVSpin_ = nullptr;
     QDoubleSpinBox* dutyWSpin_ = nullptr;
+    QComboBox* backendCombo_ = nullptr;
+    QDoubleSpinBox* renderDurSpin_ = nullptr;
+    QDoubleSpinBox* renderIsrSpin_ = nullptr;
+    QSpinBox* renderSubstepsSpin_ = nullptr;
     bool simPaused_ = false;
 
     uint64_t lastConsoleSeq_ = 0;

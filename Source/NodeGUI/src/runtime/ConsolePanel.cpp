@@ -4,6 +4,7 @@
 #include "SimSpeedControl.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -12,6 +13,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSpinBox>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -105,6 +107,54 @@ ConsolePanel::ConsolePanel(RuntimeController* controller, QWidget* parent)
     connect(clearOverridesButton, &QPushButton::clicked, this, &ConsolePanel::OnClearOverrides);
     liveRow->addWidget(clearOverridesButton);
     layout->addLayout(liveRow);
+
+    auto* plantRow = new QHBoxLayout;
+    plantRow->addWidget(new QLabel(QStringLiteral("Plant"), this));
+    backendCombo_ = new QComboBox(this);
+    backendCombo_->addItem(QStringLiteral("ode (fast)"), QStringLiteral("ode"));
+    backendCombo_->addItem(QStringLiteral("ngspice (accurate)"), QStringLiteral("ngspice"));
+    backendCombo_->setToolTip(QStringLiteral(
+        "Plant model backend: ode = fast real-time view, ngspice = accurate SPICE view"));
+    plantRow->addWidget(backendCombo_);
+    auto* backendButton = new QPushButton(QStringLiteral("Apply Backend"), this);
+    connect(backendButton, &QPushButton::clicked, this, &ConsolePanel::OnApplyBackend);
+    plantRow->addWidget(backendButton);
+    plantRow->addSpacing(12);
+    plantRow->addWidget(new QLabel(QStringLiteral("Render s"), this));
+    renderDurSpin_ = new QDoubleSpinBox(this);
+    renderDurSpin_->setRange(0.0005, 10.0);
+    renderDurSpin_->setSingleStep(0.005);
+    renderDurSpin_->setDecimals(4);
+    renderDurSpin_->setValue(0.005);
+    renderDurSpin_->setToolTip(QStringLiteral(
+        "How many seconds of simulation the SPICE burst renders"));
+    plantRow->addWidget(renderDurSpin_);
+    plantRow->addWidget(new QLabel(QStringLiteral("ISR Hz"), this));
+    renderIsrSpin_ = new QDoubleSpinBox(this);
+    renderIsrSpin_->setRange(1000.0, 500000.0);
+    renderIsrSpin_->setSingleStep(10000.0);
+    renderIsrSpin_->setDecimals(0);
+    renderIsrSpin_->setValue(50000.0);
+    renderIsrSpin_->setToolTip(QStringLiteral(
+        "TIM ISR rate for the burst. Rule: ISR >= 20 x electrical freq x highest "
+        "harmonic of interest (e.g. 20th harmonic at 1 kHz needs >= 400 kHz; "
+        "substeps multiply the effective SPICE rate)"));
+    plantRow->addWidget(renderIsrSpin_);
+    plantRow->addWidget(new QLabel(QStringLiteral("Substeps"), this));
+    renderSubstepsSpin_ = new QSpinBox(this);
+    renderSubstepsSpin_->setRange(1, 16);
+    renderSubstepsSpin_->setValue(4);
+    renderSubstepsSpin_->setToolTip(QStringLiteral(
+        "SPICE steps per ISR tick (multiplies effective sample rate)"));
+    plantRow->addWidget(renderSubstepsSpin_);
+    auto* renderButton = new QPushButton(QStringLiteral("Render SPICE"), this);
+    renderButton->setToolTip(QStringLiteral(
+        "Run an ngspice burst for the given duration at the given ISR rate, then "
+        "restore the previous live settings. Blocks HostSim commands during the burst."));
+    connect(renderButton, &QPushButton::clicked, this, &ConsolePanel::OnRenderSpice);
+    plantRow->addWidget(renderButton);
+    plantRow->addStretch(1);
+    layout->addLayout(plantRow);
 
     layout->addWidget(new SimSpeedControl(controller_, this));
 
@@ -216,6 +266,20 @@ void ConsolePanel::OnClearOverrides() {
 
 void ConsolePanel::OnTogglePause() {
     controller_->ToggleSimPause();
+    OnStoreChanged();
+}
+
+void ConsolePanel::OnApplyBackend() {
+    controller_->SendCommand(QStringLiteral("plant backend %1")
+                                 .arg(backendCombo_->currentData().toString()));
+    OnStoreChanged();
+}
+
+void ConsolePanel::OnRenderSpice() {
+    controller_->SendCommand(QStringLiteral("render %1 %2 %3")
+                                 .arg(renderDurSpin_->value(), 0, 'f', 4)
+                                 .arg(renderIsrSpin_->value(), 0, 'f', 0)
+                                 .arg(renderSubstepsSpin_->value()));
     OnStoreChanged();
 }
 
