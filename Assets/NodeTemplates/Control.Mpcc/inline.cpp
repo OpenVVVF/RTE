@@ -67,6 +67,31 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
     mpcc_id_int = 0.0f;
     mpcc_iq_int = 0.0f;
 } else if (mode_i == 3) {
+    /* Measured overcurrent (e.g. θe stuck → DC voltage into one axis): trip. */
+    const float i_meas = sqrtf(id * id + iq * iq);
+    float cost = cost_track;
+    if (i_meas > i_max) cost += 1.0e6f;
+
+    if (i_meas > i_max) {
+        S_A = 0.0f;
+        S_B = 0.0f;
+        S_C = 0.0f;
+        State_Index = 0.0f;
+        Pred_I_D = rte::Amperes(id);
+        Pred_I_Q = rte::Amperes(iq);
+        Cost = cost;
+        V_Alpha = rte::Volts(0.0f);
+        V_Beta = rte::Volts(0.0f);
+        V_D = rte::Volts(0.0f);
+        V_Q = rte::Volts(0.0f);
+        mpcc_prev_sa = 0.0f;
+        mpcc_prev_sb = 0.0f;
+        mpcc_prev_sc = 0.0f;
+        mpcc_u_alpha_prev = 0.0f;
+        mpcc_u_beta_prev = 0.0f;
+        mpcc_id_int = 0.0f;
+        mpcc_iq_int = 0.0f;
+    } else {
     /* Shorter horizon → larger voltage for the same current error (beats deadtime). */
     float ts_eff = ts * 0.1f;
     if (ts_eff < 20.0e-6f) ts_eff = 20.0e-6f;
@@ -121,10 +146,6 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
 
     const float pred_id = id + (ts / ld) * (vd_ref - rs * id + omega_e * lq * iq);
     const float pred_iq = iq + (ts / lq) * (vq_ref - rs * iq - omega_e * ld * id - omega_e * psi_f);
-    float cost = ((id_ref - pred_id) / i_base) * ((id_ref - pred_id) / i_base)
-               + ((iq_ref - pred_iq) / i_base) * ((iq_ref - pred_iq) / i_base);
-    const float imag = sqrtf(pred_id * pred_id + pred_iq * pred_iq);
-    if (imag > i_max) cost += 1.0e6f;
 
     S_A = static_cast<float>(switch_bits[best_idx][0]);
     S_B = static_cast<float>(switch_bits[best_idx][1]);
@@ -132,7 +153,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
     State_Index = static_cast<float>(best_idx);
     Pred_I_D = rte::Amperes(pred_id);
     Pred_I_Q = rte::Amperes(pred_iq);
-    Cost = cost_track; /* live tracking error — non-zero until iq follows IqVar */
+    Cost = cost;
     V_Alpha = rte::Volts(valpha_ref);
     V_Beta = rte::Volts(vbeta_ref);
     V_D = rte::Volts(vd_ref);
@@ -143,7 +164,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
     mpcc_prev_sc = S_C;
     mpcc_u_alpha_prev = valpha_ref;
     mpcc_u_beta_prev = vbeta_ref;
-    (void)cost;
+    } /* end measured-current OK branch */
 } else {
     float id_base = id;
     float iq_base = iq;

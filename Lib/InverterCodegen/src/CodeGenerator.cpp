@@ -745,8 +745,38 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
             if (classBased) continue;  // class-based nodes manage their own reset
-            // Config nodes own their state (FRAM/live set); never reset it.
-            if (IsConfigNodeType(*nodeType)) continue;
+
+            // Config nodes: never reset Cached to the graph's placeholder 0.
+            // Re-load from FRAM (or DefaultValue) so control start cannot zero
+            // Motor.Poles / Ld / Lq / encoder offset and freeze θe at 0.
+            if (IsConfigNodeType(*nodeType)) {
+                source << "    // Reload config: " << node->id << "\n";
+                source << "    {\n";
+                for (const auto& [key, value] : node->parameters) {
+                    if (key == "Cached") continue;  // filled by constructor / load
+                    auto paramType = nodeType->FindParameterType(key);
+                    source << "        state." << node->id << "." << key << " = "
+                           << (paramType ? ParameterValueToCpp(*paramType, value)
+                                         : value + "f")
+                           << ";\n";
+                }
+                if (!nodeType->constructorCode.empty()) {
+                    auto used = UsedIdentifiers(nodeType->constructorCode);
+                    for (const auto& [key, value] : node->parameters) {
+                        if (used.count(key)) {
+                            auto paramType = nodeType->FindParameterType(key);
+                            source << "        "
+                                   << (paramType ? WireTypeToCpp(*paramType)
+                                                 : "rte::Dimensionless")
+                                   << "& " << key << " = state." << node->id << "."
+                                   << key << ";\n";
+                        }
+                    }
+                    source << "        " << nodeType->constructorCode << "\n";
+                }
+                source << "    }\n";
+                continue;
+            }
 
             source << "    // Reset node: " << node->id << "\n";
             source << "    {\n";
