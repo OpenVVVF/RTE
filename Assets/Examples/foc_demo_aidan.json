@@ -1382,9 +1382,9 @@
       "classHeader": "",
       "constructorCode": "",
       "displayName": "Phase Currents",
-      "domain": "app_loop",
+      "domain": "",
       "id": "Sensors.PhaseCurrents",
-      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    I_A = rte::Amperes(iu_f);\n    I_B = rte::Amperes(iv_f);\n    I_C = rte::Amperes(iw_f);\n}\n",
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
@@ -1417,7 +1417,14 @@
           }
         }
       ],
-      "parameterTypes": {}
+      "parameterTypes": {
+        "InvertPolarity": {
+          "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
     },
     {
       "classDefinition": "",
@@ -1483,6 +1490,7 @@
       "domain": "adc_isr",
       "id": "Currents",
       "parameters": {
+        "InvertPolarity": "1.0",
         "OffsetU": "0.0",
         "OffsetV": "0.0"
       },

@@ -325,10 +325,6 @@ bool PhaseCurrentADC::calibrateOffsets() {
 
 void PhaseCurrentADC::onInjectedConversionComplete() {
     ++LoopStats::adc_isr;
-    /* RTE codegen: ADC current-sense step.  Generated code can consume the raw
-     * or scaled phase currents for protection, observers, or logging.
-     * The base image continues to perform safety overcurrent checks below. */
-    // RTE_EMIT: adc_isr step
 
     /* Read the simultaneously-sampled injected pairs.
      * ADC1 carries the signal channels, ADC2 carries the reference channels. */
@@ -342,6 +338,12 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
 
     m_current_u = m_iu - m_offset_u;
     m_current_v = m_iv - m_offset_v;
+
+    /* RTE codegen: ADC current-sense step.  Run only after publishing the
+     * conversion that triggered this ISR so generated control code consumes
+     * the current PWM-synchronous sample rather than the previous one.
+     * The base image continues to perform safety overcurrent checks below. */
+    // RTE_EMIT: adc_isr step
 
     /* Spike event recorder: synchronized raw currents + encoder snapshot for
      * glitch forensics (see `spikes` shell command). */

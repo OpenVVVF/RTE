@@ -39,5 +39,12 @@
       }
     }
   ],
-  "parameterTypes": {}
+  "parameterTypes": {
+    "InvertPolarity": {
+      "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
 }

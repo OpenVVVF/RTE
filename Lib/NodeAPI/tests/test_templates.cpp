@@ -49,8 +49,13 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_EQ(ic->type.frame, Frame::Scalar);
     EXPECT_EQ(ic->type.dtype, DType::F32);
 
+    const auto invertPolarity = type->FindParameterType("InvertPolarity");
+    ASSERT_TRUE(invertPolarity.has_value());
+    EXPECT_EQ(invertPolarity->quantity, Quantity::Boolean);
+
     EXPECT_FALSE(type->inlineCode.empty());
     EXPECT_NE(type->inlineCode.find("platform_get_phase_currents"), std::string::npos);
+    EXPECT_NE(type->inlineCode.find("InvertPolarity"), std::string::npos);
 }
 
 TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
