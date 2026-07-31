@@ -88,8 +88,10 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     float cost = cost_track;
     if (i_meas > i_max) cost += 1.0e6f;
 
-    if (i_meas > i_max) mpcc_oc_latched = 1;
-    if (i_meas < i_max * 0.6f) mpcc_oc_latched = 0;
+    /* Latch only well above I_Max so normal ripple around IqVar does not
+     * bang-bang (was: I_Max=20 with IqVar=10 → constant OC chatter). */
+    if (i_meas > i_max * 1.25f) mpcc_oc_latched = 1;
+    if (i_meas < i_max * 0.7f) mpcc_oc_latched = 0;
 
     if (mpcc_oc_latched) {
         S_A = 0.0f;
@@ -113,11 +115,13 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
         mpcc_u_alpha_prev = 0.0f;
         mpcc_u_beta_prev = 0.0f;
     } else {
-    /* Gentler than prior bring-up (0.5) — FOC uses ~0.03 V/A. */
-    const float kp_scale = 0.15f;
+    /* FOC Kp≈0.03 is very soft; with L~0.15 mH, L/Ts≈0.75 V/A.
+     * Use a solid fraction so IqVar of a few amps actually produces torque
+     * at ~35 V DC without sitting near 50% duty. */
+    const float kp_scale = 0.45f;
     const float kp_d = (ld / ts) * kp_scale;
     const float kp_q = (lq / ts) * kp_scale;
-    const float ki = 5.0f;
+    const float ki = 12.0f;
 
     const float id_err = id_ref - id;
     const float iq_err = iq_ref - iq;
