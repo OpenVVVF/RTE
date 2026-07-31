@@ -2405,53 +2405,58 @@
       }
     },
     {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
+      "id": "Sensors.PhaseCurrents",
+      "displayName": "Phase Currents",
       "defaultName": "PhaseCurrents",
       "description": "Samples the three inverter phase-current channels from the platform current sensors.",
-      "displayName": "Phase Currents",
-      "domain": "",
-      "id": "Sensors.PhaseCurrents",
-      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    I_A = rte::Amperes(iu_f);\n    I_B = rte::Amperes(iv_f);\n    I_C = rte::Amperes(iw_f);\n}\n",
-      "inputPorts": [],
-      "isEntryPoint": true,
       "maxInstances": 1,
+      "isEntryPoint": true,
+      "domain": "",
+      "inputPorts": [],
       "outputPorts": [
         {
+          "name": "I_A",
           "description": "Measured phase A current in amperes.",
           "direction": "output",
-          "name": "I_A",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
+            "dtype": "f32"
           }
         },
         {
+          "name": "I_B",
           "description": "Measured phase B current in amperes.",
           "direction": "output",
-          "name": "I_B",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
+            "dtype": "f32"
           }
         },
         {
+          "name": "I_C",
           "description": "Measured phase C current in amperes.",
           "direction": "output",
-          "name": "I_C",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
+            "dtype": "f32"
           }
         }
-      ]
+      ],
+      "parameterTypes": {
+        "InvertPolarity": {
+          "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    /* Keep raw sensor polarity available for general telemetry, while FOC\n     * graphs enable inversion for this hardware's current-sensor wiring. */\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
     },
     {
       "classDefinition": "",
@@ -3130,7 +3135,9 @@
       "displayName": "",
       "domain": "adc_isr",
       "id": "Currents",
-      "parameters": {},
+      "parameters": {
+        "InvertPolarity": "1.0"
+      },
       "position": {
         "x": 150.0,
         "y": 80.0
