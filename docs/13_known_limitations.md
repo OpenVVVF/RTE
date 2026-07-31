@@ -4,7 +4,7 @@
 2. **RTE hardware inverter is duty-based** — `Control.Mpcc` outputs Sa/Sb/Sc; a PWM adapter is needed for STM32 deployment.
 3. **Ideal inverter** — no dead time, device drops, or DC-link ripple in simulation.
 4. **Forward-Euler plant** — predictor/plant mismatch causes nonzero one-step prediction error (reported in tests, not bit-exact).
-5. **Conventional FCS-MPCC** — high current THD in simulation (~48% steady-state on iq step) as expected for single-vector-per-period control.
+5. **Conventional FCS-MPCC (Mode 0–2)** — unsuitable for Gen6 low-L motors (~100 µH): one full active vector at Ts=200 µs predicts Δi≈V·Ts/L≈10³ A, so the cost always picks zero-vector S000/S111 (duties look stuck at 0% or 100%). Use **Mode 3** (deadbeat voltage → SVPWM) on hardware.
 6. **Speed loop** — simple PI on ω_m → i_q*; not tuned for production.
 7. **Back-EMF estimation** in `MpccController` uses simplified dq proxy; Zhang paper uses full αβ stationary formulation.
 8. **Improved modes** implemented and selectable; closed-loop scenarios run conventional mode by default.

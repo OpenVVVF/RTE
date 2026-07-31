@@ -30,21 +30,21 @@
       "name": "I_D_Ref",
       "direction": "input",
       "type": {
-        "quantity": "current",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       },
-      "description": "d-axis current reference in amperes."
+      "description": "I_D_Ref (amperes as dimensionless, same as Values.Var / FOC setpoints)."
     },
     {
       "name": "I_Q_Ref",
       "direction": "input",
       "type": {
-        "quantity": "current",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       },
-      "description": "q-axis current reference in amperes."
+      "description": "I_Q_Ref (amperes as dimensionless, same as Values.Var / FOC setpoints)."
     },
     {
       "name": "Theta_E",
@@ -60,7 +60,7 @@
       "name": "Omega_E",
       "direction": "input",
       "type": {
-        "quantity": "angular_velocity",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       },

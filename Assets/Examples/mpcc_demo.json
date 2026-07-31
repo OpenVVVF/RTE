@@ -353,7 +353,7 @@
     },
     {
       "from": {
-        "nodeId": "SwitchToDuty",
+        "nodeId": "Svpwm",
         "portName": "Duty_A"
       },
       "id": "c_duty_a",
@@ -364,7 +364,7 @@
     },
     {
       "from": {
-        "nodeId": "SwitchToDuty",
+        "nodeId": "Svpwm",
         "portName": "Duty_B"
       },
       "id": "c_duty_b",
@@ -375,7 +375,7 @@
     },
     {
       "from": {
-        "nodeId": "SwitchToDuty",
+        "nodeId": "Svpwm",
         "portName": "Duty_C"
       },
       "id": "c_duty_c",
@@ -452,7 +452,7 @@
     },
     {
       "from": {
-        "nodeId": "SwitchToDuty",
+        "nodeId": "Svpwm",
         "portName": "Duty_A"
       },
       "id": "c_log_du",
@@ -463,7 +463,7 @@
     },
     {
       "from": {
-        "nodeId": "SwitchToDuty",
+        "nodeId": "Svpwm",
         "portName": "Duty_B"
       },
       "id": "c_log_dv",
@@ -474,7 +474,7 @@
     },
     {
       "from": {
-        "nodeId": "SwitchToDuty",
+        "nodeId": "Svpwm",
         "portName": "Duty_C"
       },
       "id": "c_log_dw",
@@ -1819,270 +1819,251 @@
       "displayName": "FCS-MPCC (Three-Phase PMSM)",
       "domain": "tim_isr",
       "id": "Control.Mpcc",
-      "inlineCode": "/* FCS-MPCC node — Zhang et al. (2017) baseline + improved modes.\n * Technical reference: Y. Zhang, D. Xu, J. Liu, S. Gao, and W. Xu,\n * \"Performance Improvement of Model-Predictive Current Control of\n * Permanent Magnet Synchronous Motor Drives,\" IEEE Transactions on\n * Industry Applications, vol. 53, no. 4, pp. 3683-3695, July/August 2017.\n * DOI: 10.1109/TIA.2017.2690998.\n * Mode: 0=ConventionalOneStep, 1=DelayCompensated, 2=BackEMFCompensated, 3=OptimalDutyCycle\n * Fixed-size state only; no heap allocation in update. */\n\nstatic float mpcc_prev_sa = 0.0f;\nstatic float mpcc_prev_sb = 0.0f;\nstatic float mpcc_prev_sc = 0.0f;\nstatic float mpcc_u_alpha_prev = 0.0f;\nstatic float mpcc_u_beta_prev = 0.0f;\nstatic float mpcc_id_prev = 0.0f;\nstatic float mpcc_iq_prev = 0.0f;\n\nconst float ts = Ts;\nconst float rs = Rs;\nconst float ld = Ld;\nconst float lq = Lq;\nconst float psi_f = PsiF;\nconst float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;\nconst float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;\nconst float vdc = V_Dc.in(au::volts);\nconst float id = I_D.in(au::amperes);\nconst float iq = I_Q.in(au::amperes);\nconst float id_ref = I_D_Ref.in(au::amperes);\nconst float iq_ref = I_Q_Ref.in(au::amperes);\nconst float theta_e = Theta_E;\nconst float omega_e = Omega_E.in(au::radians / au::seconds);\nconst bool enable = Enable > 0.5f;\n\nif (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {\n    S_A = mpcc_prev_sa;\n    S_B = mpcc_prev_sb;\n    S_C = mpcc_prev_sc;\n} else {\n    const float two_thirds = 2.0f / 3.0f;\n    const float inv_sqrt3 = 0.57735026919f;\n    const float active_vectors[6][2] = {\n        {two_thirds, 0.0f},\n        {1.0f / 3.0f, inv_sqrt3},\n        {-1.0f / 3.0f, inv_sqrt3},\n        {-two_thirds, 0.0f},\n        {-1.0f / 3.0f, -inv_sqrt3},\n        {1.0f / 3.0f, -inv_sqrt3}\n    };\n    const int switch_bits[8][3] = {\n        {0,0,0},{1,0,0},{1,1,0},{0,1,0},{0,1,1},{0,0,1},{1,0,1},{1,1,1}\n    };\n\n    float id_base = id;\n    float iq_base = iq;\n    if (Mode >= 1.0f) {\n        const float di_d_sp = (mpcc_u_alpha_prev - rs * id) / lq;\n        const float di_q_sp = (mpcc_u_beta_prev - rs * iq) / lq;\n        const float id_sp = id + ts * di_d_sp;\n        const float iq_sp = iq + ts * di_q_sp;\n        id_base = id_sp + (-rs * (id_sp - id) * ts) / (2.0f * lq);\n        iq_base = iq_sp + (-rs * (iq_sp - iq) * ts) / (2.0f * lq);\n    }\n\n    float best_cost = 1.0e30f;\n    int best_idx = 0;\n    float best_pred_id = id;\n    float best_pred_iq = iq;\n    float best_valpha = 0.0f;\n    float best_vbeta = 0.0f;\n\n    for (int idx = 0; idx < 8; ++idx) {\n        const float sa = static_cast<float>(switch_bits[idx][0]);\n        const float sb = static_cast<float>(switch_bits[idx][1]);\n        const float sc = static_cast<float>(switch_bits[idx][2]);\n        const float valpha = two_thirds * vdc * (sa - 0.5f * (sb + sc));\n        const float vbeta = vdc * inv_sqrt3 * (sb - sc);\n\n        const float cos_t = cosf(theta_e);\n        const float sin_t = sinf(theta_e);\n        const float vd = valpha * cos_t + vbeta * sin_t;\n        const float vq = -valpha * sin_t + vbeta * cos_t;\n\n        const float pred_id = id_base + (ts / ld) * (vd - rs * id_base + omega_e * lq * iq_base);\n        const float pred_iq = iq_base + (ts / lq) * (vq - rs * iq_base - omega_e * ld * id_base - omega_e * psi_f);\n\n        float cost = ((id_ref - pred_id) / i_base) * ((id_ref - pred_id) / i_base)\n                   + ((iq_ref - pred_iq) / i_base) * ((iq_ref - pred_iq) / i_base);\n        const float imag = sqrtf(pred_id * pred_id + pred_iq * pred_iq);\n        if (imag > i_max) cost += 1.0e6f;\n\n        const int trans = ((sa != mpcc_prev_sa) ? 1 : 0) + ((sb != mpcc_prev_sb) ? 1 : 0) + ((sc != mpcc_prev_sc) ? 1 : 0);\n        const int best_trans = ((switch_bits[best_idx][0] != static_cast<int>(mpcc_prev_sa)) ? 1 : 0)\n                             + ((switch_bits[best_idx][1] != static_cast<int>(mpcc_prev_sb)) ? 1 : 0)\n                             + ((switch_bits[best_idx][2] != static_cast<int>(mpcc_prev_sc)) ? 1 : 0);\n\n        if (cost < best_cost - 1.0e-9f\n            || (fabsf(cost - best_cost) <= 1.0e-9f && (trans < best_trans || (trans == best_trans && idx < best_idx)))) {\n            best_cost = cost;\n            best_idx = idx;\n            best_pred_id = pred_id;\n            best_pred_iq = pred_iq;\n            best_valpha = valpha;\n            best_vbeta = vbeta;\n        }\n        (void)active_vectors;\n    }\n\n    S_A = static_cast<float>(switch_bits[best_idx][0]);\n    S_B = static_cast<float>(switch_bits[best_idx][1]);\n    S_C = static_cast<float>(switch_bits[best_idx][2]);\n    State_Index = static_cast<float>(best_idx);\n    Pred_I_D = rte::Amperes(best_pred_id);\n    Pred_I_Q = rte::Amperes(best_pred_iq);\n    Cost = best_cost;\n    V_Alpha = rte::Volts(best_valpha);\n    V_Beta = rte::Volts(best_vbeta);\n    const float cos_t = cosf(theta_e);\n    const float sin_t = sinf(theta_e);\n    V_D = rte::Volts(best_valpha * cos_t + best_vbeta * sin_t);\n    V_Q = rte::Volts(-best_valpha * sin_t + best_vbeta * cos_t);\n\n    mpcc_prev_sa = S_A;\n    mpcc_prev_sb = S_B;\n    mpcc_prev_sc = S_C;\n    mpcc_u_alpha_prev = best_valpha;\n    mpcc_u_beta_prev = best_vbeta;\n    mpcc_id_prev = id;\n    mpcc_iq_prev = iq;\n}\n",
+      "inlineCode": "/* Predictive current control for three-phase PMSM (Zhang et al., IEEE TIA 2017).\n * Mode: 0=Conventional FCS (full vector / period)\n *       1=Delay-compensated FCS\n *       2=Back-EMF path (same predictor hook as 1 for now)\n *       3=Optimal-duty / deadbeat voltage (REQUIRED for low-L Gen6 motors)\n *\n * Why Mode 3 is the default on hardware:\n * With L~100 uH, Vdc~540 V, Ts=200 us, one full active vector predicts\n * \u0394i \u2248 V*Ts/L \u2248 1000 A, so Modes 0-2 always prefer zero-vector S000/S111\n * (duties look \"stuck\" at 0% or 100%). Mode 3 applies only the fraction of\n * the vector needed for the current step and feeds SVPWM via V_Alpha/V_Beta.\n */\n\nstatic float mpcc_prev_sa = 0.0f;\nstatic float mpcc_prev_sb = 0.0f;\nstatic float mpcc_prev_sc = 0.0f;\nstatic float mpcc_u_alpha_prev = 0.0f;\nstatic float mpcc_u_beta_prev = 0.0f;\n\nconst float ts = Ts;\nconst float rs = Rs;\nconst float ld = Ld;\nconst float lq = Lq;\nconst float psi_f = PsiF;\nconst float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;\nconst float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;\nconst float vdc = V_Dc.in(au::volts);\nconst float id = I_D.in(au::amperes);\nconst float iq = I_Q.in(au::amperes);\nconst float id_ref = I_D_Ref;\nconst float iq_ref = I_Q_Ref;\nconst float theta_e = Theta_E;\nconst float omega_e = Omega_E;\nconst bool enable = Enable > 0.5f;\nconst int mode_i = (Mode >= 3.0f) ? 3 : ((Mode >= 2.0f) ? 2 : ((Mode >= 1.0f) ? 1 : 0));\n\nconst float two_thirds = 2.0f / 3.0f;\nconst float inv_sqrt3 = 0.57735026919f;\nconst int switch_bits[8][3] = {\n    {0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},\n    {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}\n};\n\nif (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {\n    S_A = 0.0f;\n    S_B = 0.0f;\n    S_C = 0.0f;\n    State_Index = 0.0f;\n    Pred_I_D = rte::Amperes(id);\n    Pred_I_Q = rte::Amperes(iq);\n    Cost = 0.0f;\n    V_Alpha = rte::Volts(0.0f);\n    V_Beta = rte::Volts(0.0f);\n    V_D = rte::Volts(0.0f);\n    V_Q = rte::Volts(0.0f);\n    mpcc_prev_sa = 0.0f;\n    mpcc_prev_sb = 0.0f;\n    mpcc_prev_sc = 0.0f;\n    mpcc_u_alpha_prev = 0.0f;\n    mpcc_u_beta_prev = 0.0f;\n} else if (mode_i == 3) {\n    /* Deadbeat voltage in dq (discrete inverse of the plant model). */\n    float vd_ref = rs * id + (ld / ts) * (id_ref - id) - omega_e * lq * iq;\n    float vq_ref = rs * iq + (lq / ts) * (iq_ref - iq) + omega_e * ld * id + omega_e * psi_f;\n\n    /* Clamp to linear SVPWM magnitude so InverseClarke/SVPWM stays valid. */\n    const float v_max = (vdc * inv_sqrt3) * 0.95f;\n    const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;\n    if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {\n        const float scale = v_max / sqrtf(v_mag_sq);\n        vd_ref *= scale;\n        vq_ref *= scale;\n    }\n\n    const float cos_t = cosf(theta_e);\n    const float sin_t = sinf(theta_e);\n    /* Inverse Park \u2192 \u03b1\u03b2 (RTE convention). */\n    const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;\n    const float vbeta_ref = vd_ref * sin_t + vq_ref * cos_t;\n\n    /* Nearest active vector (telemetry / optional FCS view). */\n    int best_idx = 1;\n    float best_dist = 1.0e30f;\n    float best_ua = 0.0f;\n    float best_ub = 0.0f;\n    for (int idx = 1; idx <= 6; ++idx) {\n        const float sa = static_cast<float>(switch_bits[idx][0]);\n        const float sb = static_cast<float>(switch_bits[idx][1]);\n        const float sc = static_cast<float>(switch_bits[idx][2]);\n        const float ua = two_thirds * vdc * (sa - 0.5f * (sb + sc));\n        const float ub = vdc * inv_sqrt3 * (sb - sc);\n        const float dist = (ua - valpha_ref) * (ua - valpha_ref) + (ub - vbeta_ref) * (ub - vbeta_ref);\n        if (dist < best_dist) {\n            best_dist = dist;\n            best_idx = idx;\n            best_ua = ua;\n            best_ub = ub;\n        }\n    }\n\n    float t_opt = 0.0f;\n    const float u_norm_sq = best_ua * best_ua + best_ub * best_ub;\n    if (u_norm_sq > 1.0e-12f) {\n        t_opt = (valpha_ref * best_ua + vbeta_ref * best_ub) / u_norm_sq;\n        if (t_opt < 0.0f) t_opt = 0.0f;\n        if (t_opt > 1.0f) t_opt = 1.0f;\n    }\n\n    /* One-step prediction with the duty-scaled voltage (for telemetry/cost). */\n    const float vd_app = vd_ref;\n    const float vq_app = vq_ref;\n    const float pred_id = id + (ts / ld) * (vd_app - rs * id + omega_e * lq * iq);\n    const float pred_iq = iq + (ts / lq) * (vq_app - rs * iq - omega_e * ld * id - omega_e * psi_f);\n    float cost = ((id_ref - pred_id) / i_base) * ((id_ref - pred_id) / i_base)\n               + ((iq_ref - pred_iq) / i_base) * ((iq_ref - pred_iq) / i_base);\n    const float imag = sqrtf(pred_id * pred_id + pred_iq * pred_iq);\n    if (imag > i_max) cost += 1.0e6f;\n\n    S_A = static_cast<float>(switch_bits[best_idx][0]);\n    S_B = static_cast<float>(switch_bits[best_idx][1]);\n    S_C = static_cast<float>(switch_bits[best_idx][2]);\n    State_Index = static_cast<float>(best_idx) + t_opt; /* integer state + fractional duty */\n    Pred_I_D = rte::Amperes(pred_id);\n    Pred_I_Q = rte::Amperes(pred_iq);\n    Cost = cost;\n    /* Continuous \u03b1\u03b2 voltage for SVPWM \u2192 PWM (this is what spins the motor). */\n    V_Alpha = rte::Volts(valpha_ref);\n    V_Beta = rte::Volts(vbeta_ref);\n    V_D = rte::Volts(vd_ref);\n    V_Q = rte::Volts(vq_ref);\n\n    mpcc_prev_sa = S_A;\n    mpcc_prev_sb = S_B;\n    mpcc_prev_sc = S_C;\n    mpcc_u_alpha_prev = valpha_ref;\n    mpcc_u_beta_prev = vbeta_ref;\n    (void)best_ua;\n    (void)best_ub;\n} else {\n    /* Conventional / delay-compensated FCS (suitable only for large-L motors). */\n    float id_base = id;\n    float iq_base = iq;\n    if (mode_i >= 1) {\n        const float di_d_sp = (mpcc_u_alpha_prev - rs * id) / lq;\n        const float di_q_sp = (mpcc_u_beta_prev - rs * iq) / lq;\n        const float id_sp = id + ts * di_d_sp;\n        const float iq_sp = iq + ts * di_q_sp;\n        id_base = id_sp + (-rs * (id_sp - id) * ts) / (2.0f * lq);\n        iq_base = iq_sp + (-rs * (iq_sp - iq) * ts) / (2.0f * lq);\n    }\n\n    float best_cost = 1.0e30f;\n    int best_idx = 0;\n    float best_pred_id = id;\n    float best_pred_iq = iq;\n    float best_valpha = 0.0f;\n    float best_vbeta = 0.0f;\n    int feasible = 0;\n\n    for (int idx = 0; idx < 8; ++idx) {\n        const float sa = static_cast<float>(switch_bits[idx][0]);\n        const float sb = static_cast<float>(switch_bits[idx][1]);\n        const float sc = static_cast<float>(switch_bits[idx][2]);\n        const float valpha = two_thirds * vdc * (sa - 0.5f * (sb + sc));\n        const float vbeta = vdc * inv_sqrt3 * (sb - sc);\n\n        const float cos_t = cosf(theta_e);\n        const float sin_t = sinf(theta_e);\n        const float vd = valpha * cos_t + vbeta * sin_t;\n        const float vq = -valpha * sin_t + vbeta * cos_t;\n\n        const float pred_id = id_base + (ts / ld) * (vd - rs * id_base + omega_e * lq * iq_base);\n        const float pred_iq = iq_base + (ts / lq) * (vq - rs * iq_base - omega_e * ld * id_base - omega_e * psi_f);\n\n        float cost = ((id_ref - pred_id) / i_base) * ((id_ref - pred_id) / i_base)\n                   + ((iq_ref - pred_iq) / i_base) * ((iq_ref - pred_iq) / i_base);\n        const float imag = sqrtf(pred_id * pred_id + pred_iq * pred_iq);\n        const bool over = imag > i_max;\n        if (!over) feasible = 1;\n\n        const int trans = ((sa != mpcc_prev_sa) ? 1 : 0) + ((sb != mpcc_prev_sb) ? 1 : 0) + ((sc != mpcc_prev_sc) ? 1 : 0);\n        const int best_trans = ((switch_bits[best_idx][0] != static_cast<int>(mpcc_prev_sa)) ? 1 : 0)\n                             + ((switch_bits[best_idx][1] != static_cast<int>(mpcc_prev_sb)) ? 1 : 0)\n                             + ((switch_bits[best_idx][2] != static_cast<int>(mpcc_prev_sc)) ? 1 : 0);\n\n        /* Defer I_Max penalty until we know at least one vector is feasible;\n         * otherwise low-L motors lock forever on S000/S111. */\n        float cost_cmp = cost;\n        if (over) cost_cmp += 1.0e6f;\n\n        if (cost_cmp < best_cost - 1.0e-9f\n            || (fabsf(cost_cmp - best_cost) <= 1.0e-9f && (trans < best_trans || (trans == best_trans && idx < best_idx)))) {\n            best_cost = cost_cmp;\n            best_idx = idx;\n            best_pred_id = pred_id;\n            best_pred_iq = pred_iq;\n            best_valpha = valpha;\n            best_vbeta = vbeta;\n        }\n        (void)feasible;\n    }\n\n    S_A = static_cast<float>(switch_bits[best_idx][0]);\n    S_B = static_cast<float>(switch_bits[best_idx][1]);\n    S_C = static_cast<float>(switch_bits[best_idx][2]);\n    State_Index = static_cast<float>(best_idx);\n    Pred_I_D = rte::Amperes(best_pred_id);\n    Pred_I_Q = rte::Amperes(best_pred_iq);\n    Cost = best_cost;\n    V_Alpha = rte::Volts(best_valpha);\n    V_Beta = rte::Volts(best_vbeta);\n    const float cos_t = cosf(theta_e);\n    const float sin_t = sinf(theta_e);\n    V_D = rte::Volts(best_valpha * cos_t + best_vbeta * sin_t);\n    V_Q = rte::Volts(-best_valpha * sin_t + best_vbeta * cos_t);\n\n    mpcc_prev_sa = S_A;\n    mpcc_prev_sb = S_B;\n    mpcc_prev_sc = S_C;\n    mpcc_u_alpha_prev = best_valpha;\n    mpcc_u_beta_prev = best_vbeta;\n}\n",
       "inputPorts": [
         {
-          "description": "Measured d-axis current in amperes.",
-          "direction": "input",
           "name": "I_D",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
-          }
+            "dtype": "f32"
+          },
+          "description": "Measured d-axis current in amperes."
         },
         {
-          "description": "Measured q-axis current in amperes.",
-          "direction": "input",
           "name": "I_Q",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
-          }
+            "dtype": "f32"
+          },
+          "description": "Measured q-axis current in amperes."
         },
         {
-          "description": "d-axis current reference in amperes.",
-          "direction": "input",
           "name": "I_D_Ref",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "current"
-          }
+            "dtype": "f32"
+          },
+          "description": "I_D_Ref (amperes as dimensionless, same as Values.Var / FOC setpoints)."
         },
         {
-          "description": "q-axis current reference in amperes.",
-          "direction": "input",
           "name": "I_Q_Ref",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "current"
-          }
+            "dtype": "f32"
+          },
+          "description": "I_Q_Ref (amperes as dimensionless, same as Values.Var / FOC setpoints)."
         },
         {
-          "description": "Electrical rotor angle in radians.",
-          "direction": "input",
           "name": "Theta_E",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
-          }
+            "dtype": "f32"
+          },
+          "description": "Electrical rotor angle in radians."
         },
         {
-          "description": "Electrical rotor speed in radians per second.",
-          "direction": "input",
           "name": "Omega_E",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "angular_velocity"
-          }
+            "dtype": "f32"
+          },
+          "description": "Electrical rotor speed in radians per second."
         },
         {
-          "description": "DC-link voltage in volts.",
-          "direction": "input",
           "name": "V_Dc",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
-          }
+            "dtype": "f32"
+          },
+          "description": "DC-link voltage in volts."
         },
         {
-          "description": "Controller enable (1 = run, 0 = hold previous switch states).",
-          "direction": "input",
           "name": "Enable",
-          "optional": false,
+          "direction": "input",
           "type": {
-            "dtype": "f32",
+            "quantity": "boolean",
             "frame": "scalar",
-            "quantity": "boolean"
-          }
+            "dtype": "f32"
+          },
+          "description": "Controller enable (1 = run, 0 = hold previous switch states)."
         }
       ],
       "isEntryPoint": false,
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "Phase A high-side switch state.",
-          "direction": "output",
           "name": "S_A",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "boolean",
             "frame": "scalar",
-            "quantity": "boolean"
-          }
+            "dtype": "f32"
+          },
+          "description": "Phase A high-side switch state."
         },
         {
-          "description": "Phase B high-side switch state.",
-          "direction": "output",
           "name": "S_B",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "boolean",
             "frame": "scalar",
-            "quantity": "boolean"
-          }
+            "dtype": "f32"
+          },
+          "description": "Phase B high-side switch state."
         },
         {
-          "description": "Phase C high-side switch state.",
-          "direction": "output",
           "name": "S_C",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "boolean",
             "frame": "scalar",
-            "quantity": "boolean"
-          }
+            "dtype": "f32"
+          },
+          "description": "Phase C high-side switch state."
         },
         {
-          "description": "Selected switching-state index (0-7).",
-          "direction": "output",
           "name": "State_Index",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
-          }
+            "dtype": "f32"
+          },
+          "description": "Selected switching-state index (0-7)."
         },
         {
-          "description": "Predicted d-axis current for the selected state.",
-          "direction": "output",
           "name": "Pred_I_D",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
-          }
+            "dtype": "f32"
+          },
+          "description": "Predicted d-axis current for the selected state."
         },
         {
-          "description": "Predicted q-axis current for the selected state.",
-          "direction": "output",
           "name": "Pred_I_Q",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
-          }
+            "dtype": "f32"
+          },
+          "description": "Predicted q-axis current for the selected state."
         },
         {
-          "description": "Cost of the selected switching state.",
-          "direction": "output",
           "name": "Cost",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
-          }
+            "dtype": "f32"
+          },
+          "description": "Cost of the selected switching state."
         },
         {
-          "description": "Selected voltage vector, alpha component.",
-          "direction": "output",
           "name": "V_Alpha",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
-          }
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, alpha component."
         },
         {
-          "description": "Selected voltage vector, beta component.",
-          "direction": "output",
           "name": "V_Beta",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
-          }
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, beta component."
         },
         {
-          "description": "Selected voltage vector, d component.",
-          "direction": "output",
           "name": "V_D",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
-          }
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, d component."
         },
         {
-          "description": "Selected voltage vector, q component.",
-          "direction": "output",
           "name": "V_Q",
-          "optional": false,
+          "direction": "output",
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
-          }
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, q component."
         }
       ],
       "parameterTypes": {
-        "I_Base": {
-          "description": "Current normalization base in amperes.",
-          "dtype": "f32",
+        "Ts": {
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "I_Max": {
-          "description": "Soft current limit in amperes.",
           "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "Ld": {
-          "description": "d-axis inductance in henrys.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "Lq": {
-          "description": "q-axis inductance in henrys.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "Mode": {
-          "description": "MPCC mode: 0=one-step, 1=delay-compensated, 2=back-EMF-compensated, 3=optimal-duty-cycle.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "PsiF": {
-          "description": "Permanent-magnet flux linkage in webers.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
+          "description": "Control sample period in seconds."
         },
         "Rs": {
-          "description": "Stator phase resistance in ohms.",
-          "dtype": "f32",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32",
+          "description": "Stator phase resistance in ohms."
         },
-        "Ts": {
-          "description": "Control sample period in seconds.",
-          "dtype": "f32",
+        "Ld": {
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32",
+          "description": "d-axis inductance in henrys."
+        },
+        "Lq": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "q-axis inductance in henrys."
+        },
+        "PsiF": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Permanent-magnet flux linkage in webers."
+        },
+        "I_Base": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Current normalization base in amperes."
+        },
+        "I_Max": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Soft current limit in amperes."
+        },
+        "Mode": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "MPCC mode: 0=one-step, 1=delay-compensated, 2=back-EMF-compensated, 3=optimal-duty-cycle."
         }
       }
     },
@@ -2325,7 +2306,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "Electrical rotor angle wrapped to the range 0 through 2π radians.",
+          "description": "Electrical rotor angle wrapped to the range 0 through 2\u03c0 radians.",
           "direction": "output",
           "name": "ThetaElec",
           "optional": false,
@@ -3174,7 +3155,7 @@
         "I_Max": "30.0",
         "Ld": "0.0001",
         "Lq": "0.0002",
-        "Mode": "1.0",
+        "Mode": "3.0",
         "PsiF": "0.01",
         "Rs": "0.1",
         "Ts": "0.0002"
