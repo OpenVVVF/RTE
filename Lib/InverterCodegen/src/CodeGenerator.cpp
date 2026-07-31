@@ -248,7 +248,7 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
 // string key. They must declare a string parameter "Key" and a scalar parameter
 // "Cached" (the live RAM state backing the node's output).
 bool IsConfigNodeType(const NodeAPI::NodeType& nodeType) {
-    return nodeType.id.rfind("config.", 0) == 0;
+    return nodeType.id.rfind("config.", 0) == 0 || nodeType.id == "Values.Config";
 }
 
 // Returns the config key, or nullopt when the node has no valid non-empty
