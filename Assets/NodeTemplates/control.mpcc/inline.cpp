@@ -28,7 +28,7 @@ const float iq = I_Q.in(au::amperes);
 const float id_ref = I_D_Ref.in(au::amperes);
 const float iq_ref = I_Q_Ref.in(au::amperes);
 const float theta_e = Theta_E;
-const float omega_e = Omega_E.in(au::radians_per_second);
+const float omega_e = Omega_E.in(au::radians / au::seconds);
 const bool enable = Enable > 0.5f;
 
 if (!enable || !(ts > 0.0f) || !(vdc > 0.0f) || ld <= 0.0f || lq <= 0.0f) {
