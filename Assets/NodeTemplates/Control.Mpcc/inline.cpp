@@ -1,13 +1,13 @@
 /* Predictive current control for three-phase PMSM (Zhang et al., IEEE TIA 2017).
- * Mode: 0=Conventional FCS (full vector / period)
+ * Mode: 0=Conventional FCS (full vector / period) — NOT for Gen6 low-L
  *       1=Delay-compensated FCS
  *       2=Back-EMF path (same predictor hook as 1 for now)
- *       3=Deadbeat-style voltage → SVPWM (use on Gen6 / low-L motors)
+ *       3=Deadbeat voltage → SVPWM  ← use this on Gen6 to spin
  *
- * Gen6 bring-up (session 220144):
- * - FRAM Sign=+1 left θe wrong → huge id (±40 A) → OC foldback pinned V≈0.
- * - Use deadbeat-ish L/Ts gains (FOC absolute Kp is too soft alone at stall).
- * - Soft ramp; foldback only well above I_Max (do not kill Ki on id spikes).
+ * Mode 3 matches the FOC voltage path (Vαβ → Transforms.Svpwm → PwmOut) but
+ * replaces PI with a one-step predictive / deadbeat voltage law:
+ *   v_dq = R i + ω cross terms + (L/Ts)(i* - i_pred)
+ * Soft current limiting scales voltage; it does not pin duties at 50%.
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -17,10 +17,7 @@ static float mpcc_u_alpha_prev = 0.0f;
 static float mpcc_u_beta_prev = 0.0f;
 static float mpcc_id_int = 0.0f;
 static float mpcc_iq_int = 0.0f;
-static float mpcc_vd_filt = 0.0f;
-static float mpcc_vq_filt = 0.0f;
 static float mpcc_enable_s = 0.0f;
-static int mpcc_oc_hold = 0;
 
 const float ts = Ts;
 float rs = Rs;
@@ -51,6 +48,7 @@ const int mode_i = (Mode >= 3.0f) ? 3 : ((Mode >= 2.0f) ? 2 : ((Mode >= 1.0f) ? 
 
 const float two_thirds = 2.0f / 3.0f;
 const float inv_sqrt3 = 0.57735026919f;
+const float sqrt3 = 1.73205080757f;
 const int switch_bits[8][3] = {
     {0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
     {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}
@@ -78,61 +76,60 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     mpcc_u_beta_prev = 0.0f;
     mpcc_id_int = 0.0f;
     mpcc_iq_int = 0.0f;
-    mpcc_vd_filt = 0.0f;
-    mpcc_vq_filt = 0.0f;
     mpcc_enable_s = 0.0f;
-    mpcc_oc_hold = 0;
 } else if (mode_i == 3) {
-    const float i_meas = sqrtf(id * id + iq * iq);
-    float cost = cost_track;
-    if (i_meas > i_max) cost += 1.0e6f;
+    /* -------- Deadbeat predictive voltage → SVPWM (Gen6 spin path) -------- */
+    const float cos_t = cosf(theta_e);
+    const float sin_t = sinf(theta_e);
 
-    const float ramp_s = 0.35f;
+    /* Delay compensation: predict i(k+1) under the voltage applied last step. */
+    const float vd_prev = mpcc_u_alpha_prev * cos_t + mpcc_u_beta_prev * sin_t;
+    const float vq_prev = -mpcc_u_alpha_prev * sin_t + mpcc_u_beta_prev * cos_t;
+    const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);
+    const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);
+
+    /* Short soft-start so enable does not dump full deadbeat voltage. */
+    const float ramp_s = 0.05f;
     mpcc_enable_s += ts;
     if (mpcc_enable_s > ramp_s) mpcc_enable_s = ramp_s;
     float v_scale = mpcc_enable_s / ramp_s;
 
-    /* Only hard-hold on severe OC; mild overcurrent uses voltage scale only. */
-    if (i_meas > i_max * 1.5f) {
-        const int hold_n = (int)(0.04f / ts);
-        if (hold_n > mpcc_oc_hold) mpcc_oc_hold = hold_n;
-    }
-    if (mpcc_oc_hold > 0) {
-        --mpcc_oc_hold;
-        v_scale *= 0.15f;
-        mpcc_id_int *= 0.5f;
-        mpcc_iq_int *= 0.5f;
-    } else if (i_meas > i_max && i_meas > 1.0e-3f) {
-        v_scale *= i_max / i_meas;
+    /* Soft |i| limit — scale voltage, never force V=0 / duty=50%. */
+    const float i_meas = sqrtf(id * id + iq * iq);
+    float cost = cost_track;
+    if (i_meas > i_max) {
+        cost += 1.0e6f;
+        if (i_meas > 1.0e-3f) {
+            v_scale *= i_max / i_meas;
+        }
     }
 
-    /* Deadbeat-ish current gains. L/Ts≈0.7–0.8 V/A on Gen6. */
-    const float kp_scale = 0.40f;
-    const float kp_d = (ld / ts) * kp_scale;
-    const float kp_q = (lq / ts) * kp_scale;
-    const float ki = 8.0f;
+    /* Deadbeat gains. db_scale < 1 softens first spin (FOC-like authority).
+     * L/Ts ≈ 0.7–0.8 V/A on Gen6; 0.35 keeps initial ΔV moderate. */
+    const float db_scale = 0.35f;
+    const float kp_d = (ld / ts) * db_scale;
+    const float kp_q = (lq / ts) * db_scale;
+    const float ki = 10.0f; /* match foc_demo Ki defaults */
 
-    const float id_err = id_ref - id;
-    const float iq_err = iq_ref - iq;
+    const float id_err = id_ref - id_p;
+    const float iq_err = iq_ref - iq_p;
 
-    const float i_lim_v = 0.35f * vdc;
-    /* Keep integrating unless severe OC hold — id spikes must not zero Iq torque. */
-    if (mpcc_oc_hold == 0) {
-        mpcc_id_int += ki * id_err * ts;
-        mpcc_iq_int += ki * iq_err * ts;
-    }
+    const float i_lim_v = (vdc / sqrt3) * 0.95f;
+    mpcc_id_int += ki * id_err * ts;
+    mpcc_iq_int += ki * iq_err * ts;
     if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;
     if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;
     if (mpcc_iq_int > i_lim_v) mpcc_iq_int = i_lim_v;
     if (mpcc_iq_int < -i_lim_v) mpcc_iq_int = -i_lim_v;
 
-    float vd_ref = rs * id_ref - omega_e * lq * iq_ref + kp_d * id_err + mpcc_id_int;
-    float vq_ref = rs * iq_ref + omega_e * ld * id_ref + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
+    float vd_ref = rs * id_p - omega_e * lq * iq_p + kp_d * id_err + mpcc_id_int;
+    float vq_ref = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
 
     vd_ref *= v_scale;
     vq_ref *= v_scale;
 
-    float v_max = vdc * 0.5f * 0.9f;
+    /* Same linear SVM voltage budget as Control.Pi / Transforms.Svpwm. */
+    const float v_max = (vdc / sqrt3) * 0.95f;
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
     if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {
         const float scale = v_max / sqrtf(v_mag_sq);
@@ -142,17 +139,11 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
         mpcc_iq_int *= 0.95f;
     }
 
-    const float alpha_v = 0.20f;
-    mpcc_vd_filt += alpha_v * (vd_ref - mpcc_vd_filt);
-    mpcc_vq_filt += alpha_v * (vq_ref - mpcc_vq_filt);
-    vd_ref = mpcc_vd_filt;
-    vq_ref = mpcc_vq_filt;
-
-    const float cos_t = cosf(theta_e);
-    const float sin_t = sinf(theta_e);
+    /* Inverse Park — same convention as Transforms.InversePark. */
     const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;
     const float vbeta_ref = vd_ref * sin_t + vq_ref * cos_t;
 
+    /* Sector index for telemetry only (PWM comes from SVPWM on Vαβ). */
     int best_idx = 1;
     float best_dist = 1.0e30f;
     for (int idx = 1; idx <= 6; ++idx) {
@@ -169,8 +160,8 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
         }
     }
 
-    const float pred_id = id + (ts / ld) * (vd_ref - rs * id + omega_e * lq * iq);
-    const float pred_iq = iq + (ts / lq) * (vq_ref - rs * iq - omega_e * ld * id - omega_e * psi_f);
+    const float pred_id = id_p + (ts / ld) * (vd_ref - rs * id_p + omega_e * lq * iq_p);
+    const float pred_iq = iq_p + (ts / lq) * (vq_ref - rs * iq_p - omega_e * ld * id_p - omega_e * psi_f);
 
     S_A = static_cast<float>(switch_bits[best_idx][0]);
     S_B = static_cast<float>(switch_bits[best_idx][1]);
@@ -190,6 +181,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     mpcc_u_alpha_prev = valpha_ref;
     mpcc_u_beta_prev = vbeta_ref;
 } else {
+    /* -------- Classic FCS enumeration (Modes 0–2) -------- */
     float id_base = id;
     float iq_base = iq;
     if (mode_i >= 1) {

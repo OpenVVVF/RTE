@@ -1,6 +1,8 @@
 Cached = platform_config_load(Key, DefaultValue);
 
-/* Only repair motor/encoder physics keys. Never rewrite Ctrl.* / gain keys. */
+/* Repair zero/invalid motor physics keys from graph defaults.
+ * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.
+ * Do NOT force polarity — match whatever FOC already spins with. */
 const bool is_motor_key =
     (Key != nullptr) &&
     (strstr(Key, "Inductance") != nullptr ||
@@ -14,14 +16,8 @@ if (is_motor_key) {
     const bool is_sign = (Key != nullptr) &&
                          (strstr(Key, "Encoder.SinCos.Sign") != nullptr);
     if (is_sign) {
-        /* Gen6 FOC default / calibration polarity is -1. A prior bug persisted
-         * Sign=+1 into FRAM and left θe wrong (session 220144: id ±40 A).
-         * If the graph DefaultValue is -1, force that polarity for bring-up. */
-        if (DefaultValue < -0.5f) {
-            Cached = -1.0f;
-            platform_config_set(Key, Cached);
-        } else if (fabsf(Cached) < 0.5f) {
-            Cached = (DefaultValue < -0.5f) ? -1.0f : 1.0f;
+        if (fabsf(Cached) < 0.5f) {
+            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;
             platform_config_set(Key, Cached);
         } else {
             Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;

@@ -246,7 +246,7 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "MPCC mode: 0=one-step, 1=delay-compensated, 2=back-EMF-compensated, 3=optimal-duty-cycle."
+      "description": "MPCC mode: 0=one-step FCS, 1=delay-compensated FCS, 2=back-EMF FCS, 3=deadbeat voltage→SVPWM (use on Gen6)."
     }
   },
   "description": "Finite-control-set model-predictive current control for a three-phase PMSM."
