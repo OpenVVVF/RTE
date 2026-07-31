@@ -2279,7 +2279,7 @@
       "domain": "tim_isr",
       "id": "IdRef",
       "parameters": {
-        "Amps": "0.0"
+        "Value": "0.0"
       },
       "position": {
         "x": 0.0,
@@ -2303,7 +2303,7 @@
       "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
-        "Amps": "0.0"
+        "Value": "0.0"
       },
       "position": {
         "x": 0.0,
