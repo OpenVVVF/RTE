@@ -36,6 +36,8 @@ add_executable(NodeGUI
     src/runtime/LegacyTelemetryClient.h
     src/runtime/RuntimeController.cpp
     src/runtime/RuntimeController.h
+    src/runtime/RuntimeSessionExporter.cpp
+    src/runtime/RuntimeSessionExporter.h
     src/runtime/SignalPlotWidget.cpp
     src/runtime/SignalPlotWidget.h
     src/runtime/SignalTablePanel.cpp

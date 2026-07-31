@@ -58,6 +58,10 @@ public:
     TelemetryStore& Store() { return store_; }
     const TelemetryStore& Store() const { return store_; }
 
+    // Drains the last queued device batch, then returns the complete runtime
+    // session accumulated since this controller was created.
+    RuntimeSessionSnapshot CaptureSession();
+
     QString Port() const { return port_; }
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }

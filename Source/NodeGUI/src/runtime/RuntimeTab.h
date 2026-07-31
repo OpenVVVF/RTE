@@ -37,6 +37,7 @@ private slots:
     void OnStoreChanged();
     void OnSavePreset();
     void OnLoadPreset();
+    void OnExportSession();
 
 private:
     void RefreshRecentCombo();
@@ -44,6 +45,7 @@ private:
     RuntimeController* controller_;
 
     QLabel* headerLabel_ = nullptr;
+    QLabel* exportStatus_ = nullptr;
     QLineEdit* presetNameEdit_ = nullptr;
     QComboBox* recentCombo_ = nullptr;
     QLabel* presetStatus_ = nullptr;

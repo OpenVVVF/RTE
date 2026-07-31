@@ -2,13 +2,19 @@
 
 #include "ConsolePanel.h"
 #include "RuntimeController.h"
+#include "RuntimeSessionExporter.h"
 #include "SignalTablePanel.h"
 #include "TelemetryPanel.h"
 
 #include <QComboBox>
+#include <QDateTime>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QVBoxLayout>
@@ -30,9 +36,23 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     , controller_(controller) {
     auto* layout = new QVBoxLayout(this);
 
-    // Link status header (same fields as the old app's header line).
+    // Link status header (same fields as the old app's header line), plus a
+    // full-session export that is independent of the rolling plot buffers.
+    auto* headerRow = new QHBoxLayout;
     headerLabel_ = new QLabel(this);
-    layout->addWidget(headerLabel_);
+    headerRow->addWidget(headerLabel_, 1);
+    exportStatus_ = new QLabel(this);
+    headerRow->addWidget(exportStatus_);
+    auto* exportButton =
+        new QPushButton(QStringLiteral("Export Session\u2026"), this);
+    exportButton->setToolTip(
+        QStringLiteral("Save all telemetry, console output, and commands from this runtime session"));
+    connect(exportButton,
+            &QPushButton::clicked,
+            this,
+            &RuntimeTab::OnExportSession);
+    headerRow->addWidget(exportButton);
+    layout->addLayout(headerRow);
 
     // Graph-layout presets.
     auto* presetRow = new QHBoxLayout;
@@ -146,6 +166,51 @@ void RuntimeTab::OnLoadPreset() {
 
     signalTablePanel_->SetGraphSignalSets(sets);
     presetStatus_->setText(QStringLiteral("loaded '%1'").arg(name));
+}
+
+void RuntimeTab::OnExportSession() {
+    const QString timestamp =
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString suggestedPath =
+        QDir::home().filePath(
+            QStringLiteral("runtime-session-%1.jsonl").arg(timestamp));
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Export Runtime Session"),
+        suggestedPath,
+        QStringLiteral("RTE Runtime Session (*.jsonl);;All Files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (QFileInfo(path).suffix().isEmpty()) {
+        path += QStringLiteral(".jsonl");
+    }
+
+    RuntimeSessionMetadata metadata;
+    metadata.port = controller_->Port();
+    metadata.mode = controller_->IsSimulating()
+                        ? QStringLiteral("simulation")
+                        : QStringLiteral("device");
+    metadata.protocol =
+        controller_->GetProtocol() == Protocol::Legacy
+            ? QStringLiteral("legacy")
+            : QStringLiteral("inverter");
+
+    exportStatus_->setText(QStringLiteral("exporting\u2026"));
+    const RuntimeSessionSnapshot session = controller_->CaptureSession();
+    QString error;
+    if (!ExportRuntimeSession(path, session, metadata, error)) {
+        exportStatus_->setText(QStringLiteral("export failed"));
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Export Runtime Session"),
+            QStringLiteral("Could not export the runtime session:\n%1")
+                .arg(error));
+        return;
+    }
+
+    exportStatus_->setText(
+        QStringLiteral("exported %1").arg(QFileInfo(path).fileName()));
 }
 
 void RuntimeTab::RefreshRecentCombo() {
