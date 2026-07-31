@@ -39,7 +39,9 @@ const float id_ref = I_D_Ref;
 const float iq_ref = I_Q_Ref;
 const float theta_e = Theta_E;
 float omega_e = Omega_E;
-const float w_max = 800.0f;
+/* Cover FOC-class speeds: 2000 rpm @ 10 poles => ωe≈1047 rad/s. Old ±800
+ * clamp starved back-EMF FF above ~1530 rpm. */
+const float w_max = 3000.0f;
 if (omega_e > w_max) omega_e = w_max;
 if (omega_e < -w_max) omega_e = -w_max;
 
@@ -104,9 +106,9 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
         }
     }
 
-    /* Deadbeat gains. db_scale < 1 softens first spin (FOC-like authority).
-     * L/Ts ≈ 0.7–0.8 V/A on Gen6; 0.35 keeps initial ΔV moderate. */
-    const float db_scale = 0.35f;
+    /* Deadbeat gains. L/Ts ≈ 0.7–0.8 V/A on Gen6. Raised from 0.35 so
+     * high-speed current (and id≈0) can track closer to FOC at 100 V. */
+    const float db_scale = 0.70f;
     const float kp_d = (ld / ts) * db_scale;
     const float kp_q = (lq / ts) * db_scale;
     const float ki = 10.0f; /* match foc_demo Ki defaults */

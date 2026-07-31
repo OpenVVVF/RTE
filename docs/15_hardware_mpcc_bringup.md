@@ -48,6 +48,14 @@ voltage like FOC PI, then uses the same SVPWM block.
    - no sustained overcurrent
 7. If currents explode or duties stay at 50%: re-flash `foc_demo`, verify Sign/offset, then retry.
 
+## Higher speed (match FOC ~2000 rpm @ 100 V)
+
+1. Confirm `cg_vdc_v` ≈ 100 and calibrated `PsiF` / `Ld` / `Lq` (same FRAM as FOC).
+2. Keep **Mode = 3**. Firmware now allows ωe up to ±3000 rad/s (~5700 rpm @ 10 poles).
+3. Raise `IqVar` toward the same current FOC uses at 2000 rpm (watch `cg_iq_a` on FOC).
+4. Iq slew defaults to **50 A/s** (same as `foc_demo`).
+5. Expect duties to leave mid-rail more as speed rises; if `id` drifts, back off Iq or re-check encoder Sign/offset.
+
 ## If something trips
 
 - Re-flash `foc_demo.json` immediately.
