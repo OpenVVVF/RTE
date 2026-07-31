@@ -4,10 +4,11 @@
  *       2=Back-EMF path (same predictor hook as 1 for now)
  *       3=Deadbeat-style voltage → SVPWM (use on Gen6 / low-L motors)
  *
- * Mode 3 notes (Gen6 hardware):
- * Match FOC-like gains (Kp≈fraction of L/Ts, Ki≈10), low-pass Vdq, and soft
- * current foldback. Sanitize Ld/Lq/Rs from FRAM: a zero inductance disables
- * the controller (Vαβ=0 → duties stuck at 50%).
+ * Gen6 bring-up notes:
+ * - Sanitize Ld/Lq/Rs when FRAM is 0.
+ * - Clamp Ωe: angle-wrap spikes were commanding huge back-EMF feedforward.
+ * - Keep FOC-like gains; hard OC latch with hysteresis (soft foldback alone
+ *   still allowed >100 A with a wrong frame / wild Ωe).
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -19,9 +20,9 @@ static float mpcc_id_int = 0.0f;
 static float mpcc_iq_int = 0.0f;
 static float mpcc_vd_filt = 0.0f;
 static float mpcc_vq_filt = 0.0f;
+static int mpcc_oc_latched = 0;
 
 const float ts = Ts;
-/* FRAM may hold 0 for uncalibrated / wiped inductance — never disable on that. */
 float rs = Rs;
 float ld = Ld;
 float lq = Lq;
@@ -30,6 +31,8 @@ if (!(rs > 0.0f)) rs = 0.1f;
 if (!(ld > 1.0e-7f)) ld = 0.0001f;
 if (!(lq > 1.0e-7f)) lq = 0.0002f;
 if (!(psi_f >= 0.0f)) psi_f = 0.01f;
+/* Keep flux FF modest until params are trusted (wrong Ψ + wild ω ⇒ cogging). */
+if (psi_f > 0.05f) psi_f = 0.05f;
 
 const float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;
 const float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;
@@ -39,8 +42,12 @@ const float iq = I_Q.in(au::amperes);
 const float id_ref = I_D_Ref;
 const float iq_ref = I_Q_Ref;
 const float theta_e = Theta_E;
-const float omega_e = Omega_E;
-/* Enable is rte::Boolean (bool). Do not compare against 0.5f. */
+/* Clamp electrical speed (rad/s). ~800 ≈ 1500 rpm mech @ 10 poles. */
+float omega_e = Omega_E;
+const float w_max = 800.0f;
+if (omega_e > w_max) omega_e = w_max;
+if (omega_e < -w_max) omega_e = -w_max;
+
 const bool enable = Enable;
 const int mode_i = (Mode >= 3.0f) ? 3 : ((Mode >= 2.0f) ? 2 : ((Mode >= 1.0f) ? 1 : 0));
 
@@ -75,27 +82,53 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     mpcc_iq_int = 0.0f;
     mpcc_vd_filt = 0.0f;
     mpcc_vq_filt = 0.0f;
+    mpcc_oc_latched = 0;
 } else if (mode_i == 3) {
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
     if (i_meas > i_max) cost += 1.0e6f;
 
-    /* Slightly hotter than FOC Kp≈0.03 so Iq tracks at low Vdc (~35 V bench). */
-    const float kp_scale = 0.5f;
+    if (i_meas > i_max) mpcc_oc_latched = 1;
+    if (i_meas < i_max * 0.6f) mpcc_oc_latched = 0;
+
+    if (mpcc_oc_latched) {
+        S_A = 0.0f;
+        S_B = 0.0f;
+        S_C = 0.0f;
+        State_Index = 0.0f;
+        Pred_I_D = rte::Amperes(id);
+        Pred_I_Q = rte::Amperes(iq);
+        Cost = cost;
+        V_Alpha = rte::Volts(0.0f);
+        V_Beta = rte::Volts(0.0f);
+        V_D = rte::Volts(0.0f);
+        V_Q = rte::Volts(0.0f);
+        mpcc_id_int = 0.0f;
+        mpcc_iq_int = 0.0f;
+        mpcc_vd_filt = 0.0f;
+        mpcc_vq_filt = 0.0f;
+        mpcc_prev_sa = 0.0f;
+        mpcc_prev_sb = 0.0f;
+        mpcc_prev_sc = 0.0f;
+        mpcc_u_alpha_prev = 0.0f;
+        mpcc_u_beta_prev = 0.0f;
+    } else {
+    /* Gentler than prior bring-up (0.5) — FOC uses ~0.03 V/A. */
+    const float kp_scale = 0.15f;
     const float kp_d = (ld / ts) * kp_scale;
     const float kp_q = (lq / ts) * kp_scale;
-    const float ki = 10.0f;
+    const float ki = 5.0f;
 
     const float id_err = id_ref - id;
     const float iq_err = iq_ref - iq;
 
-    const float i_lim_v = 0.25f * vdc;
-    if (i_meas < i_max * 0.85f) {
+    const float i_lim_v = 0.2f * vdc;
+    if (i_meas < i_max * 0.8f) {
         mpcc_id_int += ki * id_err * ts;
         mpcc_iq_int += ki * iq_err * ts;
     } else {
-        mpcc_id_int *= 0.95f;
-        mpcc_iq_int *= 0.95f;
+        mpcc_id_int *= 0.9f;
+        mpcc_iq_int *= 0.9f;
     }
     if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;
     if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;
@@ -105,23 +138,23 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     float vd_ref = rs * id - omega_e * lq * iq + kp_d * id_err + mpcc_id_int;
     float vq_ref = rs * iq + omega_e * ld * id + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
 
-    if (i_meas > i_max * 0.85f && i_meas > 1.0e-3f) {
-        const float scale = (i_max * 0.85f) / i_meas;
+    if (i_meas > i_max * 0.8f && i_meas > 1.0e-3f) {
+        const float scale = (i_max * 0.8f) / i_meas;
         vd_ref *= scale;
         vq_ref *= scale;
     }
 
-    const float v_max = (vdc * inv_sqrt3) * 0.95f;
+    const float v_max = (vdc * inv_sqrt3) * 0.85f;
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
     if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {
         const float scale = v_max / sqrtf(v_mag_sq);
         vd_ref *= scale;
         vq_ref *= scale;
-        mpcc_id_int *= 0.95f;
-        mpcc_iq_int *= 0.95f;
+        mpcc_id_int *= 0.9f;
+        mpcc_iq_int *= 0.9f;
     }
 
-    const float alpha_v = 0.35f;
+    const float alpha_v = 0.25f;
     mpcc_vd_filt += alpha_v * (vd_ref - mpcc_vd_filt);
     mpcc_vq_filt += alpha_v * (vq_ref - mpcc_vq_filt);
     vd_ref = mpcc_vd_filt;
@@ -168,6 +201,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     mpcc_prev_sc = S_C;
     mpcc_u_alpha_prev = valpha_ref;
     mpcc_u_beta_prev = vbeta_ref;
+    } /* OC OK */
 } else {
     float id_base = id;
     float iq_base = iq;
