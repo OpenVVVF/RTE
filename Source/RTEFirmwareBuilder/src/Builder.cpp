@@ -9,6 +9,9 @@
 #include <sstream>
 #include <thread>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 namespace RTEFirmwareBuilder {
 
@@ -71,11 +74,23 @@ std::string ToLower(std::string_view s) {
 }
 
 std::optional<std::filesystem::path> SelfExecutablePath() {
+#if defined(__APPLE__)
+    std::array<char, 4096> buf{};
+    uint32_t size = static_cast<uint32_t>(buf.size());
+    if (_NSGetExecutablePath(buf.data(), &size) != 0) return std::nullopt;
+    std::error_code ec;
+    auto canonical = std::filesystem::canonical(buf.data(), ec);
+    if (ec) return std::nullopt;
+    return canonical;
+#elif defined(__linux__)
     std::array<char, 4096> buf{};
     ssize_t len = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
     if (len <= 0) return std::nullopt;
     buf[static_cast<size_t>(len)] = '\0';
     return std::filesystem::canonical(buf.data());
+#else
+    return std::nullopt;
+#endif
 }
 
 }  // namespace
@@ -303,19 +318,19 @@ bool Builder::RunCommand(const std::string& description,
 
 std::optional<std::filesystem::path> Builder::FindRTECodeEmitter() const {
     auto self = SelfExecutablePath();
-    if (!self) return std::nullopt;
+    if (self) {
+        auto dir = self->parent_path();
 
-    auto dir = self->parent_path();
+        // Same directory as this executable.
+        auto sameDir = dir / "RTECodeEmitter";
+        if (std::filesystem::is_regular_file(sameDir)) return sameDir;
 
-    // Same directory as this executable.
-    auto sameDir = dir / "RTECodeEmitter";
-    if (std::filesystem::is_regular_file(sameDir)) return sameDir;
+        // Sibling source directory layout: Source/RTEFirmwareBuilder and Source/RTECodeEmitter.
+        auto siblingDir = dir.parent_path() / "RTECodeEmitter" / "RTECodeEmitter";
+        if (std::filesystem::is_regular_file(siblingDir)) return siblingDir;
+    }
 
-    // Sibling source directory layout: Source/RTEFirmwareBuilder and Source/RTECodeEmitter.
-    auto siblingDir = dir.parent_path() / "RTECodeEmitter" / "RTECodeEmitter";
-    if (std::filesystem::is_regular_file(siblingDir)) return siblingDir;
-
-    // Finally, fall back to PATH.
+    // Fall back to PATH (also covers hosts where SelfExecutablePath is unavailable).
     if (auto fromPath = FindExecutableInPath("RTECodeEmitter")) return fromPath;
 
     return std::nullopt;
