@@ -14,9 +14,13 @@ if (is_motor_key) {
     const bool is_sign = (Key != nullptr) &&
                          (strstr(Key, "Encoder.SinCos.Sign") != nullptr);
     if (is_sign) {
-        /* Sign is ±1. Never treat Sign=-1 as "missing" via Cached>0 checks —
-         * that wiped calibrated Gen6 FRAM Sign and locked the rotor. */
-        if (fabsf(Cached) < 0.5f) {
+        /* Gen6 FOC default / calibration polarity is -1. A prior bug persisted
+         * Sign=+1 into FRAM and left θe wrong (session 220144: id ±40 A).
+         * If the graph DefaultValue is -1, force that polarity for bring-up. */
+        if (DefaultValue < -0.5f) {
+            Cached = -1.0f;
+            platform_config_set(Key, Cached);
+        } else if (fabsf(Cached) < 0.5f) {
             Cached = (DefaultValue < -0.5f) ? -1.0f : 1.0f;
             platform_config_set(Key, Cached);
         } else {

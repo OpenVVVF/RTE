@@ -4,12 +4,10 @@
  *       2=Back-EMF path (same predictor hook as 1 for now)
  *       3=Deadbeat-style voltage → SVPWM (use on Gen6 / low-L motors)
  *
- * Gen6 bring-up notes:
- * - Sanitize Ld/Lq/Rs when FRAM is 0.
- * - Clamp Ωe: angle-wrap spikes were commanding huge back-EMF feedforward.
- * - Soft enable ramp + soft OC (no hard V=0 bang-bang).
- * - Do NOT stall-cap with rs*I_max: Gen6 Rs≈0.012 Ω makes that ~2 V and
- *   pins duties at 50% (session 215141: no spin). Match FOC voltage/gains.
+ * Gen6 bring-up (session 220144):
+ * - FRAM Sign=+1 left θe wrong → huge id (±40 A) → OC foldback pinned V≈0.
+ * - Use deadbeat-ish L/Ts gains (FOC absolute Kp is too soft alone at stall).
+ * - Soft ramp; foldback only well above I_Max (do not kill Ki on id spikes).
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -33,7 +31,6 @@ if (!(rs > 0.0f)) rs = 0.1f;
 if (!(ld > 1.0e-7f)) ld = 0.0001f;
 if (!(lq > 1.0e-7f)) lq = 0.0002f;
 if (!(psi_f >= 0.0f)) psi_f = 0.01f;
-/* Keep flux FF modest until params are trusted (wrong Ψ + wild ω ⇒ cogging). */
 if (psi_f > 0.05f) psi_f = 0.05f;
 
 const float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;
@@ -44,7 +41,6 @@ const float iq = I_Q.in(au::amperes);
 const float id_ref = I_D_Ref;
 const float iq_ref = I_Q_Ref;
 const float theta_e = Theta_E;
-/* Clamp electrical speed (rad/s). ~800 ≈ 1500 rpm mech @ 10 poles. */
 float omega_e = Omega_E;
 const float w_max = 800.0f;
 if (omega_e > w_max) omega_e = w_max;
@@ -91,70 +87,62 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     float cost = cost_track;
     if (i_meas > i_max) cost += 1.0e6f;
 
-    /* Soft enable ramp (~0.5 s). */
-    const float ramp_s = 0.5f;
+    const float ramp_s = 0.35f;
     mpcc_enable_s += ts;
     if (mpcc_enable_s > ramp_s) mpcc_enable_s = ramp_s;
     float v_scale = mpcc_enable_s / ramp_s;
 
-    /* Soft OC hold-down (no hard V=0 latch). */
-    if (i_meas > i_max * 1.2f) {
-        const int hold_n = (int)(0.06f / ts);
+    /* Only hard-hold on severe OC; mild overcurrent uses voltage scale only. */
+    if (i_meas > i_max * 1.5f) {
+        const int hold_n = (int)(0.04f / ts);
         if (hold_n > mpcc_oc_hold) mpcc_oc_hold = hold_n;
     }
     if (mpcc_oc_hold > 0) {
         --mpcc_oc_hold;
-        v_scale *= 0.1f;
-        mpcc_id_int = 0.0f;
-        mpcc_iq_int = 0.0f;
-        mpcc_vd_filt *= 0.5f;
-        mpcc_vq_filt *= 0.5f;
-    } else if (i_meas > i_max * 0.85f && i_meas > 1.0e-3f) {
-        v_scale *= (i_max * 0.85f) / i_meas;
+        v_scale *= 0.15f;
+        mpcc_id_int *= 0.5f;
+        mpcc_iq_int *= 0.5f;
+    } else if (i_meas > i_max && i_meas > 1.0e-3f) {
+        v_scale *= i_max / i_meas;
     }
 
-    /* Match working Gen6 FOC FRAM gains (Ctrl.PiD/Q.Kp/Ki). */
-    const float kp_d = 0.08f;
-    const float kp_q = 0.16f;
-    const float ki = 10.0f;
+    /* Deadbeat-ish current gains. L/Ts≈0.7–0.8 V/A on Gen6. */
+    const float kp_scale = 0.40f;
+    const float kp_d = (ld / ts) * kp_scale;
+    const float kp_q = (lq / ts) * kp_scale;
+    const float ki = 8.0f;
 
     const float id_err = id_ref - id;
-    /* Session 215141: iq settled at ≈−IqVar (inverted q-axis plant under
-     * current Sign/Offset). Flip q-error so the loop closes correctly. */
-    const float iq_err = iq - iq_ref;
+    const float iq_err = iq_ref - iq;
 
-    const float i_lim_v = 0.25f * vdc;
-    if (i_meas < i_max * 0.85f && mpcc_oc_hold == 0) {
+    const float i_lim_v = 0.35f * vdc;
+    /* Keep integrating unless severe OC hold — id spikes must not zero Iq torque. */
+    if (mpcc_oc_hold == 0) {
         mpcc_id_int += ki * id_err * ts;
         mpcc_iq_int += ki * iq_err * ts;
-    } else {
-        mpcc_id_int *= 0.9f;
-        mpcc_iq_int *= 0.9f;
     }
     if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;
     if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;
     if (mpcc_iq_int > i_lim_v) mpcc_iq_int = i_lim_v;
     if (mpcc_iq_int < -i_lim_v) mpcc_iq_int = -i_lim_v;
 
-    /* Decouple with commanded currents (FOC style) to avoid positive feedback. */
-    float vd_ref = rs * id - omega_e * lq * iq_ref + kp_d * id_err + mpcc_id_int;
-    float vq_ref = rs * iq + omega_e * ld * id_ref + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
+    float vd_ref = rs * id_ref - omega_e * lq * iq_ref + kp_d * id_err + mpcc_id_int;
+    float vq_ref = rs * iq_ref + omega_e * ld * id_ref + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
 
     vd_ref *= v_scale;
     vq_ref *= v_scale;
 
-    /* FOC-like voltage ceiling: ~0.5 * Vdc * max_mod. No rs-based stall pin. */
-    float v_max = vdc * 0.5f * 0.85f;
+    float v_max = vdc * 0.5f * 0.9f;
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
     if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {
         const float scale = v_max / sqrtf(v_mag_sq);
         vd_ref *= scale;
         vq_ref *= scale;
-        mpcc_id_int *= 0.9f;
-        mpcc_iq_int *= 0.9f;
+        mpcc_id_int *= 0.95f;
+        mpcc_iq_int *= 0.95f;
     }
 
-    const float alpha_v = 0.15f;
+    const float alpha_v = 0.20f;
     mpcc_vd_filt += alpha_v * (vd_ref - mpcc_vd_filt);
     mpcc_vq_filt += alpha_v * (vq_ref - mpcc_vq_filt);
     vd_ref = mpcc_vd_filt;
