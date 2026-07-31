@@ -137,6 +137,13 @@ RuntimeSessionSnapshot RuntimeController::CaptureSession() {
     return store_.SessionSnapshot();
 }
 
+void RuntimeController::ClearSession() {
+    DrainQueue();
+    store_.ClearSession();
+    emit sessionCleared();
+    emit storeChanged();
+}
+
 void RuntimeController::SuspendForFlash() {
     if (suspended_) {
         return;

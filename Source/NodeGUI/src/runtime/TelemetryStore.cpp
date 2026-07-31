@@ -12,8 +12,16 @@ void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     TrimHistoryLocked(hist);
     snap_.latest[key] = value;
 
+    if (!sessionTelemetryClockInitialized_) {
+        sessionTelemetryClockInitialized_ = true;
+        sessionTelemetrySourceOrigin_ = tsec;
+        sessionTelemetryElapsedOrigin_ = SessionElapsedSeconds();
+    }
+    const float sessionTsec = static_cast<float>(
+        sessionTelemetryElapsedOrigin_ +
+        static_cast<double>(tsec - sessionTelemetrySourceOrigin_));
     auto& sessionHistory = sessionFloatSignals_[key];
-    sessionHistory.t.push_back(tsec);
+    sessionHistory.t.push_back(sessionTsec);
     sessionHistory.y.push_back(value);
 }
 
@@ -48,6 +56,23 @@ void TelemetryStore::ClearConsole() {
     // Clearing affects the visible rolling console only. The session archive
     // remains intact so a later export is complete.
     snap_.console.clear();
+}
+
+void TelemetryStore::ClearSession() {
+    std::lock_guard lock(mtx_);
+    const bool suspended = snap_.suspended;
+    snap_ = TelemetrySnapshot{};
+    snap_.suspended = suspended;
+    sessionFloatSignals_.clear();
+    sessionStringSignals_.clear();
+    sessionConsole_.clear();
+    sessionCommands_.clear();
+    sessionTelemetryClockInitialized_ = false;
+    sessionTelemetrySourceOrigin_ = 0.0f;
+    sessionTelemetryElapsedOrigin_ = 0.0;
+    nextConsoleSeq_ = 1;
+    sessionStartSteady_ = std::chrono::steady_clock::now();
+    sessionStartWall_ = std::chrono::system_clock::now();
 }
 
 void TelemetryStore::SetStats(float rxHz,

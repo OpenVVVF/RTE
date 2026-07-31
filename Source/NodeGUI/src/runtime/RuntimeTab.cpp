@@ -43,6 +43,15 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     headerRow->addWidget(headerLabel_, 1);
     exportStatus_ = new QLabel(this);
     headerRow->addWidget(exportStatus_);
+    auto* clearSessionButton =
+        new QPushButton(QStringLiteral("Clear Session"), this);
+    clearSessionButton->setToolTip(
+        QStringLiteral("Discard all telemetry, console output, and commands recorded in this session"));
+    connect(clearSessionButton,
+            &QPushButton::clicked,
+            this,
+            &RuntimeTab::OnClearSession);
+    headerRow->addWidget(clearSessionButton);
     auto* exportButton =
         new QPushButton(QStringLiteral("Export Session\u2026"), this);
     exportButton->setToolTip(
@@ -211,6 +220,27 @@ void RuntimeTab::OnExportSession() {
 
     exportStatus_->setText(
         QStringLiteral("exported %1").arg(QFileInfo(path).fileName()));
+}
+
+void RuntimeTab::OnClearSession() {
+    QMessageBox confirmation(this);
+    confirmation.setIcon(QMessageBox::Warning);
+    confirmation.setWindowTitle(QStringLiteral("Clear Runtime Session"));
+    confirmation.setText(
+        QStringLiteral(
+            "Clear all recorded telemetry, console output, and command "
+            "history?\n\nThis cannot be undone."));
+    auto* clearButton = confirmation.addButton(
+        QStringLiteral("Clear Session"), QMessageBox::DestructiveRole);
+    confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(QMessageBox::Cancel);
+    confirmation.exec();
+    if (confirmation.clickedButton() != clearButton) {
+        return;
+    }
+
+    controller_->ClearSession();
+    exportStatus_->setText(QStringLiteral("session cleared"));
 }
 
 void RuntimeTab::RefreshRecentCombo() {

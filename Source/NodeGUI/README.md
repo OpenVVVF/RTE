@@ -53,7 +53,8 @@ Or launch with no arguments and use `File → Open`.
   sent console commands, connection statistics, and session metadata captured
   since the runtime started. Its final record includes per-signal sample count,
   minimum, maximum, and mean. Clearing the visible console does not discard
-  export data.
+  export data. `Clear Session` resets the plots, latest telemetry, console,
+  command history, statistics, and export archive after confirmation.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
 - `Edit → Undo` / `Redo` restores complete graph snapshots, including nodes,

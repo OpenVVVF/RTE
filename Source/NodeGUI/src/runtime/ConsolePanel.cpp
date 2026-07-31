@@ -89,6 +89,8 @@ ConsolePanel::ConsolePanel(RuntimeController* controller, QWidget* parent)
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &ConsolePanel::OnStoreChanged);
+    connect(controller_, &RuntimeController::sessionCleared,
+            this, &ConsolePanel::OnSessionCleared);
 }
 
 void ConsolePanel::OnStoreChanged() {
@@ -122,6 +124,14 @@ void ConsolePanel::OnSendCommand() {
     historyIndex_ = -1;
     controller_->SendCommand(line);
     OnStoreChanged();
+}
+
+void ConsolePanel::OnSessionCleared() {
+    consoleView_->clear();
+    commandEdit_->clear();
+    commandHistory_.clear();
+    historyIndex_ = -1;
+    lastConsoleSeq_ = 0;
 }
 
 }  // namespace NodeGUI::runtime

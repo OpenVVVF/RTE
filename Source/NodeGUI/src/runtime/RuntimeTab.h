@@ -38,6 +38,7 @@ private slots:
     void OnSavePreset();
     void OnLoadPreset();
     void OnExportSession();
+    void OnClearSession();
 
 private:
     void RefreshRecentCombo();
