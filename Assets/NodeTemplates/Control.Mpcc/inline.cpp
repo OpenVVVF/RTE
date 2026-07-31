@@ -7,8 +7,8 @@
  * Gen6 bring-up notes:
  * - Sanitize Ld/Lq/Rs when FRAM is 0.
  * - Clamp Ωe: angle-wrap spikes were commanding huge back-EMF feedforward.
- * - Keep FOC-like gains; hard OC latch with hysteresis (soft foldback alone
- *   still allowed >100 A with a wrong frame / wild Ωe).
+ * - Soft voltage ramp + stall V-cap + soft OC hold (hard latch bang-bang
+ *   locked the rotor and felt "too hard").
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -20,7 +20,8 @@ static float mpcc_id_int = 0.0f;
 static float mpcc_iq_int = 0.0f;
 static float mpcc_vd_filt = 0.0f;
 static float mpcc_vq_filt = 0.0f;
-static int mpcc_oc_latched = 0;
+static float mpcc_enable_s = 0.0f;
+static int mpcc_oc_hold = 0;
 
 const float ts = Ts;
 float rs = Rs;
@@ -82,57 +83,52 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     mpcc_iq_int = 0.0f;
     mpcc_vd_filt = 0.0f;
     mpcc_vq_filt = 0.0f;
-    mpcc_oc_latched = 0;
+    mpcc_enable_s = 0.0f;
+    mpcc_oc_hold = 0;
 } else if (mode_i == 3) {
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
     if (i_meas > i_max) cost += 1.0e6f;
 
-    /* Latch only well above I_Max so normal ripple around IqVar does not
-     * bang-bang (was: I_Max=20 with IqVar=10 → constant OC chatter). */
-    if (i_meas > i_max * 1.25f) mpcc_oc_latched = 1;
-    if (i_meas < i_max * 0.7f) mpcc_oc_latched = 0;
+    /* Soft enable ramp (~0.8 s) so start is not a voltage step into a stall. */
+    const float ramp_s = 0.8f;
+    mpcc_enable_s += ts;
+    if (mpcc_enable_s > ramp_s) mpcc_enable_s = ramp_s;
+    float v_scale = mpcc_enable_s / ramp_s;
+    v_scale *= v_scale;
 
-    if (mpcc_oc_latched) {
-        S_A = 0.0f;
-        S_B = 0.0f;
-        S_C = 0.0f;
-        State_Index = 0.0f;
-        Pred_I_D = rte::Amperes(id);
-        Pred_I_Q = rte::Amperes(iq);
-        Cost = cost;
-        V_Alpha = rte::Volts(0.0f);
-        V_Beta = rte::Volts(0.0f);
-        V_D = rte::Volts(0.0f);
-        V_Q = rte::Volts(0.0f);
+    /* Soft OC: brief hold-down instead of hard V=0 latch bang-bang. */
+    if (i_meas > i_max * 1.15f) {
+        const int hold_n = (int)(0.08f / ts);
+        if (hold_n > mpcc_oc_hold) mpcc_oc_hold = hold_n;
+    }
+    if (mpcc_oc_hold > 0) {
+        --mpcc_oc_hold;
+        v_scale *= 0.05f;
         mpcc_id_int = 0.0f;
         mpcc_iq_int = 0.0f;
-        mpcc_vd_filt = 0.0f;
-        mpcc_vq_filt = 0.0f;
-        mpcc_prev_sa = 0.0f;
-        mpcc_prev_sb = 0.0f;
-        mpcc_prev_sc = 0.0f;
-        mpcc_u_alpha_prev = 0.0f;
-        mpcc_u_beta_prev = 0.0f;
-    } else {
-    /* FOC Kp≈0.03 is very soft; with L~0.15 mH, L/Ts≈0.75 V/A.
-     * Use a solid fraction so IqVar of a few amps actually produces torque
-     * at ~35 V DC without sitting near 50% duty. */
-    const float kp_scale = 0.45f;
+        mpcc_vd_filt *= 0.5f;
+        mpcc_vq_filt *= 0.5f;
+    } else if (i_meas > i_max * 0.65f && i_meas > 1.0e-3f) {
+        v_scale *= (i_max * 0.65f) / i_meas;
+    }
+
+    /* Soft FOC-like gains; L/Ts≈0.75 V/A on Gen6 — keep a small fraction. */
+    const float kp_scale = 0.12f;
     const float kp_d = (ld / ts) * kp_scale;
     const float kp_q = (lq / ts) * kp_scale;
-    const float ki = 12.0f;
+    const float ki = 3.0f;
 
     const float id_err = id_ref - id;
     const float iq_err = iq_ref - iq;
 
-    const float i_lim_v = 0.2f * vdc;
-    if (i_meas < i_max * 0.8f) {
+    const float i_lim_v = 0.08f * vdc;
+    if (i_meas < i_max * 0.7f && mpcc_oc_hold == 0) {
         mpcc_id_int += ki * id_err * ts;
         mpcc_iq_int += ki * iq_err * ts;
     } else {
-        mpcc_id_int *= 0.9f;
-        mpcc_iq_int *= 0.9f;
+        mpcc_id_int *= 0.85f;
+        mpcc_iq_int *= 0.85f;
     }
     if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;
     if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;
@@ -142,13 +138,18 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     float vd_ref = rs * id - omega_e * lq * iq + kp_d * id_err + mpcc_id_int;
     float vq_ref = rs * iq + omega_e * ld * id + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
 
-    if (i_meas > i_max * 0.8f && i_meas > 1.0e-3f) {
-        const float scale = (i_max * 0.8f) / i_meas;
-        vd_ref *= scale;
-        vq_ref *= scale;
+    vd_ref *= v_scale;
+    vq_ref *= v_scale;
+
+    /* Stall / low-speed voltage cap: prevent hard current at ω≈0. */
+    float v_max = (vdc * inv_sqrt3) * 0.7f;
+    const float w_abs = fabsf(omega_e);
+    const float v_stall = rs * i_max * 1.2f + 1.5f;
+    if (w_abs < 40.0f) {
+        const float v_cap = v_stall + (v_max - v_stall) * (w_abs / 40.0f);
+        if (v_cap < v_max) v_max = v_cap;
     }
 
-    const float v_max = (vdc * inv_sqrt3) * 0.85f;
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
     if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {
         const float scale = v_max / sqrtf(v_mag_sq);
@@ -158,7 +159,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
         mpcc_iq_int *= 0.9f;
     }
 
-    const float alpha_v = 0.25f;
+    const float alpha_v = 0.08f;
     mpcc_vd_filt += alpha_v * (vd_ref - mpcc_vd_filt);
     mpcc_vq_filt += alpha_v * (vq_ref - mpcc_vq_filt);
     vd_ref = mpcc_vd_filt;
@@ -205,7 +206,6 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     mpcc_prev_sc = S_C;
     mpcc_u_alpha_prev = valpha_ref;
     mpcc_u_beta_prev = vbeta_ref;
-    } /* OC OK */
 } else {
     float id_base = id;
     float iq_base = iq;

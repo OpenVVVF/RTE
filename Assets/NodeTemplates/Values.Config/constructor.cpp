@@ -11,12 +11,19 @@ const bool is_motor_key =
      strstr(Key, "Encoder.SinCos.OffsetDeg") != nullptr);
 
 if (is_motor_key) {
-    if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {
+    const bool is_sign = (Key != nullptr) &&
+                         (strstr(Key, "Encoder.SinCos.Sign") != nullptr);
+    if (is_sign) {
+        /* Sign is ±1. Never treat Sign=-1 as "missing" via Cached>0 checks —
+         * that wiped calibrated Gen6 FRAM Sign and locked the rotor. */
+        if (fabsf(Cached) < 0.5f) {
+            Cached = (DefaultValue < -0.5f) ? -1.0f : 1.0f;
+            platform_config_set(Key, Cached);
+        } else {
+            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;
+        }
+    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {
         Cached = DefaultValue;
-        platform_config_set(Key, Cached);
-    }
-    if (strstr(Key, "Encoder.SinCos.Sign") != nullptr && fabsf(Cached) < 0.5f) {
-        Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;
         platform_config_set(Key, Cached);
     }
 }
