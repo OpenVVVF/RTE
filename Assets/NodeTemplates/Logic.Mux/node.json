@@ -2,12 +2,14 @@
   "id": "Logic.Mux",
   "displayName": "Mux",
   "defaultName": "Mux",
+  "description": "Selects one of two scalar inputs using a boolean control signal.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "Sel",
+      "description": "Selection signal. True selects A; false selects B.",
       "direction": "input",
       "type": {
         "quantity": "boolean",
@@ -17,6 +19,7 @@
     },
     {
       "name": "A",
+      "description": "Value selected when Sel is true.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -26,6 +29,7 @@
     },
     {
       "name": "B",
+      "description": "Value selected when Sel is false.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -37,6 +41,7 @@
   "outputPorts": [
     {
       "name": "Out",
+      "description": "Currently selected input value.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

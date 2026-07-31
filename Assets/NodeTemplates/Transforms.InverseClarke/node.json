@@ -2,11 +2,13 @@
   "id": "Transforms.InverseClarke",
   "displayName": "Inverse Clarke Transform",
   "defaultName": "InvClarke",
+  "description": "Transforms stationary alpha-beta voltages into three-phase voltage commands.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {
       "name": "V_Alpha",
+      "description": "Stationary-frame alpha-axis voltage.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -16,6 +18,7 @@
     },
     {
       "name": "V_Beta",
+      "description": "Stationary-frame beta-axis voltage.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -27,6 +30,7 @@
   "outputPorts": [
     {
       "name": "V_A",
+      "description": "Reconstructed phase A voltage.",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -36,6 +40,7 @@
     },
     {
       "name": "V_B",
+      "description": "Reconstructed phase B voltage.",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -45,6 +50,7 @@
     },
     {
       "name": "V_C",
+      "description": "Reconstructed phase C voltage.",
       "direction": "output",
       "type": {
         "quantity": "voltage",

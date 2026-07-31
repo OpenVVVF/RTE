@@ -2,12 +2,14 @@
   "id": "Debug.TelemetryCurrentSink",
   "displayName": "Telemetry Current Sink",
   "defaultName": "LogI",
+  "description": "Publishes three phase-current signals to the standard current telemetry channels.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "I_A",
+      "description": "Phase A current to publish in amperes.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -17,6 +19,7 @@
     },
     {
       "name": "I_B",
+      "description": "Phase B current to publish in amperes.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -26,6 +29,7 @@
     },
     {
       "name": "I_C",
+      "description": "Phase C current to publish in amperes.",
       "direction": "input",
       "type": {
         "quantity": "current",

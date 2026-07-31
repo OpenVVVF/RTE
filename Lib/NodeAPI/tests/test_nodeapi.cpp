@@ -64,16 +64,21 @@ NodeType MakePiControllerType() {
     return NodeType{
         .id = "control.pi",
         .displayName = "PI Controller",
+        .description = "Controls an error with proportional and integral action.",
         .inputPorts = {Port{.name = "error",
                             .direction = PortDirection::Input,
                             .type = WireType{.quantity = Quantity::Dimensionless,
                                              .frame = Frame::Scalar,
-                                             .dtype = DType::F32}}},
+                                             .dtype = DType::F32},
+                            .description = "Setpoint minus measurement."}},
         .outputPorts = {Port{.name = "out",
                              .direction = PortDirection::Output,
                              .type = WireType{.quantity = Quantity::Dimensionless,
                                               .frame = Frame::Scalar,
-                                              .dtype = DType::F32}}},
+                                              .dtype = DType::F32},
+                             .description = "Controller output."}},
+        .parameterTypes = {{"Kp", WireType{}}},
+        .parameterDescriptions = {{"Kp", "Proportional gain."}},
         .inlineCode = "return params.kp * error + integrator;",
         .constructorCode = "integrator = 0.0f;",
         .classHeader = "class PiController { float integrator; public: float Step(float error); };",
@@ -413,6 +418,15 @@ TEST(Serialization, RoundTrip) {
 
     const auto piType = loaded.FindNodeType("control.pi");
     ASSERT_TRUE(piType.has_value());
+    EXPECT_EQ(piType->description,
+              "Controls an error with proportional and integral action.");
+    EXPECT_EQ(piType->FindInputPort("error")->description,
+              "Setpoint minus measurement.");
+    EXPECT_EQ(piType->FindOutputPort("out")->description,
+              "Controller output.");
+    ASSERT_TRUE(piType->FindParameterDescription("Kp").has_value());
+    EXPECT_EQ(*piType->FindParameterDescription("Kp"),
+              "Proportional gain.");
     EXPECT_EQ(piType->inlineCode, "return params.kp * error + integrator;");
     EXPECT_EQ(piType->constructorCode, "integrator = 0.0f;");
     EXPECT_FALSE(piType->classHeader.empty());

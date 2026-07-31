@@ -2,12 +2,14 @@
   "id": "Actuators.PwmOut",
   "displayName": "PWM Out",
   "defaultName": "PwmOut",
+  "description": "Applies three phase-duty commands to the platform PWM peripheral.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "tim_isr",
   "inputPorts": [
     {
       "name": "Duty_A",
+      "description": "Phase A PWM duty command in percent.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -17,6 +19,7 @@
     },
     {
       "name": "Duty_B",
+      "description": "Phase B PWM duty command in percent.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -26,6 +29,7 @@
     },
     {
       "name": "Duty_C",
+      "description": "Phase C PWM duty command in percent.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",

@@ -27,6 +27,7 @@ WireType WireTypeFromJson(const json& j) {
 json ToJson(const Port& port) {
     return json::object({
         {"name", port.name},
+        {"description", port.description},
         {"direction", port.direction == PortDirection::Input ? "input" : "output"},
         {"type", ToJson(port.type)},
         {"optional", port.optional},
@@ -40,6 +41,7 @@ Port PortFromJson(const json& j) {
                                                                       : PortDirection::Output,
         .type = WireTypeFromJson(j.at("type")),
         .optional = j.value("optional", false),
+        .description = j.value("description", ""),
     };
 }
 
@@ -62,6 +64,7 @@ json ToJson(const NodeType& nodeType) {
         {"id", nodeType.id},
         {"displayName", nodeType.displayName},
         {"defaultName", nodeType.defaultName},
+        {"description", nodeType.description},
         {"inlineCode", nodeType.inlineCode},
         {"constructorCode", nodeType.constructorCode},
         {"classHeader", nodeType.classHeader},
@@ -84,6 +87,9 @@ json ToJson(const NodeType& nodeType) {
         auto params = json::object();
         for (const auto& [key, type] : nodeType.parameterTypes) {
             params[key] = ToJson(type);
+            if (const auto description = nodeType.FindParameterDescription(key)) {
+                params[key]["description"] = *description;
+            }
         }
         j["parameterTypes"] = params;
     }
@@ -96,6 +102,7 @@ NodeType NodeTypeFromJson(const json& j) {
     nodeType.id = j.at("id").get<std::string>();
     nodeType.displayName = j.value("displayName", "");
     nodeType.defaultName = j.value("defaultName", "");
+    nodeType.description = j.value("description", "");
     nodeType.inlineCode = j.value("inlineCode", "");
     nodeType.constructorCode = j.value("constructorCode", "");
     nodeType.classHeader = j.value("classHeader", "");
@@ -114,6 +121,10 @@ NodeType NodeTypeFromJson(const json& j) {
     if (j.contains("parameterTypes") && j.at("parameterTypes").is_object()) {
         for (const auto& [key, value] : j.at("parameterTypes").items()) {
             nodeType.parameterTypes[key] = WireTypeFromJson(value);
+            const std::string description = value.value("description", "");
+            if (!description.empty()) {
+                nodeType.parameterDescriptions[key] = description;
+            }
         }
     }
 

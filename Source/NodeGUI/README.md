@@ -36,6 +36,8 @@ Or launch with no arguments and use `File → Open`.
 ## What it does today
 
 - Loads node-type templates from `RTE/Assets/NodeTemplates`.
+- Shows node descriptions in the palette, on canvas hover, and in the
+  inspector; port and property descriptions appear as contextual tooltips.
 - Parses a NodeAPI graph JSON with `NodeAPI::LoadFromJson`.
 - Renders each node instance as a QtNodes node at its stored position.
 - Renders `Connection`s as solid lines colored by the port's quantity.

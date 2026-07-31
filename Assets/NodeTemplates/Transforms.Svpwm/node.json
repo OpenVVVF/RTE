@@ -2,11 +2,13 @@
   "id": "Transforms.Svpwm",
   "displayName": "Space Vector PWM",
   "defaultName": "Svpwm",
+  "description": "Converts an alpha-beta voltage vector into centered three-phase PWM duty commands.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {
       "name": "V_Alpha",
+      "description": "Requested stationary-frame alpha-axis voltage.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -16,6 +18,7 @@
     },
     {
       "name": "V_Beta",
+      "description": "Requested stationary-frame beta-axis voltage.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -25,6 +28,7 @@
     },
     {
       "name": "V_Dc",
+      "description": "Measured DC-link voltage used for normalization and modulation limiting.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -36,6 +40,7 @@
   "outputPorts": [
     {
       "name": "Duty_A",
+      "description": "Phase A PWM duty command in percent.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -45,6 +50,7 @@
     },
     {
       "name": "Duty_B",
+      "description": "Phase B PWM duty command in percent.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -54,6 +60,7 @@
     },
     {
       "name": "Duty_C",
+      "description": "Phase C PWM duty command in percent.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

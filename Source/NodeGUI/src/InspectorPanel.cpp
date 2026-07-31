@@ -81,8 +81,21 @@ void InspectorPanel::Rebuild() {
     connect(idEdit_, &QLineEdit::editingFinished, this, &InspectorPanel::ApplyRename);
 
     // Type (read-only).
-    formLayout->addRow(QStringLiteral("Type"),
-                       new QLabel(QString::fromStdString(node->type), form_));
+    auto* typeValue = new QLabel(QString::fromStdString(node->type), form_);
+    formLayout->addRow(QStringLiteral("Type"), typeValue);
+
+    if (nodeType && !nodeType->description.empty()) {
+        auto* description =
+            new QLabel(QString::fromStdString(nodeType->description), form_);
+        description->setWordWrap(true);
+        description->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        description->setStyleSheet(
+            QStringLiteral("QLabel { color: palette(text); "
+                           "background: palette(alternate-base); "
+                           "border-radius: 4px; padding: 7px; }"));
+        formLayout->addRow(description);
+        typeValue->setToolTip(QString::fromStdString(nodeType->description));
+    }
 
     // Domain (combo of existing domains + "(no domain)"; locked types show a
     // disabled row).
@@ -123,14 +136,25 @@ void InspectorPanel::Rebuild() {
     }
     for (const auto& [name, value] : node->parameters) {
         auto* edit = new QLineEdit(QString::fromStdString(value), form_);
+        QString parameterToolTip;
         if (nodeType) {
             if (const auto type = nodeType->FindParameterType(name)) {
                 const std::string typeText = NodeAPI::ToString(type->quantity) + "."
                                              + NodeAPI::ToString(type->frame) + "."
                                              + NodeAPI::ToString(type->dtype);
-                edit->setToolTip(QString::fromStdString(typeText));
+                parameterToolTip = QString::fromStdString(typeText);
+            }
+            if (const auto description =
+                    nodeType->FindParameterDescription(name);
+                description && !description->empty()) {
+                parameterToolTip =
+                    QString::fromStdString(*description)
+                    + (parameterToolTip.isEmpty()
+                           ? QString{}
+                           : QStringLiteral("\nType: ") + parameterToolTip);
             }
         }
+        edit->setToolTip(parameterToolTip);
 
         auto* wireInput = new QCheckBox(QStringLiteral("wire"), form_);
         const bool wired = std::find(node->parameterInputs.begin(),
@@ -138,13 +162,18 @@ void InspectorPanel::Rebuild() {
                                      name) != node->parameterInputs.end();
         wireInput->setChecked(wired);
         edit->setEnabled(!wired);
+        wireInput->setToolTip(parameterToolTip);
 
         auto* rowWidget = new QWidget(form_);
         auto* rowLayout = new QHBoxLayout(rowWidget);
         rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->addWidget(edit);
         rowLayout->addWidget(wireInput);
-        formLayout->addRow(QString::fromStdString(name), rowWidget);
+        rowWidget->setToolTip(parameterToolTip);
+        auto* rowLabel =
+            new QLabel(QString::fromStdString(name), form_);
+        rowLabel->setToolTip(parameterToolTip);
+        formLayout->addRow(rowLabel, rowWidget);
 
         paramRows_.push_back({name, edit, wireInput});
         connect(edit, &QLineEdit::editingFinished, this, &InspectorPanel::ApplyParameters);

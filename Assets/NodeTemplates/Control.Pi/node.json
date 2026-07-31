@@ -2,12 +2,14 @@
   "id": "Control.Pi",
   "displayName": "PI Controller",
   "defaultName": "Pi",
+  "description": "Proportional-integral controller with output clamping and back-calculation anti-windup.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "Setpoint",
+      "description": "Desired target value.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -17,6 +19,7 @@
     },
     {
       "name": "Measurement",
+      "description": "Measured process value subtracted from the setpoint.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -28,6 +31,7 @@
   "outputPorts": [
     {
       "name": "Output",
+      "description": "Clamped PI control effort.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -38,36 +42,43 @@
   ],
   "parameterTypes": {
     "Kp": {
+      "description": "Proportional gain applied to the current error.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Ki": {
+      "description": "Integral gain applied to the accumulated error.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Dt": {
+      "description": "Controller step period in seconds.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Integral": {
+      "description": "Persistent accumulated-error state.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "OutputMax": {
+      "description": "Upper output clamp, additionally limited by the measured DC-link voltage.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "OutputMin": {
+      "description": "Lower output clamp, additionally limited by the measured DC-link voltage.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "AwGain": {
+      "description": "Back-calculation anti-windup gain. Zero disables anti-windup.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

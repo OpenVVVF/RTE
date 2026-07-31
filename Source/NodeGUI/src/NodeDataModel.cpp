@@ -16,6 +16,20 @@ QString WireTypeToString(const NodeAPI::WireType& type) {
                                   + NodeAPI::ToString(type.dtype));
 }
 
+QString ToolTipHtml(const QString& title,
+                    const QString& description,
+                    const QString& details = {}) {
+    QString html = QStringLiteral("<b>%1</b>").arg(title.toHtmlEscaped());
+    if (!description.isEmpty()) {
+        html += QStringLiteral("<br>%1").arg(description.toHtmlEscaped());
+    }
+    if (!details.isEmpty()) {
+        html += QStringLiteral("<br><span style=\"color:#999\">%1</span>")
+                    .arg(details.toHtmlEscaped());
+    }
+    return html;
+}
+
 }  // namespace
 
 TypedNodeData::TypedNodeData(QString typeId, QString typeName)
@@ -50,6 +64,68 @@ QString NodeInstanceModel::caption() const {
         caption += QStringLiteral("]");
     }
     return caption;
+}
+
+QString NodeInstanceModel::Description() const {
+    return QString::fromStdString(nodeType_.description);
+}
+
+QString NodeInstanceModel::NodeToolTip() const {
+    const QString title = nodeType_.displayName.empty()
+                              ? QString::fromStdString(nodeType_.id)
+                              : QString::fromStdString(nodeType_.displayName);
+    return ToolTipHtml(title,
+                       Description(),
+                       QStringLiteral("Type: %1")
+                           .arg(QString::fromStdString(nodeType_.id)));
+}
+
+const NodeAPI::Port* NodeInstanceModel::PortAt(
+    QtNodes::PortType portType,
+    QtNodes::PortIndex portIndex) const {
+    if (portType == QtNodes::PortType::In &&
+        portIndex < inputPorts_.size()) {
+        return &inputPorts_[portIndex];
+    }
+    if (portType == QtNodes::PortType::Out &&
+        portIndex < outputPorts_.size()) {
+        return &outputPorts_[portIndex];
+    }
+    return nullptr;
+}
+
+QString NodeInstanceModel::PortToolTip(
+    QtNodes::PortType portType,
+    QtNodes::PortIndex portIndex) const {
+    const NodeAPI::Port* port = PortAt(portType, portIndex);
+    if (!port) {
+        return {};
+    }
+    const QString direction =
+        portType == QtNodes::PortType::In ? QStringLiteral("Input")
+                                          : QStringLiteral("Output");
+    QString details =
+        QStringLiteral("%1 · %2")
+            .arg(direction, WireTypeToString(port->type));
+    if (port->optional) {
+        details += QStringLiteral(" · Optional");
+    }
+    return ToolTipHtml(QString::fromStdString(port->name),
+                       QString::fromStdString(port->description),
+                       details);
+}
+
+QString NodeInstanceModel::ParameterToolTip(const std::string& name) const {
+    const QString description =
+        QString::fromStdString(nodeType_.FindParameterDescription(name)
+                                   .value_or(std::string{}));
+    QString details;
+    if (const auto type = nodeType_.FindParameterType(name)) {
+        details = QStringLiteral("Property · %1").arg(WireTypeToString(*type));
+    } else {
+        details = QStringLiteral("Property");
+    }
+    return ToolTipHtml(QString::fromStdString(name), description, details);
 }
 
 void NodeInstanceModel::SetDomain(std::string domain) {
@@ -154,11 +230,18 @@ std::vector<NodeAPI::Port> VisibleInputPorts(
             continue;
         }
         const auto typeIt = nodeType.parameterTypes.find(name);
+        const auto descriptionIt =
+            nodeType.parameterDescriptions.find(name);
         ports.push_back(NodeAPI::Port{.name = name,
                                       .direction = NodeAPI::PortDirection::Input,
                                       .type = typeIt != nodeType.parameterTypes.end()
                                                   ? typeIt->second
-                                                  : NodeAPI::WireType{}});
+                                                  : NodeAPI::WireType{},
+                                      .description =
+                                          descriptionIt !=
+                                                  nodeType.parameterDescriptions.end()
+                                              ? descriptionIt->second
+                                              : std::string{}});
     }
     return ports;
 }

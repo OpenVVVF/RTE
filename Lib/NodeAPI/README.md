@@ -42,9 +42,9 @@ Then include the umbrella header:
 | Type | Purpose |
 |------|---------|
 | `NodeAPI::Graph` | Owns node types, node instances, and connections. |
-| `NodeAPI::NodeType` | A reusable node template in the project's node database: ports + code pieces. |
+| `NodeAPI::NodeType` | A reusable node template with descriptions, ports, properties, and code pieces. |
 | `NodeAPI::Node` | An instance of a `NodeType` with id, domain, and canvas position. |
-| `NodeAPI::Port` | A named port with a direction and a `WireType`. |
+| `NodeAPI::Port` | A named, described port with a direction and a `WireType`. |
 | `NodeAPI::Connection` | Connects an output `PortRef` to an input `PortRef` within the same timing domain. |
 | `NodeAPI::Bridge` | Connects an output `PortRef` in one timing domain to an input `PortRef` in another. |
 | `NodeAPI::WireType` | `{quantity, frame, dtype}` tuple. |
@@ -207,14 +207,18 @@ JSON format stores `name`, `nodeTypes`, `nodes`, `connections`, and `bridges`:
     {
       "id": "control.pi",
       "displayName": "",
+      "description": "Controls an error with proportional and integral action.",
       "inlineCode": "return kp * error + integrator;",
       "constructorCode": "integrator = 0.0f;",
       "classHeader": "class PiController { ... };",
       "classDefinition": "float PiController::Step(float e) { ... }",
       "maxInstances": 0,
       "isEntryPoint": false,
-      "inputPorts": [{"name": "error", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}],
-      "outputPorts": [{"name": "out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}]
+      "inputPorts": [{"name": "error", "description": "Setpoint minus measurement.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}],
+      "outputPorts": [{"name": "out", "description": "Controller output.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}],
+      "parameterTypes": {
+        "Kp": {"description": "Proportional gain.", "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+      }
     }
   ],
   "nodes": [
@@ -231,6 +235,10 @@ JSON format stores `name`, `nodeTypes`, `nodes`, `connections`, and `bridges`:
   ]
 }
 ```
+
+Description fields are optional when loading older files. When present, they
+round-trip with the rest of the node-type metadata and do not affect graph
+validation or code generation.
 
 ### Loading node templates from disk
 

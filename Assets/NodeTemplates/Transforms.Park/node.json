@@ -2,11 +2,13 @@
   "id": "Transforms.Park",
   "displayName": "Park Transform",
   "defaultName": "Park",
+  "description": "Rotates stationary alpha-beta currents into rotor-aligned d-q coordinates.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {
       "name": "I_Alpha",
+      "description": "Stationary-frame alpha-axis current.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -16,6 +18,7 @@
     },
     {
       "name": "I_Beta",
+      "description": "Stationary-frame beta-axis current.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -25,6 +28,7 @@
     },
     {
       "name": "Theta",
+      "description": "Electrical rotation angle in radians.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -36,6 +40,7 @@
   "outputPorts": [
     {
       "name": "I_D",
+      "description": "Rotating-frame direct-axis current.",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -45,6 +50,7 @@
     },
     {
       "name": "I_Q",
+      "description": "Rotating-frame quadrature-axis current.",
       "direction": "output",
       "type": {
         "quantity": "current",

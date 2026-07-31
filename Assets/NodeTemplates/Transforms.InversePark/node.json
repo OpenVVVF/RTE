@@ -2,11 +2,13 @@
   "id": "Transforms.InversePark",
   "displayName": "Inverse Park Transform",
   "defaultName": "InvPark",
+  "description": "Rotates d-q voltage commands into stationary alpha-beta coordinates.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {
       "name": "V_D",
+      "description": "Rotating-frame direct-axis voltage.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -16,6 +18,7 @@
     },
     {
       "name": "V_Q",
+      "description": "Rotating-frame quadrature-axis voltage.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -25,6 +28,7 @@
     },
     {
       "name": "Theta",
+      "description": "Electrical rotation angle in radians.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -36,6 +40,7 @@
   "outputPorts": [
     {
       "name": "V_Alpha",
+      "description": "Stationary-frame alpha-axis voltage.",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -45,6 +50,7 @@
     },
     {
       "name": "V_Beta",
+      "description": "Stationary-frame beta-axis voltage.",
       "direction": "output",
       "type": {
         "quantity": "voltage",

@@ -2,6 +2,7 @@
   "id": "Sensors.PhaseVoltages",
   "displayName": "Phase Voltages",
   "defaultName": "PhaseVoltages",
+  "description": "Reads the filtered three-phase and DC-link voltage sensor channels.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",
@@ -9,6 +10,7 @@
   "outputPorts": [
     {
       "name": "V_U",
+      "description": "Measured phase U voltage in volts.",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -18,6 +20,7 @@
     },
     {
       "name": "V_V",
+      "description": "Measured phase V voltage in volts.",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -27,6 +30,7 @@
     },
     {
       "name": "V_W",
+      "description": "Measured phase W voltage in volts.",
       "direction": "output",
       "type": {
         "quantity": "voltage",
@@ -36,6 +40,7 @@
     },
     {
       "name": "V_Dc",
+      "description": "Measured DC-link voltage in volts.",
       "direction": "output",
       "type": {
         "quantity": "voltage",

@@ -22,4 +22,11 @@ std::optional<WireType> NodeType::FindParameterType(const std::string& name) con
     return std::nullopt;
 }
 
+std::optional<std::string> NodeType::FindParameterDescription(
+    const std::string& name) const {
+    auto it = parameterDescriptions.find(name);
+    if (it != parameterDescriptions.end()) return it->second;
+    return std::nullopt;
+}
+
 }  // namespace NodeAPI

@@ -11,6 +11,7 @@
 
 class QMouseEvent;
 class QKeyEvent;
+class QEvent;
 
 namespace NodeGUI {
 
@@ -42,6 +43,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
+    bool viewportEvent(QEvent* event) override;
 
     // QtNodes' showEvent recenters and re-fits the scene on EVERY show, which
     // destroys the user's pan/zoom when switching back from another tab.

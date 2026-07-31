@@ -63,6 +63,34 @@ TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
     EXPECT_NE(clarke->inlineCode.find("I_Alpha = I_A;"), std::string::npos);
 }
 
+TEST(NodeTemplates, AllShippedMetadataHasDescriptions) {
+    Graph graph;
+    const auto result =
+        LoadNodeTypesFromDirectory(graph, GetTemplatesDirectory());
+    ASSERT_TRUE(result.ok);
+
+    for (const auto& type : graph.GetNodeTypes()) {
+        SCOPED_TRACE(type.id);
+        EXPECT_FALSE(type.description.empty());
+        for (const auto& port : type.inputPorts) {
+            SCOPED_TRACE("input port: " + port.name);
+            EXPECT_FALSE(port.description.empty());
+        }
+        for (const auto& port : type.outputPorts) {
+            SCOPED_TRACE("output port: " + port.name);
+            EXPECT_FALSE(port.description.empty());
+        }
+        for (const auto& [name, wireType] : type.parameterTypes) {
+            (void)wireType;
+            SCOPED_TRACE("property: " + name);
+            const auto description =
+                type.FindParameterDescription(name);
+            ASSERT_TRUE(description.has_value());
+            EXPECT_FALSE(description->empty());
+        }
+    }
+}
+
 TEST(NodeTemplates, RejectsMissingDirectory) {
     Graph graph;
     const auto result = LoadNodeTypesFromDirectory(graph, "/does/not/exist");

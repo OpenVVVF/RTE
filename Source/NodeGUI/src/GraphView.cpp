@@ -1,7 +1,11 @@
 #include "GraphView.h"
 
+#include "NodeDataModel.h"
 #include "NodePalette.h"
+#include "ParameterBlock.h"
 
+#include <QtNodes/internal/AbstractNodeGeometry.hpp>
+#include <QtNodes/internal/DataFlowGraphModel.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QContextMenuEvent>
@@ -10,10 +14,13 @@
 #include <QDropEvent>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
+#include <QHelpEvent>
+#include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QToolTip>
 
 namespace NodeGUI {
 
@@ -167,6 +174,101 @@ void GraphView::keyReleaseEvent(QKeyEvent* event) {
         // QtNodes restores ScrollHandDrag when rubber-band selection ends.
         setDragMode(QGraphicsView::RubberBandDrag);
     }
+}
+
+bool GraphView::viewportEvent(QEvent* event) {
+    if (event->type() != QEvent::ToolTip) {
+        return QtNodes::GraphicsView::viewportEvent(event);
+    }
+
+    auto* helpEvent = static_cast<QHelpEvent*>(event);
+    QtNodes::NodeGraphicsObject* nodeObject = nullptr;
+    for (QGraphicsItem* hitItem : items(helpEvent->pos())) {
+        QGraphicsItem* item = hitItem;
+        while (item && !nodeObject) {
+            nodeObject =
+                qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item);
+            item = item->parentItem();
+        }
+        if (nodeObject) {
+            break;
+        }
+    }
+
+    if (!nodeObject) {
+        QToolTip::hideText();
+        event->ignore();
+        return true;
+    }
+
+    auto* graphModel =
+        dynamic_cast<QtNodes::DataFlowGraphModel*>(
+            &nodeObject->graphModel());
+    const auto* delegate =
+        graphModel
+            ? graphModel->delegateModel<NodeInstanceModel>(
+                  nodeObject->nodeId())
+            : nullptr;
+    if (!delegate) {
+        return QtNodes::GraphicsView::viewportEvent(event);
+    }
+
+    const QPointF nodePoint =
+        nodeObject->mapFromScene(mapToScene(helpEvent->pos()));
+    auto& geometry = nodeObject->nodeScene()->nodeGeometry();
+    QString toolTip;
+    for (const QtNodes::PortType portType :
+         {QtNodes::PortType::In, QtNodes::PortType::Out}) {
+        QtNodes::PortIndex portIndex =
+            geometry.checkPortHit(nodeObject->nodeId(),
+                                  portType,
+                                  nodePoint);
+        if (portIndex == QtNodes::InvalidPortIndex) {
+            const QFontMetricsF metrics(QFont{});
+            for (QtNodes::PortIndex index = 0;
+                 index < delegate->nPorts(portType);
+                 ++index) {
+                const QString caption =
+                    delegate->portCaption(portType, index);
+                const QPointF textPosition =
+                    geometry.portTextPosition(nodeObject->nodeId(),
+                                              portType,
+                                              index);
+                const QRectF textRect(
+                    textPosition.x() - 4.0,
+                    textPosition.y() - metrics.ascent() - 4.0,
+                    metrics.horizontalAdvance(caption) + 8.0,
+                    metrics.height() + 8.0);
+                if (textRect.contains(nodePoint)) {
+                    portIndex = index;
+                    break;
+                }
+            }
+        }
+        if (portIndex != QtNodes::InvalidPortIndex) {
+            toolTip = delegate->PortToolTip(portType, portIndex);
+            break;
+        }
+    }
+    if (toolTip.isEmpty()) {
+        const QSize nodeSize =
+            geometry.size(nodeObject->nodeId());
+        if (const auto parameter =
+                ParameterAtPosition(delegate->ParameterBlock(),
+                                    nodeSize,
+                                    nodePoint)) {
+            toolTip = delegate->ParameterToolTip(*parameter);
+        }
+    }
+    if (toolTip.isEmpty()) {
+        toolTip = delegate->NodeToolTip();
+    }
+
+    QToolTip::showText(helpEvent->globalPos(),
+                       toolTip,
+                       viewport());
+    event->accept();
+    return true;
 }
 
 void GraphView::showEvent(QShowEvent* event) {
