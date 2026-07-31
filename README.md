@@ -31,7 +31,10 @@ RTE/
 │   ├── NodeAPI/            # Graph/node serialization and timing validation
 │   ├── InverterCodegen/    # Graph -> C++ code generation engine
 │   ├── RTELogger/          # Shared logging used by the host tools
-│   └── InverterProtocol/   # Shared host/device telemetry + command protocol
+│   ├── InverterProtocol/   # Shared host/device telemetry + command protocol
+│   └── Simulation/         # Host-side PMSM plant, VSI model, FCS-MPCC / FOC sims
+├── docs/                   # Simulation architecture + verification notes
+├── scripts/                # Host helpers (MPCC plot / FOC comparison)
 └── Source/
     ├── NodeGUI/            # Qt6 + QtNodes node editor
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
@@ -41,6 +44,7 @@ RTE/
 - `Assets/` holds graphs and node-type templates shared by NodeGUI and codegen.
 - `Images/` contains the base firmware image that the emitter copies and modifies.
 - `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
+- `Lib/Simulation/` provides a dq PMSM plant, eight-state two-level inverter, and FCS-MPCC closed-loop runners for host verification (complementary to the planned ngspice path).
 - `Source/` contains end-user executables.
 
 ## Porting to your platform
@@ -78,6 +82,16 @@ On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/
 
 ```bash
 ctest --test-dir build --output-on-failure
+```
+
+### FCS-MPCC host simulation
+
+`Lib/Simulation` adds finite-control-set model-predictive current control (FCS-MPCC) for a three-phase PMSM, plus inverter/plant unit tests and closed-loop runners. The graph node template is `Assets/NodeTemplates/control.mpcc/` (outputs switching states `Sa/Sb/Sc`). Modes include conventional one-step MPCC, delay compensation, back-EMF compensation, and optimal duty-cycle (Zhang et al., IEEE TIA 2017). See `docs/` for architecture, verification, and limitations.
+
+```bash
+cmake --build build --target Simulation_inverter_tests Simulation_pmsm_tests Simulation_mpcc_tests mpcc_closed_loop -j8
+./build/Lib/Simulation/mpcc_closed_loop
+python3 scripts/plot_results.py
 ```
 
 ## InverterProtocol
@@ -255,7 +269,8 @@ Next up, roughly in priority order:
   calibrators, compute PI gains for a target bandwidth, slew-limit the
   current references (the `control.slew` node exists, unwired)
 - ngspice-based plant/inverter simulator for closed-loop graph testing
-  before hardware
+  before hardware (host dq PMSM / VSI / FCS-MPCC simulation already in
+  `Lib/Simulation`)
 - Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no
