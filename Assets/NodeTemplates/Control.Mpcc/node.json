@@ -1,5 +1,5 @@
 {
-  "id": "control.mpcc",
+  "id": "Control.Mpcc",
   "displayName": "FCS-MPCC (Three-Phase PMSM)",
   "defaultName": "Mpcc",
   "maxInstances": 1,

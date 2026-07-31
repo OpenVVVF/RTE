@@ -84,7 +84,7 @@ No graph-level sample time. Controllers use explicit `Dt` parameters (e.g. `foc_
 | Duty cycles (0–100%) | Yes — primary |
 | αβ voltage references | Yes — via `math.svpwm` |
 | dq voltage references | Yes — via inverse Park |
-| Gate / switching states | **No** — requires adapter (new `control.mpcc` node outputs Sa/Sb/Sc) |
+| Gate / switching states | **No** — requires adapter (new `Control.Mpcc` node outputs Sa/Sb/Sc) |
 
 ## 10. Rotor position / speed
 
@@ -136,4 +136,4 @@ feedback: i_d, i_q, θ_e, ω_e
 
 Closed-loop runner: `Lib/Simulation/simulation/mpcc_closed_loop.cpp`
 
-New RTE node (firmware-oriented): `Assets/NodeTemplates/control.mpcc/`
+New RTE node (firmware-oriented): `Assets/NodeTemplates/Control.Mpcc/`

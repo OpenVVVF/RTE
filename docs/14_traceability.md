@@ -16,7 +16,7 @@
 | Delay compensation | Zhang eq. (11)-(12) | Sec. III-B | `MpccController::delayCompensatedCurrent` | mode selectable |
 | Back-EMF estimation | Zhang eq. (7)-(10) | Sec. III-A | `MpccController::estimateEmfComponent` | mode selectable |
 | Optimal duty (Method II) | Zhang eq. (18)-(19) | Sec. III-C | `MpccController::evaluateOptimalDuty` | mode selectable |
-| RTE MPC node (firmware) | This project | — | `Assets/NodeTemplates/control.mpcc/` | codegen manual |
+| RTE MPC node (firmware) | This project | — | `Assets/NodeTemplates/Control.Mpcc/` | codegen manual |
 | Closed-loop simulation | This project | — | `ClosedLoopSimulator.h`, `mpcc_closed_loop.cpp` | CSV + plots |
 
 ## Reused from RTE (unchanged logic)
@@ -29,7 +29,7 @@
 ## New code written in `MPC_Three-phase_PMSM` only
 
 - `Lib/Simulation/**`
-- `Assets/NodeTemplates/control.mpcc/**`
+- `Assets/NodeTemplates/Control.Mpcc/**`
 - `docs/**`
 - `scripts/plot_results.py`
 - `results/**`
@@ -39,4 +39,4 @@
 1. FCS-MPCC uses **dq prediction** (user Stage 6), not Zhang's αβ stationary model.
 2. Plant uses forward-Euler integration with `Ts = 100 µs`.
 3. Inverter model is **ideal** (no dead time, no device drops) for simulation.
-4. RTE hardware inverter remains duty-based; `control.mpcc` outputs switching states for future adapter to PWM.
+4. RTE hardware inverter remains duty-based; `Control.Mpcc` outputs switching states for future adapter to PWM.
