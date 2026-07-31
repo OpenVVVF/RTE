@@ -8,18 +8,24 @@
 * Phase U external source
 Vu u_node 0 dc 0 external
 Ru u_node u_mid {RS}
-Lu u_mid n_node {LS}
+Lu u_mid n_node {LS} IC=0
 
 * Phase V external source
 Vv v_node 0 dc 0 external
 Rv v_node v_mid {RS}
-Lv v_mid n_node {LS}
+Lv v_mid n_node {LS} IC=0
 
 * Phase W external source
 Vw w_node 0 dc 0 external
 Rw w_node w_mid {RS}
-Lw w_mid n_node {LS}
+Lw w_mid n_node {LS} IC=0
 
-.tran 10us 1s
+* Long tstop: live sessions run indefinitely, and the GetSyncData throttle
+* keeps ngspice from running ahead of the controller. Coarse 100us output
+* grid bounds vector memory growth (internal steps are clamped finer).
+* tmax=100us lets the solver cover a full 10 kHz TIM tick in a few internal
+* steps instead of re-ramping from the 10us output grid at every sync
+* boundary; LTE still refines the step when the waveform demands it.
+.tran 10us 10000 0 100us uic
 
 .end

@@ -65,6 +65,10 @@ public:
     }
     void SetRealtimeFactor(float factor);
     void SetTelemetryHz(float hz) { config_.telem_hz = hz; }
+    void SetPlantBackend(const std::string& backend);
+    void SetDuration(float duration_s) { config_.duration_s = duration_s; }
+    void SetTimIsrHz(float hz);
+    void SetNgspiceSubsteps(int substeps);
     void ResetWallClockAnchor();
 
     const SimConfig& Config() const { return config_; }
@@ -110,6 +114,7 @@ private:
     void PublishTelemetry();
     void PublishPwmScopeTelemetry();
     void PaceRealtimeWallClock() const;
+    void RecreatePlant();
 
     std::chrono::steady_clock::time_point wall_anchor_{};
     float sim_anchor_s_ = 0.0f;

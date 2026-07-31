@@ -6,11 +6,13 @@
 #include "inverter_protocol/protocol.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -77,25 +79,44 @@ bool SetNonBlocking(Socket s) {
 }
 
 bool WriteAll(Socket fd, const uint8_t* data, int n) {
+    // A client that stops reading fills the send buffer and send() keeps
+    // returning WouldBlock. Without a bound this spins forever and stalls the
+    // whole simulation loop, so give up after a short grace period and let the
+    // caller drop the slow client instead.
+    constexpr auto kSendTimeout = std::chrono::milliseconds(100);
+    auto last_progress = std::chrono::steady_clock::now();
     int total = 0;
     while (total < n) {
 #ifdef _WIN32
         const int wrote =
             ::send(fd, reinterpret_cast<const char*>(data + total), n - total, 0);
         if (wrote == SOCKET_ERROR) {
-            if (WouldBlock()) continue;
+            if (WouldBlock()) {
+                if (std::chrono::steady_clock::now() - last_progress > kSendTimeout) {
+                    return false;
+                }
+                std::this_thread::yield();
+                continue;
+            }
             return false;
         }
 #else
         const int wrote =
             static_cast<int>(::send(fd, data + total, static_cast<size_t>(n - total), 0));
         if (wrote < 0) {
-            if (WouldBlock()) continue;
+            if (WouldBlock()) {
+                if (std::chrono::steady_clock::now() - last_progress > kSendTimeout) {
+                    return false;
+                }
+                std::this_thread::yield();
+                continue;
+            }
             return false;
         }
 #endif
         if (wrote == 0) return false;
         total += wrote;
+        last_progress = std::chrono::steady_clock::now();
     }
     return true;
 }
@@ -241,6 +262,7 @@ bool TelemetryPublisher::AcceptPending() {
     clients_.push_back(std::move(c));
     define_dirty_ = true;
     std::printf("HostSim live: client connected (%zu total)\n", clients_.size());
+    std::fflush(stdout);
     return true;
 }
 
@@ -249,6 +271,7 @@ void TelemetryPublisher::DropClient(size_t index) {
     CloseSock(clients_[index].fd);
     clients_.erase(clients_.begin() + static_cast<std::ptrdiff_t>(index));
     std::printf("HostSim live: client disconnected (%zu remaining)\n", clients_.size());
+    std::fflush(stdout);
 }
 
 bool TelemetryPublisher::SendFramed(Client& c, const uint8_t* packet, size_t len) {
@@ -469,9 +492,13 @@ void TelemetryPublisher::HandleLine(const std::string& raw) {
     std::istringstream iss(line);
     std::string cmd;
     iss >> cmd;
+
     if (cmd == "help") {
         std::printf("HostSim commands: throttle a|b <0..1>, duty u|v|w <0..100>, speed <factor>|turbo, pause, resume, clear, help, quit\n");
         std::printf("  speed examples: speed 0.25 | speed 0.5 | speed 1 | speed 2 | speed turbo\n");
+        std::printf("  plant backend <ode|ngspice>   switch plant model (ode=fast, ngspice=accurate)\n");
+        std::printf("  render <s> [hz] [substeps]    run ngspice burst for <s> seconds at <hz> ISR\n");
+        std::printf("  reset                         reset simulation state\n");
         return;
     }
     if (cmd == "speed" || cmd == "realtime") {
@@ -506,6 +533,9 @@ void TelemetryPublisher::HandleLine(const std::string& raw) {
     }
     if (cmd == "quit" || cmd == "exit" || cmd == "stop") {
         quit_requested_ = true;
+        if (std::getenv("HOSTSIM_NGSPICE_DEBUG")) {
+            std::fprintf(stderr, "[simprof] quit command received\n");
+        }
         return;
     }
     if (cmd == "clear") {
@@ -560,7 +590,79 @@ void TelemetryPublisher::HandleLine(const std::string& raw) {
         }
         return;
     }
+    if (cmd == "plant") {
+        std::string sub;
+        iss >> sub;
+        if (sub != "backend") {
+            std::printf("HostSim: usage: plant backend <ode|ngspice>\n");
+            return;
+        }
+        std::string backend;
+        iss >> backend;
+        if (backend != "ode" && backend != "ngspice") {
+            std::printf("HostSim: usage: plant backend <ode|ngspice>\n");
+            return;
+        }
+        auto& runtime = GlobalSimRuntime();
+        runtime.SetPlantBackend(backend);
+        std::printf("HostSim: plant backend = %s\n", backend.c_str());
+        std::fflush(stdout);
+        return;
+    }
+    if (cmd == "render") {
+        std::string dur_tok, isr_tok, sub_tok;
+        iss >> dur_tok >> isr_tok >> sub_tok;
+        if (dur_tok.empty()) {
+            std::printf("HostSim: usage: render <duration_s> [tim_isr_hz] [substeps]\n");
+            return;
+        }
+        const float duration_s = std::strtof(dur_tok.c_str(), nullptr);
+        const float isr_hz = isr_tok.empty() ? 50000.0f : std::strtof(isr_tok.c_str(), nullptr);
+        const int substeps = sub_tok.empty() ? 1 : std::atoi(sub_tok.c_str());
+        if (duration_s <= 0.0f || isr_hz <= 0.0f || substeps < 1) {
+            std::printf("HostSim: usage: render <duration_s> [tim_isr_hz] [substeps]\n");
+            return;
+        }
+
+        auto& runtime = GlobalSimRuntime();
+        const auto& cfg = runtime.Config();
+        const std::string orig_backend = cfg.plant_backend;
+        const float orig_isr_hz = cfg.tim_isr_hz;
+        const int orig_substeps = cfg.ngspice_substeps;
+        const float orig_telem_hz = cfg.telem_hz;
+        const bool was_paused = paused_;
+
+        paused_ = true;
+        std::printf("HostSim: render start, duration=%.3f s, isr=%.0f Hz, substeps=%d\n",
+                    static_cast<double>(duration_s), static_cast<double>(isr_hz),
+                    substeps);
+
+        runtime.SetPlantBackend("ngspice");
+        runtime.SetTimIsrHz(isr_hz);
+        runtime.SetNgspiceSubsteps(substeps);
+        runtime.SetTelemetryHz(isr_hz);
+
+        const int steps = static_cast<int>(duration_s * isr_hz);
+        for (int i = 0; i < steps; ++i) {
+            if (!runtime.StepOnce()) break;
+        }
+
+        runtime.SetPlantBackend(orig_backend);
+        runtime.SetTimIsrHz(orig_isr_hz);
+        runtime.SetNgspiceSubsteps(orig_substeps);
+        runtime.SetTelemetryHz(orig_telem_hz);
+        paused_ = was_paused;
+        std::printf("HostSim: render done\n");
+        return;
+    }
+    if (cmd == "reset") {
+        auto& runtime = GlobalSimRuntime();
+        runtime.Plant().Reset();
+        std::printf("HostSim: plant state reset\n");
+        return;
+    }
     std::printf("HostSim: unknown command '%s' (try help)\n", cmd.c_str());
+    std::fflush(stdout);
 }
 
 bool TelemetryPublisher::PollCommands() {

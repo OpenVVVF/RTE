@@ -32,6 +32,9 @@ namespace {
 
 SimRuntime g_runtime;
 
+uint64_t g_prof_plant_us = 0;
+uint64_t g_prof_telem_us = 0;
+
 std::string Trim(const std::string& s) {
     size_t b = 0;
     while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
@@ -259,19 +262,48 @@ bool SimRuntime::LoadScenario(const char* path) {
     tim_dt_s_ = 1.0f / std::max(1.0f, config_.tim_isr_hz);
     adc_dt_s_ = 1.0f / std::max(1.0f, config_.adc_isr_hz);
     app_dt_s_ = 1.0f / std::max(1.0f, config_.app_loop_hz);
-    
-    plant_ = CreatePlantBackend(config_.plant_backend);
-    if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
-        if (!config_.ngspice_netlist.empty()) ng->SetNetlistPath(config_.ngspice_netlist);
-        ng->SetSubsteps(config_.ngspice_substeps);
-    }
-    plant_->SetParams(config_.motor);
-    plant_->Reset();
+
+    RecreatePlant();
     time_s_ = 0.0f;
     next_tim_s_ = 0.0f;
     next_adc_s_ = 0.0f;
     next_app_s_ = 0.0f;
     return true;
+}
+
+void SimRuntime::RecreatePlant() {
+    plant_ = CreatePlantBackend(config_.plant_backend);
+    if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+        std::string netlist = config_.ngspice_netlist;
+        if (netlist.empty()) {
+            // Default RL load netlist so --plant-backend ngspice works from
+            // any scenario that does not explicitly name one.
+            netlist = "plants/inverter_rl.cir";
+        }
+        ng->SetNetlistPath(netlist);
+        ng->SetSubsteps(config_.ngspice_substeps);
+    }
+    plant_->SetParams(config_.motor);
+    plant_->Reset();
+    SimRuntime_RegisterPlant(plant_.get());
+}
+
+void SimRuntime::SetPlantBackend(const std::string& backend) {
+    if (backend == config_.plant_backend) return;
+    config_.plant_backend = backend;
+    RecreatePlant();
+}
+
+void SimRuntime::SetTimIsrHz(float hz) {
+    config_.tim_isr_hz = hz;
+    tim_dt_s_ = 1.0f / std::max(1.0f, config_.tim_isr_hz);
+}
+
+void SimRuntime::SetNgspiceSubsteps(int substeps) {
+    config_.ngspice_substeps = substeps;
+    if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+        ng->SetSubsteps(substeps);
+    }
 }
 
 void SimRuntime::OpenTrace() {
@@ -359,7 +391,12 @@ bool SimRuntime::StepOnce() {
             pwm.AdvanceInterval(tim_dt_s_);
         }
         if (plant_) {
+            const auto p0 = std::chrono::steady_clock::now();
             plant_->Step(duty_u_, duty_v_, duty_w_, tim_dt_s_);
+            g_prof_plant_us += static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - p0)
+                    .count());
         }
         SimNotifyEncoderSample();
         next_tim_s_ += tim_dt_s_;
@@ -376,7 +413,12 @@ bool SimRuntime::StepOnce() {
     }
 
     if (time_s_ + 1e-9f >= next_telem_s_) {
+        const auto p0 = std::chrono::steady_clock::now();
         PublishTelemetry();
+        g_prof_telem_us += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - p0)
+                .count());
         const float telem_dt = 1.0f / std::max(1.0f, config_.telem_hz);
         next_telem_s_ += telem_dt;
     }
@@ -482,26 +524,78 @@ int SimRuntime::Run() {
         float last_pace_sim_s = 0.0f;
         constexpr float kPaceIntervalSimS = 0.001f;
         bool was_paused = false;
+        const bool prof = std::getenv("HOSTSIM_NGSPICE_DEBUG") != nullptr;
+        uint64_t prof_poll_us = 0, prof_step_us = 0, prof_pace_us = 0, prof_ticks = 0;
+        uint64_t prof_iters = 0;
+        auto prof_start = std::chrono::steady_clock::now();
         while (true) {
-            if (!pub.PollCommands()) break;
+            ++prof_iters;
+            const auto iter_start = std::chrono::steady_clock::now();
+            const auto t0 = iter_start;
+            if (!pub.PollCommands()) {
+                if (prof) {
+                    const auto ms = [](auto d) {
+                        return std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+                    };
+                    std::fprintf(stderr,
+                                 "[simprof] break: PollCommands false at iter %llu "
+                                 "(t=%lldms, iter_age=%lldms)\n",
+                                 static_cast<unsigned long long>(prof_iters),
+                                 static_cast<long long>(ms(iter_start - prof_start)),
+                                 static_cast<long long>(ms(std::chrono::steady_clock::now() - iter_start)));
+                }
+                break;
+            }
+            const auto t1 = std::chrono::steady_clock::now();
 
             if (pub.IsPaused()) {
                 if (!was_paused) {
                     PublishTelemetry();
                     was_paused = true;
+                    if (prof) std::fprintf(stderr, "[simprof] PAUSED branch entered\n");
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
             }
             was_paused = false;
 
-            if (!StepOnce()) break;
+            if (!StepOnce()) {
+                if (prof) std::fprintf(stderr, "[simprof] break: StepOnce false at iter %llu\n",
+                                       static_cast<unsigned long long>(prof_iters));
+                break;
+            }
+            const auto t2 = std::chrono::steady_clock::now();
 
             if (config_.realtime_factor > 0.0f &&
                 (time_s_ - last_pace_sim_s) >= kPaceIntervalSimS) {
                 PaceRealtimeWallClock();
                 last_pace_sim_s = time_s_;
             }
+            if (prof) {
+                const auto t3 = std::chrono::steady_clock::now();
+                using Us = std::chrono::microseconds;
+                prof_poll_us += static_cast<uint64_t>(std::chrono::duration_cast<Us>(t1 - t0).count());
+                prof_step_us += static_cast<uint64_t>(std::chrono::duration_cast<Us>(t2 - t1).count());
+                prof_pace_us += static_cast<uint64_t>(std::chrono::duration_cast<Us>(t3 - t2).count());
+                if (++prof_ticks % 1000 == 0) {
+                    std::fprintf(stderr,
+                                 "[simprof] ticks=%llu wall=%.2fs poll=%.1fus step=%.1fus pace=%.1fus plant=%.1fus telem=%.1fus (per tick)\n",
+                                 static_cast<unsigned long long>(prof_ticks),
+                                 std::chrono::duration<double>(t3 - prof_start).count(),
+                                 static_cast<double>(prof_poll_us) / prof_ticks,
+                                 static_cast<double>(prof_step_us) / prof_ticks,
+                                 static_cast<double>(prof_pace_us) / prof_ticks,
+                                 static_cast<double>(g_prof_plant_us) / prof_ticks,
+                                 static_cast<double>(g_prof_telem_us) / prof_ticks);
+                }
+            }
+        }
+        if (prof) {
+            std::fprintf(stderr,
+                         "[simprof] loop exited: iters=%llu ticks=%llu paused=%d\n",
+                         static_cast<unsigned long long>(prof_iters),
+                         static_cast<unsigned long long>(prof_ticks),
+                         pub.IsPaused() ? 1 : 0);
         }
         pub.Stop();
         Shutdown();

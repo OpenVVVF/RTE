@@ -61,6 +61,52 @@ Motor parameters are **not** hardcoded to a specific machine. Edit
 
 A comment field documents where to paste calibrated values (e.g. 75-5 bench motor).
 
+## Fast view vs. accurate view
+
+HostSim supports two plant backends behind the same `platform_api`:
+
+- **Fast view** — `ode` backend (default). Closed-form PMSM model; runs faster
+  than real-time and is smooth for interactive tweaking.
+- **Accurate view** — `ngspice` backend. Full circuit simulation of the
+  inverter + RL load with back-EMF injection; slower but physically accurate.
+
+You can switch backends per-scenario (`plant.backend`) or on the command line:
+
+```powershell
+# Fast ODE (default)
+.\build\Debug\host_sim.exe scenarios\fast_ode.json --live --realtime 1.0
+
+# Accurate ngspice render for a user-specified time window
+.\build\Debug\host_sim.exe scenarios\accurate_spice.json `
+    --plant-backend ngspice `
+    --duration 0.005 `
+    --tim-isr-hz 50000 `
+    --substeps 1
+```
+
+Or use the helper script:
+
+```powershell
+.\scripts\render_spice.ps1 -Duration 0.005 -TimIsrHz 50000
+```
+
+### Harmonic resolution
+
+To see up to the **20th harmonic** of the electrical frequency clearly,
+choose the TIM ISR rate with ~20 points per cycle of the highest harmonic:
+
+```
+tim_isr_hz >= 20 * f_elec_hz * 20
+```
+
+Examples:
+- `f_elec = 50 Hz`  → `tim_isr_hz >= 20 kHz`
+- `f_elec = 100 Hz` → `tim_isr_hz >= 40 kHz`
+- `f_elec = 20 Hz`  → `tim_isr_hz >= 8 kHz`
+
+The ngspice backend needs KiCad's `ngspice.dll` on `PATH` (e.g.
+`C:\Program Files\KiCad\10.0\bin`).
+
 ## SPWM demo (NodeGUI + HostSim live)
 
 Open-loop **sinusoidal PWM** graph for the host simulator. Throttle A sets modulation

@@ -21,11 +21,18 @@ bool ParseHostPort(const std::string& spec, std::string* host, int* port) {
 
 void PrintUsage(const char* exe) {
     std::fprintf(stderr,
-                 "usage: %s [scenario.json] [--live] [--listen host:port] [--realtime N] [--telem-hz N]\n"
+                 "usage: %s [scenario.json] [options]\n"
                  "  --live               long-running mode; publish InverterProtocol over TCP\n"
                  "  --listen host:port   TCP listen address (default 127.0.0.1:14608)\n"
                  "  --realtime N         wall-clock pacing factor (1.0 = realtime, 0 = as-fast)\n"
                  "  --telem-hz N         telemetry publish rate (default 500 in live mode)\n"
+                 "  --plant-backend S    plant backend: ode (fast) or ngspice (accurate)\n"
+                 "  --duration N         simulation duration in seconds (batch mode)\n"
+                 "  --tim-isr-hz N       TIM ISR rate in Hz (controls waveform sampling)\n"
+                 "  --substeps N         ngspice electrical substeps per TIM step\n"
+                 "\n"
+                 "Fast view (default):  --plant-backend ode\n"
+                 "Accurate view:        --plant-backend ngspice --tim-isr-hz 50000\n"
                  "\n"
                  "NodeGUI:  NodeGUI --tcp 127.0.0.1:14608 --protocol ivp\n"
                  "Console:  throttle a 0.5 | pause | resume | clear | quit\n",
@@ -42,6 +49,10 @@ int main(int argc, char** argv) {
     int listen_port = 14608;
     float realtime = -1.0f;
     float telem_hz = -1.0f;
+    std::string plant_backend;
+    float duration_s = -1.0f;
+    float tim_isr_hz = -1.0f;
+    int substeps = -1;
 
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
@@ -69,6 +80,30 @@ int main(int argc, char** argv) {
                 return 1;
             }
             telem_hz = static_cast<float>(std::atof(argv[i]));
+        } else if (std::strcmp(arg, "--plant-backend") == 0) {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            plant_backend = argv[i];
+        } else if (std::strcmp(arg, "--duration") == 0) {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            duration_s = static_cast<float>(std::atof(argv[i]));
+        } else if (std::strcmp(arg, "--tim-isr-hz") == 0) {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            tim_isr_hz = static_cast<float>(std::atof(argv[i]));
+        } else if (std::strcmp(arg, "--substeps") == 0) {
+            if (++i >= argc) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            substeps = std::atoi(argv[i]);
         } else if (std::strcmp(arg, "--scenario") == 0) {
             if (++i >= argc) {
                 PrintUsage(argv[0]);
@@ -92,6 +127,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // CLI overrides applied after scenario load so they win.
+    if (!plant_backend.empty()) runtime.SetPlantBackend(plant_backend);
+    if (duration_s > 0.0f) runtime.SetDuration(duration_s);
+    if (tim_isr_hz > 0.0f) runtime.SetTimIsrHz(tim_isr_hz);
+    if (substeps > 0) runtime.SetNgspiceSubsteps(substeps);
     if (live) runtime.SetLive(true);
     if (listen_set || live) runtime.SetListen(listen_host, listen_port);
     if (realtime >= 0.0f) runtime.SetRealtimeFactor(realtime);
