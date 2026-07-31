@@ -34,6 +34,11 @@ public:
     // Called when a node is right-clicked: global menu position + node id.
     std::function<void(const QPointF& globalPos, QtNodes::NodeId nodeId)> onNodeContextMenu;
 
+    std::function<bool(const QPointF& scenePos)> onDomainDoubleClicked;
+    std::function<bool(const QPointF& scenePos)> onDomainDragStarted;
+    std::function<void(const QPointF& delta)> onDomainDragged;
+    std::function<void()> onDomainDragFinished;
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
@@ -42,6 +47,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     bool viewportEvent(QEvent* event) override;
 
@@ -51,11 +57,19 @@ protected:
     void showEvent(QShowEvent* event) override;
 
 private:
+    void TrackNodeDragAfterPress(QMouseEvent* event);
+    void ClearNodeDragCursor();
+
     bool firstShow_ = true;
     Qt::MouseButton panMouseButton_ = Qt::MiddleButton;
     bool mousePanning_ = false;
+    bool domainDragging_ = false;
+    bool suppressDomainDoubleClickRelease_ = false;
     bool nodeRubberBandSelecting_ = false;
+    bool nodeDragPending_ = false;
+    bool nodeDragCursorActive_ = false;
     QPoint panLastPosition_;
+    QPointF domainDragLastScenePosition_;
 };
 
 }  // namespace NodeGUI

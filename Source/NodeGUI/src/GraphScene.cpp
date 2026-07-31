@@ -9,6 +9,7 @@
 #include <NodeAPI/Serialization.h>
 
 #include <QtNodes/Definitions>
+#include <QtNodes/internal/ConnectionGraphicsObject.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QBrush>
@@ -163,6 +164,8 @@ void GraphScene::RebuildScene() {
     // The old scene owns the outline/label items; forget them before tearing
     // it down (calling removeItem/delete on them would use dangling pointers).
     domainVisuals_.clear();
+    selectedDomain_.clear();
+    selectedDomainMoved_ = false;
 
     // The event filter is owned solely by sceneEventFilter_ (no QObject
     // parent), so it must be destroyed before the old scene it was installed
@@ -184,6 +187,21 @@ void GraphScene::RebuildScene() {
     CreateConnections();
     CreateBridges();
     CreateDomainOutlines();
+
+    QObject::connect(scene_.get(),
+                     &QGraphicsScene::selectionChanged,
+                     [this] {
+                         if (selectedDomain_.empty()) {
+                             return;
+                         }
+                         const auto visualIt =
+                             domainVisuals_.find(selectedDomain_);
+                         if (visualIt == domainVisuals_.end() ||
+                             !visualIt->second.outline ||
+                             !visualIt->second.outline->isSelected()) {
+                             ClearDomainSelection();
+                         }
+                     });
 
     sceneEventFilter_ = std::make_unique<SceneEventFilter>(*this);
     scene_->installEventFilter(sceneEventFilter_.get());
@@ -787,6 +805,8 @@ QColor GraphScene::GetDomainColor(const std::string& domain) const {
 }
 
 void GraphScene::ClearDomainOutlines() {
+    selectedDomain_.clear();
+    selectedDomainMoved_ = false;
     for (auto& [domain, visuals] : domainVisuals_) {
         if (visuals.outline) {
             scene_->removeItem(visuals.outline);
@@ -822,6 +842,8 @@ void GraphScene::CreateDomainOutlines() {
         fillColor.setAlpha(30);
         outline->setBrush(QBrush(fillColor, Qt::SolidPattern));
         outline->setZValue(-100.0);
+        outline->setFlag(QGraphicsItem::ItemIsSelectable, true);
+        outline->setAcceptedMouseButtons(Qt::NoButton);
         scene_->addItem(outline);
 
         auto* label = new QGraphicsTextItem(labelText);
@@ -831,12 +853,14 @@ void GraphScene::CreateDomainOutlines() {
         label->setFont(font);
         label->setDefaultTextColor(color.darker(120));
         label->setZValue(-99.0);
+        label->setAcceptedMouseButtons(Qt::NoButton);
         scene_->addItem(label);
 
         domainVisuals_[domain] = DomainVisuals{outline, label, color};
     }
 
     UpdateDomainOutlines();
+    UpdateDomainSelectionStyle();
 }
 
 void GraphScene::UpdateDomainOutlines() {
@@ -899,6 +923,166 @@ void GraphScene::UpdateDomainOutlines() {
         it->second.outline->setRect(bounds);
         it->second.label->setPos(bounds.left(), bounds.top() - it->second.label->boundingRect().height() - labelOffset);
     }
+}
+
+bool GraphScene::PointHitsGraphContent(const QPointF& scenePos) const {
+    if (!scene_) {
+        return false;
+    }
+    for (QGraphicsItem* hitItem : scene_->items(scenePos)) {
+        for (QGraphicsItem* item = hitItem; item; item = item->parentItem()) {
+            if (qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+                return true;
+            }
+            if (qgraphicsitem_cast<QtNodes::ConnectionGraphicsObject*>(item)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void GraphScene::UpdateDomainSelectionStyle() {
+    for (auto& [domain, visuals] : domainVisuals_) {
+        if (!visuals.outline || !visuals.label) {
+            continue;
+        }
+        const bool selected = domain == selectedDomain_;
+        QColor outlineColor = visuals.color;
+        QColor fillColor = visuals.color;
+        if (selected) {
+            outlineColor = outlineColor.lighter(135);
+            fillColor.setAlpha(65);
+        } else {
+            fillColor.setAlpha(30);
+        }
+        visuals.outline->setPen(
+            QPen(outlineColor, selected ? 4.0 : 2.0));
+        visuals.outline->setBrush(
+            QBrush(fillColor, Qt::SolidPattern));
+        visuals.outline->setSelected(selected);
+        visuals.label->setDefaultTextColor(
+            selected ? visuals.color.lighter(140)
+                     : visuals.color.darker(120));
+    }
+}
+
+void GraphScene::ClearDomainSelection() {
+    if (selectedDomain_.empty()) {
+        return;
+    }
+    selectedDomain_.clear();
+    selectedDomainMoved_ = false;
+    UpdateDomainSelectionStyle();
+}
+
+bool GraphScene::SelectDomainAt(const QPointF& scenePos) {
+    if (!scene_ || PointHitsGraphContent(scenePos)) {
+        return false;
+    }
+
+    std::string hitDomain;
+    for (const auto& [domain, visuals] : domainVisuals_) {
+        if (visuals.label &&
+            visuals.label->sceneBoundingRect().contains(scenePos)) {
+            hitDomain = domain;
+            break;
+        }
+    }
+
+    if (hitDomain.empty()) {
+        qreal smallestArea = std::numeric_limits<qreal>::max();
+        for (const auto& [domain, visuals] : domainVisuals_) {
+            if (!visuals.outline ||
+                !visuals.outline->contains(
+                    visuals.outline->mapFromScene(scenePos))) {
+                continue;
+            }
+            const QRectF rect = visuals.outline->sceneBoundingRect();
+            const qreal area = rect.width() * rect.height();
+            if (area < smallestArea) {
+                smallestArea = area;
+                hitDomain = domain;
+            }
+        }
+    }
+
+    if (hitDomain.empty()) {
+        ClearDomainSelection();
+        return false;
+    }
+
+    scene_->clearSelection();
+    selectedDomain_ = std::move(hitDomain);
+    selectedDomainMoved_ = false;
+    UpdateDomainSelectionStyle();
+    return true;
+}
+
+bool GraphScene::BeginSelectedDomainDrag(const QPointF& scenePos) {
+    if (selectedDomain_.empty() || PointHitsGraphContent(scenePos)) {
+        ClearDomainSelection();
+        return false;
+    }
+
+    const auto visualIt = domainVisuals_.find(selectedDomain_);
+    if (visualIt == domainVisuals_.end()) {
+        ClearDomainSelection();
+        return false;
+    }
+    const DomainVisuals& visuals = visualIt->second;
+    const bool hitsOutline =
+        visuals.outline &&
+        visuals.outline->contains(
+            visuals.outline->mapFromScene(scenePos));
+    const bool hitsLabel =
+        visuals.label &&
+        visuals.label->sceneBoundingRect().contains(scenePos);
+    if (!hitsOutline && !hitsLabel) {
+        ClearDomainSelection();
+        return false;
+    }
+
+    selectedDomainMoved_ = false;
+    return true;
+}
+
+void GraphScene::MoveSelectedDomain(const QPointF& delta) {
+    if (selectedDomain_.empty() ||
+        (qFuzzyIsNull(delta.x()) && qFuzzyIsNull(delta.y()))) {
+        return;
+    }
+
+    const auto groups = GroupNodesByDomain();
+    const auto groupIt = groups.find(selectedDomain_);
+    if (groupIt == groups.end()) {
+        return;
+    }
+
+    for (const std::string& nodeId : groupIt->second) {
+        const auto nodeIt = nodeIdMap_.find(nodeId);
+        if (nodeIt == nodeIdMap_.end()) {
+            continue;
+        }
+        if (auto* graphicsObject =
+                scene_->nodeGraphicsObject(nodeIt->second)) {
+            graphicsObject->setPos(graphicsObject->pos() + delta);
+        }
+    }
+
+    selectedDomainMoved_ = true;
+    UpdateDomainOutlines();
+    scene_->update();
+}
+
+void GraphScene::EndSelectedDomainDrag() {
+    if (!selectedDomainMoved_) {
+        return;
+    }
+    selectedDomainMoved_ = false;
+    UpdateDomainOutlines();
+    SyncPositionsFromScene();
+    NotifyChanged();
 }
 
 QString GraphScene::SaveGraph(const std::string& path) const {

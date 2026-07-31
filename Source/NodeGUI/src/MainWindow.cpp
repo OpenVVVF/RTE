@@ -150,6 +150,19 @@ MainWindow::MainWindow(QWidget* parent)
         ShowNodeDomainMenu(globalPos, qtId);
     };
 
+    view_->onDomainDoubleClicked = [this](const QPointF& scenePos) {
+        return graphScene_->SelectDomainAt(scenePos);
+    };
+    view_->onDomainDragStarted = [this](const QPointF& scenePos) {
+        return graphScene_->BeginSelectedDomainDrag(scenePos);
+    };
+    view_->onDomainDragged = [this](const QPointF& delta) {
+        graphScene_->MoveSelectedDomain(delta);
+    };
+    view_->onDomainDragFinished = [this] {
+        graphScene_->EndSelectedDomainDrag();
+    };
+
     layout->addWidget(view_);
 
     // The application switcher belongs to the main-window shell, above the

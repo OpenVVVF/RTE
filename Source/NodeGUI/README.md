@@ -46,6 +46,8 @@ Or launch with no arguments and use `File → Open`.
 - Shows an FPS / frametime overlay in the top-right corner of the viewport.
 - Shows the node id, type, and timing domain in each node caption.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
+- Double-click a domain label or empty area inside its outline to select the
+  domain, then drag its background to move every node in that domain together.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
 - `Edit → Undo` / `Redo` restores complete graph snapshots, including nodes,
