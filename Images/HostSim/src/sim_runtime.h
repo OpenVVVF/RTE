@@ -87,10 +87,20 @@ public:
 
     void PublishPwmScopeFrame();
 
+    /* Render-trace recording for the "render" console command: captures one
+       CSV row per burst step so the GUI can display the SPICE result. */
+    bool BeginRenderTrace(const std::string& path);
+    void WriteRenderTraceRow();
+    void EndRenderTrace();
+    std::string RenderTracePath() const;
+
 private:
     SimConfig config_{};
     std::unique_ptr<IPlant> plant_{};
     std::ofstream trace_{};
+    std::ofstream render_trace_{};
+    std::string render_trace_path_{};
+    int render_trace_rows_ = 0;
 
     float time_s_ = 0.0f;
     float next_tim_s_ = 0.0f;

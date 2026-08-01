@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -353,6 +354,44 @@ void SimRuntime::WriteTraceRow() {
            << st.ia_a << ',' << st.ib_a << ',' << st.ic_a << ','
            << plant_->ThetaElectricalDeg() << ','
            << plant_->OmegaElectricalRadPerSec() << '\n';
+}
+
+bool SimRuntime::BeginRenderTrace(const std::string& path) {
+    render_trace_.open(path, std::ios::out | std::ios::trunc);
+    if (!render_trace_) {
+        std::cerr << "HostSim: cannot open render trace " << path << '\n';
+        return false;
+    }
+    render_trace_path_ = std::filesystem::absolute(path).string();
+    render_trace_rows_ = 0;
+    render_trace_ << std::setprecision(8);
+    render_trace_ << "time_us,throttle_a,throttle_b,duty_u,duty_v,duty_w,"
+                     "i_a,i_b,i_c,theta_e,omega_e\n";
+    return true;
+}
+
+void SimRuntime::WriteRenderTraceRow() {
+    if (!render_trace_ || !plant_) return;
+    const auto& st = plant_->State();
+    render_trace_ << TimeMicros() << ','
+                  << throttle_a_ << ',' << throttle_b_ << ','
+                  << duty_u_ << ',' << duty_v_ << ',' << duty_w_ << ','
+                  << st.ia_a << ',' << st.ib_a << ',' << st.ic_a << ','
+                  << plant_->ThetaElectricalDeg() << ','
+                  << plant_->OmegaElectricalRadPerSec() << '\n';
+    /* Flush periodically so watchers (NodeGUI render progress) see rows
+       appear during the burst instead of only at close. */
+    if (++render_trace_rows_ % 64 == 0) render_trace_.flush();
+}
+
+void SimRuntime::EndRenderTrace() {
+    if (render_trace_.is_open()) render_trace_.close();
+}
+
+std::string SimRuntime::RenderTracePath() const {
+    return render_trace_path_.empty()
+               ? std::string()
+               : std::filesystem::absolute(render_trace_path_).string();
 }
 
 bool SimRuntime::StepOnce() {

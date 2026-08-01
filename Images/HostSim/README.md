@@ -90,6 +90,22 @@ Or use the helper script:
 .\scripts\render_spice.ps1 -Duration 0.005 -TimIsrHz 50000
 ```
 
+### Live render + display
+
+While running `--live`, the console command renders an ngspice burst and
+records it to CSV for display:
+
+```
+render <duration_s> [tim_isr_hz] [substeps] [trace_csv]
+# e.g. render 0.005 50000 4 render_trace.csv
+```
+
+The previous live settings (backend, ISR rate, telemetry rate, pause state)
+are restored afterwards. In NodeGUI (Console tab, Plant row) the **Render
+SPICE** button sends this command; **Show Render** opens a static
+full-resolution plot window of the recorded CSV, and **Auto-show** pops it
+automatically when the burst finishes.
+
 ### Harmonic resolution
 
 To see up to the **20th harmonic** of the electrical frequency clearly,

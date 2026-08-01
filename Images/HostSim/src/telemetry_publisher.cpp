@@ -497,7 +497,7 @@ void TelemetryPublisher::HandleLine(const std::string& raw) {
         std::printf("HostSim commands: throttle a|b <0..1>, duty u|v|w <0..100>, speed <factor>|turbo, pause, resume, clear, help, quit\n");
         std::printf("  speed examples: speed 0.25 | speed 0.5 | speed 1 | speed 2 | speed turbo\n");
         std::printf("  plant backend <ode|ngspice>   switch plant model (ode=fast, ngspice=accurate)\n");
-        std::printf("  render <s> [hz] [substeps]    run ngspice burst for <s> seconds at <hz> ISR\n");
+        std::printf("  render <s> [hz] [substeps] [trace_csv]  run ngspice burst, record to CSV\n");
         std::printf("  reset                         reset simulation state\n");
         return;
     }
@@ -610,17 +610,18 @@ void TelemetryPublisher::HandleLine(const std::string& raw) {
         return;
     }
     if (cmd == "render") {
-        std::string dur_tok, isr_tok, sub_tok;
-        iss >> dur_tok >> isr_tok >> sub_tok;
+        std::string dur_tok, isr_tok, sub_tok, path_tok;
+        iss >> dur_tok >> isr_tok >> sub_tok >> path_tok;
         if (dur_tok.empty()) {
-            std::printf("HostSim: usage: render <duration_s> [tim_isr_hz] [substeps]\n");
+            std::printf("HostSim: usage: render <duration_s> [tim_isr_hz] [substeps] [trace_csv]\n");
             return;
         }
         const float duration_s = std::strtof(dur_tok.c_str(), nullptr);
         const float isr_hz = isr_tok.empty() ? 50000.0f : std::strtof(isr_tok.c_str(), nullptr);
         const int substeps = sub_tok.empty() ? 1 : std::atoi(sub_tok.c_str());
+        const std::string trace_path = path_tok.empty() ? "render_trace.csv" : path_tok;
         if (duration_s <= 0.0f || isr_hz <= 0.0f || substeps < 1) {
-            std::printf("HostSim: usage: render <duration_s> [tim_isr_hz] [substeps]\n");
+            std::printf("HostSim: usage: render <duration_s> [tim_isr_hz] [substeps] [trace_csv]\n");
             return;
         }
 
@@ -642,17 +643,32 @@ void TelemetryPublisher::HandleLine(const std::string& raw) {
         runtime.SetNgspiceSubsteps(substeps);
         runtime.SetTelemetryHz(isr_hz);
 
+        const bool tracing = runtime.BeginRenderTrace(trace_path);
         const int steps = static_cast<int>(duration_s * isr_hz);
+        int next_pct = 10;
         for (int i = 0; i < steps; ++i) {
             if (!runtime.StepOnce()) break;
+            runtime.WriteRenderTraceRow();
+            const int pct = static_cast<int>((100LL * (i + 1)) / steps);
+            if (pct >= next_pct) {
+                std::printf("HostSim: render %d%%\n", next_pct);
+                std::fflush(stdout);
+                next_pct += 10;
+            }
         }
+        runtime.EndRenderTrace();
 
         runtime.SetPlantBackend(orig_backend);
         runtime.SetTimIsrHz(orig_isr_hz);
         runtime.SetNgspiceSubsteps(orig_substeps);
         runtime.SetTelemetryHz(orig_telem_hz);
         paused_ = was_paused;
-        std::printf("HostSim: render done\n");
+        if (tracing) {
+            std::printf("HostSim: render done, trace=%s\n", runtime.RenderTracePath().c_str());
+        } else {
+            std::printf("HostSim: render done\n");
+        }
+        std::fflush(stdout);
         return;
     }
     if (cmd == "reset") {

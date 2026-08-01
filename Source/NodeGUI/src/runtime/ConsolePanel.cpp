@@ -1,11 +1,15 @@
 #include "ConsolePanel.h"
 
+#include "RenderPlotWindow.h"
 #include "RuntimeController.h"
 #include "SimSpeedControl.h"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -14,6 +18,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSpinBox>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -148,13 +153,41 @@ ConsolePanel::ConsolePanel(RuntimeController* controller, QWidget* parent)
         "SPICE steps per ISR tick (multiplies effective sample rate)"));
     plantRow->addWidget(renderSubstepsSpin_);
     auto* renderButton = new QPushButton(QStringLiteral("Render SPICE"), this);
+    renderButton_ = renderButton;
     renderButton->setToolTip(QStringLiteral(
         "Run an ngspice burst for the given duration at the given ISR rate, then "
         "restore the previous live settings. Blocks HostSim commands during the burst."));
     connect(renderButton, &QPushButton::clicked, this, &ConsolePanel::OnRenderSpice);
     plantRow->addWidget(renderButton);
+    renderStatusLabel_ = new QLabel(this);
+    renderStatusLabel_->setMinimumWidth(150);
+    plantRow->addWidget(renderStatusLabel_);
+    plantRow->addSpacing(12);
+    plantRow->addWidget(new QLabel(QStringLiteral("Trace"), this));
+    renderPathEdit_ = new QLineEdit(
+        QDir::temp().filePath(QStringLiteral("hostsim_render_trace.csv")), this);
+    renderPathEdit_->setToolTip(QStringLiteral(
+        "CSV the render burst is recorded to. An absolute path is sent with the "
+        "render command, so HostSim and NodeGUI resolve it identically "
+        "regardless of their working directories."));
+    renderPathEdit_->setMaximumWidth(220);
+    plantRow->addWidget(renderPathEdit_);
+    auto* showRenderButton = new QPushButton(QStringLiteral("Show Render"), this);
+    showRenderButton->setToolTip(QStringLiteral(
+        "Open a static full-resolution plot window of the rendered SPICE burst"));
+    connect(showRenderButton, &QPushButton::clicked, this, &ConsolePanel::OnShowRender);
+    plantRow->addWidget(showRenderButton);
+    renderAutoShowCheck_ = new QCheckBox(QStringLiteral("Auto-show"), this);
+    renderAutoShowCheck_->setChecked(true);
+    renderAutoShowCheck_->setToolTip(QStringLiteral(
+        "Open the render plot automatically once the burst finishes"));
+    plantRow->addWidget(renderAutoShowCheck_);
     plantRow->addStretch(1);
     layout->addLayout(plantRow);
+
+    renderWatchTimer_ = new QTimer(this);
+    renderWatchTimer_->setInterval(400);
+    connect(renderWatchTimer_, &QTimer::timeout, this, &ConsolePanel::OnRenderWatchTick);
 
     layout->addWidget(new SimSpeedControl(controller_, this));
 
@@ -276,11 +309,95 @@ void ConsolePanel::OnApplyBackend() {
 }
 
 void ConsolePanel::OnRenderSpice() {
-    controller_->SendCommand(QStringLiteral("render %1 %2 %3")
+    const QString path = renderPathEdit_->text().trimmed().isEmpty()
+                             ? QDir::temp().filePath(
+                                   QStringLiteral("hostsim_render_trace.csv"))
+                             : renderPathEdit_->text().trimmed();
+    controller_->SendCommand(QStringLiteral("render %1 %2 %3 %4")
                                  .arg(renderDurSpin_->value(), 0, 'f', 4)
                                  .arg(renderIsrSpin_->value(), 0, 'f', 0)
-                                 .arg(renderSubstepsSpin_->value()));
+                                 .arg(renderSubstepsSpin_->value())
+                                 .arg(path));
+    renderSentAt_ = QDateTime::currentDateTime();
+    renderWatchLastSize_ = -1;
+    renderWatchStableTicks_ = 0;
+    renderWatchRowOffset_ = 0;
+    renderWatchRows_ = 0;
+    renderWatchHeaderSeen_ = false;
+    renderExpectedRows_ = static_cast<qint64>(renderDurSpin_->value() *
+                                              renderIsrSpin_->value());
+    renderButton_->setEnabled(false);
+    renderStatusLabel_->setText(QStringLiteral("Rendering… (queued)"));
+    renderWatchTimer_->start();
     OnStoreChanged();
+}
+
+void ConsolePanel::OnShowRender() {
+    auto* window = new RenderPlotWindow(renderPathEdit_->text().trimmed(), this);
+    window->show();
+}
+
+void ConsolePanel::OnRenderWatchTick() {
+    // The burst rewrites the CSV (truncated at render start, flushed every 64
+    // rows during the burst). Rows counted so far give the progress percent;
+    // once the file has been touched after the command was sent and its size
+    // has been stable for two ticks, the render is done.
+    const QFileInfo fi(renderPathEdit_->text().trimmed());
+    if (!fi.exists() || fi.lastModified() < renderSentAt_ || fi.size() == 0) {
+        return;  // still queued in HostSim's command processing
+    }
+
+    // Incrementally count new rows since the last tick.
+    QFile file(fi.absoluteFilePath());
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (file.size() < renderWatchRowOffset_) {
+            renderWatchRowOffset_ = 0;  // truncated by a newer render
+            renderWatchRows_ = 0;
+            renderWatchHeaderSeen_ = false;
+        }
+        file.seek(renderWatchRowOffset_);
+        const QByteArray chunk = file.readAll();
+        const int lastNl = chunk.lastIndexOf('\n');
+        if (lastNl >= 0) {
+            qint64 newLines = 1;  // the line ending at lastNl
+            for (int i = 0; i < lastNl; ++i) {
+                if (chunk[i] == '\n') ++newLines;
+            }
+            if (!renderWatchHeaderSeen_) {
+                --newLines;  // first line is the CSV header
+                renderWatchHeaderSeen_ = true;
+            }
+            renderWatchRows_ += newLines;
+            renderWatchRowOffset_ += lastNl + 1;
+        }
+        file.close();
+    }
+
+    const qint64 pct = renderExpectedRows_ > 0
+                           ? std::clamp<qint64>(100 * renderWatchRows_ /
+                                                    renderExpectedRows_,
+                                                0, 99)
+                           : 0;
+
+    if (fi.size() != renderWatchLastSize_) {
+        renderWatchLastSize_ = fi.size();
+        renderWatchStableTicks_ = 0;
+        renderStatusLabel_->setText(QStringLiteral("Rendering… %1%").arg(pct));
+        return;
+    }
+    if (++renderWatchStableTicks_ < 2) {
+        renderStatusLabel_->setText(QStringLiteral("Rendering… %1%").arg(pct));
+        return;
+    }
+
+    // Done: size stable for two ticks with at least one data row.
+    renderWatchTimer_->stop();
+    renderButton_->setEnabled(true);
+    renderStatusLabel_->setText(
+        QStringLiteral("Render done — %1 rows").arg(renderWatchRows_));
+    if (renderAutoShowCheck_->isChecked()) {
+        OnShowRender();
+    }
 }
 
 void ConsolePanel::OnSimPauseChanged(bool paused) {
