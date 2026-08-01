@@ -495,7 +495,11 @@ void FocControlManager::onPwmPeriod() {
         return;
     }
 
-    float angle_deg = encoderADC().lastAngle();
+    /* Extrapolated to this control instant from the DWT-timestamped snapshot:
+     * smooths the sample staircase between the encoder stream and the 10 kHz
+     * FOC steps (same angle the generated tim_isr domain consumes via
+     * platform_get_encoder_angle_latest()). */
+    float angle_deg = encoderADC().extrapolatedAngleDeg();
     float angle_rad = angle_deg * (3.14159265358979323846f / 180.0f);
 
     /* Forced-angle diagnostic: ignore the encoder and drive the Park angle
