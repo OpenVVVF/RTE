@@ -3583,8 +3583,8 @@
    "domain": "app_loop",
    "id": "ModAuto",
    "parameters": {
-    "enter_hz": "10.0",
-    "exit_hz": "8.0",
+    "enter_hz": "4.0",
+    "exit_hz": "3.0",
     "pulses": "9.0",
     "duty": "0.85"
    },
