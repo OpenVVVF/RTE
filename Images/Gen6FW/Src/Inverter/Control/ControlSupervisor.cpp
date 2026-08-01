@@ -4,6 +4,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
@@ -62,6 +63,11 @@ bool ControlSupervisor::start() {
         FaultManager::instance().isSeverityActive(FaultSeverity::High)) {
         Telemetry::printf("[SUP] ERROR: active Critical/High faults");
         FaultManager::instance().printSummary();
+        return false;
+    }
+
+    if (activeModulator() == &shepwmModulator()) {
+        Telemetry::printf("[SUP] ERROR: SHEPWM is running; stop it first (shestop)");
         return false;
     }
 

@@ -79,6 +79,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Command/Commands/FocCommands.cpp
     Src/Inverter/Command/Commands/CanCommands.cpp
+    Src/Inverter/Command/Commands/SheCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
     Src/Inverter/Control/FocControlManager.cpp
@@ -109,6 +110,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Logging/SupplyMonitor.cpp
     Src/Inverter/Drivers/PWM/pwm.cpp
     Src/Inverter/Drivers/PWM/Modulator.cpp
+    Src/Inverter/Drivers/PWM/ShepwmModulator.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensor.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensorTest.cpp
     Src/Inverter/Drivers/Sensors/DcLinkCurrentSensor.cpp

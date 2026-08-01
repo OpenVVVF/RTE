@@ -321,6 +321,30 @@ float PWM_GetSPWMAngle(void)
     return Inverter::spwmAngleRad();
 }
 
+void PWM_ForcePhaseLevel(uint8_t phase, bool high)
+{
+    if (phase > 2) return;
+    const uint32_t mode = high ? TIM_OCMODE_ACTIVE : TIM_OCMODE_INACTIVE;
+    switch (phase) {
+    case 0:
+        MODIFY_REG(TIM1->CCMR1, TIM_CCMR1_OC1M, mode);
+        break;
+    case 1:
+        MODIFY_REG(TIM1->CCMR1, TIM_CCMR1_OC2M, mode << 8U);
+        break;
+    default:
+        MODIFY_REG(TIM1->CCMR2, TIM_CCMR2_OC3M, mode);
+        break;
+    }
+}
+
+void PWM_ReleaseForcedOutputs(void)
+{
+    MODIFY_REG(TIM1->CCMR1, TIM_CCMR1_OC1M | TIM_CCMR1_OC2M,
+               TIM_OCMODE_PWM1 | (TIM_OCMODE_PWM1 << 8U));
+    MODIFY_REG(TIM1->CCMR2, TIM_CCMR2_OC3M, TIM_OCMODE_PWM1);
+}
+
 void PWM_StartPhase(uint8_t phase)
 {
     if (phase > 2) return;

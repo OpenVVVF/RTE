@@ -12,6 +12,7 @@
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
@@ -157,6 +158,11 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
     if (openLoopController().isRunning()) {
         Telemetry::printf("[FOC] stopping open-loop controller first");
         openLoopController().stop();
+    }
+
+    if (activeModulator() == &shepwmModulator()) {
+        Telemetry::printf("[FOC] ERROR: SHEPWM is running; stop it first (shestop)");
+        return false;
     }
 
     if (!allow_during_cal && isAnyCalibrationActive()) {

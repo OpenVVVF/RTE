@@ -3,6 +3,7 @@
 #include "Inverter/Control/FocControlManager.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -272,6 +273,11 @@ bool OpenLoopController::start(float freq_hz, float modulation_index) {
 
     if (focControlManager().isRunning()) {
         Telemetry::printf("[OL] ERROR: FOC is running; stop it first");
+        return false;
+    }
+
+    if (activeModulator() == &shepwmModulator()) {
+        Telemetry::printf("[OL] ERROR: SHEPWM is running; stop it first (shestop)");
         return false;
     }
 

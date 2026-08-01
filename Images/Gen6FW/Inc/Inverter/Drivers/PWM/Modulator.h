@@ -73,6 +73,7 @@ void setActiveModulator(Modulator* m);
 
 Modulator& svpwmModulator();
 Modulator& spwmModulator();
+Modulator& shepwmModulator();
 
 /* SPWM introspection / control for shell commands and calibrators
  * (forwarded by the legacy PWM_* API in pwm.cpp). */
@@ -83,5 +84,15 @@ void spwmResetElectricalCycles();
 void spwmSetParams(float fundamental_freq_hz, float modulation_index);
 float spwmFundamentalFreqHz();
 float spwmModulationIndex();
+
+/* SHEPWM control / introspection (shell bring-up; supervisor later).
+ * shepwmSetPattern builds the event table for (fe_hz, mi) into the inactive
+ * ping-pong buffer; while running it swaps at the next electrical-cycle wrap. */
+bool shepwmIsRunning();
+void shepwmSetPattern(float fe_hz, float mi);
+float shepwmFrequencyHz();
+float shepwmModulationIndex();
+uint32_t shepwmWrapCount();
+uint32_t shepwmEdgeCount();
 
 } // namespace Inverter
