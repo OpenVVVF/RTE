@@ -558,6 +558,20 @@ void FocControlManager::onPwmPeriod() {
     }
 }
 
+void FocControlManager::suspendForHandoff() {
+    if (!m_running) {
+        return;
+    }
+    PWM_DisableFocMode();
+    PWM_StopUpdateInterrupt();
+    m_running = false;
+    Telemetry::printf("[FOC] suspended for modulation handoff");
+}
+
+bool FocControlManager::restartLastSetpoints() {
+    return start(m_setpoints.iq_a, m_setpoints.id_a, false);
+}
+
 void FocControlManager::requestSafeStopFromIsr() {
     /* Never call the full stop() routine from an ISR: it uses HAL delays and
      * UART printfs.  Park at zero vector and let the main loop perform the

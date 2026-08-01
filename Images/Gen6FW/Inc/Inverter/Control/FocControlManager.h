@@ -2,6 +2,7 @@
 
 #include "Inverter/Control/FocController.h"
 
+#include <cmath>
 #include <cstdint>
 
 namespace Inverter {
@@ -112,6 +113,38 @@ public:
     float lastIvA() const { return m_last_iv_a; }
     float lastIwA() const { return m_last_iw_a; }
     uint32_t missedCurrentSamples() const { return m_missed_current_samples; }
+
+    /**
+     * @brief Angle of the voltage vector FOC is currently applying [rad].
+     *
+     * Electrical Park angle + the dq voltage-vector phase; this is the angle
+     * a pattern modulator must phase-lock to for a seamless handoff.
+     */
+    float electricalVoltageAngleRad() const {
+        return m_controller.ElectricalAngle_Rad +
+               atan2f(m_controller.Vq_V, m_controller.Vd_V);
+    }
+
+    /**
+     * @brief Electrical speed magnitude [rad/s] from the controller estimate.
+     */
+    float electricalSpeedRadPerSec() const {
+        return m_controller.ElectricalSpeed_RadPerSec;
+    }
+
+    /**
+     * @brief Suspend FOC for a modulation handoff: control hook off, update
+     * ISR off, m_running cleared — but gate driver and PWM outputs stay live
+     * so a pattern modulator can take over the pins without a gap.
+     */
+    void suspendForHandoff();
+
+    /**
+     * @brief Restart FOC with the last setpoints (pattern -> FOC handoff).
+     * Runs the normal start sequence; safe into a spinning motor (the gate
+     * reset cycle briefly freewheels).
+     */
+    bool restartLastSetpoints();
 
     /**
      * @brief Per-cycle sample hook for measurement/calibration code.

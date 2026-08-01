@@ -1,7 +1,9 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/PWM/ModulationSwitch.h"
+#include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
@@ -33,6 +35,17 @@ void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
  * -------------------------------------------------------------------------- */
 
 float platform_get_ol_freq_hz(void) {
+    return Inverter::openLoopController().frequencyHz();
+}
+
+float platform_get_elec_freq_hz(void) {
+    if (Inverter::shepwmIsRunning()) {
+        return Inverter::shepwmFrequencyHz();
+    }
+    if (Inverter::focControlManager().isRunning()) {
+        const float w = Inverter::focControlManager().electricalSpeedRadPerSec();
+        return (w < 0.0f ? -w : w) / 6.283185307f;
+    }
     return Inverter::openLoopController().frequencyHz();
 }
 

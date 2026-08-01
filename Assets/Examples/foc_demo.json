@@ -2735,7 +2735,7 @@
    "displayName": "Modulation Auto-Switch",
    "domain": "app_loop",
    "id": "Actuators.ModulationAuto",
-   "inlineCode": "/* Policy only: watch the commanded ramp frequency and request handoffs.\n * The switching itself (phase-lock, level match, timer handoff) lives in the\n * base image behind platform_modulation_to_pattern/to_ramp. */\nconst float fe = platform_get_ol_freq_hz();\nconst uint8_t mod_mode = platform_modulation_mode();\n\nif (mod_mode == 0U && fe >= enter_hz) {\n    (void)platform_modulation_to_pattern((uint32_t)(pulses + 0.5f), duty);\n} else if (mod_mode == 1U && fe < exit_hz) {\n    (void)platform_modulation_to_ramp();\n}\n",
+   "inlineCode": "/* Policy only: watch the commanded ramp frequency and request handoffs.\n * The switching itself (phase-lock, level match, timer handoff) lives in the\n * base image behind platform_modulation_to_pattern/to_ramp. */\nconst float fe = platform_get_elec_freq_hz();\nconst uint8_t mod_mode = platform_modulation_mode();\n\nif (mod_mode == 0U && fe >= enter_hz) {\n    (void)platform_modulation_to_pattern((uint32_t)(pulses + 0.5f), duty);\n} else if (mod_mode == 1U && fe < exit_hz) {\n    (void)platform_modulation_to_ramp();\n}\n",
    "inputPorts": [],
    "isEntryPoint": false,
    "maxInstances": 1,

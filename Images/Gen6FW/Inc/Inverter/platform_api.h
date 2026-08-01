@@ -47,6 +47,13 @@ void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc);
 float platform_get_ol_freq_hz(void);
 
 /**
+ * @brief Best available electrical frequency [Hz]: the pattern's own
+ * frequency in pattern mode, the FOC speed estimate under FOC, otherwise
+ * the commanded open-loop ramp frequency.  Drives mode supervisors.
+ */
+float platform_get_elec_freq_hz(void);
+
+/**
  * @brief Active modulation mode: 0 = ramp (SVPWM), 1 = N-pulse pattern.
  */
 uint8_t platform_modulation_mode(void);

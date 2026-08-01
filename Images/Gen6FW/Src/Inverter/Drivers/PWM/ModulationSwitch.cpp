@@ -7,6 +7,13 @@
 #include "Inverter/Telemetry.h"
 
 namespace Inverter {
+namespace {
+
+/* Where the pattern mode was entered from: decides what modulationToRamp()
+ * resumes. */
+bool s_patternFromFoc = false;
+
+} // namespace
 
 ModulationMode modulationMode() {
     return (activeModulator() == &shepwmModulator())
@@ -15,11 +22,39 @@ ModulationMode modulationMode() {
 }
 
 bool modulationToPattern(uint32_t pulses_per_quarter, float duty) {
-    if (focControlManager().isRunning() || !spwmIsRunning()) {
-        return false;
-    }
     if (shepwmIsRunning()) {
         return true;   /* already there */
+    }
+
+    if (focControlManager().isRunning()) {
+        /* FOC -> pattern: capture the applied voltage-vector angle and
+         * electrical frequency, suspend the current loop (outputs stay
+         * live), and enter the pattern phase-locked to that angle. */
+        const float angle = focControlManager().electricalVoltageAngleRad();
+        float fe = focControlManager().electricalSpeedRadPerSec() / 6.283185307f;
+        if (fe < 0.0f) fe = -fe;
+        if (fe < 0.1f) {
+            return false;
+        }
+
+        shepwmSetPulsePattern(fe, pulses_per_quarter, duty);
+        focControlManager().suspendForHandoff();
+        if (!shepwmModulator().enter(angle, duty)) {
+            (void)focControlManager().restartLastSetpoints();
+            return false;
+        }
+        setActiveModulator(&shepwmModulator());
+        s_patternFromFoc = true;
+
+        Telemetry::printf("[MOD] FOC -> pattern: fe=%.2f Hz pulses/qtr=%lu duty=%.3f",
+                          static_cast<double>(fe),
+                          static_cast<unsigned long>(pulses_per_quarter),
+                          static_cast<double>(duty));
+        return true;
+    }
+
+    if (!spwmIsRunning()) {
+        return false;
     }
 
     const float angle = spwmAngleRad();
@@ -34,6 +69,7 @@ bool modulationToPattern(uint32_t pulses_per_quarter, float duty) {
         return false;
     }
     setActiveModulator(&shepwmModulator());
+    s_patternFromFoc = false;
 
     Telemetry::printf("[MOD] ramp -> pattern: fe=%.2f Hz pulses/qtr=%lu duty=%.3f",
                       static_cast<double>(fe),
@@ -45,6 +81,17 @@ bool modulationToPattern(uint32_t pulses_per_quarter, float duty) {
 bool modulationToRamp() {
     if (!shepwmIsRunning()) {
         return true;   /* already there */
+    }
+
+    if (s_patternFromFoc) {
+        /* Pattern -> FOC: release the pins and restart the current loop
+         * with the last setpoints (flying restart into the spinning motor). */
+        s_patternFromFoc = false;
+        shepwmModulator().exit();
+        setActiveModulator(nullptr);
+        const bool ok = focControlManager().restartLastSetpoints();
+        Telemetry::printf("[MOD] pattern -> FOC: %s", ok ? "restarted" : "RESTART FAILED");
+        return ok;
     }
 
     const float angle = shepwmAngleRad();
