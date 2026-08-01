@@ -45,6 +45,60 @@
       "quantity": "boolean",
       "frame": "scalar",
       "dtype": "f32"
+    },
+    "Hu0": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hu1": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hu2": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hv0": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hv1": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hv2": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hw0": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hw1": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Hw2": {
+      "description": "Median-filter sample history (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
     }
   }
 }

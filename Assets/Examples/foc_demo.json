@@ -2005,61 +2005,112 @@
       }
     },
     {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
+      "id": "Sensors.PhaseCurrents",
+      "displayName": "Phase Currents",
       "defaultName": "PhaseCurrents",
       "description": "Samples the three inverter phase-current channels from the platform current sensors.",
-      "displayName": "Phase Currents",
-      "domain": "",
-      "id": "Sensors.PhaseCurrents",
-      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    /* Keep raw sensor polarity available for general telemetry, while FOC\n     * graphs enable inversion for this hardware's current-sensor wiring. */\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
-      "inputPorts": [],
-      "isEntryPoint": true,
       "maxInstances": 1,
+      "isEntryPoint": true,
+      "domain": "",
+      "inputPorts": [],
       "outputPorts": [
         {
+          "name": "I_A",
           "description": "Measured phase A current in amperes.",
           "direction": "output",
-          "name": "I_A",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
+            "dtype": "f32"
           }
         },
         {
+          "name": "I_B",
           "description": "Measured phase B current in amperes.",
           "direction": "output",
-          "name": "I_B",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
+            "dtype": "f32"
           }
         },
         {
+          "name": "I_C",
           "description": "Measured phase C current in amperes.",
           "direction": "output",
-          "name": "I_C",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "current",
             "frame": "scalar",
-            "quantity": "current"
+            "dtype": "f32"
           }
         }
       ],
       "parameterTypes": {
         "InvertPolarity": {
           "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
-          "dtype": "f32",
+          "quantity": "boolean",
           "frame": "scalar",
-          "quantity": "boolean"
+          "dtype": "f32"
+        },
+        "Hu0": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hu1": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hu2": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hv0": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hv1": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hv2": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hw0": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hw1": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Hw2": {
+          "description": "Median-filter sample history (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
         }
-      }
+      },
+      "inlineCode": "/* Phase currents with median-of-3 spike rejection.\n *\n * The phase-current ADC samples once per carrier period at the OC4 trigger,\n * which can land on a switching transient - at low carriers (1.5 kHz) the\n * resulting single-sample glitches (tens of amps, alternating sign) drove\n * the current loop into oscillation and a ~76 A spike that stalled the\n * motor.  A median of the last three samples rejects any single-sample\n * glitch at the cost of a one-sample delay. */\nfloat iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    /* Keep raw sensor polarity available for general telemetry, while FOC\n     * graphs enable inversion for this hardware's current-sensor wiring. */\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    Hu2 = Hu1; Hu1 = Hu0; Hu0 = polarity * iu_f;\n    Hv2 = Hv1; Hv1 = Hv0; Hv0 = polarity * iv_f;\n    Hw2 = Hw1; Hw1 = Hw0; Hw0 = polarity * iw_f;\n}\n\nauto med3 = [](float a, float b, float c) -> float {\n    if (a > b) { const float t = a; a = b; b = t; }\n    if (b > c) { const float t = b; b = c; c = t; }\n    if (a > b) { const float t = a; a = b; b = t; }\n    return b;\n};\n\nI_A = rte::Amperes(med3(Hu0, Hu1, Hu2));\nI_B = rte::Amperes(med3(Hv0, Hv1, Hv2));\nI_C = rte::Amperes(med3(Hw0, Hw1, Hw2));\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
     },
     {
       "classDefinition": "",
@@ -2809,7 +2860,16 @@
       "parameters": {
         "InvertPolarity": "1.0",
         "OffsetU": "0.0",
-        "OffsetV": "0.0"
+        "OffsetV": "0.0",
+        "Hu0": "0.0",
+        "Hu1": "0.0",
+        "Hu2": "0.0",
+        "Hv0": "0.0",
+        "Hv1": "0.0",
+        "Hv2": "0.0",
+        "Hw0": "0.0",
+        "Hw1": "0.0",
+        "Hw2": "0.0"
       },
       "position": {
         "x": 150.0,
