@@ -5,16 +5,19 @@
 
 namespace Inverter {
 
-bool fdcanFaultInit() {
+bool fdcanFaultInit(bool enable_bus_a, bool enable_bus_b) {
     constexpr uint32_t kNotify = FDCAN_IT_BUS_OFF |
                                  FDCAN_IT_ERROR_PASSIVE |
                                  FDCAN_IT_ERROR_LOGGING_OVERFLOW;
     /* Both buses: error interrupts ride the IT0 line, whose NVIC is owned
-     * by the CanBus driver. */
-    if (HAL_FDCAN_ActivateNotification(&hfdcan1, kNotify, 0) != HAL_OK) {
+     * by the CanBus driver.  Only enabled buses are armed: a disabled bus
+     * must never raise a CAN fault. */
+    if (enable_bus_a &&
+        HAL_FDCAN_ActivateNotification(&hfdcan1, kNotify, 0) != HAL_OK) {
         return false;
     }
-    if (HAL_FDCAN_ActivateNotification(&hfdcan2, kNotify, 0) != HAL_OK) {
+    if (enable_bus_b &&
+        HAL_FDCAN_ActivateNotification(&hfdcan2, kNotify, 0) != HAL_OK) {
         return false;
     }
     return true;
