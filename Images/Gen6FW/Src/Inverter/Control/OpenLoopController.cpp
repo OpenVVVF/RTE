@@ -374,6 +374,15 @@ void OpenLoopController::stepStartup(uint32_t now_ms) {
 }
 
 void OpenLoopController::stop() {
+    /* If the pattern modulator owns the slot (handoff mode), release it
+     * first so the outputs actually go quiet and the next start is clean. */
+    if (Inverter::shepwmIsRunning()) {
+        Inverter::shepwmModulator().exit();
+        if (Inverter::activeModulator() == &Inverter::shepwmModulator()) {
+            Inverter::setActiveModulator(nullptr);
+        }
+    }
+
     /* Immediate coast: turn off the PWM outputs and assert the gate-driver
      * reset line so all six IGBTs stop switching right away. */
     PWM_StopSPWM();

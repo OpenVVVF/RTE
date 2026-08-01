@@ -33,6 +33,36 @@ void platform_pwm_set(float du, float dv, float dw);
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc);
 
 /* --------------------------------------------------------------------------
+ * Modulation mode switching (open-loop ramp <-> N-pulse pattern)
+ *
+ * HAL-level live handoff primitives: phase-locked both directions, TIM1
+ * always owns the gate pins (dead time, MOE, BKIN stay armed).  A graph
+ * supervisor (e.g. Actuators.ModulationAuto) drives these from thresholds;
+ * the switching machinery itself stays in the base image.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Commanded open-loop ramp frequency [Hz] (0 when not ramping).
+ */
+float platform_get_ol_freq_hz(void);
+
+/**
+ * @brief Active modulation mode: 0 = ramp (SVPWM), 1 = N-pulse pattern.
+ */
+uint8_t platform_modulation_mode(void);
+
+/**
+ * @brief Phase-locked handoff ramp -> N-pulse pattern at the same frequency.
+ * @return false if the ramp is not running (or FOC is active).
+ */
+bool platform_modulation_to_pattern(uint32_t pulses_per_quarter, float duty);
+
+/**
+ * @brief Phase-locked handoff pattern -> ramp (resumes at the pattern angle).
+ */
+bool platform_modulation_to_ramp(void);
+
+/* --------------------------------------------------------------------------
  * Sensor inputs
  * -------------------------------------------------------------------------- */
 

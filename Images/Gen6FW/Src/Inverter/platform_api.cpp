@@ -1,6 +1,8 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/ModulationSwitch.h"
+#include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -24,6 +26,26 @@ void platform_pwm_set(float du, float dv, float dw) {
 
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
     PWM_SetVoltageVector(valpha, vbeta, vdc);
+}
+
+/* --------------------------------------------------------------------------
+ * Modulation mode switching
+ * -------------------------------------------------------------------------- */
+
+float platform_get_ol_freq_hz(void) {
+    return Inverter::openLoopController().frequencyHz();
+}
+
+uint8_t platform_modulation_mode(void) {
+    return static_cast<uint8_t>(Inverter::modulationMode());
+}
+
+bool platform_modulation_to_pattern(uint32_t pulses_per_quarter, float duty) {
+    return Inverter::modulationToPattern(pulses_per_quarter, duty);
+}
+
+bool platform_modulation_to_ramp(void) {
+    return Inverter::modulationToRamp();
 }
 
 /* --------------------------------------------------------------------------

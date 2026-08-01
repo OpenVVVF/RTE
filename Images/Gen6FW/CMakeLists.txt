@@ -111,6 +111,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/PWM/pwm.cpp
     Src/Inverter/Drivers/PWM/Modulator.cpp
     Src/Inverter/Drivers/PWM/ShepwmModulator.cpp
+    Src/Inverter/Drivers/PWM/ModulationSwitch.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensor.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensorTest.cpp
     Src/Inverter/Drivers/Sensors/DcLinkCurrentSensor.cpp

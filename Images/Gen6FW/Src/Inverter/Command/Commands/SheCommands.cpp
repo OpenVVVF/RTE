@@ -5,6 +5,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/Modulator.h"
+#include "Inverter/Drivers/PWM/ModulationSwitch.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Telemetry.h"
 
@@ -181,10 +182,8 @@ public:
  *   handoff 1 <pulses_per_qtr> <duty>   ramp (SPWM) -> N-pulse pattern
  *   handoff 0                           pattern -> ramp (same fe/MI)
  *
- * Both directions are phase-locked: the ramp angle is captured, the target
- * modulator is seeded with it (pattern CNT preset / ramp angle seed), and
- * initial pin levels are matched, so there is no voltage step or gap.
- * TIM1 owns the pins throughout; MOE, dead time and BKIN stay armed.
+ * Thin shell wrapper over Inverter::modulationToPattern/ToRamp (which the
+ * graph-facing platform_api also calls).  Phase-locked both directions.
  */
 class HandoffCommand : public CommandInterface {
 public:
@@ -196,74 +195,19 @@ public:
 
     void execute(const ArgValue* args, CommandContext&) override {
         if (args[0].f_val >= 0.5f) {
-            toPattern(args);
+            if (!args[1].present || !args[2].present) {
+                Telemetry::printf("[HO] usage: handoff 1 <pulses_per_qtr> <duty>");
+                return;
+            }
+            const uint32_t npq = static_cast<uint32_t>(args[1].f_val + 0.5f);
+            if (!Inverter::modulationToPattern(npq, args[2].f_val)) {
+                Telemetry::printf("[HO] failed: need open-loop ramp running (not FOC)");
+            }
         } else {
-            toRamp();
+            if (!Inverter::modulationToRamp()) {
+                Telemetry::printf("[HO] failed");
+            }
         }
-    }
-
-private:
-    void toPattern(const ArgValue* args) {
-        if (focControlManager().isRunning()) {
-            Telemetry::printf("[HO] ERROR: FOC is running; handoff is ramp-only for now");
-            return;
-        }
-        if (!openLoopController().isRunning() || !Inverter::spwmIsRunning()) {
-            Telemetry::printf("[HO] ERROR: open-loop ramp not running (use 'start' first)");
-            return;
-        }
-        if (Inverter::shepwmIsRunning()) {
-            Telemetry::printf("[HO] ERROR: pattern already active");
-            return;
-        }
-        if (!args[1].present || !args[2].present) {
-            Telemetry::printf("[HO] usage: handoff 1 <pulses_per_qtr> <duty>");
-            return;
-        }
-
-        const uint32_t npq = static_cast<uint32_t>(args[1].f_val + 0.5f);
-        const float duty = args[2].f_val;
-        const float angle = Inverter::spwmAngleRad();
-        const float fe = Inverter::spwmFundamentalFreqHz();
-
-        /* Stage, then swap: ramp exits (CCRs freeze), pattern enters
-         * phase-locked to the captured ramp angle. */
-        Inverter::shepwmSetPulsePattern(fe, npq, duty);
-        PWM_StopSPWM();
-        if (!Inverter::shepwmModulator().enter(angle, duty)) {
-            Telemetry::printf("[HO] ERROR: pattern enter failed; restarting ramp");
-            PWM_StartSPWM(fe, Inverter::spwmModulationIndex());
-            Inverter::spwmSetAngle(angle);
-            return;
-        }
-        Inverter::setActiveModulator(&Inverter::shepwmModulator());
-
-        Telemetry::printf("[HO] ramp -> pattern: fe=%.2f Hz pulses/qtr=%lu duty=%.3f angle=%.1f deg",
-                          static_cast<double>(fe),
-                          static_cast<unsigned long>(npq),
-                          static_cast<double>(duty),
-                          static_cast<double>(angle * 57.2957795f));
-    }
-
-    void toRamp() {
-        if (!Inverter::shepwmIsRunning()) {
-            Telemetry::printf("[HO] ERROR: pattern not active");
-            return;
-        }
-
-        const float angle = Inverter::shepwmAngleRad();
-        const float fe = Inverter::shepwmFrequencyHz();
-        /* Resume the ramp at the open-loop controller's last MI. */
-        const float mi = openLoopController().modulationIndex();
-
-        Inverter::shepwmModulator().exit();
-        Inverter::setActiveModulator(nullptr);
-        PWM_StartSPWM(fe, mi);
-        Inverter::spwmSetAngle(angle);
-
-        Telemetry::printf("[HO] pattern -> ramp: fe=%.2f Hz mi=%.3f angle=%.1f deg",
-                          static_cast<double>(fe), static_cast<double>(mi),
-                          static_cast<double>(angle * 57.2957795f));
     }
 };
 

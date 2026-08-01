@@ -1,0 +1,37 @@
+{
+  "id": "Actuators.ModulationAuto",
+  "displayName": "Modulation Auto-Switch",
+  "defaultName": "ModAuto",
+  "description": "Supervises modulation mode from the open-loop ramp frequency: hands off to the N-pulse pattern above enter_hz, back to the SVPWM ramp below exit_hz. Switching is phase-locked and executed by base-image HAL primitives; this node is policy only.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "app_loop",
+  "inputPorts": [],
+  "outputPorts": [],
+  "parameterTypes": {
+    "enter_hz": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Ramp-to-pattern handoff threshold (electrical Hz)."
+    },
+    "exit_hz": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Pattern-to-ramp handoff threshold (electrical Hz). Set below enter_hz for hysteresis."
+    },
+    "pulses": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "N-pulse pulses per quarter cycle (1..64). Device switching = (2N+1) x fe."
+    },
+    "duty": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "High-time fraction per pulse cell (0..1). 1.0 = six-step; keep above ~0.7."
+    }
+  }
+}
