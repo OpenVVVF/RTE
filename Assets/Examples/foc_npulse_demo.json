@@ -3442,14 +3442,62 @@
           "frame": "scalar",
           "dtype": "f32"
         },
+        "Dt": {
+          "description": "Sample period in seconds.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "DeltaSlewRps": {
+          "description": "Maximum rate for the commanded phase offset, rad/s.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "MSlew": {
+          "description": "Maximum rate for the commanded modulation index, per second.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "NHoldMs": {
+          "description": "Time a new pulse number must persist before it is applied, milliseconds.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
         "NState": {
           "description": "Persistent pulse-number state (leave at default).",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
+        },
+        "NChangeT": {
+          "description": "Persistent pulse-number change timer, seconds (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "TrackDelta": {
+          "description": "Persistent tracked phase offset, radians (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "TrackM": {
+          "description": "Persistent tracked modulation index (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Armed": {
+          "description": "Persistent armed flag (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
         }
       },
-      "inlineCode": "/* Synchronous n-pulse PWM (synchronized sampled sine) - the ladder's\n * intermediate sync mode.\n *\n * The pattern is locked to the rotor angle: duties follow a sine referenced\n * to Theta_E + atan2(V_Q, V_D), slot-averaged over 2*pi/N slots, with N\n * chosen from the chopping-rate budget (largest odd multiple of 3 with\n * N*f_e <= FAsyncHz).  The timer keeps chopping at the async carrier, so\n * phase current ripple stays carrier-bounded at ANY fundamental; only the\n * average staircase is rotor-locked.  At high N (low f_e) this converges to\n * async SVPWM; as f_e rises N steps down and switching becomes visibly\n * synchronous.\n *\n * NOT six-step: full-rail plateaus on a low-L motor at low f_e let phase\n * current free-run between edges (bench: 250 A at 20 Hz).  Square-wave SHE\n * patterns belong to the top of the ladder (voltage ceiling), later.\n *\n * Contract: ModeId-gated, holds 50% neutral otherwise; vdc < 1 V -> 50%. */\n\nconst float vdc = V_Dc.in(au::volts);\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (!running || !(vdc > 1.0f) || !(F_Elec > 0.01f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n} else {\n    const float vd = V_D.in(au::volts);\n    const float vq = V_Q.in(au::volts);\n\n    /* Rotor-locked reference angle: theta_e + smooth dq phase offset. */\n    const float ang = Theta_E + atan2f(vq, vd);\n\n    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3));\n     * the 2/sqrt(3) factor makes the phase fundamental match SVPWM's. */\n    float m = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);\n    if (m > 1.0f) m = 1.0f;\n    if (m < 0.0f) m = 0.0f;\n    const float g = 1.1547005384f * m;  /* 2/sqrt(3) * m */\n\n    /* Pulse number: largest odd multiple of 3 within the chopping budget.\n     * Steps up freely, steps down with margin (hysteresis). */\n    const float ratio = FAsyncHz / F_Elec;\n    int n_new = 3 * (2 * (int)(ratio / 6.0f) + 1);\n    if (n_new < 3) n_new = 3;\n    if (n_new > 999) n_new = 999;\n    int N = (NState > 0.5f) ? (int)NState : n_new;\n    if (n_new > N) N = n_new;\n    else if (n_new < N - 6) N = n_new;\n    NState = (float)N;\n    N_Pulses = (float)N;\n\n    const float two_pi = 6.28318530718f;\n    const float h = two_pi / (float)N;\n    const float sinc = (h > 1.0e-6f) ? (sinf(0.5f * h) / (0.5f * h)) : 1.0f;\n\n    /* Slot-averaged reference: average value of the phase reference over\n     * each slot, so the held duty matches the slot's mean.  The reference\n     * is cos (NOT sin): SVPWM's phase A follows valpha = |V|*cos(phi), so\n     * phase A must peak when the vector points at +alpha.  Using sin here\n     * rotated the applied vector 90 deg into the d-axis and blew up the\n     * bench (id > 400 A, bus collapse). */\n    auto slotavg = [&](float phase) -> float {\n        const float slot = floorf(phase / h);\n        return cosf((slot + 0.5f) * h) * sinc;\n    };\n\n    auto duty = [](float d) -> float {\n        if (d < 0.0f) return 0.0f;\n        if (d > 100.0f) return 100.0f;\n        return d;\n    };\n\n    Duty_A = duty(50.0f + 50.0f * g * slotavg(ang));\n    Duty_B = duty(50.0f + 50.0f * g * slotavg(ang - 2.09439510239f));\n    Duty_C = duty(50.0f + 50.0f * g * slotavg(ang + 2.09439510239f));\n}\n",
+      "inlineCode": "/* Synchronous n-pulse PWM (synchronized sampled sine) - the ladder's\n * intermediate sync mode.\n *\n * The pattern is locked to the rotor angle: duties follow a cosine\n * referenced to Theta_E + delta, slot-averaged over 2*pi/N slots, with N\n * chosen from the chopping-rate budget.  The timer keeps chopping at the\n * async carrier, so current ripple stays carrier-bounded at any speed.\n *\n * Stability (bench-learned):\n * - The commanded phase delta = atan2(V_Q, V_D) and magnitude m are\n *   SLEW-LIMITED.  On hard decel the PI command jumps tens of degrees in\n *   one step; at high back-EMF a slot-quantized phase jump is volts into a\n *   low-L motor and self-oscillates.  TrackDelta/TrackM follow the command\n *   with bounded rate; Theta_E still enters unfiltered (synchronism kept).\n * - On activation (gate rising edge) the tracker ARMs to the current\n *   command, so the SVPWM -> sync handoff is phase/magnitude continuous.\n * - N changes require the new value to persist (NChangeT > NHoldMs) to stop\n *   pulse-count chatter re-slotting the pattern during transients.\n *\n * Phase references are cos (SVPWM's phase A follows valpha = |V|*cos(phi);\n * using sin rotated the vector 90 deg into the d-axis and blew up the\n * bench).\n *\n * Contract: ModeId-gated, holds 50% neutral otherwise; vdc < 1 V -> 50%. */\n\nconst float vdc = V_Dc.in(au::volts);\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (!running || !(vdc > 1.0f) || !(F_Elec > 0.01f) || !(Dt > 0.0f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n    Armed = 0.0f;\n} else {\n    const float vd = V_D.in(au::volts);\n    const float vq = V_Q.in(au::volts);\n\n    /* Commanded targets. */\n    const float delta_t = atan2f(vq, vd);\n    float m_t = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);\n    if (m_t > 1.0f) m_t = 1.0f;\n    if (m_t < 0.0f) m_t = 0.0f;\n\n    /* Arm on activation: start exactly on the commanded vector. */\n    if (Armed < 0.5f) {\n        Armed = 1.0f;\n        TrackDelta = delta_t;\n        TrackM = m_t;\n        NChangeT = 0.0f;\n    }\n\n    /* Slew-limit the slow command components (shortest-path for delta). */\n    float dd = delta_t - TrackDelta;\n    const float pi = 3.14159265359f;\n    const float two_pi = 6.28318530718f;\n    if (dd > pi) dd -= two_pi;\n    if (dd < -pi) dd += two_pi;\n    const float d_max = DeltaSlewRps * Dt;\n    TrackDelta += (dd > d_max) ? d_max : ((dd < -d_max) ? -d_max : dd);\n    const float m_max_step = MSlew * Dt;\n    const float dm = m_t - TrackM;\n    TrackM += (dm > m_max_step) ? m_max_step : ((dm < -m_max_step) ? -m_max_step : dm);\n\n    const float ang = Theta_E + TrackDelta;\n    const float g = 1.1547005384f * TrackM;  /* 2/sqrt(3) * m: matches SVPWM\n                                                fundamental in the linear\n                                                region, rails at m ~0.87 */\n\n    /* Pulse number with change-dwell: apply only after the new value has\n     * persisted, so transients cannot chatter the slot pattern. */\n    const float ratio = FAsyncHz / F_Elec;\n    int n_new = 3 * (2 * (int)(ratio / 6.0f) + 1);\n    if (n_new < 3) n_new = 3;\n    if (n_new > 999) n_new = 999;\n    int N = (NState > 0.5f) ? (int)NState : n_new;\n    if (n_new != N) {\n        NChangeT += Dt;\n        if (NChangeT * 1000.0f >= NHoldMs) {\n            N = n_new;\n            NChangeT = 0.0f;\n        }\n    } else {\n        NChangeT = 0.0f;\n    }\n    NState = (float)N;\n    N_Pulses = (float)N;\n\n    const float h = two_pi / (float)N;\n    const float sinc = (h > 1.0e-6f) ? (sinf(0.5f * h) / (0.5f * h)) : 1.0f;\n\n    /* Slot-averaged cosine reference. */\n    auto slotavg = [&](float phase) -> float {\n        const float slot = floorf(phase / h);\n        return cosf((slot + 0.5f) * h) * sinc;\n    };\n\n    auto duty = [](float d) -> float {\n        if (d < 0.0f) return 0.0f;\n        if (d > 100.0f) return 100.0f;\n        return d;\n    };\n\n    Duty_A = duty(50.0f + 50.0f * g * slotavg(ang));\n    Duty_B = duty(50.0f + 50.0f * g * slotavg(ang - 2.09439510239f));\n    Duty_C = duty(50.0f + 50.0f * g * slotavg(ang + 2.09439510239f));\n}\n",
       "constructorCode": "",
       "classHeader": "",
       "classDefinition": ""
@@ -4305,7 +4353,15 @@
       "parameters": {
         "ModeId": "1.0",
         "FAsyncHz": "1000.0",
-        "NState": "0.0"
+        "NState": "0.0",
+        "Dt": "0.0002",
+        "DeltaSlewRps": "1000.0",
+        "MSlew": "5.0",
+        "NHoldMs": "50.0",
+        "NChangeT": "0.0",
+        "TrackDelta": "0.0",
+        "TrackM": "0.0",
+        "Armed": "0.0"
       },
       "position": {
         "x": 0.0,

@@ -133,8 +133,56 @@
       "frame": "scalar",
       "dtype": "f32"
     },
+    "Dt": {
+      "description": "Sample period in seconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "DeltaSlewRps": {
+      "description": "Maximum rate for the commanded phase offset, rad/s.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "MSlew": {
+      "description": "Maximum rate for the commanded modulation index, per second.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "NHoldMs": {
+      "description": "Time a new pulse number must persist before it is applied, milliseconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
     "NState": {
       "description": "Persistent pulse-number state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "NChangeT": {
+      "description": "Persistent pulse-number change timer, seconds (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "TrackDelta": {
+      "description": "Persistent tracked phase offset, radians (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "TrackM": {
+      "description": "Persistent tracked modulation index (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Armed": {
+      "description": "Persistent armed flag (leave at default).",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
