@@ -236,8 +236,13 @@ bool CopySupportFiles(const std::filesystem::path& generatedDir, std::string& er
     std::filesystem::create_directories(rteQuantityDst.parent_path());
     std::filesystem::create_directories(auDst.parent_path());
 
+    // MinGW's copy_file can still fail with "File exists" when overwriting;
+    // remove the destination first for reliability.
+    std::error_code removeEc;
+    std::filesystem::remove(rteQuantityDst, removeEc);
     std::filesystem::copy_file(rteQuantitySrc, rteQuantityDst,
                                std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::remove(auDst, removeEc);
     std::filesystem::copy_file(auSrc, auDst,
                                std::filesystem::copy_options::overwrite_existing);
     return true;
@@ -404,6 +409,10 @@ bool Emitter::Run(const EmitterOptions& options) const {
             } else if (it->is_regular_file()) {
                 logger_.Debug("Copying file: " + relative.string());
                 std::filesystem::create_directories(dest.parent_path());
+                // MinGW's copy_file can still fail with "File exists" when
+                // overwriting; remove the destination first for reliability.
+                std::error_code removeEc;
+                std::filesystem::remove(dest, removeEc);
                 std::filesystem::copy_file(
                     it->path(), dest,
                     std::filesystem::copy_options::overwrite_existing);
