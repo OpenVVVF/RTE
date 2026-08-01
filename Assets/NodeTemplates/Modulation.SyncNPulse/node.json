@@ -1,0 +1,150 @@
+{
+  "id": "Modulation.SyncNPulse",
+  "displayName": "Synchronous N-Pulse Modulation",
+  "defaultName": "SyncMod",
+  "description": "Synchronous switching-state modulation for high fundamental frequencies. Above the mode-switch frequency it emits direct switching states (as 0/100 duties) synchronized to the demanded voltage vector; below it, Active is false so the graph can route async SVPWM duties instead.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "V_Alpha",
+      "description": "Demanded voltage vector, alpha component (from inverse Park).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Beta",
+      "description": "Demanded voltage vector, beta component (from inverse Park).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Dc",
+      "description": "DC-link voltage used to normalize the demanded magnitude.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Omega_Mech",
+      "description": "Mechanical motor speed in revolutions per minute.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Poles",
+      "description": "Motor pole count used to convert mechanical speed to electrical frequency.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Phase A duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_B",
+      "description": "Phase B duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_C",
+      "description": "Phase C duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Active",
+      "description": "True while synchronous mode is engaged (fundamental at or above the switch frequency).",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "F_Elec",
+      "description": "Estimated electrical fundamental frequency in hertz.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "N_Pulses",
+      "description": "Effective pulses per half cycle of the current pattern (1 = six-step).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "FmSwitchHz": {
+      "description": "Electrical frequency at which synchronous mode takes over from SVPWM.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "FAsyncHz": {
+      "description": "Async carrier frequency used to cap the chopping rate when selecting pulse count.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Poles": {
+      "description": "Fallback motor pole count when the Poles input is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "DwellAcc": {
+      "description": "Persistent zero-vector dwell accumulator state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}
