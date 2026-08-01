@@ -9,10 +9,11 @@ HOST = "127.0.0.1"
 PORT = 14608
 RUN_S = float(sys.argv[1]) if len(sys.argv) > 1 else 8.0
 SCENARIO = sys.argv[2] if len(sys.argv) > 2 else "scenarios/ngspice_short.json"
+REALTIME = sys.argv[3] if len(sys.argv) > 3 else "1.0"
 
 proc = subprocess.Popen(
-    ["./build/Debug/host_sim.exe", SCENARIO, "--live", "--realtime", "1.0"]
-    + sys.argv[3:],
+    ["./build/Debug/host_sim.exe", SCENARIO, "--live", "--realtime", REALTIME]
+    + sys.argv[4:],
     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
 )
 
