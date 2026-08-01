@@ -63,6 +63,13 @@ float platform_get_elec_freq_hz(void);
 void platform_pwm_set_carrier_hz(float freq_hz);
 
 /**
+ * @brief Live control-loop period [s] (1 / TIM1 update frequency).  PI
+ * nodes should prefer this over a baked Dt when the carrier is
+ * runtime-variable.
+ */
+float platform_get_control_dt(void);
+
+/**
  * @brief Active modulation mode: 0 = ramp (SVPWM), 1 = N-pulse pattern.
  */
 uint8_t platform_modulation_mode(void);

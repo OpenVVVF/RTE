@@ -303,7 +303,10 @@ void EncoderADC::onDmaComplete() {
             while (err > kPi) err -= 2.0f * kPi;
             while (err < -kPi) err += 2.0f * kPi;
 
-            m_obs_theta += m_obs_omega * dt + k1 * err;
+            /* Euler step of theta' = omega + k1*err, omega' = k2*err.
+             * (The k1 term MUST be scaled by dt: without it the loop
+             * overcorrects ~1/dt x and the speed estimate oscillates.) */
+            m_obs_theta += (m_obs_omega + k1 * err) * dt;
             m_obs_omega += k2 * err * dt;
             while (m_obs_theta >= 2.0f * kPi) m_obs_theta -= 2.0f * kPi;
             while (m_obs_theta < 0.0f) m_obs_theta += 2.0f * kPi;

@@ -84,6 +84,18 @@ void platform_pwm_set_carrier_hz(float freq_hz) {
     PWM_SetFrequency((uint32_t)(freq_hz + 0.5f));
 }
 
+/**
+ * @brief Live control-loop period [s] (1 / TIM1 update frequency).
+ *
+ * PI/integration nodes must use this rather than a baked Dt whenever the
+ * carrier can change at runtime (CarrierAuto), or integral gains drift
+ * with the carrier.
+ */
+float platform_get_control_dt(void) {
+    const float f = PWM_GetUpdateFrequency();
+    return (f > 1.0f) ? 1.0f / f : 0.0f;
+}
+
 /* --------------------------------------------------------------------------
  * Sensor inputs
  * -------------------------------------------------------------------------- */

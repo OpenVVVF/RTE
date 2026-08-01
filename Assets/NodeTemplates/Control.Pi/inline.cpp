@@ -1,8 +1,13 @@
 /* PI with clamping + back-calculation anti-windup.
  * Dimensionless throughout: implicit unit extraction/injection handles any
- * physical-quantity wiring at the binding sites. */
+ * physical-quantity wiring at the binding sites.
+ *
+ * dt comes from the live control rate (platform_get_control_dt) so integral
+ * gain stays correct when the carrier changes at runtime (CarrierAuto);
+ * the Dt parameter is kept for backward compatibility but ignored. */
+const float dt_s = platform_get_control_dt();
 const float error = Setpoint - Measurement;
-Integral += error * Dt;
+Integral += error * dt_s;
 
 float raw_output = Kp * error + Ki * Integral;
 
@@ -21,7 +26,7 @@ if (limited_output < min_limit) limited_output = min_limit;
  * the base-image VectorPIController). */
 if (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {
     const float excess = raw_output - limited_output;
-    Integral -= excess * Dt * AwGain / (Kp * Ki);
+    Integral -= excess * dt_s * AwGain / (Kp * Ki);
 }
 
 Output = limited_output;
