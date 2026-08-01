@@ -3,8 +3,10 @@
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/PWM/ModulationSwitch.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -41,6 +43,14 @@ float platform_get_ol_freq_hz(void) {
 float platform_get_elec_freq_hz(void) {
     if (Inverter::shepwmIsRunning()) {
         return Inverter::shepwmFrequencyHz();
+    }
+    /* Controller-agnostic: encoder mechanical speed x pole pairs.  Works
+     * for the graph FOC path, legacy FOC, and open-loop alike. */
+    const Inverter::MotorCalibration& cal = Inverter::MotorCalibration::instance();
+    if (cal.valid && cal.pole_count > 0.0f) {
+        const float fe = Inverter::encoderADC().rpmMech() *
+                         (cal.pole_count * 0.5f) / 60.0f;
+        return fe < 0.0f ? -fe : fe;
     }
     if (Inverter::focControlManager().isRunning()) {
         const float w = Inverter::focControlManager().electricalSpeedRadPerSec();

@@ -79,7 +79,7 @@ public:
       : CommandInterface("shestart", "Start pattern output: shestart <freq> <duty_or_mi> [pulses_per_qtr]",
             {ArgSpec{"freq_hz", "Hz", 0.1f, 1000.0f, 0.0f, true, ArgSpec::FLOAT},
              ArgSpec{"duty_or_mi", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT},
-             ArgSpec{"pulses", "/qtr", 0.0f, 64.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
+             ArgSpec{"pulses", "/qtr", 0.0f, 128.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         if (args[2].present) {
@@ -128,7 +128,7 @@ public:
       : CommandInterface("sheset", "Set pattern: sheset <freq> <duty_or_mi> [pulses_per_qtr] (swaps at wrap)",
             {ArgSpec{"freq_hz", "Hz", 0.1f, 1000.0f, 0.0f, true, ArgSpec::FLOAT},
              ArgSpec{"duty_or_mi", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT},
-             ArgSpec{"pulses", "/qtr", 0.0f, 64.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
+             ArgSpec{"pulses", "/qtr", 0.0f, 128.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         if (!Inverter::shepwmIsRunning()) {
@@ -190,7 +190,7 @@ public:
     HandoffCommand()
       : CommandInterface("handoff", "Live handoff: 'handoff 1 <pulses> <duty>' to pattern, 'handoff 0' back to ramp",
             {ArgSpec{"to_pattern", "0/1", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT},
-             ArgSpec{"pulses", "/qtr", 0.0f, 64.0f, 0.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"pulses", "/qtr", 0.0f, 128.0f, 0.0f, false, ArgSpec::FLOAT},
              ArgSpec{"duty", "", 0.0f, 1.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {

@@ -35,7 +35,7 @@ constexpr uint32_t kAnglesPerQuarter = shetab::kAnglesPerQuarter;
 
 /* Runtime N-pulse mode: per quarter, `npq` cells each hold one centered
  * pulse (2 angles per cell).  Capped so the ping-pong buffers stay small. */
-constexpr uint32_t kMaxPulsesPerQuarter = 64;
+constexpr uint32_t kMaxPulsesPerQuarter = 128;
 constexpr uint32_t kMaxAngles = 2U * kMaxPulsesPerQuarter;
 
 /* events/phase = 4*n_angles + 2 half-cycle boundary edges; 3 phases. */

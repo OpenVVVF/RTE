@@ -3585,7 +3585,7 @@
    "parameters": {
     "enter_hz": "4.0",
     "exit_hz": "3.0",
-    "pulses": "9.0",
+    "pulses": "101.0",
     "duty": "0.85"
    },
    "position": {

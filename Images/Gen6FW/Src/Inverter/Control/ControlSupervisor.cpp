@@ -115,6 +115,15 @@ void ControlSupervisor::stop() {
 
     m_state = State::Stopping;
 
+    /* If the pattern modulator owns the slot (handoff mode), release it
+     * first so the outputs actually go quiet. */
+    if (Inverter::shepwmIsRunning()) {
+        Inverter::shepwmModulator().exit();
+        if (Inverter::activeModulator() == &Inverter::shepwmModulator()) {
+            Inverter::setActiveModulator(nullptr);
+        }
+    }
+
     /* Zero generated outputs before stopping the ISR. */
     app::TimIsrStop(appState.tim_isr);
 
