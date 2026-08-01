@@ -1,0 +1,143 @@
+{
+  "id": "Modulation.SyncNPulse",
+  "displayName": "Synchronous N-Pulse (Sampled Sine)",
+  "defaultName": "SyncMod",
+  "description": "Synchronous sampled-sine PWM: rotor-angle-locked sinusoidal duties, slot-averaged over 2*pi/N with N stepping down as fundamental rises. Carrier chopping is retained so current ripple stays carrier-bounded at any speed. The ladder's intermediate sync mode.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "V_D",
+      "description": "Commanded d-axis voltage (from the current loop, smooth).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Q",
+      "description": "Commanded q-axis voltage (from the current loop, smooth).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Theta_E",
+      "description": "Rotor electrical angle in radians (encoder-referenced).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Dc",
+      "description": "DC-link voltage for magnitude normalization.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "F_Elec",
+      "description": "Electrical fundamental frequency in hertz (for pulse-number selection).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeFrom",
+      "description": "Sequencer mode being left / current mode.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeTo",
+      "description": "Sequencer incoming mode / current mode.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Phase A duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_B",
+      "description": "Phase B duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_C",
+      "description": "Phase C duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "N_Pulses",
+      "description": "Current synchronous pulse number (odd multiple of 3).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "ModeId": {
+      "description": "This modulator's slot in the sequencer ladder.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "FAsyncHz": {
+      "description": "Chopping-rate budget in hertz; N is the largest odd multiple of 3 with N * f_e within it.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "NState": {
+      "description": "Persistent pulse-number state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

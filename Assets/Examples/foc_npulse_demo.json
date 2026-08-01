@@ -650,39 +650,6 @@
     },
     {
       "from": {
-        "nodeId": "VdcSense",
-        "portName": "V_Dc"
-      },
-      "id": "c_ss_vdc",
-      "to": {
-        "nodeId": "SixStep",
-        "portName": "V_Dc"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "ModSeq",
-        "portName": "ModeFrom"
-      },
-      "id": "c_ss_from",
-      "to": {
-        "nodeId": "SixStep",
-        "portName": "ModeFrom"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "ModSeq",
-        "portName": "ModeTo"
-      },
-      "id": "c_ss_to",
-      "to": {
-        "nodeId": "SixStep",
-        "portName": "ModeTo"
-      }
-    },
-    {
-      "from": {
         "nodeId": "Svpwm",
         "portName": "Duty_A"
       },
@@ -712,39 +679,6 @@
       "to": {
         "nodeId": "ModRoute",
         "portName": "A_C"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SixStep",
-        "portName": "Duty_A"
-      },
-      "id": "c_rt_b_a",
-      "to": {
-        "nodeId": "ModRoute",
-        "portName": "B_A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SixStep",
-        "portName": "Duty_B"
-      },
-      "id": "c_rt_b_b",
-      "to": {
-        "nodeId": "ModRoute",
-        "portName": "B_B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SixStep",
-        "portName": "Duty_C"
-      },
-      "id": "c_rt_b_c",
-      "to": {
-        "nodeId": "ModRoute",
-        "portName": "B_C"
       }
     },
     {
@@ -829,9 +763,9 @@
         "nodeId": "PiD",
         "portName": "Output"
       },
-      "id": "c_ss_vd",
+      "id": "c_sy_vd",
       "to": {
-        "nodeId": "SixStep",
+        "nodeId": "SyncMod",
         "portName": "V_D"
       }
     },
@@ -840,9 +774,9 @@
         "nodeId": "PiQ",
         "portName": "Output"
       },
-      "id": "c_ss_vq",
+      "id": "c_sy_vq",
       "to": {
-        "nodeId": "SixStep",
+        "nodeId": "SyncMod",
         "portName": "V_Q"
       }
     },
@@ -851,10 +785,98 @@
         "nodeId": "ElecAngle",
         "portName": "ThetaElec"
       },
-      "id": "c_ss_theta",
+      "id": "c_sy_theta",
       "to": {
-        "nodeId": "SixStep",
+        "nodeId": "SyncMod",
         "portName": "Theta_E"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "V_Dc"
+      },
+      "id": "c_sy_vdc",
+      "to": {
+        "nodeId": "SyncMod",
+        "portName": "V_Dc"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ElecFreq",
+        "portName": "F_Elec"
+      },
+      "id": "c_sy_felec",
+      "to": {
+        "nodeId": "SyncMod",
+        "portName": "F_Elec"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModSeq",
+        "portName": "ModeFrom"
+      },
+      "id": "c_sy_from",
+      "to": {
+        "nodeId": "SyncMod",
+        "portName": "ModeFrom"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModSeq",
+        "portName": "ModeTo"
+      },
+      "id": "c_sy_to",
+      "to": {
+        "nodeId": "SyncMod",
+        "portName": "ModeTo"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SyncMod",
+        "portName": "Duty_A"
+      },
+      "id": "c_rt_b_a",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "B_A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SyncMod",
+        "portName": "Duty_B"
+      },
+      "id": "c_rt_b_b",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "B_B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SyncMod",
+        "portName": "Duty_C"
+      },
+      "id": "c_rt_b_c",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "B_C"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SyncMod",
+        "portName": "N_Pulses"
+      },
+      "id": "c_log_syncn",
+      "to": {
+        "nodeId": "LogSyncN",
+        "portName": "Value"
       }
     }
   ],
@@ -3286,10 +3308,10 @@
       "classDefinition": ""
     },
     {
-      "id": "Modulation.SixStep",
-      "displayName": "Six-Step (Trapezoid)",
-      "defaultName": "SixStep",
-      "description": "PWM'd six-step (120 deg trapezoid) modulator for the ladder's top mode. Pattern is locked to the rotor electrical angle; the current loop enters only as magnitude and a smooth dq phase offset. Emits duties only when gated active by the sequencer.",
+      "id": "Modulation.SyncNPulse",
+      "displayName": "Synchronous N-Pulse (Sampled Sine)",
+      "defaultName": "SyncMod",
+      "description": "Synchronous sampled-sine PWM: rotor-angle-locked sinusoidal duties, slot-averaged over 2*pi/N with N stepping down as fundamental rises. Carrier chopping is retained so current ripple stays carrier-bounded at any speed. The ladder's intermediate sync mode.",
       "maxInstances": 1,
       "isEntryPoint": false,
       "domain": "tim_isr",
@@ -3330,6 +3352,16 @@
           "direction": "input",
           "type": {
             "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "F_Elec",
+          "description": "Electrical fundamental frequency in hertz (for pulse-number selection).",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
             "frame": "scalar",
             "dtype": "f32"
           }
@@ -3385,17 +3417,39 @@
             "frame": "scalar",
             "dtype": "f32"
           }
+        },
+        {
+          "name": "N_Pulses",
+          "description": "Current synchronous pulse number (odd multiple of 3).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
         }
       ],
       "parameterTypes": {
         "ModeId": {
-          "description": "This modulator's slot in the sequencer ladder (six-step = 1).",
+          "description": "This modulator's slot in the sequencer ladder.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "FAsyncHz": {
+          "description": "Chopping-rate budget in hertz; N is the largest odd multiple of 3 with N * f_e within it.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "NState": {
+          "description": "Persistent pulse-number state (leave at default).",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         }
       },
-      "inlineCode": "/* Six-step modulator (railway ladder top mode), PWM'd 120 deg trapezoid.\n *\n * Synchronous modulation rule: the pattern is locked to the ROTOR angle\n * (Theta_E from the encoder, rock stable).  The current loop enters only as\n *   - magnitude  m = |V| / (Vdc/sqrt(3)), and\n *   - a smooth phase offset delta = atan2(V_Q, V_D) computed in the dq\n *     frame where commands are quiet DC quantities.\n * Never reference a synchronous pattern to atan2 of the instantaneous\n * alpha/beta vector: at low |V| that angle is switching noise, and a\n * nonlinear pattern turns angle noise into voltage kicks (bench-verified:\n * 250 A limit cycle on a 10 mohm motor).\n *\n * Gain match to SVPWM: a 120 deg trapezoid's fundamental is (2*sqrt(3)/pi)\n * times its leg amplitude, so the duty scale is (pi/3) * m.  At m = 1 the\n * duties rail and the pattern naturally becomes full square wave.\n *\n * Contract: ModeId-gated (runs only when ModeId == ModeFrom || ModeId ==\n * ModeTo), holds 50% neutral otherwise; vdc < 1 V -> 50%. */\n\nconst float vdc = V_Dc.in(au::volts);\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (!running || !(vdc > 1.0f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n} else {\n    const float vd = V_D.in(au::volts);\n    const float vq = V_Q.in(au::volts);\n\n    /* Rotor-locked pattern angle: theta_e + smooth dq phase offset. */\n    const float ang = Theta_E + atan2f(vq, vd);\n\n    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3)),\n     * scaled by pi/3 so the trapezoid fundamental equals the commanded\n     * fundamental at the ladder boundary. */\n    float m = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);\n    if (m > 1.0f) m = 1.0f;\n    if (m < 0.0f) m = 0.0f;\n    const float s = 1.0471975512f * m;  /* pi/3 * m */\n\n    /* 120-degree trapezoidal references in [-1, 1]: +1 plateau for 120 deg,\n     * linear transition over the 60-degree sector boundaries. */\n    auto trap = [](float x) -> float {\n        const float two_pi = 6.28318530718f;\n        x = fmodf(x, two_pi);\n        if (x < 0.0f) x += two_pi;\n        const float deg60 = 1.04719755120f;\n        if (x < deg60) return 1.0f;\n        if (x < 2.0f * deg60) return 1.0f - 2.0f * (x - deg60) / deg60;\n        if (x < 4.0f * deg60) return -1.0f;\n        if (x < 5.0f * deg60) return -1.0f + 2.0f * (x - 4.0f * deg60) / deg60;\n        return 1.0f;\n    };\n\n    auto duty = [](float d) -> float {\n        if (d < 0.0f) return 0.0f;\n        if (d > 100.0f) return 100.0f;\n        return d;\n    };\n\n    Duty_A = duty(50.0f + 50.0f * s * trap(ang));\n    Duty_B = duty(50.0f + 50.0f * s * trap(ang - 2.09439510239f));\n    Duty_C = duty(50.0f + 50.0f * s * trap(ang + 2.09439510239f));\n}\n",
+      "inlineCode": "/* Synchronous n-pulse PWM (synchronized sampled sine) - the ladder's\n * intermediate sync mode.\n *\n * The pattern is locked to the rotor angle: duties follow a sine referenced\n * to Theta_E + atan2(V_Q, V_D), slot-averaged over 2*pi/N slots, with N\n * chosen from the chopping-rate budget (largest odd multiple of 3 with\n * N*f_e <= FAsyncHz).  The timer keeps chopping at the async carrier, so\n * phase current ripple stays carrier-bounded at ANY fundamental; only the\n * average staircase is rotor-locked.  At high N (low f_e) this converges to\n * async SVPWM; as f_e rises N steps down and switching becomes visibly\n * synchronous.\n *\n * NOT six-step: full-rail plateaus on a low-L motor at low f_e let phase\n * current free-run between edges (bench: 250 A at 20 Hz).  Square-wave SHE\n * patterns belong to the top of the ladder (voltage ceiling), later.\n *\n * Contract: ModeId-gated, holds 50% neutral otherwise; vdc < 1 V -> 50%. */\n\nconst float vdc = V_Dc.in(au::volts);\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (!running || !(vdc > 1.0f) || !(F_Elec > 0.01f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n} else {\n    const float vd = V_D.in(au::volts);\n    const float vq = V_Q.in(au::volts);\n\n    /* Rotor-locked reference angle: theta_e + smooth dq phase offset. */\n    const float ang = Theta_E + atan2f(vq, vd);\n\n    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3));\n     * the 2/sqrt(3) factor makes the phase fundamental match SVPWM's. */\n    float m = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);\n    if (m > 1.0f) m = 1.0f;\n    if (m < 0.0f) m = 0.0f;\n    const float g = 1.1547005384f * m;  /* 2/sqrt(3) * m */\n\n    /* Pulse number: largest odd multiple of 3 within the chopping budget.\n     * Steps up freely, steps down with margin (hysteresis). */\n    const float ratio = FAsyncHz / F_Elec;\n    int n_new = 3 * (2 * (int)(ratio / 6.0f) + 1);\n    if (n_new < 3) n_new = 3;\n    if (n_new > 999) n_new = 999;\n    int N = (NState > 0.5f) ? (int)NState : n_new;\n    if (n_new > N) N = n_new;\n    else if (n_new < N - 6) N = n_new;\n    NState = (float)N;\n    N_Pulses = (float)N;\n\n    const float two_pi = 6.28318530718f;\n    const float h = two_pi / (float)N;\n    const float sinc = (h > 1.0e-6f) ? (sinf(0.5f * h) / (0.5f * h)) : 1.0f;\n\n    /* Slot-averaged sine: average value of the reference over each slot,\n     * so the held duty matches the slot's mean (small staircase error). */\n    auto slotavg = [&](float phase) -> float {\n        const float slot = floorf(phase / h);\n        return sinf((slot + 0.5f) * h) * sinc;\n    };\n\n    auto duty = [](float d) -> float {\n        if (d < 0.0f) return 0.0f;\n        if (d > 100.0f) return 100.0f;\n        return d;\n    };\n\n    Duty_A = duty(50.0f + 50.0f * g * slotavg(ang));\n    Duty_B = duty(50.0f + 50.0f * g * slotavg(ang - 2.09439510239f));\n    Duty_C = duty(50.0f + 50.0f * g * slotavg(ang + 2.09439510239f));\n}\n",
       "constructorCode": "",
       "classHeader": "",
       "classDefinition": ""
@@ -4197,19 +4251,6 @@
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "SixStep",
-      "parameters": {
-        "ModeId": "1.0"
-      },
-      "position": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "type": "Modulation.SixStep"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
       "id": "ModRoute",
       "parameters": {},
       "position": {
@@ -4250,6 +4291,34 @@
       "id": "LogFElec",
       "parameters": {
         "Key": "f_elec"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "SyncMod",
+      "parameters": {
+        "ModeId": "1.0",
+        "FAsyncHz": "1000.0",
+        "NState": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Modulation.SyncNPulse"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogSyncN",
+      "parameters": {
+        "Key": "sync_n_pulses"
       },
       "position": {
         "x": 0.0,

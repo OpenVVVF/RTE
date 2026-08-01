@@ -1,14 +1,17 @@
-/* Six-step modulator (railway ladder top mode), PWM'd 120 deg trapezoid.
+/* Six-step modulator (railway ladder TOP mode), PWM'd 120 deg trapezoid.
+ *
+ * WARNING: six-step belongs at the voltage ceiling only.  Bench-verified
+ * (twice): at 20 Hz fundamental on a 10 mohm / low-L motor it explodes to
+ * a 250 A limit cycle within milliseconds - full-rail plateaus with tiny
+ * back-EMF let phase current free-run between PI corrections.  Do not
+ * enable this mode until the overmodulation stage exists and the bench can
+ * reach frequencies where sectors are short and back-EMF dominates.
  *
  * Synchronous modulation rule: the pattern is locked to the ROTOR angle
  * (Theta_E from the encoder, rock stable).  The current loop enters only as
  *   - magnitude  m = |V| / (Vdc/sqrt(3)), and
  *   - a smooth phase offset delta = atan2(V_Q, V_D) computed in the dq
  *     frame where commands are quiet DC quantities.
- * Never reference a synchronous pattern to atan2 of the instantaneous
- * alpha/beta vector: at low |V| that angle is switching noise, and a
- * nonlinear pattern turns angle noise into voltage kicks (bench-verified:
- * 250 A limit cycle on a 10 mohm motor).
  *
  * Gain match to SVPWM: a 120 deg trapezoid's fundamental is (2*sqrt(3)/pi)
  * times its leg amplitude, so the duty scale is (pi/3) * m.  At m = 1 the
