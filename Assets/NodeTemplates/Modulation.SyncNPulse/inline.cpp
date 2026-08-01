@@ -53,11 +53,15 @@ if (!running || !(vdc > 1.0f) || !(F_Elec > 0.01f)) {
     const float h = two_pi / (float)N;
     const float sinc = (h > 1.0e-6f) ? (sinf(0.5f * h) / (0.5f * h)) : 1.0f;
 
-    /* Slot-averaged sine: average value of the reference over each slot,
-     * so the held duty matches the slot's mean (small staircase error). */
+    /* Slot-averaged reference: average value of the phase reference over
+     * each slot, so the held duty matches the slot's mean.  The reference
+     * is cos (NOT sin): SVPWM's phase A follows valpha = |V|*cos(phi), so
+     * phase A must peak when the vector points at +alpha.  Using sin here
+     * rotated the applied vector 90 deg into the d-axis and blew up the
+     * bench (id > 400 A, bus collapse). */
     auto slotavg = [&](float phase) -> float {
         const float slot = floorf(phase / h);
-        return sinf((slot + 0.5f) * h) * sinc;
+        return cosf((slot + 0.5f) * h) * sinc;
     };
 
     auto duty = [](float d) -> float {
