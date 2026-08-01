@@ -62,9 +62,6 @@ if (!running || !(vdc > 1.0f) || !(F_Elec > 0.01f) || !(Dt > 0.0f)) {
     TrackM += (dm > m_max_step) ? m_max_step : ((dm < -m_max_step) ? -m_max_step : dm);
 
     const float ang = Theta_E + TrackDelta;
-    const float g = 1.1547005384f * TrackM;  /* 2/sqrt(3) * m: matches SVPWM
-                                                fundamental in the linear
-                                                region, rails at m ~0.87 */
 
     /* Pulse number with change-dwell: apply only after the new value has
      * persisted, so transients cannot chatter the slot pattern. */
@@ -100,7 +97,20 @@ if (!running || !(vdc > 1.0f) || !(F_Elec > 0.01f) || !(Dt > 0.0f)) {
         return d;
     };
 
-    Duty_A = duty(50.0f + 50.0f * g * slotavg(ang));
-    Duty_B = duty(50.0f + 50.0f * g * slotavg(ang - 2.09439510239f));
-    Duty_C = duty(50.0f + 50.0f * g * slotavg(ang + 2.09439510239f));
+    /* Phase references in per-unit-of-vdc, then the SAME min-max
+     * zero-sequence injection as Transforms.Svpwm.  Shape-matching SVPWM at
+     * the ladder boundary is not optional: blending an injected waveform
+     * against a plain clamped cosine differs by ~10% duty at m~0.9, which
+     * is ~3 V of error for the whole crossfade and kicked the bench 370 A. */
+    const float inv_sqrt3 = 0.57735026919f;
+    const float ra = TrackM * inv_sqrt3 * slotavg(ang);
+    const float rb = TrackM * inv_sqrt3 * slotavg(ang - 2.09439510239f);
+    const float rc = TrackM * inv_sqrt3 * slotavg(ang + 2.09439510239f);
+    const float v_min = fminf(ra, fminf(rb, rc));
+    const float v_max = fmaxf(ra, fmaxf(rb, rc));
+    const float v_offset = 0.5f * (v_min + v_max);
+
+    Duty_A = duty(50.0f + 50.0f * (ra - v_offset));
+    Duty_B = duty(50.0f + 50.0f * (rb - v_offset));
+    Duty_C = duty(50.0f + 50.0f * (rc - v_offset));
 }
