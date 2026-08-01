@@ -1,0 +1,37 @@
+{
+  "id": "Actuators.CarrierAuto",
+  "displayName": "Carrier Auto-Schedule",
+  "defaultName": "CarrierAuto",
+  "description": "Linearly schedules the PWM carrier frequency from electrical frequency: carrier = fsw_lo at fe_lo, fsw_hi at fe_hi (clamped, linear between). Async-modulation experiment; the control loop stays closed throughout.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "app_loop",
+  "inputPorts": [],
+  "outputPorts": [],
+  "parameterTypes": {
+    "fe_lo": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Electrical frequency at which carrier = fsw_lo (Hz)."
+    },
+    "fe_hi": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Electrical frequency at which carrier = fsw_hi (Hz)."
+    },
+    "fsw_lo": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Carrier frequency at/below fe_lo (Hz)."
+    },
+    "fsw_hi": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Carrier frequency at/above fe_hi (Hz)."
+    }
+  }
+}

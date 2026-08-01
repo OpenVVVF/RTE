@@ -106,10 +106,14 @@ void PWM_SetFrequency(uint32_t freq_hz)
     pwm_switching_freq_hz = (float)TIM1_CLOCK_HZ /
                             (2.0f * (float)(arr + 1U) * (float)(psc + 1U));
 
-    /* Default to one update event per switching period (RCR=1), matching the
-     * open-loop SPWM convention.  FOC mode will override this when enabled. */
-    TIM1->RCR = 1U;
-    pwm_update_freq_hz = pwm_switching_freq_hz;
+    /* One update event per switching period (RCR=1) in open-loop, dual-update
+     * (RCR=0) when a closed-loop control hook is registered.  Previously this
+     * always forced RCR=1, silently halving the FOC rate on a live carrier
+     * change. */
+    const bool closed_loop = (pwm_control_hook != nullptr);
+    TIM1->RCR = closed_loop ? 0U : 1U;
+    pwm_update_freq_hz = closed_loop ? 2.0f * pwm_switching_freq_hz
+                                     : pwm_switching_freq_hz;
 }
 
 void PWM_SetDeadTime(uint32_t deadtime_ns)

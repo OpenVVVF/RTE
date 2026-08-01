@@ -2766,6 +2766,47 @@
      "quantity": "dimensionless"
     }
    }
+  },
+  {
+   "classDefinition": "",
+   "classHeader": "",
+   "constructorCode": "",
+   "defaultName": "CarrierAuto",
+   "description": "Linearly schedules the PWM carrier frequency from electrical frequency: carrier = fsw_lo at fe_lo, fsw_hi at fe_hi (clamped, linear between). Async-modulation experiment; the control loop stays closed throughout.",
+   "displayName": "Carrier Auto-Schedule",
+   "domain": "app_loop",
+   "id": "Actuators.CarrierAuto",
+   "inlineCode": "/* Async carrier schedule: carrier = lerp(fsw_lo, fsw_hi) across [fe_lo, fe_hi],\n * clamped.  The platform call deadbands small changes, so this can run every\n * app_loop step without churning the timer. */\nconst float fe = platform_get_elec_freq_hz();\nfloat x = (fe - fe_lo) / (fe_hi - fe_lo);\nif (x < 0.0f) x = 0.0f;\nif (x > 1.0f) x = 1.0f;\nplatform_pwm_set_carrier_hz(fsw_lo + x * (fsw_hi - fsw_lo));\n",
+   "inputPorts": [],
+   "isEntryPoint": false,
+   "maxInstances": 1,
+   "outputPorts": [],
+   "parameterTypes": {
+    "fe_lo": {
+     "description": "Electrical frequency at which carrier = fsw_lo (Hz).",
+     "dtype": "f32",
+     "frame": "scalar",
+     "quantity": "dimensionless"
+    },
+    "fe_hi": {
+     "description": "Electrical frequency at which carrier = fsw_hi (Hz).",
+     "dtype": "f32",
+     "frame": "scalar",
+     "quantity": "dimensionless"
+    },
+    "fsw_lo": {
+     "description": "Carrier frequency at/below fe_lo (Hz).",
+     "dtype": "f32",
+     "frame": "scalar",
+     "quantity": "dimensionless"
+    },
+    "fsw_hi": {
+     "description": "Carrier frequency at/above fe_hi (Hz).",
+     "dtype": "f32",
+     "frame": "scalar",
+     "quantity": "dimensionless"
+    }
+   }
   }
  ],
  "nodes": [
@@ -3593,6 +3634,22 @@
     "y": 1500.0
    },
    "type": "Actuators.ModulationAuto"
+  },
+  {
+   "displayName": "",
+   "domain": "app_loop",
+   "id": "CarrierAuto",
+   "parameters": {
+    "fe_lo": "0.0",
+    "fe_hi": "5.0",
+    "fsw_lo": "5000.0",
+    "fsw_hi": "2000.0"
+   },
+   "position": {
+    "x": 760.0,
+    "y": 1620.0
+   },
+   "type": "Actuators.CarrierAuto"
   }
  ]
 }

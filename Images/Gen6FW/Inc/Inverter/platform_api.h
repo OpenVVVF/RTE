@@ -54,6 +54,15 @@ float platform_get_ol_freq_hz(void);
 float platform_get_elec_freq_hz(void);
 
 /**
+ * @brief Request a PWM carrier (switching) frequency change [Hz].
+ *
+ * Async-modulation knob: safe while running (ARR preload; the driver keeps
+ * RCR consistent with the active control mode).  Changes smaller than 5 Hz
+ * are ignored to avoid prescaler churn from a continuously-lerped request.
+ */
+void platform_pwm_set_carrier_hz(float freq_hz);
+
+/**
  * @brief Active modulation mode: 0 = ramp (SVPWM), 1 = N-pulse pattern.
  */
 uint8_t platform_modulation_mode(void);

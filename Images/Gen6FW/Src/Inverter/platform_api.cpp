@@ -41,16 +41,18 @@ float platform_get_ol_freq_hz(void) {
 }
 
 float platform_get_elec_freq_hz(void) {
-    if (Inverter::shepwmIsRunning()) {
-        return Inverter::shepwmFrequencyHz();
-    }
-    /* Controller-agnostic: encoder mechanical speed x pole pairs.  Works
-     * for the graph FOC path, legacy FOC, and open-loop alike. */
+    /* Controller-agnostic: encoder mechanical speed x pole pairs.  Works for
+     * the graph FOC path, legacy FOC, open-loop — and in pattern mode it is
+     * what lets a supervisor SEE a stall (rotor stops, fe collapses) and
+     * hand back, instead of reading the pattern's own frozen frequency. */
     const Inverter::MotorCalibration& cal = Inverter::MotorCalibration::instance();
     if (cal.valid && cal.pole_count > 0.0f) {
         const float fe = Inverter::encoderADC().rpmMech() *
                          (cal.pole_count * 0.5f) / 60.0f;
         return fe < 0.0f ? -fe : fe;
+    }
+    if (Inverter::shepwmIsRunning()) {
+        return Inverter::shepwmFrequencyHz();
     }
     if (Inverter::focControlManager().isRunning()) {
         const float w = Inverter::focControlManager().electricalSpeedRadPerSec();
@@ -69,6 +71,17 @@ bool platform_modulation_to_pattern(uint32_t pulses_per_quarter, float duty) {
 
 bool platform_modulation_to_ramp(void) {
     return Inverter::modulationToRamp();
+}
+
+void platform_pwm_set_carrier_hz(float freq_hz) {
+    if (freq_hz < 500.0f || freq_hz > 20000.0f) {
+        return;
+    }
+    const float cur = PWM_GetFrequency();
+    if (freq_hz > cur - 5.0f && freq_hz < cur + 5.0f) {
+        return;   /* deadband: ignore lerped churn */
+    }
+    PWM_SetFrequency((uint32_t)(freq_hz + 0.5f));
 }
 
 /* --------------------------------------------------------------------------
