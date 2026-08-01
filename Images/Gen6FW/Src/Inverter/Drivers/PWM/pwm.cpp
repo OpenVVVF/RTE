@@ -11,6 +11,7 @@
 #include "tim.h"
 #include "Inverter/AppState.h"
 #include "Inverter/LoopStats.h"
+#include "Inverter/Drivers/PWM/PatternModulator.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
 #include <stdbool.h>
@@ -328,6 +329,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
      * PWM duties.  The example FOC/SPWM code below is reference only; it is
      * superseded once the graph contains nodes assigned to the tim_isr domain. */
     // RTE_EMIT: tim_isr step
+
+    /* Pattern modulator (direct switching-state / SHE): refresh edge
+     * scheduling with the control step's latest command.  No-op unless
+     * pattern mode is enabled. */
+    Inverter::patternModulator().onUpdateIsr();
 
     if (foc_active) {
         FocControlManager_OnPwmPeriod();

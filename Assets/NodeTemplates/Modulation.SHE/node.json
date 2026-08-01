@@ -1,0 +1,153 @@
+{
+  "id": "Modulation.SHE",
+  "displayName": "SHE Pattern (Direct States)",
+  "defaultName": "She",
+  "description": "Direct switching-state SHE modulation via the base-image PatternModulator: edges scheduled at exact SHE table angles on TIM1, not duty cycles. Pushes the commanded m/phase/angle to the driver and enables pattern mode when gated active by the sequencer.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "V_D",
+      "description": "Commanded d-axis voltage (from the current loop, smooth).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Q",
+      "description": "Commanded q-axis voltage (from the current loop, smooth).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Dc",
+      "description": "DC-link voltage for magnitude normalization.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Theta_E",
+      "description": "Rotor electrical angle in radians (encoder-referenced).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "F_Elec",
+      "description": "Electrical fundamental frequency in hertz.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Dir",
+      "description": "Rotation direction (+1 forward, -1 reverse); pattern engine runs forward only.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeFrom",
+      "description": "Sequencer mode being left / current mode.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeTo",
+      "description": "Sequencer incoming mode / current mode.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Dummy neutral duty (50%); the pattern driver owns the pins when this mode is active.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_B",
+      "description": "Dummy neutral duty (50%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_C",
+      "description": "Dummy neutral duty (50%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "PatternOn",
+      "description": "1 while the pattern modulator owns TIM1 (telemetry).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "ModeId": {
+      "description": "This modulator's slot in the sequencer ladder (SHE = 2).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "NPulses": {
+      "description": "SHE pulse number per quarter wave (v1: 5).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Armed": {
+      "description": "Persistent armed flag (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

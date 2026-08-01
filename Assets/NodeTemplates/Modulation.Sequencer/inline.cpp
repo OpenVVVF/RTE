@@ -1,16 +1,21 @@
 /* Railway-style modulation sequencer (mode ladder + boundary table).
  *
- * v1 ladder: 0 = carrier (SVPWM), 1 = six-step.  The ladder is data: each
- * boundary has an enter threshold, an exit threshold (hysteresis), a minimum
- * dwell, and a transition type (TransMs == 0: hard phase-locked switch;
- * TransMs > 0: timed linear crossfade).  Extending the ladder (sync-15/12/9/
- * 7/5/3, overmodulation, ...) adds boundary params, not new logic.
+ * v2 ladder: 0 = async carrier (SVPWM), 1 = synchronous sampled PWM,
+ * 2 = direct-state SHE (PatternModulator).  The ladder is data: each
+ * boundary has an enter threshold, an exit threshold (hysteresis), a
+ * minimum dwell, and a transition type.  Extending the ladder adds
+ * boundary params, not new logic.
  *
- * Continuity at the switch is the modulators' job (gain/phase-matched arm),
- * not this node's.  This node only decides WHEN and reports From/To/Blend.
+ * Transition mechanics:
+ *  - 0 <-> 1 (both duty-cycle modes): Blend ramps over TransMs (duty
+ *    crossfade; both modulators are shape-matched so it is benign).
+ *  - 1 <-> 2 (duty path <-> pattern hardware): hard switch.  The SHE
+ *    node arms the PatternModulator phase-locked to the commanded vector
+ *    on the ModeTo edge; Blend2 steps in the same step.
  *
- * Blend is the output weight of the higher ladder slot: 0 = mode 0 duties,
- * 1 = mode 1 duties.  Steady state: Blend == CurMode. */
+ * Blend  = weight of mode 1 in the (0,1) pair (0 = SVPWM duties).
+ * Blend2 = weight of mode 2 in the (1,2) pair (routing only; the pattern
+ *          driver owns the pins once enabled). */
 
 const bool en = Enable;
 
@@ -22,12 +27,15 @@ if (!en || !(Dt > 0.0f)) {
     ModeFrom = 0.0f;
     ModeTo = 0.0f;
     Blend = 0.0f;
+    Blend2 = 0.0f;
     Mode = 0.0f;
     TransActive = false;
 } else if (TransT > 0.0f) {
     /* Transition in progress. */
     TransActive = true;
-    if (TransMs > 0.0f) {
+    const bool duty_pair = (ModeFrom < 1.5f && ModeTo < 1.5f);
+    if (TransMs > 0.0f && duty_pair) {
+        /* Duty crossfade on the 0 <-> 1 boundary. */
         const float dir = (ModeTo > ModeFrom) ? 1.0f : -1.0f;
         BlendS += dir * Dt / (TransMs * 0.001f);
         if (BlendS > 1.0f) BlendS = 1.0f;
@@ -36,9 +44,8 @@ if (!en || !(Dt > 0.0f)) {
             TransT = 0.0f;
         }
     } else {
-        /* Hard switch: the incoming modulator armed on the ModeTo edge last
-         * step and is gain/phase-matched; switch now. */
-        BlendS = ModeTo;
+        /* Hard switch (1 <-> 2 boundary, or TransMs == 0). */
+        BlendS = (ModeTo >= 1.0f) ? 1.0f : 0.0f;
         TransT = 0.0f;
     }
     if (TransT == 0.0f) {
@@ -48,13 +55,15 @@ if (!en || !(Dt > 0.0f)) {
         TransActive = false;
     }
     Blend = BlendS;
+    Blend2 = (CurMode >= 1.5f || (TransT > 0.0f && ModeTo >= 1.5f)) ? 1.0f : 0.0f;
     Mode = CurMode;
 } else {
-    /* Steady state: watch the adjacent boundary. */
+    /* Steady state: watch the adjacent boundaries. */
     ModeFrom = CurMode;
     ModeTo = CurMode;
-    BlendS = CurMode;
+    BlendS = (CurMode >= 0.5f) ? 1.0f : 0.0f;
     Blend = BlendS;
+    Blend2 = (CurMode >= 1.5f) ? 1.0f : 0.0f;
     Mode = CurMode;
     TransActive = false;
 
@@ -66,13 +75,33 @@ if (!en || !(Dt > 0.0f)) {
             ModeFrom = 0.0f;
             ModeTo = 1.0f;
         }
+    } else if (CurMode < 1.5f) {
+        if (F_Elec >= FEnter2Hz) {
+            DwellT += Dt;
+            if (DwellT * 1000.0f >= MinDwellMs) {
+                DwellT = 0.0f;
+                TransT = Dt;
+                ModeFrom = 1.0f;
+                ModeTo = 2.0f;
+            }
+        } else if (F_Elec <= FExitHz) {
+            DwellT += Dt;
+            if (DwellT * 1000.0f >= MinDwellMs) {
+                DwellT = 0.0f;
+                TransT = Dt;
+                ModeFrom = 1.0f;
+                ModeTo = 0.0f;
+            }
+        } else {
+            DwellT = 0.0f;
+        }
     } else {
-        DwellT = (F_Elec <= FExitHz) ? (DwellT + Dt) : 0.0f;
+        DwellT = (F_Elec <= FExit2Hz) ? (DwellT + Dt) : 0.0f;
         if (DwellT * 1000.0f >= MinDwellMs) {
             DwellT = 0.0f;
             TransT = Dt;
-            ModeFrom = 1.0f;
-            ModeTo = 0.0f;
+            ModeFrom = 2.0f;
+            ModeTo = 1.0f;
         }
     }
 }

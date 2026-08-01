@@ -252,4 +252,15 @@ void TIM1_UP_IRQHandler(void)
     HAL_TIM_IRQHandler(&htim1);
 }
 
+/**
+  * @brief This function handles TIM1 capture/compare interrupt.
+  *
+  * Used by the PatternModulator (direct switching-state / SHE modulation)
+  * for chained one-edge-ahead compare scheduling.
+  */
+void TIM1_CC_IRQHandler(void)
+{
+    HAL_TIM_IRQHandler(&htim1);
+}
+
 /* USER CODE END 1 */

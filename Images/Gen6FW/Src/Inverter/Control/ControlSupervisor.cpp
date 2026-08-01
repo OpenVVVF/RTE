@@ -3,6 +3,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
+#include "Inverter/Drivers/PWM/PatternModulator.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
@@ -108,6 +109,9 @@ void ControlSupervisor::stop() {
     }
 
     m_state = State::Stopping;
+
+    /* Restore the duty-cycle path if the pattern modulator owns TIM1. */
+    Inverter::patternModulator().disable();
 
     /* Zero generated outputs before stopping the ISR. */
     app::TimIsrStop(appState.tim_isr);

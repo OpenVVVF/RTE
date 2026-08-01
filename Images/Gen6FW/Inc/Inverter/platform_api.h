@@ -33,6 +33,40 @@ void platform_pwm_set(float du, float dv, float dw);
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc);
 
 /* --------------------------------------------------------------------------
+ * Direct switching-state (SHE / n-pulse) pattern modulation
+ *
+ * While pattern mode is enabled, platform_pwm_set*() are no-ops: the
+ * PatternModulator owns TIM1 channels 1-3 with edges scheduled at exact
+ * pattern angles.  The hardware break path is unaffected.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Update the pattern modulation command (call every control step).
+ * @param m            Modulation index vs square wave (0..1.15).
+ * @param delta_rad    Pattern phase offset from rotor angle [rad].
+ * @param theta_e_rad  Rotor electrical angle [rad].
+ * @param omega_e_rad_s Electrical angular velocity [rad/s], signed.
+ * @param n_pulses     SHE pulse number per quarter wave (v1: 5 only).
+ */
+void platform_pattern_set_command(float m, float delta_rad, float theta_e_rad,
+                                  float omega_e_rad_s, int n_pulses);
+
+/**
+ * @brief Switch TIM1 into pattern mode (returns false if unavailable).
+ */
+bool platform_pattern_enable(void);
+
+/**
+ * @brief Restore the duty-cycle PWM path at 50% duties.
+ */
+void platform_pattern_disable(void);
+
+/**
+ * @brief true while the pattern modulator owns TIM1.
+ */
+bool platform_pattern_is_enabled(void);
+
+/* --------------------------------------------------------------------------
  * Sensor inputs
  * -------------------------------------------------------------------------- */
 

@@ -62,7 +62,17 @@
     },
     {
       "name": "Blend",
-      "description": "Output weight of the higher ladder slot (0 = mode 0 duties, 1 = mode 1 duties).",
+      "description": "Output weight of mode 1 in the (0,1) pair (0 = mode 0 duties, 1 = mode 1 duties).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Blend2",
+      "description": "Output weight of mode 2 in the (1,2) pair (routing only; the pattern driver owns the pins when mode 2 is active).",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -93,13 +103,25 @@
   ],
   "parameterTypes": {
     "FEnterHz": {
-      "description": "Frequency to enter the next ladder mode (upshift threshold).",
+      "description": "Frequency to enter ladder mode 1 from mode 0 (upshift threshold).",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "FExitHz": {
-      "description": "Frequency to leave the current ladder mode (downshift threshold, below FEnterHz for hysteresis).",
+      "description": "Frequency to leave ladder mode 1 back to mode 0 (downshift threshold, below FEnterHz for hysteresis).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "FEnter2Hz": {
+      "description": "Frequency to enter ladder mode 2 from mode 1 (upshift threshold).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "FExit2Hz": {
+      "description": "Frequency to leave ladder mode 2 back to mode 1 (downshift threshold, below FEnter2Hz for hysteresis).",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

@@ -1,6 +1,7 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/PatternModulator.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -19,11 +20,37 @@
  * -------------------------------------------------------------------------- */
 
 void platform_pwm_set(float du, float dv, float dw) {
+    /* While the pattern modulator owns TIM1, the duty path must not touch
+     * the compare registers. */
+    if (Inverter::patternModulator().isEnabled()) {
+        return;
+    }
     PWM_SetThreePhaseDuty(du, dv, dw);
 }
 
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
+    if (Inverter::patternModulator().isEnabled()) {
+        return;
+    }
     PWM_SetVoltageVector(valpha, vbeta, vdc);
+}
+
+void platform_pattern_set_command(float m, float delta_rad, float theta_e_rad,
+                                  float omega_e_rad_s, int n_pulses) {
+    Inverter::patternModulator().setCommand(m, delta_rad, theta_e_rad,
+                                            omega_e_rad_s, n_pulses);
+}
+
+bool platform_pattern_enable(void) {
+    return Inverter::patternModulator().enable();
+}
+
+void platform_pattern_disable(void) {
+    Inverter::patternModulator().disable();
+}
+
+bool platform_pattern_is_enabled(void) {
+    return Inverter::patternModulator().isEnabled();
 }
 
 /* --------------------------------------------------------------------------
