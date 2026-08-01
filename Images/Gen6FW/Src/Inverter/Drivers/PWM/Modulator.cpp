@@ -152,6 +152,11 @@ public:
 
     bool isRunning() const { return m_running; }
     float angleRad() const { return m_running ? m_angle : 0.0f; }
+    void setAngle(float angle_rad) {
+        while (angle_rad < 0.0f) angle_rad += kTwoPi;
+        while (angle_rad >= kTwoPi) angle_rad -= kTwoPi;
+        m_angle = angle_rad;
+    }
     uint32_t elecCycles() const { return m_elec_cycles; }
     void resetElecCycles() { m_elec_cycles = 0; }
 
@@ -190,5 +195,6 @@ void spwmSetParams(float fundamental_freq_hz, float modulation_index) {
 }
 float spwmFundamentalFreqHz() { return s_spwm.fundamentalFreqHz(); }
 float spwmModulationIndex() { return s_spwm.modulationIndex(); }
+void spwmSetAngle(float angle_rad) { s_spwm.setAngle(angle_rad); }
 
 } // namespace Inverter

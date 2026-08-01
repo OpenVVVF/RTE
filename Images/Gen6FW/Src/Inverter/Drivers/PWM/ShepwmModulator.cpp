@@ -195,6 +195,17 @@ public:
     uint32_t pulseCount() const { return m_npulses; }
     float duty() const { return m_duty; }
 
+    /* Current pattern angle in the ramp/FOC frame (inverse of enter()'s
+     * offset): TIM5 position + the SHE-frame offset.  0 while stopped. */
+    float angleRad() const {
+        if (!m_running) return 0.0f;
+        const ShePattern& p = s_patternBuf[m_active];
+        float theta = ((float)TIM5->CNT / (float)(p.arr + 1U)) * kTwoPi +
+                      kSheAngleOffsetRad;
+        while (theta >= kTwoPi) theta -= kTwoPi;
+        return theta;
+    }
+
     /* TIM5 update event = electrical-cycle wrap: the only safe mutation point. */
     void onWrap() {
         ++m_wrap_count;
@@ -373,6 +384,7 @@ void shepwmSetPulsePattern(float fe_hz, uint32_t npq, float duty) {
 }
 uint32_t shepwmPulseCount() { return s_shepwm.pulseCount(); }
 float shepwmDuty() { return s_shepwm.duty(); }
+float shepwmAngleRad() { return s_shepwm.angleRad(); }
 
 } // namespace Inverter
 

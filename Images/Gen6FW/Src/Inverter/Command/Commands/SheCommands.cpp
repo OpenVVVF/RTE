@@ -175,10 +175,105 @@ public:
     }
 };
 
+/**
+ * @brief Live modulator handoff at speed (step 4): open-loop ramp <-> pattern.
+ *
+ *   handoff 1 <pulses_per_qtr> <duty>   ramp (SPWM) -> N-pulse pattern
+ *   handoff 0                           pattern -> ramp (same fe/MI)
+ *
+ * Both directions are phase-locked: the ramp angle is captured, the target
+ * modulator is seeded with it (pattern CNT preset / ramp angle seed), and
+ * initial pin levels are matched, so there is no voltage step or gap.
+ * TIM1 owns the pins throughout; MOE, dead time and BKIN stay armed.
+ */
+class HandoffCommand : public CommandInterface {
+public:
+    HandoffCommand()
+      : CommandInterface("handoff", "Live handoff: 'handoff 1 <pulses> <duty>' to pattern, 'handoff 0' back to ramp",
+            {ArgSpec{"to_pattern", "0/1", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT},
+             ArgSpec{"pulses", "/qtr", 0.0f, 64.0f, 0.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"duty", "", 0.0f, 1.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        if (args[0].f_val >= 0.5f) {
+            toPattern(args);
+        } else {
+            toRamp();
+        }
+    }
+
+private:
+    void toPattern(const ArgValue* args) {
+        if (focControlManager().isRunning()) {
+            Telemetry::printf("[HO] ERROR: FOC is running; handoff is ramp-only for now");
+            return;
+        }
+        if (!openLoopController().isRunning() || !Inverter::spwmIsRunning()) {
+            Telemetry::printf("[HO] ERROR: open-loop ramp not running (use 'start' first)");
+            return;
+        }
+        if (Inverter::shepwmIsRunning()) {
+            Telemetry::printf("[HO] ERROR: pattern already active");
+            return;
+        }
+        if (!args[1].present || !args[2].present) {
+            Telemetry::printf("[HO] usage: handoff 1 <pulses_per_qtr> <duty>");
+            return;
+        }
+
+        const uint32_t npq = static_cast<uint32_t>(args[1].f_val + 0.5f);
+        const float duty = args[2].f_val;
+        const float angle = Inverter::spwmAngleRad();
+        const float fe = Inverter::spwmFundamentalFreqHz();
+
+        /* Stage, then swap: ramp exits (CCRs freeze), pattern enters
+         * phase-locked to the captured ramp angle. */
+        Inverter::shepwmSetPulsePattern(fe, npq, duty);
+        PWM_StopSPWM();
+        if (!Inverter::shepwmModulator().enter(angle, duty)) {
+            Telemetry::printf("[HO] ERROR: pattern enter failed; restarting ramp");
+            PWM_StartSPWM(fe, Inverter::spwmModulationIndex());
+            Inverter::spwmSetAngle(angle);
+            return;
+        }
+        Inverter::setActiveModulator(&Inverter::shepwmModulator());
+
+        Telemetry::printf("[HO] ramp -> pattern: fe=%.2f Hz pulses/qtr=%lu duty=%.3f angle=%.1f deg",
+                          static_cast<double>(fe),
+                          static_cast<unsigned long>(npq),
+                          static_cast<double>(duty),
+                          static_cast<double>(angle * 57.2957795f));
+    }
+
+    void toRamp() {
+        if (!Inverter::shepwmIsRunning()) {
+            Telemetry::printf("[HO] ERROR: pattern not active");
+            return;
+        }
+
+        const float angle = Inverter::shepwmAngleRad();
+        const float fe = Inverter::shepwmFrequencyHz();
+        /* Resume the ramp at the open-loop controller's last MI. */
+        const float mi = openLoopController().modulationIndex();
+
+        Inverter::shepwmModulator().exit();
+        Inverter::setActiveModulator(nullptr);
+        PWM_StartSPWM(fe, mi);
+        Inverter::spwmSetAngle(angle);
+
+        Telemetry::printf("[HO] pattern -> ramp: fe=%.2f Hz mi=%.3f angle=%.1f deg",
+                          static_cast<double>(fe), static_cast<double>(mi),
+                          static_cast<double>(angle * 57.2957795f));
+    }
+};
+
 SheStartCommand  sSheStartCmd;
 SheStopCommand   sSheStopCmd;
 SheSetCommand    sSheSetCmd;
 SheStatusCommand sSheStatusCmd;
+/* DTCMRAM is full; command objects are main-loop-only, so this one lives in
+ * AXI SRAM (runtime-constructed like all statics; NOLOAD is fine). */
+HandoffCommand   sHandoffCmd __attribute__((section(".dma_buffers")));
 
 } // namespace
 
@@ -189,4 +284,5 @@ void registerSheCommands(CommandManager& mgr) {
     mgr.registerCommand(&sSheStopCmd);
     mgr.registerCommand(&sSheSetCmd);
     mgr.registerCommand(&sSheStatusCmd);
+    mgr.registerCommand(&sHandoffCmd);
 }

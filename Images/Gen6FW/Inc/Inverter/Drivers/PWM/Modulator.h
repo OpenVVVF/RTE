@@ -84,6 +84,9 @@ void spwmResetElectricalCycles();
 void spwmSetParams(float fundamental_freq_hz, float modulation_index);
 float spwmFundamentalFreqHz();
 float spwmModulationIndex();
+/* Seed the SPWM ramp angle (rad, phase-U-peak-at-+90deg convention).
+ * Used by live handoff to resume the ramp at the pattern's angle. */
+void spwmSetAngle(float angle_rad);
 
 /* SHEPWM control / introspection (shell bring-up; supervisor later).
  * shepwmSetPattern builds the event table for (fe_hz, mi) into the inactive
@@ -99,5 +102,8 @@ uint32_t shepwmEdgeCount();
 void shepwmSetPulsePattern(float fe_hz, uint32_t npq, float duty);
 uint32_t shepwmPulseCount();   /* 0 = SHE table mode */
 float shepwmDuty();
+/* Current pattern angle, ramp/FOC convention (rad; 0 while stopped).
+ * Derived from TIM5 CNT + the SHE-frame offset; used for live handoff. */
+float shepwmAngleRad();
 
 } // namespace Inverter
