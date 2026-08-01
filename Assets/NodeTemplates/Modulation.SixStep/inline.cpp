@@ -1,18 +1,21 @@
 /* Six-step modulator (railway ladder top mode), PWM'd 120 deg trapezoid.
  *
- * Contract (see Assets/NodeTemplates/README.md):
- * - Pure per-step law: no frequency math, no mode selection, no enables.
- * - Runs only when gated: ModeId == ModeFrom || ModeId == ModeTo; otherwise
- *   holds 50% neutral.
- * - arm()/continuity: the pattern is driven directly by the commanded
- *   voltage vector (same vector the carrier mode sees), so phase is
- *   inherently locked and magnitude is normalized to the same reference
- *   (Vdc/sqrt(3)) as SVPWM - the handoff needs no duty crossfade.
- * - Safe for milliohm motors: every phase keeps chopping at the carrier;
- *   the average phase voltage follows the commanded magnitude.
+ * Synchronous modulation rule: the pattern is locked to the ROTOR angle
+ * (Theta_E from the encoder, rock stable).  The current loop enters only as
+ *   - magnitude  m = |V| / (Vdc/sqrt(3)), and
+ *   - a smooth phase offset delta = atan2(V_Q, V_D) computed in the dq
+ *     frame where commands are quiet DC quantities.
+ * Never reference a synchronous pattern to atan2 of the instantaneous
+ * alpha/beta vector: at low |V| that angle is switching noise, and a
+ * nonlinear pattern turns angle noise into voltage kicks (bench-verified:
+ * 250 A limit cycle on a 10 mohm motor).
  *
- * True n-pulse (SHE) modulators replace the trapezoid with notch tables
- * while keeping this exact contract. */
+ * Gain match to SVPWM: a 120 deg trapezoid's fundamental is (2*sqrt(3)/pi)
+ * times its leg amplitude, so the duty scale is (pi/3) * m.  At m = 1 the
+ * duties rail and the pattern naturally becomes full square wave.
+ *
+ * Contract: ModeId-gated (runs only when ModeId == ModeFrom || ModeId ==
+ * ModeTo), holds 50% neutral otherwise; vdc < 1 V -> 50%. */
 
 const float vdc = V_Dc.in(au::volts);
 const bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);
@@ -22,15 +25,19 @@ if (!running || !(vdc > 1.0f)) {
     Duty_B = 50.0f;
     Duty_C = 50.0f;
 } else {
-    const float valpha = V_Alpha.in(au::volts);
-    const float vbeta = V_Beta.in(au::volts);
-    const float ang = atan2f(vbeta, valpha);
+    const float vd = V_D.in(au::volts);
+    const float vq = V_Q.in(au::volts);
 
-    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3));
-     * trapezoid plateaus reach the rail at m = 1. */
-    float m = sqrtf(valpha * valpha + vbeta * vbeta) / (vdc * 0.57735026919f);
+    /* Rotor-locked pattern angle: theta_e + smooth dq phase offset. */
+    const float ang = Theta_E + atan2f(vq, vd);
+
+    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3)),
+     * scaled by pi/3 so the trapezoid fundamental equals the commanded
+     * fundamental at the ladder boundary. */
+    float m = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);
     if (m > 1.0f) m = 1.0f;
     if (m < 0.0f) m = 0.0f;
+    const float s = 1.0471975512f * m;  /* pi/3 * m */
 
     /* 120-degree trapezoidal references in [-1, 1]: +1 plateau for 120 deg,
      * linear transition over the 60-degree sector boundaries. */
@@ -46,7 +53,13 @@ if (!running || !(vdc > 1.0f)) {
         return 1.0f;
     };
 
-    Duty_A = 50.0f + 50.0f * m * trap(ang);
-    Duty_B = 50.0f + 50.0f * m * trap(ang - 2.09439510239f);
-    Duty_C = 50.0f + 50.0f * m * trap(ang + 2.09439510239f);
+    auto duty = [](float d) -> float {
+        if (d < 0.0f) return 0.0f;
+        if (d > 100.0f) return 100.0f;
+        return d;
+    };
+
+    Duty_A = duty(50.0f + 50.0f * s * trap(ang));
+    Duty_B = duty(50.0f + 50.0f * s * trap(ang - 2.09439510239f));
+    Duty_C = duty(50.0f + 50.0f * s * trap(ang + 2.09439510239f));
 }

@@ -93,6 +93,12 @@ Three roles, strictly separated:
   - Own continuity: on becoming `ModeTo`, produce a pattern whose
     fundamental matches the commanded vector (gain/phase-matched,
     phase-locked arm). The sequencer never blends to fix gain errors.
+  - Synchronous patterns are locked to the ROTOR angle (`Theta_E` from the
+    encoder). The current loop enters as magnitude `m` and a smooth phase
+    offset `delta = atan2(V_Q, V_D)` computed in the dq frame. Never
+    reference a synchronous pattern to atan2 of the instantaneous
+    alpha/beta vector — at low |V| that angle is switching noise, and a
+    nonlinear pattern turns it into voltage kicks.
   - Heavy schemes (live SHE, optimal pulse patterns) split slow/fast: an
     `app_loop` node interpolates tables (also mode-gated), a `tim_isr` node
     emits edges. Tables ship as `static const` arrays in class-based nodes.

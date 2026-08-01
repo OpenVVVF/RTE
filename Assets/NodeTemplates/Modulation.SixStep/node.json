@@ -2,14 +2,14 @@
   "id": "Modulation.SixStep",
   "displayName": "Six-Step (Trapezoid)",
   "defaultName": "SixStep",
-  "description": "PWM'd six-step (120 deg trapezoid) modulator for the ladder's top mode. Emits duties only when gated active by the sequencer; amplitude and phase come from the commanded voltage vector so handoff from the carrier mode is continuity-preserving.",
+  "description": "PWM'd six-step (120 deg trapezoid) modulator for the ladder's top mode. Pattern is locked to the rotor electrical angle; the current loop enters only as magnitude and a smooth dq phase offset. Emits duties only when gated active by the sequencer.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "tim_isr",
   "inputPorts": [
     {
-      "name": "V_Alpha",
-      "description": "Commanded voltage vector, alpha component.",
+      "name": "V_D",
+      "description": "Commanded d-axis voltage (from the current loop, smooth).",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -18,11 +18,21 @@
       }
     },
     {
-      "name": "V_Beta",
-      "description": "Commanded voltage vector, beta component.",
+      "name": "V_Q",
+      "description": "Commanded q-axis voltage (from the current loop, smooth).",
       "direction": "input",
       "type": {
         "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Theta_E",
+      "description": "Rotor electrical angle in radians (encoder-referenced).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       }
