@@ -11,14 +11,7 @@ $repoRoot = Split-Path (Split-Path $hostSimRoot -Parent) -Parent
 $graph = Join-Path $repoRoot "Images\NucleoL476FW\svpwm_demo_graph.json"
 $scenario = Join-Path $hostSimRoot "scenarios\svpwm_live.json"
 
-function To-WslPath([string]$p) {
-    $full = (Resolve-Path $p).Path
-    return "/mnt/" + $full.Substring(0, 1).ToLower() + ($full.Substring(2) -replace '\\', '/')
-}
-
-$wslRepo = To-WslPath $repoRoot
-$wslGraph = To-WslPath $graph
-$emitter = "/opt/rtehost/build/Source/RTECodeEmitter/RTECodeEmitter"
+$emitter = Join-Path $repoRoot "build\Source\RTECodeEmitter\RTECodeEmitter.exe"
 
 function Stop-SimApps {
     Get-Process | Where-Object { $_.ProcessName -match 'host_sim|Tracker|cl' } |
@@ -44,8 +37,6 @@ function Clear-EmittedTree([string]$repoRoot, [string]$relativePath) {
             Remove-Item -LiteralPath $trashPath -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
-    $wslRepo = To-WslPath $repoRoot
-    wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && chmod -R 777 $relativePath 2>/dev/null; rm -rf $relativePath 2>/dev/null" 2>$null
 }
 
 $emittedRel = "build/hostsim_svpwm_emitted"
@@ -73,8 +64,8 @@ if ($needEmit) {
     Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue
 
     Write-Host "Emitting SVPWM graph for HostSim..."
-    $emitCmd = "cd $wslRepo && ${emitter} --base-src Images/HostSim --graph $wslGraph --output $emittedRel --verbosity info"
-    wsl -d Ubuntu -u root -- bash -lc $emitCmd
+    $baseSrc = Join-Path $repoRoot "Images\HostSim"
+    & $emitter --base-src $baseSrc --graph $graph --output $emitted --verbosity info
     if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
 
     cmake -S $emitted -B $buildDir

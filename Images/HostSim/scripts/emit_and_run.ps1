@@ -10,15 +10,7 @@ $hostSimRoot = Split-Path $PSScriptRoot -Parent
 $repoRoot = Split-Path (Split-Path $hostSimRoot -Parent) -Parent
 if ($Graph -eq "") { $Graph = Join-Path $hostSimRoot "baseline_graph.json" }
 
-function To-WslPath([string]$p) {
-    $full = (Resolve-Path $p).Path
-    return "/mnt/" + $full.Substring(0, 1).ToLower() + ($full.Substring(2) -replace '\\', '/')
-}
-
-$wslRepo = To-WslPath $repoRoot
-$wslGraph = To-WslPath $Graph
-$emitter = "/opt/rtehost/build/Source/RTECodeEmitter/RTECodeEmitter"
-$emittedRel = "build/hostsim_emitted"
+$emitter = Join-Path $repoRoot "build\Source\RTECodeEmitter\RTECodeEmitter.exe"
 
 Get-Process | Where-Object { $_.ProcessName -match '^(host_sim|NodeGUI)$' } |
     Stop-Process -Force -ErrorAction SilentlyContinue
@@ -28,9 +20,8 @@ $winEmitted = Join-Path $repoRoot "build\hostsim_emitted"
 if (Test-Path $winEmitted) {
     Remove-Item -LiteralPath $winEmitted -Recurse -Force -ErrorAction SilentlyContinue
 }
-wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && rm -rf $emittedRel" 2>$null
 
-wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && $emitter --base-src Images/HostSim --graph $wslGraph --output $emittedRel --verbosity info"
+& $emitter --base-src (Join-Path $repoRoot "Images\HostSim") --graph $Graph --output $winEmitted --verbosity info
 if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
 
 $emitted = Join-Path $repoRoot "build\hostsim_emitted"

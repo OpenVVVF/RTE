@@ -8,7 +8,7 @@ cd /d "C:\Users\bc200\.cursor\STMSTUFF"
 
 echo.
 echo ===== Starting HostSim (live mode, port 14608) =====
-start "HostSim" cmd /c "build\hostsim_emitted_build\Debug\host_sim.exe Images\HostSim\scenarios\svpwm_live.json --live"
+start "HostSim" cmd /c "build\hostsim_svpwm_emitted_build\Debug\host_sim.exe Images\HostSim\scenarios\svpwm_live.json --live"
 
 echo Waiting for HostSim to start listening...
 timeout /t 2 /nobreak >nul
