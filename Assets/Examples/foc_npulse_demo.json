@@ -1065,6 +1065,28 @@
         "nodeId": "LogModBlend2",
         "portName": "Value"
       }
+    },
+    {
+      "from": {
+        "nodeId": "CfgEncSign",
+        "portName": "Value"
+      },
+      "id": "c_she_encsign",
+      "to": {
+        "nodeId": "She",
+        "portName": "EncSign"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "She",
+        "portName": "ArmOk"
+      },
+      "id": "c_seq_allow2",
+      "to": {
+        "nodeId": "ModSeq",
+        "portName": "Allow2"
+      }
     }
   ],
   "name": "foc_npulse_demo",
@@ -3261,6 +3283,17 @@
             "frame": "scalar",
             "dtype": "f32"
           }
+        },
+        {
+          "name": "Allow2",
+          "description": "Mode-2 availability (pattern engine can arm); false blocks entry into mode 2.",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
         }
       ],
       "outputPorts": [
@@ -3326,6 +3359,12 @@
         }
       ],
       "parameterTypes": {
+        "Allow2": {
+          "description": "Fallback mode-2 availability when the Allow2 input is not wired.",
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
         "FEnterHz": {
           "description": "Frequency to enter ladder mode 1 from mode 0 (upshift threshold).",
           "quantity": "dimensionless",
@@ -3393,7 +3432,7 @@
           "dtype": "f32"
         }
       },
-      "inlineCode": "/* Railway-style modulation sequencer (mode ladder + boundary table).\n *\n * v2 ladder: 0 = async carrier (SVPWM), 1 = synchronous sampled PWM,\n * 2 = direct-state SHE (PatternModulator).  The ladder is data: each\n * boundary has an enter threshold, an exit threshold (hysteresis), a\n * minimum dwell, and a transition type.  Extending the ladder adds\n * boundary params, not new logic.\n *\n * Transition mechanics:\n *  - 0 <-> 1 (both duty-cycle modes): Blend ramps over TransMs (duty\n *    crossfade; both modulators are shape-matched so it is benign).\n *  - 1 <-> 2 (duty path <-> pattern hardware): hard switch.  The SHE\n *    node arms the PatternModulator phase-locked to the commanded vector\n *    on the ModeTo edge; Blend2 steps in the same step.\n *\n * Blend  = weight of mode 1 in the (0,1) pair (0 = SVPWM duties).\n * Blend2 = weight of mode 2 in the (1,2) pair (routing only; the pattern\n *          driver owns the pins once enabled). */\n\nconst bool en = Enable;\n\nif (!en || !(Dt > 0.0f)) {\n    CurMode = 0.0f;\n    DwellT = 0.0f;\n    TransT = 0.0f;\n    BlendS = 0.0f;\n    ModeFrom = 0.0f;\n    ModeTo = 0.0f;\n    Blend = 0.0f;\n    Blend2 = 0.0f;\n    Mode = 0.0f;\n    TransActive = false;\n} else if (TransT > 0.0f) {\n    /* Transition in progress. */\n    TransActive = true;\n    const bool duty_pair = (ModeFrom < 1.5f && ModeTo < 1.5f);\n    if (TransMs > 0.0f && duty_pair) {\n        /* Duty crossfade on the 0 <-> 1 boundary. */\n        const float dir = (ModeTo > ModeFrom) ? 1.0f : -1.0f;\n        BlendS += dir * Dt / (TransMs * 0.001f);\n        if (BlendS > 1.0f) BlendS = 1.0f;\n        if (BlendS < 0.0f) BlendS = 0.0f;\n        if ((dir > 0.0f && BlendS >= 1.0f) || (dir < 0.0f && BlendS <= 0.0f)) {\n            TransT = 0.0f;\n        }\n    } else {\n        /* Hard switch (1 <-> 2 boundary, or TransMs == 0). */\n        BlendS = (ModeTo >= 1.0f) ? 1.0f : 0.0f;\n        TransT = 0.0f;\n    }\n    if (TransT == 0.0f) {\n        CurMode = ModeTo;\n        ModeFrom = CurMode;\n        ModeTo = CurMode;\n        TransActive = false;\n    }\n    Blend = BlendS;\n    Blend2 = (CurMode >= 1.5f || (TransT > 0.0f && ModeTo >= 1.5f)) ? 1.0f : 0.0f;\n    Mode = CurMode;\n} else {\n    /* Steady state: watch the adjacent boundaries. */\n    ModeFrom = CurMode;\n    ModeTo = CurMode;\n    BlendS = (CurMode >= 0.5f) ? 1.0f : 0.0f;\n    Blend = BlendS;\n    Blend2 = (CurMode >= 1.5f) ? 1.0f : 0.0f;\n    Mode = CurMode;\n    TransActive = false;\n\n    if (CurMode < 0.5f) {\n        DwellT = (F_Elec >= FEnterHz) ? (DwellT + Dt) : 0.0f;\n        if (DwellT * 1000.0f >= MinDwellMs) {\n            DwellT = 0.0f;\n            TransT = Dt;\n            ModeFrom = 0.0f;\n            ModeTo = 1.0f;\n        }\n    } else if (CurMode < 1.5f) {\n        if (F_Elec >= FEnter2Hz) {\n            DwellT += Dt;\n            if (DwellT * 1000.0f >= MinDwellMs) {\n                DwellT = 0.0f;\n                TransT = Dt;\n                ModeFrom = 1.0f;\n                ModeTo = 2.0f;\n            }\n        } else if (F_Elec <= FExitHz) {\n            DwellT += Dt;\n            if (DwellT * 1000.0f >= MinDwellMs) {\n                DwellT = 0.0f;\n                TransT = Dt;\n                ModeFrom = 1.0f;\n                ModeTo = 0.0f;\n            }\n        } else {\n            DwellT = 0.0f;\n        }\n    } else {\n        DwellT = (F_Elec <= FExit2Hz) ? (DwellT + Dt) : 0.0f;\n        if (DwellT * 1000.0f >= MinDwellMs) {\n            DwellT = 0.0f;\n            TransT = Dt;\n            ModeFrom = 2.0f;\n            ModeTo = 1.0f;\n        }\n    }\n}\n",
+      "inlineCode": "/* Railway-style modulation sequencer (mode ladder + boundary table).\n *\n * v2 ladder: 0 = async carrier (SVPWM), 1 = synchronous sampled PWM,\n * 2 = direct-state SHE (PatternModulator).  The ladder is data: each\n * boundary has an enter threshold, an exit threshold (hysteresis), a\n * minimum dwell, and a transition type.  Extending the ladder adds\n * boundary params, not new logic.\n *\n * Transition mechanics:\n *  - 0 <-> 1 (both duty-cycle modes): Blend ramps over TransMs (duty\n *    crossfade; both modulators are shape-matched so it is benign).\n *  - 1 <-> 2 (duty path <-> pattern hardware): hard switch.  The SHE\n *    node arms the PatternModulator phase-locked to the commanded vector\n *    on the ModeTo edge; Blend2 steps in the same step.\n *\n * Blend  = weight of mode 1 in the (0,1) pair (0 = SVPWM duties).\n * Blend2 = weight of mode 2 in the (1,2) pair (routing only; the pattern\n *          driver owns the pins once enabled). */\n\nconst bool en = Enable;\n\nif (!en || !(Dt > 0.0f)) {\n    CurMode = 0.0f;\n    DwellT = 0.0f;\n    TransT = 0.0f;\n    BlendS = 0.0f;\n    ModeFrom = 0.0f;\n    ModeTo = 0.0f;\n    Blend = 0.0f;\n    Blend2 = 0.0f;\n    Mode = 0.0f;\n    TransActive = false;\n} else if (TransT > 0.0f) {\n    /* Transition in progress. */\n    TransActive = true;\n    const bool duty_pair = (ModeFrom < 1.5f && ModeTo < 1.5f);\n    if (TransMs > 0.0f && duty_pair) {\n        /* Duty crossfade on the 0 <-> 1 boundary. */\n        const float dir = (ModeTo > ModeFrom) ? 1.0f : -1.0f;\n        BlendS += dir * Dt / (TransMs * 0.001f);\n        if (BlendS > 1.0f) BlendS = 1.0f;\n        if (BlendS < 0.0f) BlendS = 0.0f;\n        if ((dir > 0.0f && BlendS >= 1.0f) || (dir < 0.0f && BlendS <= 0.0f)) {\n            TransT = 0.0f;\n        }\n    } else {\n        /* Hard switch (1 <-> 2 boundary, or TransMs == 0). */\n        BlendS = (ModeTo >= 1.0f) ? 1.0f : 0.0f;\n        TransT = 0.0f;\n    }\n    if (TransT == 0.0f) {\n        CurMode = ModeTo;\n        ModeFrom = CurMode;\n        ModeTo = CurMode;\n        TransActive = false;\n    }\n    Blend = BlendS;\n    Blend2 = (CurMode >= 1.5f || (TransT > 0.0f && ModeTo >= 1.5f)) ? 1.0f : 0.0f;\n    Mode = CurMode;\n} else {\n    /* Steady state: watch the adjacent boundaries. */\n    ModeFrom = CurMode;\n    ModeTo = CurMode;\n    BlendS = (CurMode >= 0.5f) ? 1.0f : 0.0f;\n    Blend = BlendS;\n    Blend2 = (CurMode >= 1.5f) ? 1.0f : 0.0f;\n    Mode = CurMode;\n    TransActive = false;\n\n    if (CurMode < 0.5f) {\n        DwellT = (F_Elec >= FEnterHz) ? (DwellT + Dt) : 0.0f;\n        if (DwellT * 1000.0f >= MinDwellMs) {\n            DwellT = 0.0f;\n            TransT = Dt;\n            ModeFrom = 0.0f;\n            ModeTo = 1.0f;\n        }\n    } else if (CurMode < 1.5f) {\n        if (F_Elec >= FEnter2Hz && Allow2) {\n            DwellT += Dt;\n            if (DwellT * 1000.0f >= MinDwellMs) {\n                DwellT = 0.0f;\n                TransT = Dt;\n                ModeFrom = 1.0f;\n                ModeTo = 2.0f;\n            }\n        } else if (F_Elec <= FExitHz) {\n            DwellT += Dt;\n            if (DwellT * 1000.0f >= MinDwellMs) {\n                DwellT = 0.0f;\n                TransT = Dt;\n                ModeFrom = 1.0f;\n                ModeTo = 0.0f;\n            }\n        } else {\n            DwellT = 0.0f;\n        }\n    } else {\n        DwellT = (F_Elec <= FExit2Hz) ? (DwellT + Dt) : 0.0f;\n        if (DwellT * 1000.0f >= MinDwellMs) {\n            DwellT = 0.0f;\n            TransT = Dt;\n            ModeFrom = 2.0f;\n            ModeTo = 1.0f;\n        }\n    }\n}\n",
       "constructorCode": "",
       "classHeader": "",
       "classDefinition": ""
@@ -3772,13 +3811,24 @@
         },
         {
           "name": "Dir",
-          "description": "Rotation direction (+1 forward, -1 reverse); pattern engine runs forward only.",
+          "description": "Raw rotation direction from the encoder driver (+1/-1), before the configured encoder sign.",
           "direction": "input",
           "type": {
             "quantity": "dimensionless",
             "frame": "scalar",
             "dtype": "f32"
           }
+        },
+        {
+          "name": "EncSign",
+          "description": "Configured encoder sign (Motor.Encoder.SinCos.Sign) as used by ElecAngle.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
         },
         {
           "name": "ModeFrom",
@@ -3841,9 +3891,25 @@
             "frame": "scalar",
             "dtype": "f32"
           }
+        },
+        {
+          "name": "ArmOk",
+          "description": "1 while the pattern engine can arm (effective direction forward); feeds the sequencer's mode-2 availability gate.",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
         }
       ],
       "parameterTypes": {
+        "EncSign": {
+          "description": "Fallback encoder sign when the EncSign input is not wired.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
         "ModeId": {
           "description": "This modulator's slot in the sequencer ladder (SHE = 2).",
           "quantity": "dimensionless",
@@ -3863,7 +3929,7 @@
           "dtype": "f32"
         }
       },
-      "inlineCode": "/* SHE pattern modulator (ladder mode 2): thin command layer over the\n * base-image PatternModulator, which owns TIM1 with edges scheduled at\n * exact SHE table angles while this mode is gated on.\n *\n * Contract: runs only when ModeId == ModeFrom || ModeId == ModeTo.  On the\n * gate rising edge it enables pattern mode (the driver arms phase-locked\n * from the current command); on the falling edge it disables (duty path\n * restored at 50%).  Duty outputs are dummy neutral; PwmOut is a no-op\n * while pattern mode is enabled (platform layer gates it). */\n\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (running) {\n    const float vd = V_D.in(au::volts);\n    const float vq = V_Q.in(au::volts);\n    const float vdc = V_Dc.in(au::volts);\n\n    float m = 0.0f;\n    if (vdc > 1.0f) {\n        m = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);\n        if (m > 1.15f) m = 1.15f;\n        if (m < 0.0f) m = 0.0f;\n    }\n    const float delta = atan2f(vq, vd);\n    /* Signed electrical speed: F_Elec is a magnitude, Dir carries sign. */\n    const float omega_e = 6.28318530718f * F_Elec * Dir;\n\n    platform_pattern_set_command(m, delta, Theta_E, omega_e, (int)NPulses);\n\n    if (Armed < 0.5f && Dir > 0.0f) {\n        Armed = 1.0f;\n        platform_pattern_enable();\n    }\n} else {\n    if (Armed > 0.5f) {\n        Armed = 0.0f;\n        platform_pattern_disable();\n    }\n}\n\nDuty_A = 50.0f;\nDuty_B = 50.0f;\nDuty_C = 50.0f;\nPatternOn = platform_pattern_is_enabled() ? 1.0f : 0.0f;\n",
+      "inlineCode": "/* SHE pattern modulator (ladder mode 2): thin command layer over the\n * base-image PatternModulator, which owns TIM1 with edges scheduled at\n * exact SHE table angles while this mode is gated on.\n *\n * Contract: runs only when ModeId == ModeFrom || ModeId == ModeTo.  On the\n * gate rising edge it enables pattern mode (the driver arms phase-locked\n * from the current command); on the falling edge it disables (duty path\n * restored at 50%).  Duty outputs are dummy neutral; PwmOut is a no-op\n * while pattern mode is enabled (platform layer gates it). */\n\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (running) {\n    const float vd = V_D.in(au::volts);\n    const float vq = V_Q.in(au::volts);\n    const float vdc = V_Dc.in(au::volts);\n\n    float m = 0.0f;\n    if (vdc > 1.0f) {\n        m = sqrtf(vd * vd + vq * vq) / (vdc * 0.57735026919f);\n        if (m > 1.15f) m = 1.15f;\n        if (m < 0.0f) m = 0.0f;\n    }\n    const float delta = atan2f(vq, vd);\n    /* Effective electrical direction.  Dir is the raw RPM sign from the\n     * encoder driver, which does NOT include the configured encoder sign\n     * (Motor.Encoder.SinCos.Sign) that ElecAngle applies.  On hardware with\n     * Sign=-1 the raw RPM is negative for forward rotation, which would\n     * otherwise leave pattern mode permanently disarmed while the sequencer\n     * enters this mode and the duty path goes neutral - the bench dumped\n     * ~900 A of back-EMF current through the legs into the bus that way. */\n    const float omega_e = 6.28318530718f * F_Elec * Dir * EncSign;\n\n    platform_pattern_set_command(m, delta, Theta_E, omega_e, (int)NPulses);\n\n    if (Armed < 0.5f && omega_e > 0.0f) {\n        Armed = platform_pattern_enable() ? 1.0f : 0.0f;\n    }\n    ArmOk = (omega_e > 0.0f) ? 1.0f : 0.0f;\n} else {\n    if (Armed > 0.5f) {\n        Armed = 0.0f;\n        platform_pattern_disable();\n    }\n}\n\nDuty_A = 50.0f;\nDuty_B = 50.0f;\nDuty_C = 50.0f;\nPatternOn = platform_pattern_is_enabled() ? 1.0f : 0.0f;\n",
       "constructorCode": "",
       "classHeader": "",
       "classDefinition": ""
@@ -4656,7 +4722,8 @@
         "TransT": "0.0",
         "BlendS": "0.0",
         "FEnter2Hz": "60.0",
-        "FExit2Hz": "50.0"
+        "FExit2Hz": "50.0",
+        "Allow2": "1.0"
       },
       "position": {
         "x": 0.0,
@@ -4757,7 +4824,8 @@
       "parameters": {
         "ModeId": "2.0",
         "NPulses": "5.0",
-        "Armed": "0.0"
+        "Armed": "0.0",
+        "EncSign": "1.0"
       },
       "position": {
         "x": 0.0,

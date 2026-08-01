@@ -59,13 +59,24 @@
     },
     {
       "name": "Dir",
-      "description": "Rotation direction (+1 forward, -1 reverse); pattern engine runs forward only.",
+      "description": "Raw rotation direction from the encoder driver (+1/-1), before the configured encoder sign.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       }
+    },
+    {
+      "name": "EncSign",
+      "description": "Configured encoder sign (Motor.Encoder.SinCos.Sign) as used by ElecAngle.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
     },
     {
       "name": "ModeFrom",
@@ -128,9 +139,25 @@
         "frame": "scalar",
         "dtype": "f32"
       }
+    },
+    {
+      "name": "ArmOk",
+      "description": "1 while the pattern engine can arm (effective direction forward); feeds the sequencer's mode-2 availability gate.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
     }
   ],
   "parameterTypes": {
+    "EncSign": {
+      "description": "Fallback encoder sign when the EncSign input is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
     "ModeId": {
       "description": "This modulator's slot in the sequencer ladder (SHE = 2).",
       "quantity": "dimensionless",

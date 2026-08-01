@@ -22,15 +22,21 @@ if (running) {
         if (m < 0.0f) m = 0.0f;
     }
     const float delta = atan2f(vq, vd);
-    /* Signed electrical speed: F_Elec is a magnitude, Dir carries sign. */
-    const float omega_e = 6.28318530718f * F_Elec * Dir;
+    /* Effective electrical direction.  Dir is the raw RPM sign from the
+     * encoder driver, which does NOT include the configured encoder sign
+     * (Motor.Encoder.SinCos.Sign) that ElecAngle applies.  On hardware with
+     * Sign=-1 the raw RPM is negative for forward rotation, which would
+     * otherwise leave pattern mode permanently disarmed while the sequencer
+     * enters this mode and the duty path goes neutral - the bench dumped
+     * ~900 A of back-EMF current through the legs into the bus that way. */
+    const float omega_e = 6.28318530718f * F_Elec * Dir * EncSign;
 
     platform_pattern_set_command(m, delta, Theta_E, omega_e, (int)NPulses);
 
-    if (Armed < 0.5f && Dir > 0.0f) {
-        Armed = 1.0f;
-        platform_pattern_enable();
+    if (Armed < 0.5f && omega_e > 0.0f) {
+        Armed = platform_pattern_enable() ? 1.0f : 0.0f;
     }
+    ArmOk = (omega_e > 0.0f) ? 1.0f : 0.0f;
 } else {
     if (Armed > 0.5f) {
         Armed = 0.0f;

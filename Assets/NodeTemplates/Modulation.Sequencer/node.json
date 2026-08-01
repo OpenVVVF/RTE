@@ -37,6 +37,17 @@
         "frame": "scalar",
         "dtype": "f32"
       }
+    },
+    {
+      "name": "Allow2",
+      "description": "Mode-2 availability (pattern engine can arm); false blocks entry into mode 2.",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
     }
   ],
   "outputPorts": [
@@ -102,6 +113,12 @@
     }
   ],
   "parameterTypes": {
+    "Allow2": {
+      "description": "Fallback mode-2 availability when the Allow2 input is not wired.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
     "FEnterHz": {
       "description": "Frequency to enter ladder mode 1 from mode 0 (upshift threshold).",
       "quantity": "dimensionless",

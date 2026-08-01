@@ -76,7 +76,7 @@ if (!en || !(Dt > 0.0f)) {
             ModeTo = 1.0f;
         }
     } else if (CurMode < 1.5f) {
-        if (F_Elec >= FEnter2Hz) {
+        if (F_Elec >= FEnter2Hz && Allow2) {
             DwellT += Dt;
             if (DwellT * 1000.0f >= MinDwellMs) {
                 DwellT = 0.0f;
