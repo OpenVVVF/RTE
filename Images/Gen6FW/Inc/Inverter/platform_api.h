@@ -254,6 +254,26 @@ float platform_config_get(const char* key);
 void platform_telemetry_log_f32(const char* key, float value);
 
 /* --------------------------------------------------------------------------
+ * Carrier frequency control (async PWM)
+ *
+ * Changes the TIM1 switching frequency at runtime; the control ISR rate
+ * follows the carrier (2x in FOC dual-update mode).  Nodes that integrate
+ * must use platform_get_pwm_dt() rather than a fixed sample period.
+ * -------------------------------------------------------------------------- */
+
+/** @brief Set the PWM carrier frequency [Hz] (bounds-checked by caller). */
+bool platform_set_pwm_frequency(float hz);
+
+/** @brief Current control-ISR update rate [Hz] (follows the carrier). */
+float platform_get_pwm_update_hz(void);
+
+/** @brief Current carrier (switching) frequency [Hz]. */
+float platform_get_pwm_carrier_hz(void);
+
+/** @brief Current control-ISR sample period [s]; 0 if unknown. */
+float platform_get_pwm_dt(void);
+
+/* --------------------------------------------------------------------------
  * Time
  * -------------------------------------------------------------------------- */
 

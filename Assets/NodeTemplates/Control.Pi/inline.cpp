@@ -1,8 +1,13 @@
 /* PI with clamping + back-calculation anti-windup.
  * Dimensionless throughout: implicit unit extraction/injection handles any
- * physical-quantity wiring at the binding sites. */
+ * physical-quantity wiring at the binding sites.
+ * Sample period follows the live control-ISR rate (tracks the carrier when
+ * Modulation.CarrierSet changes it); falls back to the Dt parameter. */
+float dt = platform_get_pwm_dt();
+if (!(dt > 0.0f)) dt = Dt;
+
 const float error = Setpoint - Measurement;
-Integral += error * Dt;
+Integral += error * dt;
 
 float raw_output = Kp * error + Ki * Integral;
 
@@ -21,7 +26,7 @@ if (limited_output < min_limit) limited_output = min_limit;
  * the base-image VectorPIController). */
 if (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {
     const float excess = raw_output - limited_output;
-    Integral -= excess * Dt * AwGain / (Kp * Ki);
+    Integral -= excess * dt * AwGain / (Kp * Ki);
 }
 
 Output = limited_output;

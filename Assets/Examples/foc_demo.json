@@ -636,6 +636,28 @@
         "nodeId": "PiQ",
         "portName": "Ki"
       }
+    },
+    {
+      "from": {
+        "nodeId": "CfgPwmFreq",
+        "portName": "Value"
+      },
+      "id": "c_cfg_pwmfreq",
+      "to": {
+        "nodeId": "CarrierSet",
+        "portName": "TargetHz"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CarrierSet",
+        "portName": "AppliedHz"
+      },
+      "id": "c_log_carrier",
+      "to": {
+        "nodeId": "LogCarrierHz",
+        "portName": "Value"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1173,98 +1195,95 @@
       }
     },
     {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
+      "id": "Control.Pi",
+      "displayName": "PI Controller",
       "defaultName": "Pi",
       "description": "Proportional-integral controller with output clamping and back-calculation anti-windup.",
-      "displayName": "PI Controller",
+      "maxInstances": 0,
+      "isEntryPoint": false,
       "domain": "",
-      "id": "Control.Pi",
-      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
       "inputPorts": [
         {
+          "name": "Setpoint",
           "description": "Desired target value.",
           "direction": "input",
-          "name": "Setpoint",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         },
         {
+          "name": "Measurement",
           "description": "Measured process value subtracted from the setpoint.",
           "direction": "input",
-          "name": "Measurement",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         }
       ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
       "outputPorts": [
         {
+          "name": "Output",
           "description": "Clamped PI control effort.",
           "direction": "output",
-          "name": "Output",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         }
       ],
       "parameterTypes": {
-        "AwGain": {
-          "description": "Back-calculation anti-windup gain. Zero disables anti-windup.",
-          "dtype": "f32",
+        "Kp": {
+          "description": "Proportional gain applied to the current error.",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "Dt": {
-          "description": "Controller step period in seconds.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
-        },
-        "Integral": {
-          "description": "Persistent accumulated-error state.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
         },
         "Ki": {
           "description": "Integral gain applied to the accumulated error.",
-          "dtype": "f32",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
         },
-        "Kp": {
-          "description": "Proportional gain applied to the current error.",
-          "dtype": "f32",
+        "Dt": {
+          "description": "Controller step period in seconds.",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
+        },
+        "Integral": {
+          "description": "Persistent accumulated-error state.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
         },
         "OutputMax": {
           "description": "Upper output clamp, additionally limited by the measured DC-link voltage.",
-          "dtype": "f32",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
         },
         "OutputMin": {
           "description": "Lower output clamp, additionally limited by the measured DC-link voltage.",
-          "dtype": "f32",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
+        },
+        "AwGain": {
+          "description": "Back-calculation anti-windup gain. Zero disables anti-windup.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
         }
-      }
+      },
+      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites.\n * Sample period follows the live control-ISR rate (tracks the carrier when\n * Modulation.CarrierSet changes it); falls back to the Dt parameter. */\nfloat dt = platform_get_pwm_dt();\nif (!(dt > 0.0f)) dt = Dt;\n\nconst float error = Setpoint - Measurement;\nIntegral += error * dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
     },
     {
       "classDefinition": "",
@@ -1837,63 +1856,61 @@
       }
     },
     {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
+      "id": "Control.Slew",
+      "displayName": "Slew Rate Limiter",
       "defaultName": "Slew",
       "description": "Limits how quickly a signal can rise or fall over time.",
-      "displayName": "Slew Rate Limiter",
+      "maxInstances": 0,
+      "isEntryPoint": false,
       "domain": "",
-      "id": "Control.Slew",
-      "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In;\nconst float step = Rate * Dt;\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
       "inputPorts": [
         {
+          "name": "In",
           "description": "Target value for the limiter to follow.",
           "direction": "input",
-          "name": "In",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         }
       ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
       "outputPorts": [
         {
+          "name": "Out",
           "description": "Rate-limited output value.",
           "direction": "output",
-          "name": "Out",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         }
       ],
       "parameterTypes": {
-        "Dt": {
-          "description": "Update period in seconds.",
-          "dtype": "f32",
-          "frame": "scalar",
-          "quantity": "dimensionless"
-        },
         "Rate": {
           "description": "Maximum absolute rate of change in units per second.",
-          "dtype": "f32",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
+        },
+        "Dt": {
+          "description": "Update period in seconds.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
         },
         "Value": {
           "description": "Persistent current output state.",
-          "dtype": "f32",
+          "quantity": "dimensionless",
           "frame": "scalar",
-          "quantity": "dimensionless"
+          "dtype": "f32"
         }
-      }
+      },
+      "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping.\n * Sample period follows the live control-ISR rate (tracks the carrier);\n * falls back to the Dt parameter. */\nfloat dt = platform_get_pwm_dt();\nif (!(dt > 0.0f)) dt = Dt;\n\nconst float target = In;\nconst float step = Rate * dt;\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
     },
     {
       "classDefinition": "",
@@ -1955,7 +1972,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "Electrical rotor angle wrapped to the range 0 through 2π radians.",
+          "description": "Electrical rotor angle wrapped to the range 0 through 2\u03c0 radians.",
           "direction": "output",
           "name": "ThetaElec",
           "optional": false,
@@ -2714,6 +2731,63 @@
           }
         }
       ]
+    },
+    {
+      "id": "Modulation.CarrierSet",
+      "displayName": "Carrier Frequency Set",
+      "defaultName": "CarrierSet",
+      "description": "Applies a target PWM carrier frequency from a config value at runtime (bounded, apply-on-change). The control ISR rate follows the carrier; integrating nodes must use platform_get_pwm_dt().",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "app_loop",
+      "inputPorts": [
+        {
+          "name": "TargetHz",
+          "description": "Target carrier frequency in hertz (clamped to MinHz..MaxHz).",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "AppliedHz",
+          "description": "Currently applied carrier frequency in hertz.",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "MinHz": {
+          "description": "Minimum allowed carrier frequency.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "MaxHz": {
+          "description": "Maximum allowed carrier frequency.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Applied": {
+          "description": "Persistent last-applied frequency state (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "/* Apply-on-change carrier frequency control.  Runs in app_loop so the\n * timer reconfiguration happens in thread context, not inside the PWM ISR. */\nfloat target = TargetHz;\nif (target < MinHz) target = MinHz;\nif (target > MaxHz) target = MaxHz;\n\nif (fabsf(target - Applied) > 1.0f) {\n    if (platform_set_pwm_frequency(target)) {\n        Applied = target;\n    }\n}\nAppliedHz = platform_get_pwm_carrier_hz();\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
     }
   ],
   "nodes": [
@@ -3471,6 +3545,49 @@
         "y": 2246.0
       },
       "type": "Values.Config"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "CfgPwmFreq",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "5000.0",
+        "Key": "Ctrl.PwmFreqHz"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Values.Config"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "CarrierSet",
+      "parameters": {
+        "MinHz": "1500.0",
+        "MaxHz": "10000.0",
+        "Applied": "5000.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Modulation.CarrierSet"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogCarrierHz",
+      "parameters": {
+        "Key": "carrier_hz"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Debug.TelemetryLog"
     }
   ]
 }

@@ -264,6 +264,31 @@ bool platform_has_critical_fault(void) {
 }
 
 /* --------------------------------------------------------------------------
+ * Carrier frequency control
+ * -------------------------------------------------------------------------- */
+
+bool platform_set_pwm_frequency(float hz) {
+    if (!(hz >= 500.0f && hz <= 20000.0f)) {
+        return false;
+    }
+    PWM_SetFrequency(static_cast<uint32_t>(hz + 0.5f));
+    return true;
+}
+
+float platform_get_pwm_update_hz(void) {
+    return PWM_GetUpdateFrequency();
+}
+
+float platform_get_pwm_carrier_hz(void) {
+    return PWM_GetFrequency();
+}
+
+float platform_get_pwm_dt(void) {
+    const float hz = PWM_GetUpdateFrequency();
+    return (hz > 1.0f) ? (1.0f / hz) : 0.0f;
+}
+
+/* --------------------------------------------------------------------------
  * Critical sections
  * -------------------------------------------------------------------------- */
 

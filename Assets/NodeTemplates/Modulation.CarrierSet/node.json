@@ -1,0 +1,53 @@
+{
+  "id": "Modulation.CarrierSet",
+  "displayName": "Carrier Frequency Set",
+  "defaultName": "CarrierSet",
+  "description": "Applies a target PWM carrier frequency from a config value at runtime (bounded, apply-on-change). The control ISR rate follows the carrier; integrating nodes must use platform_get_pwm_dt().",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "app_loop",
+  "inputPorts": [
+    {
+      "name": "TargetHz",
+      "description": "Target carrier frequency in hertz (clamped to MinHz..MaxHz).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "AppliedHz",
+      "description": "Currently applied carrier frequency in hertz.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "MinHz": {
+      "description": "Minimum allowed carrier frequency.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "MaxHz": {
+      "description": "Maximum allowed carrier frequency.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Applied": {
+      "description": "Persistent last-applied frequency state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

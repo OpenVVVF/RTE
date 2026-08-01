@@ -110,10 +110,15 @@ void PWM_SetFrequency(uint32_t freq_hz)
     pwm_switching_freq_hz = (float)TIM1_CLOCK_HZ /
                             (2.0f * (float)(arr + 1U) * (float)(psc + 1U));
 
-    /* Default to one update event per switching period (RCR=1), matching the
-     * open-loop SPWM convention.  FOC mode will override this when enabled. */
-    TIM1->RCR = 1U;
-    pwm_update_freq_hz = pwm_switching_freq_hz;
+    /* Preserve the modulation mode's update rate: FOC dual-update keeps
+     * RCR=0 (2x switching), everything else one update per period. */
+    if (foc_active) {
+        TIM1->RCR = 0U;
+        pwm_update_freq_hz = 2.0f * pwm_switching_freq_hz;
+    } else {
+        TIM1->RCR = 1U;
+        pwm_update_freq_hz = pwm_switching_freq_hz;
+    }
 }
 
 void PWM_SetDeadTime(uint32_t deadtime_ns)
