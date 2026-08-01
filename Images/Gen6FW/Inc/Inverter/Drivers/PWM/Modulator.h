@@ -94,5 +94,10 @@ float shepwmFrequencyHz();
 float shepwmModulationIndex();
 uint32_t shepwmWrapCount();
 uint32_t shepwmEdgeCount();
+/* Runtime N-pulse mode (no tables): npq cells per quarter cycle, each HIGH
+ * for the middle `duty` fraction (centered notch of width 1-duty). */
+void shepwmSetPulsePattern(float fe_hz, uint32_t npq, float duty);
+uint32_t shepwmPulseCount();   /* 0 = SHE table mode */
+float shepwmDuty();
 
 } // namespace Inverter

@@ -32,9 +32,14 @@ namespace {
 constexpr uint32_t kTim5ClockHz = 137500000UL;
 
 constexpr uint32_t kAnglesPerQuarter = shetab::kAnglesPerQuarter;
-/* 4 edges per angle per phase (quarter-wave symmetry) plus the two
- * half-cycle boundary edges (half-wave inversion), 3 phases. */
-constexpr uint32_t kMaxEvents = 12U * kAnglesPerQuarter + 6U;
+
+/* Runtime N-pulse mode: per quarter, `npq` cells each hold one centered
+ * pulse (2 angles per cell).  Capped so the ping-pong buffers stay small. */
+constexpr uint32_t kMaxPulsesPerQuarter = 64;
+constexpr uint32_t kMaxAngles = 2U * kMaxPulsesPerQuarter;
+
+/* events/phase = 4*n_angles + 2 half-cycle boundary edges; 3 phases. */
+constexpr uint32_t kMaxEvents = 3U * (4U * kMaxAngles + 2U);
 
 /* Process events due within this many counts of "now" (29 ns): absorbs ISR
  * latency and coincident edges from two phases. */
@@ -63,6 +68,10 @@ struct ShePattern {
 
 ShePattern s_patternBuf[2] __attribute__((section(".dma_buffers")));
 
+/* Build-time angle scratch (slow context only; ISR never reads it).
+ * AXI SRAM for the same DTCMRAM-budget reason as the pattern buffers. */
+float s_angleScratch[kMaxAngles] __attribute__((section(".dma_buffers")));
+
 class ShepwmModulator final : public Modulator {
 public:
     const char* name() const override { return "shepwm"; }
@@ -82,12 +91,37 @@ public:
         if (fe_hz < 0.1f) fe_hz = 0.1f;
         m_fe_hz = fe_hz;
         m_mi = mi;
+        m_npulses = 0;  /* SHE table mode */
+        stage(fe_hz, interpolateAngles(), kAnglesPerQuarter, 1U);
+    }
 
-        const uint8_t idx = (uint8_t)(m_active ^ 1U);
-        ShePattern& p = s_patternBuf[idx];
-        p.arr = (uint32_t)lroundf((float)kTim5ClockHz / fe_hz) - 1U;
-        p.count = buildEvents(p.events, kMaxEvents, interpolateAngles(), p.arr);
-        m_pending = idx;        /* staged; applied at next wrap or by enter() */
+    /**
+     * @brief Runtime N-pulse mode: npq cells per quarter, each cell HIGH for
+     * the middle `duty` fraction (a centered low-notch of width 1-duty).
+     *
+     * No tables: angles are arithmetic.  duty=1 -> square wave (six-step),
+     * lower duty -> lower fundamental.  |fundamental| falls smoothly from
+     * 1.0 but crosses zero near duty~0.5 (bipolar-pattern physics: at 50%
+     * high time the cos-weighted mean cancels) — operate above ~0.7.
+     */
+    void setPulsePattern(float fe_hz, uint32_t npq, float duty) {
+        if (fe_hz < 0.1f) fe_hz = 0.1f;
+        if (npq < 1U) npq = 1U;
+        if (npq > kMaxPulsesPerQuarter) npq = kMaxPulsesPerQuarter;
+        if (duty < 0.0f) duty = 0.0f;
+        if (duty > 1.0f) duty = 1.0f;
+        m_fe_hz = fe_hz;
+        m_duty = duty;
+        m_npulses = npq;
+
+        /* Falling edge at (i + d/2)*cell, rising edge at (i + 1 - d/2)*cell;
+         * leg starts high at theta=0+ (SHE/notch convention). */
+        const float cell = (kPi / 2.0f) / (float)npq;
+        for (uint32_t i = 0; i < npq; ++i) {
+            s_angleScratch[2U * i]      = ((float)i + duty * 0.5f) * cell;
+            s_angleScratch[2U * i + 1U] = ((float)i + 1.0f - duty * 0.5f) * cell;
+        }
+        stage(fe_hz, s_angleScratch, 2U * npq, 1U);
     }
 
     /**
@@ -157,6 +191,9 @@ public:
     float modulationIndex() const { return m_mi; }
     uint32_t wrapCount() const { return m_wrap_count; }
     uint32_t edgeCount() const { return m_edge_count; }
+    /* N-pulse mode introspection: 0 = SHE table mode. */
+    uint32_t pulseCount() const { return m_npulses; }
+    float duty() const { return m_duty; }
 
     /* TIM5 update event = electrical-cycle wrap: the only safe mutation point. */
     void onWrap() {
@@ -178,6 +215,19 @@ public:
 private:
     static constexpr uint8_t kNoPending = 0xFFU;
 
+    /* Shared staging: build the event list into the inactive buffer and arm
+     * the wrap-synchronized swap.  start_level is the leg level at theta=0+
+     * (1 = SHE notch patterns, 0 = centered-pulse patterns). */
+    void stage(float fe_hz, const float* angles, uint32_t n_angles,
+               uint8_t start_level) {
+        const uint8_t idx = (uint8_t)(m_active ^ 1U);
+        ShePattern& p = s_patternBuf[idx];
+        p.arr = (uint32_t)lroundf((float)kTim5ClockHz / fe_hz) - 1U;
+        p.count = buildEvents(p.events, kMaxEvents, angles, n_angles, p.arr,
+                              start_level);
+        m_pending = idx;        /* staged; applied at next wrap or by enter() */
+    }
+
     /* Interpolate the angle trajectory for m_mi between MI grid points. */
     const float* interpolateAngles() {
         float x = (m_mi - shetab::kMiMin) / shetab::kMiStep;
@@ -188,10 +238,10 @@ private:
         const uint32_t j = (i + 1U < shetab::kMiCount) ? i + 1U : i;
         const float f = x - (float)i;
         for (uint32_t k = 0; k < kAnglesPerQuarter; ++k) {
-            m_angles[k] = shetab::kAngles[i][k] * (1.0f - f) +
+            s_angleScratch[k] = shetab::kAngles[i][k] * (1.0f - f) +
                           shetab::kAngles[j][k] * f;
         }
-        return m_angles;
+        return s_angleScratch;
     }
 
     /**
@@ -205,7 +255,8 @@ private:
      * Events carry the level after the edge.
      */
     static uint16_t buildEvents(SheEvent* out, uint16_t max_events,
-                                const float* angles, uint32_t arr) {
+                                const float* angles, uint32_t n_angles,
+                                uint32_t arr, uint8_t start_level) {
         static const float kShift[3] = {
             0.0f, 2.0f * kPi / 3.0f, 4.0f * kPi / 3.0f
         };
@@ -224,18 +275,19 @@ private:
         };
 
         for (uint8_t ph = 0; ph < 3U; ++ph) {
-            /* Boundary edge at theta=0 (+shift): leg goes high. */
-            push(kShift[ph], ph, 1U);
-            uint8_t level = 1U;
+            /* Boundary edge at theta=0 (+shift): leg starts at start_level
+             * (high for SHE notches, low for centered pulses). */
+            push(kShift[ph], ph, start_level);
+            uint8_t level = start_level;
             for (uint32_t q = 0; q < 4U; ++q) {
                 if (q == 2U) {
                     /* Boundary edge at theta=pi (+shift): half-wave inversion. */
-                    push(kShift[ph] + kPi, ph, 0U);
-                    level = 0U;
+                    level = (uint8_t)(start_level ^ 1U);
+                    push(kShift[ph] + kPi, ph, level);
                 }
-                for (uint32_t i = 0; i < kAnglesPerQuarter; ++i) {
+                for (uint32_t i = 0; i < n_angles; ++i) {
                     const uint32_t idx =
-                        (q == 0U || q == 2U) ? i : (kAnglesPerQuarter - 1U - i);
+                        (q == 0U || q == 2U) ? i : (n_angles - 1U - i);
                     float theta;
                     switch (q) {
                     case 0: theta = angles[idx]; break;
@@ -292,9 +344,10 @@ private:
         }
     }
 
-    float m_angles[kAnglesPerQuarter] = {};
     float m_fe_hz = 0.0f;
     float m_mi = 0.0f;
+    float m_duty = 0.0f;
+    uint32_t m_npulses = 0;   /* 0 = SHE table mode, >0 = N-pulse mode */
     volatile uint16_t m_cursor = 0;
     volatile uint8_t m_active = 0;
     volatile uint8_t m_pending = kNoPending;
@@ -315,6 +368,11 @@ float shepwmFrequencyHz() { return s_shepwm.frequencyHz(); }
 float shepwmModulationIndex() { return s_shepwm.modulationIndex(); }
 uint32_t shepwmWrapCount() { return s_shepwm.wrapCount(); }
 uint32_t shepwmEdgeCount() { return s_shepwm.edgeCount(); }
+void shepwmSetPulsePattern(float fe_hz, uint32_t npq, float duty) {
+    s_shepwm.setPulsePattern(fe_hz, npq, duty);
+}
+uint32_t shepwmPulseCount() { return s_shepwm.pulseCount(); }
+float shepwmDuty() { return s_shepwm.duty(); }
 
 } // namespace Inverter
 

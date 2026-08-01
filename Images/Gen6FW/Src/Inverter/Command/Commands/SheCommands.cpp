@@ -31,63 +31,79 @@ bool otherControlActive() {
     return false;
 }
 
+/* Blocking safe-start: park at zero vector, cycle gate-driver reset, verify
+ * ready, start TIM1 outputs, hand the modulation slot to the SHEPWM engine.
+ * The caller stages the pattern (SHE table or N-pulse) before calling. */
+bool sheSafeStart() {
+    if (otherControlActive()) return false;
+    if (Inverter::shepwmIsRunning()) {
+        Telemetry::printf("[SHE] already running; use sheset/npset or shestop");
+        return false;
+    }
+
+    PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+    GateDriver_DisableOutputs();
+    HAL_Delay(10);
+    GateDriver_EnableOutputs();
+    HAL_Delay(10);
+
+    if (!GateDriver_IsReady() || GateDriver_IsFault()) {
+        Telemetry::printf("[SHE] ERROR: gate driver not ready or fault latched");
+        GateDriver_DisableOutputs();
+        return false;
+    }
+
+    PWM_ClearFault();
+    PWM_Start();
+
+    if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
+        Telemetry::printf("[SHE] ERROR: TIM1 MOE not active after PWM start");
+        GateDriver_DisableOutputs();
+        return false;
+    }
+
+    if (!Inverter::shepwmModulator().enter(0.0f, 0.0f)) {
+        Telemetry::printf("[SHE] ERROR: enter failed");
+        PWM_Stop();
+        GateDriver_DisableOutputs();
+        return false;
+    }
+    Inverter::setActiveModulator(&Inverter::shepwmModulator());
+    return true;
+}
+
 class SheStartCommand : public CommandInterface {
 public:
     SheStartCommand()
-      : CommandInterface("shestart", "Start SHEPWM output (TIM5 pattern, TIM1 forced modes)",
+      : CommandInterface("shestart", "Start pattern output: shestart <freq> <duty_or_mi> [pulses_per_qtr]",
             {ArgSpec{"freq_hz", "Hz", 0.1f, 1000.0f, 0.0f, true, ArgSpec::FLOAT},
-             ArgSpec{"mod_idx", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}}) {}
+             ArgSpec{"duty_or_mi", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT},
+             ArgSpec{"pulses", "/qtr", 0.0f, 64.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
-        if (otherControlActive()) return;
-        if (Inverter::shepwmIsRunning()) {
-            Telemetry::printf("[SHE] already running; use sheset or shestop");
-            return;
+        if (args[2].present) {
+            /* N-pulse mode: arg1 = duty (high fraction per cell). */
+            const uint32_t npq = static_cast<uint32_t>(args[2].f_val + 0.5f);
+            Inverter::shepwmSetPulsePattern(args[0].f_val, npq, args[1].f_val);
+            if (!sheSafeStart()) return;
+            Telemetry::printf("[SHE] STARTED N-pulse fe=%.2f Hz pulses/qtr=%lu duty=%.3f",
+                              static_cast<double>(args[0].f_val),
+                              static_cast<unsigned long>(npq),
+                              static_cast<double>(args[1].f_val));
+        } else {
+            /* SHE table mode: arg1 = modulation index. */
+            Inverter::shepwmSetPattern(args[0].f_val, args[1].f_val);
+            if (!sheSafeStart()) return;
+            Telemetry::printf("[SHE] STARTED fe=%.2f Hz mi=%.3f",
+                              static_cast<double>(args[0].f_val),
+                              static_cast<double>(args[1].f_val));
         }
-
-        const float fe_hz = args[0].f_val;
-        const float mi = args[1].f_val;
-
-        /* Safe start (same blocking sequence as vectorscan): park at zero
-         * vector, cycle gate-driver reset, verify ready. */
-        PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
-        GateDriver_DisableOutputs();
-        HAL_Delay(10);
-        GateDriver_EnableOutputs();
-        HAL_Delay(10);
-
-        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
-            Telemetry::printf("[SHE] ERROR: gate driver not ready or fault latched");
-            GateDriver_DisableOutputs();
-            return;
-        }
-
-        PWM_ClearFault();
-        PWM_Start();
-
-        if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
-            Telemetry::printf("[SHE] ERROR: TIM1 MOE not active after PWM start");
-            GateDriver_DisableOutputs();
-            return;
-        }
-
-        Inverter::shepwmSetPattern(fe_hz, mi);
-        if (!Inverter::shepwmModulator().enter(0.0f, mi)) {
-            Telemetry::printf("[SHE] ERROR: enter failed");
-            PWM_Stop();
-            GateDriver_DisableOutputs();
-            return;
-        }
-        Inverter::setActiveModulator(&Inverter::shepwmModulator());
-
-        Telemetry::printf("[SHE] STARTED fe=%.2f Hz mi=%.3f",
-                          static_cast<double>(fe_hz), static_cast<double>(mi));
     }
 };
 
 class SheStopCommand : public CommandInterface {
 public:
-    SheStopCommand() : CommandInterface("shestop", "Stop SHEPWM output") {}
+    SheStopCommand() : CommandInterface("shestop", "Stop SHEPWM/N-pulse output") {}
 
     void execute(const ArgValue*, CommandContext&) override {
         if (!Inverter::shepwmIsRunning()) {
@@ -108,33 +124,54 @@ public:
 class SheSetCommand : public CommandInterface {
 public:
     SheSetCommand()
-      : CommandInterface("sheset", "Set SHEPWM frequency/MI (applies at next cycle wrap)",
+      : CommandInterface("sheset", "Set pattern: sheset <freq> <duty_or_mi> [pulses_per_qtr] (swaps at wrap)",
             {ArgSpec{"freq_hz", "Hz", 0.1f, 1000.0f, 0.0f, true, ArgSpec::FLOAT},
-             ArgSpec{"mod_idx", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}}) {}
+             ArgSpec{"duty_or_mi", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT},
+             ArgSpec{"pulses", "/qtr", 0.0f, 64.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         if (!Inverter::shepwmIsRunning()) {
             Telemetry::printf("[SHE] not running; use shestart");
             return;
         }
-        Inverter::shepwmSetPattern(args[0].f_val, args[1].f_val);
-        Telemetry::printf("[SHE] pattern staged: fe=%.2f Hz mi=%.3f (swaps at wrap)",
-                          static_cast<double>(args[0].f_val),
-                          static_cast<double>(args[1].f_val));
+        if (args[2].present) {
+            const uint32_t npq = static_cast<uint32_t>(args[2].f_val + 0.5f);
+            Inverter::shepwmSetPulsePattern(args[0].f_val, npq, args[1].f_val);
+            Telemetry::printf("[SHE] pattern staged: N-pulse fe=%.2f Hz pulses/qtr=%lu duty=%.3f (swaps at wrap)",
+                              static_cast<double>(args[0].f_val),
+                              static_cast<unsigned long>(npq),
+                              static_cast<double>(args[1].f_val));
+        } else {
+            Inverter::shepwmSetPattern(args[0].f_val, args[1].f_val);
+            Telemetry::printf("[SHE] pattern staged: fe=%.2f Hz mi=%.3f (swaps at wrap)",
+                              static_cast<double>(args[0].f_val),
+                              static_cast<double>(args[1].f_val));
+        }
     }
 };
 
 class SheStatusCommand : public CommandInterface {
 public:
-    SheStatusCommand() : CommandInterface("shestatus", "Show SHEPWM status") {}
+    SheStatusCommand() : CommandInterface("shestatus", "Show SHEPWM/N-pulse status") {}
 
     void execute(const ArgValue*, CommandContext&) override {
-        Telemetry::printf("[SHE] run=%s fe=%.2f Hz mi=%.3f wraps=%lu edges=%lu",
-                          Inverter::shepwmIsRunning() ? "Y" : "N",
-                          static_cast<double>(Inverter::shepwmFrequencyHz()),
-                          static_cast<double>(Inverter::shepwmModulationIndex()),
-                          static_cast<unsigned long>(Inverter::shepwmWrapCount()),
-                          static_cast<unsigned long>(Inverter::shepwmEdgeCount()));
+        const uint32_t npq = Inverter::shepwmPulseCount();
+        if (npq > 0) {
+            Telemetry::printf("[SHE] run=%s mode=N-pulse fe=%.2f Hz pulses/qtr=%lu duty=%.3f wraps=%lu edges=%lu",
+                              Inverter::shepwmIsRunning() ? "Y" : "N",
+                              static_cast<double>(Inverter::shepwmFrequencyHz()),
+                              static_cast<unsigned long>(npq),
+                              static_cast<double>(Inverter::shepwmDuty()),
+                              static_cast<unsigned long>(Inverter::shepwmWrapCount()),
+                              static_cast<unsigned long>(Inverter::shepwmEdgeCount()));
+        } else {
+            Telemetry::printf("[SHE] run=%s mode=SHE-table fe=%.2f Hz mi=%.3f wraps=%lu edges=%lu",
+                              Inverter::shepwmIsRunning() ? "Y" : "N",
+                              static_cast<double>(Inverter::shepwmFrequencyHz()),
+                              static_cast<double>(Inverter::shepwmModulationIndex()),
+                              static_cast<unsigned long>(Inverter::shepwmWrapCount()),
+                              static_cast<unsigned long>(Inverter::shepwmEdgeCount()));
+        }
     }
 };
 
