@@ -1,0 +1,80 @@
+{
+  "id": "Sensors.ElecFreq",
+  "displayName": "Electrical Frequency",
+  "defaultName": "ElecFreq",
+  "description": "Estimates electrical fundamental frequency and rotation direction from mechanical speed and pole count, with an optional low-pass filter. Single source of truth for the modulation sequencer.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "Omega_Mech",
+      "description": "Mechanical motor speed in revolutions per minute.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Poles",
+      "description": "Motor pole count used to convert mechanical to electrical frequency.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "F_Elec",
+      "description": "Electrical fundamental frequency magnitude in hertz.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Dir",
+      "description": "Rotation direction: +1 forward, -1 reverse.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Poles": {
+      "description": "Fallback motor pole count when the Poles input is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Fc": {
+      "description": "Low-pass cutoff in hertz for the frequency estimate (0 disables filtering).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Dt": {
+      "description": "Sample period in seconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "State": {
+      "description": "Persistent filter state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

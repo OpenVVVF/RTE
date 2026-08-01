@@ -1,3 +1,11 @@
+/* Guard: with no usable DC-link reading (bus off / sensor not ready) the
+ * inverse-Clarke divide would produce inf/NaN duties.  Emit neutral. */
+if (!(V_Dc.in(au::volts) > 1.0f)) {
+    Duty_A = 50.0f;
+    Duty_B = 50.0f;
+    Duty_C = 50.0f;
+} else {
+
 /* Clamp the alpha/beta voltage vector to the linear SVM limit.
  * The maximum line-to-neutral voltage magnitude for linear modulation is
  * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation
@@ -41,3 +49,5 @@ if (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_p
 Duty_A = duty_a_pct;
 Duty_B = duty_b_pct;
 Duty_C = duty_c_pct;
+
+}

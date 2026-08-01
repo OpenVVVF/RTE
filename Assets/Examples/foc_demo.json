@@ -636,17 +636,6 @@
         "nodeId": "PiQ",
         "portName": "Ki"
       }
-    },
-    {
-      "from": {
-        "nodeId": "CanRx1",
-        "portName": "D0"
-      },
-      "id": "c_can_d0",
-      "to": {
-        "nodeId": "LogCanD0",
-        "portName": "Value"
-      }
     }
   ],
   "name": "foc_demo",
@@ -2049,9 +2038,9 @@
       "parameterTypes": {
         "InvertPolarity": {
           "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
-          "quantity": "boolean",
+          "dtype": "f32",
           "frame": "scalar",
-          "dtype": "f32"
+          "quantity": "boolean"
         }
       }
     },
@@ -2744,9 +2733,9 @@
       "domain": "adc_isr",
       "id": "Currents",
       "parameters": {
+        "InvertPolarity": "1.0",
         "OffsetU": "0.0",
-        "OffsetV": "0.0",
-        "InvertPolarity": "1.0"
+        "OffsetV": "0.0"
       },
       "position": {
         "x": 150.0,
@@ -3482,60 +3471,6 @@
         "y": 2246.0
       },
       "type": "Values.Config"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "CanTx1",
-      "parameters": {
-        "Bus": "2.0",
-        "Id": "291.0",
-        "Ext": "0.0",
-        "Dlc": "3.0",
-        "Rate": "10.0",
-        "LastMs": "0.0",
-        "D0": "222.0",
-        "D1": "173.0",
-        "D2": "190.0",
-        "D3": "0.0",
-        "D4": "0.0",
-        "D5": "0.0",
-        "D6": "0.0",
-        "D7": "0.0"
-      },
-      "position": {
-        "x": 0.0,
-        "y": 1550.0
-      },
-      "type": "Actuators.CanTx"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "CanRx1",
-      "parameters": {
-        "Bus": "2.0",
-        "Id": "801.0",
-        "LastSeq": "0.0"
-      },
-      "position": {
-        "x": 0.0,
-        "y": 1650.0
-      },
-      "type": "Sensors.CanRx"
-    },
-    {
-      "displayName": "",
-      "domain": "app_loop",
-      "id": "LogCanD0",
-      "parameters": {
-        "Key": "can_rx_d0"
-      },
-      "position": {
-        "x": 300.0,
-        "y": 1650.0
-      },
-      "type": "Debug.TelemetryLog"
     }
   ]
 }

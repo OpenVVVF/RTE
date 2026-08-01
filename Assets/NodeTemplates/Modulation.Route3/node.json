@@ -1,0 +1,114 @@
+{
+  "id": "Modulation.Route3",
+  "displayName": "Modulation Router (3-phase)",
+  "defaultName": "ModRoute",
+  "description": "Selects or blends two modulator duty triples by the sequencer Blend weight and sanitizes the result: any non-finite duty becomes the 50% neutral point. Chain for more than two modes.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "Blend",
+      "description": "Weight of slot B (0 = slot A duties, 1 = slot B duties).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "A_A",
+      "description": "Slot A (lower ladder mode) phase A duty.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "A_B",
+      "description": "Slot A phase B duty.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "A_C",
+      "description": "Slot A phase C duty.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "B_A",
+      "description": "Slot B (higher ladder mode) phase A duty.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "B_B",
+      "description": "Slot B phase B duty.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "B_C",
+      "description": "Slot B phase C duty.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Routed phase A duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_B",
+      "description": "Routed phase B duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_C",
+      "description": "Routed phase C duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

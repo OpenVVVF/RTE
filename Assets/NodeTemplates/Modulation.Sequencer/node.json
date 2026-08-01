@@ -1,0 +1,150 @@
+{
+  "id": "Modulation.Sequencer",
+  "displayName": "Modulation Sequencer",
+  "defaultName": "ModSeq",
+  "description": "Railway-style modulation mode sequencer. Walks a boundary-table mode ladder with hysteresis and minimum dwell; transitions preserve fundamental amplitude/phase (incoming modulator arms phase-locked, switch at the boundary; optional timed crossfade).",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "F_Elec",
+      "description": "Electrical fundamental frequency in hertz.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModIndex",
+      "description": "Commanded modulation index (reserved for ceiling-driven boundaries).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Enable",
+      "description": "Master enable; false forces mode 0.",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "ModeFrom",
+      "description": "Mode being left (during a transition) or current mode (steady).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeTo",
+      "description": "Incoming mode (during a transition) or current mode (steady).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Blend",
+      "description": "Output weight of the higher ladder slot (0 = mode 0 duties, 1 = mode 1 duties).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Mode",
+      "description": "Current steady ladder mode (telemetry).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "TransActive",
+      "description": "True while a mode transition is in progress.",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "FEnterHz": {
+      "description": "Frequency to enter the next ladder mode (upshift threshold).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "FExitHz": {
+      "description": "Frequency to leave the current ladder mode (downshift threshold, below FEnterHz for hysteresis).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "MinDwellMs": {
+      "description": "Minimum time a boundary condition must hold before switching.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "TransMs": {
+      "description": "Transition duration in milliseconds (0 = hard phase-locked switch).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Dt": {
+      "description": "Sample period in seconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "CurMode": {
+      "description": "Persistent current ladder mode state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "DwellT": {
+      "description": "Persistent dwell timer state in seconds (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "TransT": {
+      "description": "Persistent transition-active timer state in seconds (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "BlendS": {
+      "description": "Persistent blend state (leave at default).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

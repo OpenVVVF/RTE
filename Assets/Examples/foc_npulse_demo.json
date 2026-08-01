@@ -606,45 +606,12 @@
     },
     {
       "from": {
-        "nodeId": "InvPark",
-        "portName": "V_Alpha"
-      },
-      "id": "c_sync_valpha",
-      "to": {
-        "nodeId": "SyncMod",
-        "portName": "V_Alpha"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "InvPark",
-        "portName": "V_Beta"
-      },
-      "id": "c_sync_vbeta",
-      "to": {
-        "nodeId": "SyncMod",
-        "portName": "V_Beta"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "VdcSense",
-        "portName": "V_Dc"
-      },
-      "id": "c_sync_vdc",
-      "to": {
-        "nodeId": "SyncMod",
-        "portName": "V_Dc"
-      }
-    },
-    {
-      "from": {
         "nodeId": "Encoder",
         "portName": "Omega"
       },
-      "id": "c_sync_omega",
+      "id": "c_ef_omega",
       "to": {
-        "nodeId": "SyncMod",
+        "nodeId": "ElecFreq",
         "portName": "Omega_Mech"
       }
     },
@@ -653,163 +620,229 @@
         "nodeId": "CfgPoles",
         "portName": "Value"
       },
-      "id": "c_sync_poles",
+      "id": "c_ef_poles",
       "to": {
-        "nodeId": "SyncMod",
+        "nodeId": "ElecFreq",
         "portName": "Poles"
       }
     },
     {
       "from": {
-        "nodeId": "SyncMod",
-        "portName": "Active"
-      },
-      "id": "c_muxa_sel",
-      "to": {
-        "nodeId": "MuxA",
-        "portName": "Sel"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SyncMod",
-        "portName": "Active"
-      },
-      "id": "c_muxb_sel",
-      "to": {
-        "nodeId": "MuxB",
-        "portName": "Sel"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SyncMod",
-        "portName": "Active"
-      },
-      "id": "c_muxc_sel",
-      "to": {
-        "nodeId": "MuxC",
-        "portName": "Sel"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SyncMod",
-        "portName": "Duty_A"
-      },
-      "id": "c_muxa_a",
-      "to": {
-        "nodeId": "MuxA",
-        "portName": "A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SyncMod",
-        "portName": "Duty_B"
-      },
-      "id": "c_muxb_a",
-      "to": {
-        "nodeId": "MuxB",
-        "portName": "A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SyncMod",
-        "portName": "Duty_C"
-      },
-      "id": "c_muxc_a",
-      "to": {
-        "nodeId": "MuxC",
-        "portName": "A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "Svpwm",
-        "portName": "Duty_A"
-      },
-      "id": "c_muxa_b",
-      "to": {
-        "nodeId": "MuxA",
-        "portName": "B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "Svpwm",
-        "portName": "Duty_B"
-      },
-      "id": "c_muxb_b",
-      "to": {
-        "nodeId": "MuxB",
-        "portName": "B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "Svpwm",
-        "portName": "Duty_C"
-      },
-      "id": "c_muxc_b",
-      "to": {
-        "nodeId": "MuxC",
-        "portName": "B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "MuxA",
-        "portName": "Out"
-      },
-      "id": "c_muxa_out",
-      "to": {
-        "nodeId": "PwmOut",
-        "portName": "Duty_A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "MuxB",
-        "portName": "Out"
-      },
-      "id": "c_muxb_out",
-      "to": {
-        "nodeId": "PwmOut",
-        "portName": "Duty_B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "MuxC",
-        "portName": "Out"
-      },
-      "id": "c_muxc_out",
-      "to": {
-        "nodeId": "PwmOut",
-        "portName": "Duty_C"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SyncMod",
+        "nodeId": "ElecFreq",
         "portName": "F_Elec"
       },
-      "id": "c_log_sync_fe",
+      "id": "c_seq_fe",
       "to": {
-        "nodeId": "LogSyncFE",
+        "nodeId": "ModSeq",
+        "portName": "F_Elec"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ThrottleEnable",
+        "portName": "Value"
+      },
+      "id": "c_seq_en",
+      "to": {
+        "nodeId": "ModSeq",
+        "portName": "Enable"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "InvPark",
+        "portName": "V_Alpha"
+      },
+      "id": "c_ss_valpha",
+      "to": {
+        "nodeId": "SixStep",
+        "portName": "V_Alpha"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "InvPark",
+        "portName": "V_Beta"
+      },
+      "id": "c_ss_vbeta",
+      "to": {
+        "nodeId": "SixStep",
+        "portName": "V_Beta"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "V_Dc"
+      },
+      "id": "c_ss_vdc",
+      "to": {
+        "nodeId": "SixStep",
+        "portName": "V_Dc"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModSeq",
+        "portName": "ModeFrom"
+      },
+      "id": "c_ss_from",
+      "to": {
+        "nodeId": "SixStep",
+        "portName": "ModeFrom"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModSeq",
+        "portName": "ModeTo"
+      },
+      "id": "c_ss_to",
+      "to": {
+        "nodeId": "SixStep",
+        "portName": "ModeTo"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_A"
+      },
+      "id": "c_rt_a_a",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "A_A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_B"
+      },
+      "id": "c_rt_a_b",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "A_B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_C"
+      },
+      "id": "c_rt_a_c",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "A_C"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SixStep",
+        "portName": "Duty_A"
+      },
+      "id": "c_rt_b_a",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "B_A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SixStep",
+        "portName": "Duty_B"
+      },
+      "id": "c_rt_b_b",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "B_B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SixStep",
+        "portName": "Duty_C"
+      },
+      "id": "c_rt_b_c",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "B_C"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModSeq",
+        "portName": "Blend"
+      },
+      "id": "c_rt_blend",
+      "to": {
+        "nodeId": "ModRoute",
+        "portName": "Blend"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModRoute",
+        "portName": "Duty_A"
+      },
+      "id": "c_rt_out_a",
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "Duty_A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModRoute",
+        "portName": "Duty_B"
+      },
+      "id": "c_rt_out_b",
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "Duty_B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModRoute",
+        "portName": "Duty_C"
+      },
+      "id": "c_rt_out_c",
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "Duty_C"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ModSeq",
+        "portName": "Mode"
+      },
+      "id": "c_log_modmode",
+      "to": {
+        "nodeId": "LogModMode",
         "portName": "Value"
       }
     },
     {
       "from": {
-        "nodeId": "SyncMod",
-        "portName": "N_Pulses"
+        "nodeId": "ModSeq",
+        "portName": "Blend"
       },
-      "id": "c_log_sync_n",
+      "id": "c_log_modblend",
       "to": {
-        "nodeId": "LogSyncN",
+        "nodeId": "LogModBlend",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ElecFreq",
+        "portName": "F_Elec"
+      },
+      "id": "c_log_felec",
+      "to": {
+        "nodeId": "LogFElec",
         "portName": "Value"
       }
     }
@@ -1740,87 +1773,81 @@
       ]
     },
     {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
+      "id": "Transforms.Svpwm",
+      "displayName": "Space Vector PWM",
       "defaultName": "Svpwm",
       "description": "Converts an alpha-beta voltage vector into centered three-phase PWM duty commands.",
-      "displayName": "Space Vector PWM",
-      "domain": "",
-      "id": "Transforms.Svpwm",
-      "inlineCode": "/* Clamp the alpha/beta voltage vector to the linear SVM limit.\n * The maximum line-to-neutral voltage magnitude for linear modulation is\n * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation\n * boundary. */\nconst float sqrt3 = 1.7320508075688772f;\nconst float v_max_linear = (V_Dc.in(au::volts) / sqrt3) * 0.95f;\nfloat valpha = V_Alpha.in(au::volts);\nfloat vbeta  = V_Beta.in(au::volts);\nconst float v_albe_sq = valpha * valpha + vbeta * vbeta;\nif (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n    const float scale = v_max_linear / sqrtf(v_albe_sq);\n    valpha *= scale;\n    vbeta  *= scale;\n}\n\n/* Inverse Clarke: alpha/beta -> A/B/C. */\nconst float v_a = valpha / V_Dc.in(au::volts);\nconst float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);\nconst float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\n/* Convert to percent duty and clamp.  Linear SVM stays roughly in\n * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\nfloat duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\nfloat duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\nfloat duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\nif (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\nif (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\nif (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\nDuty_A = duty_a_pct;\nDuty_B = duty_b_pct;\nDuty_C = duty_c_pct;\n",
+      "maxInstances": 0,
+      "isEntryPoint": false,
       "inputPorts": [
         {
+          "name": "V_Alpha",
           "description": "Requested stationary-frame alpha-axis voltage.",
           "direction": "input",
-          "name": "V_Alpha",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
+            "dtype": "f32"
           }
         },
         {
+          "name": "V_Beta",
           "description": "Requested stationary-frame beta-axis voltage.",
           "direction": "input",
-          "name": "V_Beta",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
+            "dtype": "f32"
           }
         },
         {
+          "name": "V_Dc",
           "description": "Measured DC-link voltage used for normalization and modulation limiting.",
           "direction": "input",
-          "name": "V_Dc",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "voltage",
             "frame": "scalar",
-            "quantity": "voltage"
+            "dtype": "f32"
           }
         }
       ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
       "outputPorts": [
         {
+          "name": "Duty_A",
           "description": "Phase A PWM duty command in percent.",
           "direction": "output",
-          "name": "Duty_A",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         },
         {
+          "name": "Duty_B",
           "description": "Phase B PWM duty command in percent.",
           "direction": "output",
-          "name": "Duty_B",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         },
         {
+          "name": "Duty_C",
           "description": "Phase C PWM duty command in percent.",
           "direction": "output",
-          "name": "Duty_C",
-          "optional": false,
           "type": {
-            "dtype": "f32",
+            "quantity": "dimensionless",
             "frame": "scalar",
-            "quantity": "dimensionless"
+            "dtype": "f32"
           }
         }
-      ]
+      ],
+      "parameterTypes": {},
+      "inlineCode": "/* Guard: with no usable DC-link reading (bus off / sensor not ready) the\n * inverse-Clarke divide would produce inf/NaN duties.  Emit neutral. */\nif (!(V_Dc.in(au::volts) > 1.0f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n} else {\n\n/* Clamp the alpha/beta voltage vector to the linear SVM limit.\n * The maximum line-to-neutral voltage magnitude for linear modulation is\n * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation\n * boundary. */\nconst float sqrt3 = 1.7320508075688772f;\nconst float v_max_linear = (V_Dc.in(au::volts) / sqrt3) * 0.95f;\nfloat valpha = V_Alpha.in(au::volts);\nfloat vbeta  = V_Beta.in(au::volts);\nconst float v_albe_sq = valpha * valpha + vbeta * vbeta;\nif (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n    const float scale = v_max_linear / sqrtf(v_albe_sq);\n    valpha *= scale;\n    vbeta  *= scale;\n}\n\n/* Inverse Clarke: alpha/beta -> A/B/C. */\nconst float v_a = valpha / V_Dc.in(au::volts);\nconst float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);\nconst float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\n/* Convert to percent duty and clamp.  Linear SVM stays roughly in\n * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\nfloat duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\nfloat duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\nfloat duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\nif (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\nif (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\nif (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\nDuty_A = duty_a_pct;\nDuty_B = duty_b_pct;\nDuty_C = duty_c_pct;\n\n}\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
     },
     {
       "classDefinition": "",
@@ -2892,44 +2919,14 @@
       ]
     },
     {
-      "id": "Modulation.SyncNPulse",
-      "displayName": "Synchronous N-Pulse Modulation",
-      "defaultName": "SyncMod",
-      "description": "Synchronous switching-state modulation for high fundamental frequencies. Above the mode-switch frequency it emits direct switching states (as 0/100 duties) synchronized to the demanded voltage vector; below it, Active is false so the graph can route async SVPWM duties instead.",
+      "id": "Sensors.ElecFreq",
+      "displayName": "Electrical Frequency",
+      "defaultName": "ElecFreq",
+      "description": "Estimates electrical fundamental frequency and rotation direction from mechanical speed and pole count, with an optional low-pass filter. Single source of truth for the modulation sequencer.",
       "maxInstances": 1,
       "isEntryPoint": false,
       "domain": "tim_isr",
       "inputPorts": [
-        {
-          "name": "V_Alpha",
-          "description": "Demanded voltage vector, alpha component (from inverse Park).",
-          "direction": "input",
-          "type": {
-            "quantity": "voltage",
-            "frame": "scalar",
-            "dtype": "f32"
-          }
-        },
-        {
-          "name": "V_Beta",
-          "description": "Demanded voltage vector, beta component (from inverse Park).",
-          "direction": "input",
-          "type": {
-            "quantity": "voltage",
-            "frame": "scalar",
-            "dtype": "f32"
-          }
-        },
-        {
-          "name": "V_Dc",
-          "description": "DC-link voltage used to normalize the demanded magnitude.",
-          "direction": "input",
-          "type": {
-            "quantity": "voltage",
-            "frame": "scalar",
-            "dtype": "f32"
-          }
-        },
         {
           "name": "Omega_Mech",
           "description": "Mechanical motor speed in revolutions per minute.",
@@ -2942,7 +2939,7 @@
         },
         {
           "name": "Poles",
-          "description": "Motor pole count used to convert mechanical speed to electrical frequency.",
+          "description": "Motor pole count used to convert mechanical to electrical frequency.",
           "direction": "input",
           "type": {
             "quantity": "dimensionless",
@@ -2950,6 +2947,391 @@
             "dtype": "f32"
           },
           "optional": true
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "F_Elec",
+          "description": "Electrical fundamental frequency magnitude in hertz.",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Dir",
+          "description": "Rotation direction: +1 forward, -1 reverse.",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Poles": {
+          "description": "Fallback motor pole count when the Poles input is not wired.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Fc": {
+          "description": "Low-pass cutoff in hertz for the frequency estimate (0 disables filtering).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Dt": {
+          "description": "Sample period in seconds.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "State": {
+          "description": "Persistent filter state (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "/* Electrical frequency estimate: f_e = |rpm| / 60 * (poles / 2), low-passed.\n * NaN/invalid guards fall back to zero so the sequencer stays in mode 0. */\nfloat poles = Poles;\nif (!(poles >= 2.0f)) poles = 10.0f;\n\nfloat f_raw = fabsf(Omega_Mech) / 60.0f * (poles * 0.5f);\nif (!std::isfinite(f_raw)) f_raw = 0.0f;\n\nDir = (Omega_Mech >= 0.0f) ? 1.0f : -1.0f;\n\nif (Fc > 0.0f && Dt > 0.0f) {\n    const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * Fc * Dt));\n    State += alpha * (f_raw - State);\n} else {\n    State = f_raw;\n}\nF_Elec = State;\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "Modulation.Sequencer",
+      "displayName": "Modulation Sequencer",
+      "defaultName": "ModSeq",
+      "description": "Railway-style modulation mode sequencer. Walks a boundary-table mode ladder with hysteresis and minimum dwell; transitions preserve fundamental amplitude/phase (incoming modulator arms phase-locked, switch at the boundary; optional timed crossfade).",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "tim_isr",
+      "inputPorts": [
+        {
+          "name": "F_Elec",
+          "description": "Electrical fundamental frequency in hertz.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "ModIndex",
+          "description": "Commanded modulation index (reserved for ceiling-driven boundaries).",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "optional": true
+        },
+        {
+          "name": "Enable",
+          "description": "Master enable; false forces mode 0.",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "ModeFrom",
+          "description": "Mode being left (during a transition) or current mode (steady).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "ModeTo",
+          "description": "Incoming mode (during a transition) or current mode (steady).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Blend",
+          "description": "Output weight of the higher ladder slot (0 = mode 0 duties, 1 = mode 1 duties).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Mode",
+          "description": "Current steady ladder mode (telemetry).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "TransActive",
+          "description": "True while a mode transition is in progress.",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "FEnterHz": {
+          "description": "Frequency to enter the next ladder mode (upshift threshold).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "FExitHz": {
+          "description": "Frequency to leave the current ladder mode (downshift threshold, below FEnterHz for hysteresis).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "MinDwellMs": {
+          "description": "Minimum time a boundary condition must hold before switching.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "TransMs": {
+          "description": "Transition duration in milliseconds (0 = hard phase-locked switch).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Dt": {
+          "description": "Sample period in seconds.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "CurMode": {
+          "description": "Persistent current ladder mode state (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "DwellT": {
+          "description": "Persistent dwell timer state in seconds (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "TransT": {
+          "description": "Persistent transition-active timer state in seconds (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "BlendS": {
+          "description": "Persistent blend state (leave at default).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "/* Railway-style modulation sequencer (mode ladder + boundary table).\n *\n * v1 ladder: 0 = carrier (SVPWM), 1 = six-step.  The ladder is data: each\n * boundary has an enter threshold, an exit threshold (hysteresis), a minimum\n * dwell, and a transition type (TransMs == 0: hard phase-locked switch;\n * TransMs > 0: timed linear crossfade).  Extending the ladder (sync-15/12/9/\n * 7/5/3, overmodulation, ...) adds boundary params, not new logic.\n *\n * Continuity at the switch is the modulators' job (gain/phase-matched arm),\n * not this node's.  This node only decides WHEN and reports From/To/Blend.\n *\n * Blend is the output weight of the higher ladder slot: 0 = mode 0 duties,\n * 1 = mode 1 duties.  Steady state: Blend == CurMode. */\n\nconst bool en = Enable;\n\nif (!en || !(Dt > 0.0f)) {\n    CurMode = 0.0f;\n    DwellT = 0.0f;\n    TransT = 0.0f;\n    BlendS = 0.0f;\n    ModeFrom = 0.0f;\n    ModeTo = 0.0f;\n    Blend = 0.0f;\n    Mode = 0.0f;\n    TransActive = false;\n} else if (TransT > 0.0f) {\n    /* Transition in progress. */\n    TransActive = true;\n    if (TransMs > 0.0f) {\n        const float dir = (ModeTo > ModeFrom) ? 1.0f : -1.0f;\n        BlendS += dir * Dt / (TransMs * 0.001f);\n        if (BlendS > 1.0f) BlendS = 1.0f;\n        if (BlendS < 0.0f) BlendS = 0.0f;\n        if ((dir > 0.0f && BlendS >= 1.0f) || (dir < 0.0f && BlendS <= 0.0f)) {\n            TransT = 0.0f;\n        }\n    } else {\n        /* Hard switch: the incoming modulator armed on the ModeTo edge last\n         * step and is gain/phase-matched; switch now. */\n        BlendS = ModeTo;\n        TransT = 0.0f;\n    }\n    if (TransT == 0.0f) {\n        CurMode = ModeTo;\n        ModeFrom = CurMode;\n        ModeTo = CurMode;\n        TransActive = false;\n    }\n    Blend = BlendS;\n    Mode = CurMode;\n} else {\n    /* Steady state: watch the adjacent boundary. */\n    ModeFrom = CurMode;\n    ModeTo = CurMode;\n    BlendS = CurMode;\n    Blend = BlendS;\n    Mode = CurMode;\n    TransActive = false;\n\n    if (CurMode < 0.5f) {\n        DwellT = (F_Elec >= FEnterHz) ? (DwellT + Dt) : 0.0f;\n        if (DwellT * 1000.0f >= MinDwellMs) {\n            DwellT = 0.0f;\n            TransT = Dt;\n            ModeFrom = 0.0f;\n            ModeTo = 1.0f;\n        }\n    } else {\n        DwellT = (F_Elec <= FExitHz) ? (DwellT + Dt) : 0.0f;\n        if (DwellT * 1000.0f >= MinDwellMs) {\n            DwellT = 0.0f;\n            TransT = Dt;\n            ModeFrom = 1.0f;\n            ModeTo = 0.0f;\n        }\n    }\n}\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "Modulation.Route3",
+      "displayName": "Modulation Router (3-phase)",
+      "defaultName": "ModRoute",
+      "description": "Selects or blends two modulator duty triples by the sequencer Blend weight and sanitizes the result: any non-finite duty becomes the 50% neutral point. Chain for more than two modes.",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "tim_isr",
+      "inputPorts": [
+        {
+          "name": "Blend",
+          "description": "Weight of slot B (0 = slot A duties, 1 = slot B duties).",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "A_A",
+          "description": "Slot A (lower ladder mode) phase A duty.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "A_B",
+          "description": "Slot A phase B duty.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "A_C",
+          "description": "Slot A phase C duty.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "B_A",
+          "description": "Slot B (higher ladder mode) phase A duty.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "B_B",
+          "description": "Slot B phase B duty.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "B_C",
+          "description": "Slot B phase C duty.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Duty_A",
+          "description": "Routed phase A duty cycle (0-100%).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Duty_B",
+          "description": "Routed phase B duty cycle (0-100%).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Duty_C",
+          "description": "Routed phase C duty cycle (0-100%).",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "/* Duty routing for the modulation ladder: out = (1-Blend)*A + Blend*B, then\n * sanitize.  A non-finite duty (NaN/inf from any upstream path) becomes the\n * 50% neutral point so PwmOut can never emit NaN. */\nauto san = [](float x) -> float { return std::isfinite(x) ? x : 50.0f; };\nconst float w = (Blend < 0.0f) ? 0.0f : ((Blend > 1.0f) ? 1.0f : Blend);\n\nDuty_A = san((1.0f - w) * A_A + w * B_A);\nDuty_B = san((1.0f - w) * A_B + w * B_B);\nDuty_C = san((1.0f - w) * A_C + w * B_C);\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "Modulation.SixStep",
+      "displayName": "Six-Step (Trapezoid)",
+      "defaultName": "SixStep",
+      "description": "PWM'd six-step (120 deg trapezoid) modulator for the ladder's top mode. Emits duties only when gated active by the sequencer; amplitude and phase come from the commanded voltage vector so handoff from the carrier mode is continuity-preserving.",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "tim_isr",
+      "inputPorts": [
+        {
+          "name": "V_Alpha",
+          "description": "Commanded voltage vector, alpha component.",
+          "direction": "input",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_Beta",
+          "description": "Commanded voltage vector, beta component.",
+          "direction": "input",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "V_Dc",
+          "description": "DC-link voltage for magnitude normalization.",
+          "direction": "input",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "ModeFrom",
+          "description": "Sequencer mode being left / current mode.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "ModeTo",
+          "description": "Sequencer incoming mode / current mode.",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
         }
       ],
       "outputPorts": [
@@ -2982,65 +3364,17 @@
             "frame": "scalar",
             "dtype": "f32"
           }
-        },
-        {
-          "name": "Active",
-          "description": "True while synchronous mode is engaged (fundamental at or above the switch frequency).",
-          "direction": "output",
-          "type": {
-            "quantity": "boolean",
-            "frame": "scalar",
-            "dtype": "f32"
-          }
-        },
-        {
-          "name": "F_Elec",
-          "description": "Estimated electrical fundamental frequency in hertz.",
-          "direction": "output",
-          "type": {
-            "quantity": "dimensionless",
-            "frame": "scalar",
-            "dtype": "f32"
-          }
-        },
-        {
-          "name": "N_Pulses",
-          "description": "Effective pulses per half cycle of the current pattern (1 = six-step).",
-          "direction": "output",
-          "type": {
-            "quantity": "dimensionless",
-            "frame": "scalar",
-            "dtype": "f32"
-          }
         }
       ],
       "parameterTypes": {
-        "FmSwitchHz": {
-          "description": "Electrical frequency at which synchronous mode takes over from SVPWM.",
-          "quantity": "dimensionless",
-          "frame": "scalar",
-          "dtype": "f32"
-        },
-        "FAsyncHz": {
-          "description": "Async carrier frequency used to cap the chopping rate when selecting pulse count.",
-          "quantity": "dimensionless",
-          "frame": "scalar",
-          "dtype": "f32"
-        },
-        "Poles": {
-          "description": "Fallback motor pole count when the Poles input is not wired.",
-          "quantity": "dimensionless",
-          "frame": "scalar",
-          "dtype": "f32"
-        },
-        "DwellAcc": {
-          "description": "Persistent zero-vector dwell accumulator state (leave at default).",
+        "ModeId": {
+          "description": "This modulator's slot in the sequencer ladder (six-step = 1).",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         }
       },
-      "inlineCode": "/* Synchronous switching-state modulation, v2: PWM'd six-step (120 deg\n * trapezoid), amplitude taken from the commanded voltage vector.\n *\n * Above FmSwitchHz electrical, each phase keeps switching complementarily at\n * the carrier while the AVERAGE phase voltage follows a six-step trapezoid\n * synchronized to the demanded vector angle (from the current loop).  The\n * commanded magnitude m scales the trapezoid between 0 and the DC rail, so\n * phase current stays PI-regulated exactly as under SVPWM - no full-rail\n * dwell states, safe for milliohm motors.  Commutation notches are\n * angle-referenced (synchronous), not carrier-referenced.\n *\n * Below FmSwitchHz, Active=false and duties sit at 50% so the graph can\n * route async SVPWM duties through the mux instead.\n *\n * N_Pulses currently reports 1 (six-step / one pulse per half cycle).  True\n * n-pulse SHE notch tables extend the same structure: pattern(deg, m, N)\n * replacing the trapezoid.  Edges are ISR-quantized; scheduling exact edge\n * times via TIM1 compare preload is the follow-up for high speed. */\n\nconst float vdc = V_Dc.in(au::volts);\nfloat poles = Poles;\nif (!(poles >= 2.0f)) poles = 10.0f;\n\nconst float f_e = fabsf(Omega_Mech) / 60.0f * (poles * 0.5f);\nF_Elec = f_e;\n\nconst bool active = (f_e >= FmSwitchHz) && (vdc > 1.0f);\nActive = active;\n\nif (!active) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n    N_Pulses = 0.0f;\n    DwellAcc = 0.0f;\n} else {\n    const float valpha = V_Alpha.in(au::volts);\n    const float vbeta = V_Beta.in(au::volts);\n    const float ang = atan2f(vbeta, valpha);\n\n    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3));\n     * trapezoid top plateaus reach the rail at m = 1. */\n    float m = sqrtf(valpha * valpha + vbeta * vbeta) / (vdc * 0.57735026919f);\n    if (m > 1.0f) m = 1.0f;\n    if (m < 0.0f) m = 0.0f;\n\n    /* 120-degree trapezoidal references in [-1, 1]: +1 plateau for 120 deg,\n     * linear transition over the 60-degree sector boundaries. */\n    auto trap = [](float x) -> float {\n        const float two_pi = 6.28318530718f;\n        x = fmodf(x, two_pi);\n        if (x < 0.0f) x += two_pi;\n        const float deg60 = 1.04719755120f;\n        if (x < deg60) return 1.0f;\n        if (x < 2.0f * deg60) return 1.0f - 2.0f * (x - deg60) / deg60;\n        if (x < 4.0f * deg60) return -1.0f;\n        if (x < 5.0f * deg60) return -1.0f + 2.0f * (x - 4.0f * deg60) / deg60;\n        return 1.0f;\n    };\n\n    const float ta = trap(ang);\n    const float tb = trap(ang - 2.09439510239f);\n    const float tc = trap(ang + 2.09439510239f);\n\n    Duty_A = 50.0f + 50.0f * m * ta;\n    Duty_B = 50.0f + 50.0f * m * tb;\n    Duty_C = 50.0f + 50.0f * m * tc;\n    N_Pulses = 1.0f;\n}\n",
+      "inlineCode": "/* Six-step modulator (railway ladder top mode), PWM'd 120 deg trapezoid.\n *\n * Contract (see Assets/NodeTemplates/README.md):\n * - Pure per-step law: no frequency math, no mode selection, no enables.\n * - Runs only when gated: ModeId == ModeFrom || ModeId == ModeTo; otherwise\n *   holds 50% neutral.\n * - arm()/continuity: the pattern is driven directly by the commanded\n *   voltage vector (same vector the carrier mode sees), so phase is\n *   inherently locked and magnitude is normalized to the same reference\n *   (Vdc/sqrt(3)) as SVPWM - the handoff needs no duty crossfade.\n * - Safe for milliohm motors: every phase keeps chopping at the carrier;\n *   the average phase voltage follows the commanded magnitude.\n *\n * True n-pulse (SHE) modulators replace the trapezoid with notch tables\n * while keeping this exact contract. */\n\nconst float vdc = V_Dc.in(au::volts);\nconst bool running = (ModeId == ModeFrom) || (ModeId == ModeTo);\n\nif (!running || !(vdc > 1.0f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n} else {\n    const float valpha = V_Alpha.in(au::volts);\n    const float vbeta = V_Beta.in(au::volts);\n    const float ang = atan2f(vbeta, valpha);\n\n    /* Commanded magnitude relative to the SVPWM linear max (vdc/sqrt(3));\n     * trapezoid plateaus reach the rail at m = 1. */\n    float m = sqrtf(valpha * valpha + vbeta * vbeta) / (vdc * 0.57735026919f);\n    if (m > 1.0f) m = 1.0f;\n    if (m < 0.0f) m = 0.0f;\n\n    /* 120-degree trapezoidal references in [-1, 1]: +1 plateau for 120 deg,\n     * linear transition over the 60-degree sector boundaries. */\n    auto trap = [](float x) -> float {\n        const float two_pi = 6.28318530718f;\n        x = fmodf(x, two_pi);\n        if (x < 0.0f) x += two_pi;\n        const float deg60 = 1.04719755120f;\n        if (x < deg60) return 1.0f;\n        if (x < 2.0f * deg60) return 1.0f - 2.0f * (x - deg60) / deg60;\n        if (x < 4.0f * deg60) return -1.0f;\n        if (x < 5.0f * deg60) return -1.0f + 2.0f * (x - 4.0f * deg60) / deg60;\n        return 1.0f;\n    };\n\n    Duty_A = 50.0f + 50.0f * m * trap(ang);\n    Duty_B = 50.0f + 50.0f * m * trap(ang - 2.09439510239f);\n    Duty_C = 50.0f + 50.0f * m * trap(ang + 2.09439510239f);\n}\n",
       "constructorCode": "",
       "classHeader": "",
       "classDefinition": ""
@@ -3805,58 +4139,70 @@
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "SyncMod",
+      "id": "ElecFreq",
       "parameters": {
-        "FmSwitchHz": "20.0",
-        "FAsyncHz": "2500.0",
         "Poles": "10.0",
-        "DwellAcc": "0.0"
+        "Fc": "20.0",
+        "Dt": "0.0002",
+        "State": "0.0"
       },
       "position": {
         "x": 0.0,
         "y": 0.0
       },
-      "type": "Modulation.SyncNPulse"
+      "type": "Sensors.ElecFreq"
     },
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "MuxA",
-      "parameters": {},
-      "position": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "type": "Logic.Mux"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "MuxB",
-      "parameters": {},
-      "position": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "type": "Logic.Mux"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "MuxC",
-      "parameters": {},
-      "position": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "type": "Logic.Mux"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "LogSyncFE",
+      "id": "ModSeq",
       "parameters": {
-        "Key": "sync_f_elec"
+        "FEnterHz": "20.0",
+        "FExitHz": "17.0",
+        "MinDwellMs": "200.0",
+        "TransMs": "0.0",
+        "Dt": "0.0002",
+        "CurMode": "0.0",
+        "DwellT": "0.0",
+        "TransT": "0.0",
+        "BlendS": "0.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Modulation.Sequencer"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "SixStep",
+      "parameters": {
+        "ModeId": "1.0"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Modulation.SixStep"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "ModRoute",
+      "parameters": {},
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Modulation.Route3"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogModMode",
+      "parameters": {
+        "Key": "mod_mode"
       },
       "position": {
         "x": 0.0,
@@ -3867,9 +4213,22 @@
     {
       "displayName": "",
       "domain": "tim_isr",
-      "id": "LogSyncN",
+      "id": "LogModBlend",
       "parameters": {
-        "Key": "sync_n_pulses"
+        "Key": "mod_blend"
+      },
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogFElec",
+      "parameters": {
+        "Key": "f_elec"
       },
       "position": {
         "x": 0.0,

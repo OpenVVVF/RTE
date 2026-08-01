@@ -1,0 +1,101 @@
+{
+  "id": "Modulation.SixStep",
+  "displayName": "Six-Step (Trapezoid)",
+  "defaultName": "SixStep",
+  "description": "PWM'd six-step (120 deg trapezoid) modulator for the ladder's top mode. Emits duties only when gated active by the sequencer; amplitude and phase come from the commanded voltage vector so handoff from the carrier mode is continuity-preserving.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "V_Alpha",
+      "description": "Commanded voltage vector, alpha component.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Beta",
+      "description": "Commanded voltage vector, beta component.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Dc",
+      "description": "DC-link voltage for magnitude normalization.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeFrom",
+      "description": "Sequencer mode being left / current mode.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ModeTo",
+      "description": "Sequencer incoming mode / current mode.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Phase A duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_B",
+      "description": "Phase B duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_C",
+      "description": "Phase C duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "ModeId": {
+      "description": "This modulator's slot in the sequencer ladder (six-step = 1).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}
