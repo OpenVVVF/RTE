@@ -2,36 +2,24 @@
   "id": "Actuators.CarrierAuto",
   "displayName": "Carrier Auto-Schedule",
   "defaultName": "CarrierAuto",
-  "description": "Linearly schedules the PWM carrier frequency from electrical frequency: carrier = fsw_lo at fe_lo, fsw_hi at fe_hi (clamped, linear between). Async-modulation experiment; the control loop stays closed throughout.",
+  "description": "Piecewise-linear PWM carrier schedule: up to 6 (fe, fsw) breakpoints; flat below the first and above the last valid point, linear between. Points with fsw <= 0 are ignored. Async-modulation experiment; the control loop stays closed throughout.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "app_loop",
   "inputPorts": [],
   "outputPorts": [],
   "parameterTypes": {
-    "fe_lo": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Electrical frequency at which carrier = fsw_lo (Hz)."
-    },
-    "fe_hi": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Electrical frequency at which carrier = fsw_hi (Hz)."
-    },
-    "fsw_lo": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Carrier frequency at/below fe_lo (Hz)."
-    },
-    "fsw_hi": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Carrier frequency at/above fe_hi (Hz)."
-    }
+    "fe_1": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 1 electrical frequency (Hz)."},
+    "fsw_1": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 1 carrier (Hz). <= 0 ends the table."},
+    "fe_2": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 2 electrical frequency (Hz)."},
+    "fsw_2": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 2 carrier (Hz). <= 0 ends the table."},
+    "fe_3": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 3 electrical frequency (Hz)."},
+    "fsw_3": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 3 carrier (Hz). <= 0 ends the table."},
+    "fe_4": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 4 electrical frequency (Hz)."},
+    "fsw_4": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 4 carrier (Hz). <= 0 ends the table."},
+    "fe_5": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 5 electrical frequency (Hz)."},
+    "fsw_5": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 5 carrier (Hz). <= 0 ends the table."},
+    "fe_6": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 6 electrical frequency (Hz)."},
+    "fsw_6": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 6 carrier (Hz). <= 0 ends the table."}
   }
 }
