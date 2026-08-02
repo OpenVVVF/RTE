@@ -1192,7 +1192,7 @@
    "displayName": "PI Controller",
    "domain": "",
    "id": "Control.Pi",
-   "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites.\n *\n * dt comes from the live control rate (platform_get_control_dt) so integral\n * gain stays correct when the carrier changes at runtime (CarrierAuto);\n * the Dt parameter is kept for backward compatibility but ignored. */\nconst float dt_s = platform_get_control_dt();\nconst float error = Setpoint - Measurement;\nIntegral += error * dt_s;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * dt_s * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
+   "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites.\n *\n * dt comes from the live control rate (platform_get_control_dt) so integral\n * gain stays correct when the carrier changes at runtime (CarrierAuto);\n * the Dt parameter is kept for backward compatibility but ignored.\n *\n * Rate-adaptive gain scheduling: gains are tuned for the DtRef update rate\n * (0.0002 s = 5 kHz).  When the live rate is slower, Kp/Ki back off\n * proportionally so loop-delay margin stays constant across the carrier\n * sweep; faster rates never boost above the tuned gains. */\nconst float dt_s = platform_get_control_dt();\nfloat gscale = (DtRef > 0.0f && dt_s > 0.0f) ? DtRef / dt_s : 1.0f;\nif (gscale > 1.0f) gscale = 1.0f;\nconst float KpEff = Kp * gscale;\nconst float KiEff = Ki * gscale;\n\nconst float error = Setpoint - Measurement;\nIntegral += error * dt_s;\n\nfloat raw_output = KpEff * error + KiEff * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (KiEff > 0.0001f && KpEff > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * dt_s * AwGain / (KpEff * KiEff);\n}\n\nOutput = limited_output;\n",
    "inputPorts": [
     {
      "description": "Desired target value.",
@@ -1274,6 +1274,12 @@
      "dtype": "f32",
      "frame": "scalar",
      "quantity": "dimensionless"
+    },
+    "DtRef": {
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32",
+     "description": "Update period the gains were tuned at (s, default 0.0002 = 5 kHz). Gains back off proportionally when the live rate is slower; <= 0 disables scheduling."
     }
    }
   },
@@ -3140,7 +3146,8 @@
     "Ki": "10.0",
     "Kp": "0.03",
     "OutputMax": "200.0",
-    "OutputMin": "-200.0"
+    "OutputMin": "-200.0",
+    "DtRef": "0.0002"
    },
    "position": {
     "x": 1236.0,
@@ -3163,7 +3170,8 @@
     "Ki": "10.0",
     "Kp": "0.03",
     "OutputMax": "200.0",
-    "OutputMin": "-200.0"
+    "OutputMin": "-200.0",
+    "DtRef": "0.0002"
    },
    "position": {
     "x": 1542.0,
