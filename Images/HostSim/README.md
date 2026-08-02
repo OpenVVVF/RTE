@@ -4,6 +4,40 @@ Host-side base image for `RTECodeEmitter`. Generated domain code calls
 `platform_api.h` only; motor plant, sensor injection, and scheduling live in
 this base image.
 
+## Architecture
+
+HostSim is a **software-in-the-loop (SIL)** simulator, not an interpreter:
+
+```text
+Node graph JSON
+      │
+      ▼
+RTECodeEmitter ──► generates C++ for tim_isr / adc_isr / app_loop
+      │
+      ▼
+cmake --build ──► host_sim executable
+      │
+      ▼
+compiled control loop ──► platform_api.h ──► plant backend
+      │                                          │
+      │          ┌───────────────────────────────┘
+      │          ▼
+      │    OdePlant (default) ── discrete PMSM ODE
+      │    NgspicePlant (experimental) ── libngspice circuit sim
+      │
+      ▼
+telemetry → NodeGUI / CSV
+```
+
+The control code inside `host_sim` is the **same compiled firmware** that runs
+on the STM32 images. The only difference is the base image underneath it:
+HostSim provides simulator implementations of `platform_pwm_set()`,
+`platform_get_phase_currents()`, etc., instead of STM32 HAL drivers.
+
+The default plant is a fast discrete PMSM ODE (`src/motor_model.cpp`). An
+optional **ngspice** backend exists (`src/plant/ngspice_plant.cpp`) but is
+experimental and not yet the default.
+
 ## Domains
 
 | Domain | Default rate | Host location |
@@ -220,9 +254,13 @@ live IVP publisher when `--live` is active.
 
 ## Roadmap
 
-Planned work (ODE plant today; optional **ngspice** plant backend behind the same
-`platform_api`) is documented in
-[docs/Implementation_Plan.md](docs/Implementation_Plan.md).
+- **Today:** ODE PMSM plant is the default and only fully-supported backend.
+- **Experimental:** ngspice plant backend (`src/plant/ngspice_plant.cpp`) is
+  present but not complete. Select it with `"plant": { "backend": "ngspice",
+  "netlist": "plants/your.cir" }` in the scenario JSON. If `libngspice.so` is
+  missing or loading fails, HostSim falls back to `OdePlant`.
+- See [docs/Implementation_Plan.md](docs/Implementation_Plan.md) for the full
+  ngspice integration plan.
 
 ## Dependencies
 

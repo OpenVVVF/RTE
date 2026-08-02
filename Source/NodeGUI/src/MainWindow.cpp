@@ -680,7 +680,12 @@ void MainWindow::SetupMenu() {
     QAction* spwmAction = fileMenu->addAction(QStringLiteral("Open SPWM &Demo Graph..."));
     spwmAction->setToolTip(QStringLiteral(
         "Load Images/HostSim/graphs/spwm_demo_graph.json. "
-        "Run: powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));
+#ifdef _WIN32
+        "Run: powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+        "Run: Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+        ));
     connect(spwmAction, &QAction::triggered, this, &MainWindow::OnOpenSpwmDemo);
 
     fileMenu->addSeparator();
@@ -1132,7 +1137,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         // the live telemetry feed (see Images/HostSim/scripts).
 #ifdef _WIN32
         const std::filesystem::path script =
-            projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+            projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.ps1";
         const QStringList arguments{
             QStringLiteral("-NoProfile"),
             QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
@@ -1143,10 +1148,11 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         buildProcess_->start(QStringLiteral("powershell.exe"), arguments);
 #else
         const std::filesystem::path script =
-            projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+            projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.sh";
         const QStringList arguments{
             QString::fromStdString(script.string()),
-            QStringLiteral("-ForceEmit"),
+            QStringLiteral("--force-emit"),
+            QStringLiteral("--no-gui"),
         };
         buildProcess_->start(QStringLiteral("bash"), arguments);
 #endif
@@ -1389,7 +1395,12 @@ void MainWindow::OnOpenSpwmDemo() {
     if (path.empty()) {
         ShowToast(QStringLiteral(
             "SPWM graph not found. Run from the repo root or use "
-            "Images/HostSim/scripts/run_spwm_live.ps1"));
+#ifdef _WIN32
+            "Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+            "Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+            ));
         OnOpen();
         return;
     }
@@ -1399,7 +1410,12 @@ void MainWindow::OnOpenSpwmDemo() {
         appSwitcher_->setCurrentIndex(0);
         ShowToast(QStringLiteral(
             "SPWM graph loaded. Start live sim: "
-            "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));
+#ifdef _WIN32
+            "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+            "Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+            ));
     }
 }
 
