@@ -1144,6 +1144,8 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
             QStringLiteral("-File"), QString::fromStdString(script.string()),
             QStringLiteral("-ForceEmit"),
             QStringLiteral("-KeepGui"),
+            QStringLiteral("-Graph"),
+            absoluteGraphPath,
         };
         buildProcess_->start(QStringLiteral("powershell.exe"), arguments);
 #else
@@ -1153,6 +1155,8 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
             QString::fromStdString(script.string()),
             QStringLiteral("--force-emit"),
             QStringLiteral("--no-gui"),
+            QStringLiteral("--graph"),
+            absoluteGraphPath,
         };
         buildProcess_->start(QStringLiteral("bash"), arguments);
 #endif

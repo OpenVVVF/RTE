@@ -38,9 +38,11 @@ public:
     void LoadAutosave();
     void SaveAutosave();
     static std::array<QStringList, 3> BuiltinSpwmLayout();
+    static std::array<QStringList, 3> BuiltinFocLayout();
     void EnsureBuiltinPresets();
     void ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout);
     void ApplySpwmViewWindows();
+    void ApplyFocViewWindows();
 
 public slots:
     void OnSaveFramKeys();
@@ -53,6 +55,7 @@ private slots:
     void OnExportSession();
     void OnClearSession();
     void OnLoadBuiltinSpwm();
+    void OnLoadBuiltinFoc();
     void OnTogglePause();
     void OnSimPauseChanged(bool paused);
 
@@ -60,7 +63,7 @@ private:
     void RefreshRecentCombo();
     void UpdatePauseButton(bool paused);
 
-    bool applied_spwm_layout_ = false;
+    bool applied_builtin_layout_ = false;
 
     RuntimeController* controller_;
     FramKeysManager* framKeysManager_ = nullptr;

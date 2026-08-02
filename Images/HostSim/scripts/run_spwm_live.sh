@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Linux equivalent of run_spwm_live.ps1
-# Emit SPWM graph, build HostSim, launch live TCP server + NodeGUI.
+# Linux HostSim live launcher.
+# Emits the requested graph into HostSim, builds it, and starts the live TCP server.
+# Defaults to the SPWM demo graph for backward compatibility with the demo menu.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,17 +10,56 @@ REPO_ROOT="$(cd "${HOSTSIM_ROOT}/../.." && pwd)"
 
 NO_GUI=0
 FORCE_EMIT=0
+GRAPH=""
+SCENARIO=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-gui) NO_GUI=1 ;;
     --force-emit) FORCE_EMIT=1 ;;
+    --graph)
+      GRAPH="${2:-}"
+      shift
+      ;;
+    --scenario)
+      SCENARIO="${2:-}"
+      shift
+      ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
   shift
 done
 
-GRAPH="${HOSTSIM_ROOT}/graphs/spwm_demo_graph.json"
-SCENARIO="${HOSTSIM_ROOT}/scenarios/spwm_demo.json"
+if [[ -z "${GRAPH}" ]]; then
+  GRAPH="${HOSTSIM_ROOT}/graphs/spwm_demo_graph.json"
+fi
+
+if [[ ! -f "${GRAPH}" ]]; then
+  echo "Graph not found: ${GRAPH}" >&2
+  exit 1
+fi
+
+GRAPH_NAME="$(basename "${GRAPH}" .json)"
+
+if [[ -z "${SCENARIO}" ]]; then
+  # Prefer a scenario that matches the graph name (stripping a trailing _graph suffix);
+  # fall back to the generic motor scenario.
+  SCENARIO_BASE="${GRAPH_NAME}"
+  if [[ "${SCENARIO_BASE}" == *_graph ]]; then
+    SCENARIO_BASE="${SCENARIO_BASE%_graph}"
+  fi
+  CANDIDATE="${HOSTSIM_ROOT}/scenarios/${SCENARIO_BASE}.json"
+  if [[ -f "${CANDIDATE}" ]]; then
+    SCENARIO="${CANDIDATE}"
+  else
+    SCENARIO="${HOSTSIM_ROOT}/scenarios/default_motor.json"
+  fi
+fi
+
+if [[ ! -f "${SCENARIO}" ]]; then
+  echo "Scenario not found: ${SCENARIO}" >&2
+  exit 1
+fi
+
 EMITTER="${RTE_EMITTER:-${REPO_ROOT}/build/Source/RTECodeEmitter/RTECodeEmitter}"
 NODEGUI="${REPO_ROOT}/build/Source/NodeGUI/NodeGUI"
 
@@ -29,8 +69,8 @@ if [[ ! -x "${EMITTER}" ]]; then
   exit 1
 fi
 
-EMITTED_REL="build/hostsim_spwm_emitted"
-BUILD_DIR="${REPO_ROOT}/build/hostsim_spwm_emitted_build"
+EMITTED_REL="build/hostsim_${GRAPH_NAME}_emitted"
+BUILD_DIR="${REPO_ROOT}/${EMITTED_REL}_build"
 
 cleanup_apps() {
   # Use exact-name matching so we do not kill the shell running this script
@@ -53,7 +93,7 @@ fi
 if [[ "${need_emit}" -eq 1 ]]; then
   rm -rf "${REPO_ROOT}/${EMITTED_REL}" "${BUILD_DIR}"
 
-  echo "Emitting SPWM graph..."
+  echo "Emitting ${GRAPH_NAME} graph into HostSim..."
   "${EMITTER}" \
     --base-src "${HOSTSIM_ROOT}" \
     --graph "${GRAPH}" \
@@ -63,7 +103,7 @@ if [[ "${need_emit}" -eq 1 ]]; then
   cmake -S "${REPO_ROOT}/${EMITTED_REL}" -B "${BUILD_DIR}"
   cmake --build "${BUILD_DIR}" -j"$(nproc)"
 else
-  echo "Using existing emitted SPWM build (pass --force-emit to rebuild)."
+  echo "Using existing emitted ${GRAPH_NAME} build (pass --force-emit to rebuild)."
 fi
 
 if [[ ! -x "${EXE}" ]]; then
@@ -71,7 +111,7 @@ if [[ ! -x "${EXE}" ]]; then
   exit 1
 fi
 
-echo "Starting HostSim SPWM live..."
+echo "Starting HostSim live for ${GRAPH_NAME}..."
 nohup "${EXE}" "${SCENARIO}" --live --realtime 1.0 >/dev/null 2>&1 &
 
 if [[ "${NO_GUI}" -eq 0 ]]; then
@@ -82,11 +122,9 @@ if [[ "${NO_GUI}" -eq 0 ]]; then
   fi
   sleep 1
   nohup "${NODEGUI}" "${GRAPH}" --tcp 127.0.0.1:14608 --protocol ivp >/dev/null 2>&1 &
-  echo "NodeGUI opened with SPWM graph + live telemetry."
+  echo "NodeGUI opened with ${GRAPH_NAME} graph + live telemetry."
 fi
 
 echo ""
-echo "Live controls:"
-echo "  Throttle A -> modulation index (0..1)"
-echo "  Throttle B -> electrical frequency map (1..20 Hz)"
-echo "Plot: duty_u/v/w (slow), pwm_gate_u/v/w + pwm_v_uv (scope), i_a/b/c"
+echo "Scenario: ${SCENARIO}"
+echo "Live telemetry: 127.0.0.1:14608 (IVP)"
