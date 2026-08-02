@@ -7,8 +7,9 @@
  * Mode 3 matches the FOC voltage path (Vαβ → Transforms.Svpwm → PwmOut) but
  * replaces PI with a one-step predictive / deadbeat voltage law:
  *   v_dq = R i + ω cross terms + (L/Ts)(i* - i_pred)
- * Tuned for smooth low/medium-Vdc Gen6 spin (≈50–100 V): milder deadbeat,
- * weak integral, Vdc-aware Iq clamp, longer soft-start.
+ * Tuned for smooth mid-bus Gen6 spin (≈50–100 V): milder deadbeat,
+ * weak integral, longer soft-start. |Iq*| is limited only by I_Max (no
+ * hidden Vdc Iq ceiling). Controller still holds if Vdc < 40 V.
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -58,18 +59,9 @@ const int switch_bits[8][3] = {
     {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}
 };
 
-/* Vdc-aware |Iq*| ceiling so low-bus bring-up cannot command huge current. */
-float iq_ref_max = i_max;
-if (vdc < 40.0f) {
-    iq_ref_max = 2.0f;
-} else if (vdc < 70.0f) {
-    iq_ref_max = 5.0f;
-} else if (vdc < 90.0f) {
-    iq_ref_max = 10.0f;
-}
-if (iq_ref_max > i_max) iq_ref_max = i_max;
-if (iq_ref > iq_ref_max) iq_ref = iq_ref_max;
-if (iq_ref < -iq_ref_max) iq_ref = -iq_ref_max;
+/* Clamp |Iq*| only to I_Max — no hidden Vdc-based Iq ceiling. */
+if (iq_ref > i_max) iq_ref = i_max;
+if (iq_ref < -i_max) iq_ref = -i_max;
 
 const float cost_track = ((id_ref - id) / i_base) * ((id_ref - id) / i_base)
                        + ((iq_ref - iq) / i_base) * ((iq_ref - iq) / i_base);
@@ -124,12 +116,12 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         }
     }
 
-    /* Milder deadbeat for smooth low/medium-Vdc spin (was 0.70). */
-    const float db_scale = 0.35f;
+    /* Mild deadbeat: stronger than 0.35 (under-tracked at 50 V), softer than 0.70. */
+    const float db_scale = 0.45f;
     const float kp_d = (ld / ts) * db_scale;
     const float kp_q = (lq / ts) * db_scale;
     /* Weak integral — deadbeat already provides most of the action. */
-    const float ki = 2.0f;
+    const float ki = 3.0f;
 
     const float id_err = id_ref - id_p;
     const float iq_err = iq_ref - iq_p;

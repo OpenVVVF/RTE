@@ -30,12 +30,12 @@ cmake -B build -G Ninja && cmake --build build -j8
 | Encoder Sign | Same as FOC (`Motor.Encoder.SinCos.Sign`, default **+1**) |
 | Offset / Poles | Same KV keys as `foc_demo` |
 | `Ld/Lq/Rs/PsiF` | Calibrated FRAM values (graph wires `CfgLd`…`CfgPsi`) |
-| `I_Max` | Graph default **8 A** (soft limit) |
+| `I_Max` | Graph default **15 A** (soft limit; only Iq ceiling) |
 | Iq slew | **10 A/s** |
 | PWM path | `Mpcc.V_Alpha/V_Beta` → `Svpwm` → `PwmOut` |
 
-Mode 3 is softened for smooth spin: `db_scale≈0.35`, weak integral,
-250 ms soft-start, Vdc-aware `|Iq*|` clamp (≈5 A max near 50 V).
+Mode 3 is softened for smooth spin: `db_scale≈0.45`, weak integral,
+250 ms soft-start. `|Iq*|` is limited only by `I_Max` (no hidden Vdc Iq clamp).
 
 Modes 0–2 enumerate full inverter vectors. On ~100 µH motors at Ts=200 µs
 they predict huge Δi and stick on zero vectors.
@@ -57,7 +57,7 @@ they predict huge Δi and stick on zero vectors.
 
 1. Confirm `cg_vdc_v` ≈ 100 and calibrated `PsiF` / `Ld` / `Lq`.
 2. Keep **Mode = 3**. Firmware allows ωe up to ±3000 rad/s.
-3. Raise `IqVar` gradually (still slew-limited). Vdc-aware clamp allows up to ~10 A above 70 V, and up to `I_Max` at higher bus.
+3. Raise `IqVar` gradually (still slew-limited), up to `I_Max`.
 4. Expect duties to leave mid-rail more as speed rises.
 
 ## If something trips
