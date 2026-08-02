@@ -7,7 +7,8 @@
  * Mode 3 matches the FOC voltage path (Vαβ → Transforms.Svpwm → PwmOut) but
  * replaces PI with a one-step predictive / deadbeat voltage law:
  *   v_dq = R i + ω cross terms + (L/Ts)(i* - i_pred)
- * Soft current limiting scales voltage; it does not pin duties at 50%.
+ * Tuned for smooth low/medium-Vdc Gen6 spin (≈50–100 V): milder deadbeat,
+ * weak integral, Vdc-aware Iq clamp, longer soft-start.
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -28,19 +29,20 @@ if (!(rs > 0.0f)) rs = 0.1f;
 if (!(ld > 1.0e-7f)) ld = 0.0001f;
 if (!(lq > 1.0e-7f)) lq = 0.0002f;
 if (!(psi_f >= 0.0f)) psi_f = 0.01f;
-if (psi_f > 0.05f) psi_f = 0.05f;
+/* Allow calibrated Gen6 flux (~0.07 Wb); old 0.05 clamp starved back-EMF FF. */
+if (psi_f > 0.15f) psi_f = 0.15f;
 
 const float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;
 const float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;
 const float vdc = V_Dc.in(au::volts);
 const float id = I_D.in(au::amperes);
 const float iq = I_Q.in(au::amperes);
-const float id_ref = I_D_Ref;
-const float iq_ref = I_Q_Ref;
+const float id_ref_in = I_D_Ref;
+float iq_ref = I_Q_Ref;
+const float id_ref = id_ref_in;
 const float theta_e = Theta_E;
 float omega_e = Omega_E;
-/* Cover FOC-class speeds: 2000 rpm @ 10 poles => ωe≈1047 rad/s. Old ±800
- * clamp starved back-EMF FF above ~1530 rpm. */
+/* Cover FOC-class speeds: 2000 rpm @ 10 poles => ωe≈1047 rad/s. */
 const float w_max = 3000.0f;
 if (omega_e > w_max) omega_e = w_max;
 if (omega_e < -w_max) omega_e = -w_max;
@@ -56,10 +58,25 @@ const int switch_bits[8][3] = {
     {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}
 };
 
+/* Vdc-aware |Iq*| ceiling so low-bus bring-up cannot command huge current. */
+float iq_ref_max = i_max;
+if (vdc < 40.0f) {
+    iq_ref_max = 2.0f;
+} else if (vdc < 70.0f) {
+    iq_ref_max = 5.0f;
+} else if (vdc < 90.0f) {
+    iq_ref_max = 10.0f;
+}
+if (iq_ref_max > i_max) iq_ref_max = i_max;
+if (iq_ref > iq_ref_max) iq_ref = iq_ref_max;
+if (iq_ref < -iq_ref_max) iq_ref = -iq_ref_max;
+
 const float cost_track = ((id_ref - id) / i_base) * ((id_ref - id) / i_base)
                        + ((iq_ref - iq) / i_base) * ((iq_ref - iq) / i_base);
 
-if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
+/* Hold output unless enabled with a usable DC bus (smooth-spin guard). */
+const bool bus_ok = (vdc >= 40.0f);
+if (!enable || !(ts > 0.0f) || !bus_ok) {
     S_A = 0.0f;
     S_B = 0.0f;
     S_C = 0.0f;
@@ -90,55 +107,65 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);
     const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);
 
-    /* Short soft-start so enable does not dump full deadbeat voltage. */
-    const float ramp_s = 0.05f;
+    /* Longer soft-start so enable does not dump full deadbeat voltage. */
+    const float ramp_s = 0.25f;
     mpcc_enable_s += ts;
     if (mpcc_enable_s > ramp_s) mpcc_enable_s = ramp_s;
-    float v_scale = mpcc_enable_s / ramp_s;
+    const float ramp = mpcc_enable_s / ramp_s;
 
-    /* Soft |i| limit — scale voltage, never force V=0 / duty=50%. */
+    /* Soft |i| limit — scale only the feedback/integral terms, keep FF. */
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
+    float fb_scale = ramp;
     if (i_meas > i_max) {
         cost += 1.0e6f;
         if (i_meas > 1.0e-3f) {
-            v_scale *= i_max / i_meas;
+            fb_scale *= i_max / i_meas;
         }
     }
 
-    /* Deadbeat gains. L/Ts ≈ 0.7–0.8 V/A on Gen6. Raised from 0.35 so
-     * high-speed current (and id≈0) can track closer to FOC at 100 V. */
-    const float db_scale = 0.70f;
+    /* Milder deadbeat for smooth low/medium-Vdc spin (was 0.70). */
+    const float db_scale = 0.35f;
     const float kp_d = (ld / ts) * db_scale;
     const float kp_q = (lq / ts) * db_scale;
-    const float ki = 10.0f; /* match foc_demo Ki defaults */
+    /* Weak integral — deadbeat already provides most of the action. */
+    const float ki = 2.0f;
 
     const float id_err = id_ref - id_p;
     const float iq_err = iq_ref - iq_p;
 
-    const float i_lim_v = (vdc / sqrt3) * 0.95f;
-    mpcc_id_int += ki * id_err * ts;
-    mpcc_iq_int += ki * iq_err * ts;
-    if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;
-    if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;
-    if (mpcc_iq_int > i_lim_v) mpcc_iq_int = i_lim_v;
-    if (mpcc_iq_int < -i_lim_v) mpcc_iq_int = -i_lim_v;
+    const float v_max = (vdc / sqrt3) * 0.95f;
+    const float i_lim_v = v_max * 0.5f; /* keep integral from eating the voltage budget */
 
-    float vd_ref = rs * id_p - omega_e * lq * iq_p + kp_d * id_err + mpcc_id_int;
-    float vq_ref = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f + kp_q * iq_err + mpcc_iq_int;
+    /* Feedforward (plant inversion) — not scaled by overcurrent shrink. */
+    const float vd_ff = rs * id_p - omega_e * lq * iq_p;
+    const float vq_ff = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f;
 
-    vd_ref *= v_scale;
-    vq_ref *= v_scale;
+    float vd_fb = kp_d * id_err + mpcc_id_int;
+    float vq_fb = kp_q * iq_err + mpcc_iq_int;
+    vd_fb *= fb_scale;
+    vq_fb *= fb_scale;
+
+    float vd_ref = vd_ff * ramp + vd_fb;
+    float vq_ref = vq_ff * ramp + vq_fb;
 
     /* Same linear SVM voltage budget as Control.Pi / Transforms.Svpwm. */
-    const float v_max = (vdc / sqrt3) * 0.95f;
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
-    if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {
+    const bool sat = (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f);
+    if (sat) {
         const float scale = v_max / sqrtf(v_mag_sq);
         vd_ref *= scale;
         vq_ref *= scale;
-        mpcc_id_int *= 0.95f;
-        mpcc_iq_int *= 0.95f;
+        /* Freeze / bleed integrators under saturation (anti-windup). */
+        mpcc_id_int *= 0.90f;
+        mpcc_iq_int *= 0.90f;
+    } else {
+        mpcc_id_int += ki * id_err * ts;
+        mpcc_iq_int += ki * iq_err * ts;
+        if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;
+        if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;
+        if (mpcc_iq_int > i_lim_v) mpcc_iq_int = i_lim_v;
+        if (mpcc_iq_int < -i_lim_v) mpcc_iq_int = -i_lim_v;
     }
 
     /* Inverse Park — same convention as Transforms.InversePark. */
@@ -187,12 +214,13 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     float id_base = id;
     float iq_base = iq;
     if (mode_i >= 1) {
-        const float di_d_sp = (mpcc_u_alpha_prev - rs * id) / lq;
-        const float di_q_sp = (mpcc_u_beta_prev - rs * iq) / lq;
-        const float id_sp = id + ts * di_d_sp;
-        const float iq_sp = iq + ts * di_q_sp;
-        id_base = id_sp + (-rs * (id_sp - id) * ts) / (2.0f * lq);
-        iq_base = iq_sp + (-rs * (iq_sp - iq) * ts) / (2.0f * lq);
+        /* Proper dq delay compensation using last applied αβ voltage. */
+        const float cos_t = cosf(theta_e);
+        const float sin_t = sinf(theta_e);
+        const float vd_prev = mpcc_u_alpha_prev * cos_t + mpcc_u_beta_prev * sin_t;
+        const float vq_prev = -mpcc_u_alpha_prev * sin_t + mpcc_u_beta_prev * cos_t;
+        id_base = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);
+        iq_base = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);
     }
 
     float best_cost = 1.0e30f;
@@ -248,7 +276,7 @@ if (!enable || !(ts > 0.0f) || !(vdc > 0.0f)) {
     State_Index = static_cast<float>(best_idx);
     Pred_I_D = rte::Amperes(best_pred_id);
     Pred_I_Q = rte::Amperes(best_pred_iq);
-    Cost = cost_track;
+    Cost = best_cost;
     V_Alpha = rte::Volts(best_valpha);
     V_Beta = rte::Volts(best_vbeta);
     const float cos_t = cosf(theta_e);
