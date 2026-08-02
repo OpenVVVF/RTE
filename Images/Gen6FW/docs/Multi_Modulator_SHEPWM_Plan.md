@@ -242,3 +242,43 @@ the base-image implementation is proven on hardware.
    edge jitter, must not preempt the AWD/fault path.
 5. **Whether the legacy `FocControlManager` path stays** after graph-based
    FOC reaches parity — affects how much of step 2 is worth doing.
+
+## 10. Hard Prerequisite for Closed-Loop FOC + SHEPWM: Current Oversampling / Ripple Compensation
+
+Bench testing showed that running FOC at low effective switching frequencies
+(even with variable-carrier SVPWM, and certainly behind a fixed SHEPWM pattern)
+produces unstable current feedback and can destroy hardware. The root cause is
+not the modulator itself; it is the current measurement:
+
+- The existing base image samples phase currents once per PWM period at the
+  bottom (TIM1 CH4 TRGO → ADC1/ADC2 injected group). This is adequate at the
+  default 2.5 kHz carrier / 5 kHz update, but degrades as the carrier drops or
+  as the pattern becomes non-carrier-based.
+- A single bottom sample does not represent the average phase current when
+  ripple is large, and the sampled value becomes a function of duty cycle and
+  electrical angle.
+- Closing a current loop on that biased, ripple-dependent feedback leads to
+  instability and overcurrent trips / device failure.
+
+**Therefore, closed-loop FOC driving SHEPWM is gated on a separate foundation:
+current oversampling and/or software ripple compensation.** Options:
+
+1. **Hardware or triggered multi-sample averaging** — configure the ADC to
+   capture several samples per PWM period (e.g., at multiple points in the
+   switching cycle) and average them in software.
+2. **Software ripple compensation** — model the inductor current ripple from
+   the applied voltage vector, inductance, and back-EMF, then offset the
+   sampled value toward the average.
+3. **Hybrid** — oversample to reduce noise, then apply a model-based correction
+   for the residual.
+
+Until this is validated against a high-bandwidth current reference across the
+intended carrier/frequency envelope, **SHEPWM must remain a voltage-source
+pattern only**: open-loop, handoff target, or supervisor-driven at speeds where
+FOC is no longer required. Do not attempt to close FOC around SHEPWM without
+first solving current measurement.
+
+This gates step 4 (live FOC ⇄ pattern handoff under load) and step 5
+(supervisor + closed-loop operation) for SHEPWM specifically. The modulator
+refactor, SVPWM/SPWM work, and manual pattern shell commands can proceed
+independently.
