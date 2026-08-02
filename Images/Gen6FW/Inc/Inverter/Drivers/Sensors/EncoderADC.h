@@ -288,6 +288,7 @@ private:
     float m_obs_theta    = 0.0f;   /**< mech angle estimate [rad] */
     float m_obs_omega    = 0.0f;   /**< mech speed estimate [rad/s] */
     uint32_t m_obs_last_cycles = 0;
+    uint32_t m_obs_rejects = 0;    /**< glitch-rejected samples (diagnostic) */
     bool  m_rpm_init       = false;
     volatile float m_rpm_ema = 0.0f;
 };

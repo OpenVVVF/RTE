@@ -303,11 +303,22 @@ void EncoderADC::onDmaComplete() {
             while (err > kPi) err -= 2.0f * kPi;
             while (err < -kPi) err += 2.0f * kPi;
 
-            /* Euler step of theta' = omega + k1*err, omega' = k2*err.
-             * (The k1 term MUST be scaled by dt: without it the loop
-             * overcorrects ~1/dt x and the speed estimate oscillates.) */
-            m_obs_theta += (m_obs_omega + k1 * err) * dt;
-            m_obs_omega += k2 * err * dt;
+            /* Glitch rejection: a real rotor cannot move more than
+             * ~|omega|*dt between samples; an encoder/EMI outlier can be
+             * anywhere on the circle.  Coast through implausible samples
+             * instead of letting one kick omega (and with it the FOC
+             * extrapolated angle). */
+            const float err_lim = 4.0f * fabsf(m_obs_omega) * dt + 0.1f;
+            if (fabsf(err) > err_lim) {
+                ++m_obs_rejects;
+                m_obs_theta += m_obs_omega * dt;
+            } else {
+                /* Euler step of theta' = omega + k1*err, omega' = k2*err.
+                 * (The k1 term MUST be scaled by dt: without it the loop
+                 * overcorrects ~1/dt x and the speed estimate oscillates.) */
+                m_obs_theta += (m_obs_omega + k1 * err) * dt;
+                m_obs_omega += k2 * err * dt;
+            }
             while (m_obs_theta >= 2.0f * kPi) m_obs_theta -= 2.0f * kPi;
             while (m_obs_theta < 0.0f) m_obs_theta += 2.0f * kPi;
         }
