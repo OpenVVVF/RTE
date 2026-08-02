@@ -82,12 +82,6 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
-    },
-    "DtRef": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Update period the gains were tuned at (s, default 0.0002 = 5 kHz). Gains back off proportionally when the live rate is slower; <= 0 disables scheduling."
     }
   }
 }

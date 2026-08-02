@@ -9,83 +9,17 @@
   "inputPorts": [],
   "outputPorts": [],
   "parameterTypes": {
-    "fe_1": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 1 electrical frequency (Hz)."
-    },
-    "fsw_1": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 1 carrier (Hz). <= 0 ends the table."
-    },
-    "fe_2": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 2 electrical frequency (Hz)."
-    },
-    "fsw_2": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 2 carrier (Hz). <= 0 ends the table."
-    },
-    "fe_3": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 3 electrical frequency (Hz)."
-    },
-    "fsw_3": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 3 carrier (Hz). <= 0 ends the table."
-    },
-    "fe_4": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 4 electrical frequency (Hz)."
-    },
-    "fsw_4": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 4 carrier (Hz). <= 0 ends the table."
-    },
-    "fe_5": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 5 electrical frequency (Hz)."
-    },
-    "fsw_5": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 5 carrier (Hz). <= 0 ends the table."
-    },
-    "fe_6": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 6 electrical frequency (Hz)."
-    },
-    "fsw_6": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Breakpoint 6 carrier (Hz). <= 0 ends the table."
-    },
-    "boost_per_amp": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "Carrier boost per amp of max phase current (Hz/A). 0 disables. Counters ripple dominance on low-inductance motors at low carrier."
-    }
+    "fe_1": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 1 electrical frequency (Hz)."},
+    "fsw_1": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 1 carrier (Hz). <= 0 ends the table."},
+    "fe_2": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 2 electrical frequency (Hz)."},
+    "fsw_2": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 2 carrier (Hz). <= 0 ends the table."},
+    "fe_3": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 3 electrical frequency (Hz)."},
+    "fsw_3": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 3 carrier (Hz). <= 0 ends the table."},
+    "fe_4": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 4 electrical frequency (Hz)."},
+    "fsw_4": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 4 carrier (Hz). <= 0 ends the table."},
+    "fe_5": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 5 electrical frequency (Hz)."},
+    "fsw_5": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 5 carrier (Hz). <= 0 ends the table."},
+    "fe_6": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 6 electrical frequency (Hz)."},
+    "fsw_6": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32", "description": "Breakpoint 6 carrier (Hz). <= 0 ends the table."}
   }
 }
