@@ -33,8 +33,9 @@ EMITTED_REL="build/hostsim_spwm_emitted"
 BUILD_DIR="${REPO_ROOT}/build/hostsim_spwm_emitted_build"
 
 cleanup_apps() {
-  pkill -f 'host_sim' 2>/dev/null || true
-  pkill -f 'NodeGUI' 2>/dev/null || true
+  # Use exact-name matching so we do not kill the shell running this script
+  # or the NodeGUI instance that launched us via Build -> Build Simulation.
+  pgrep -x host_sim | xargs -r kill 2>/dev/null || true
   sleep 0.5
 }
 

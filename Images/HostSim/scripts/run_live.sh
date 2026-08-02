@@ -23,8 +23,8 @@ if [[ ! -x "${HOSTSIM}" ]]; then
   exit 1
 fi
 
-pkill -f 'host_sim' 2>/dev/null || true
-pkill -f 'NodeGUI' 2>/dev/null || true
+pgrep -x host_sim | xargs -r kill 2>/dev/null || true
+pgrep -x NodeGUI | xargs -r kill 2>/dev/null || true
 sleep 0.5
 
 echo "Starting HostSim live: ${SCENARIO}"
