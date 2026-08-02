@@ -6,6 +6,5 @@ out/
 *.user
 __pycache__/
 *.pyc
-*.csv
 .mxproject
 .vscode/

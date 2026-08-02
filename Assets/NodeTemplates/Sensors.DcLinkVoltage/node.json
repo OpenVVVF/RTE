@@ -2,6 +2,7 @@
   "id": "Sensors.DcLinkVoltage",
   "displayName": "DC Link Voltage",
   "defaultName": "VdcSense",
+  "description": "Reads the inverter DC-link voltage from the platform sensor interface.",
   "maxInstances": 0,
   "isEntryPoint": true,
   "domain": "",
@@ -9,9 +10,10 @@
   "outputPorts": [
     {
       "name": "V_Dc",
+      "description": "Measured DC-link voltage in volts.",
       "direction": "output",
       "type": {
-        "quantity": "dimensionless",
+        "quantity": "voltage",
         "frame": "scalar",
         "dtype": "f32"
       }
