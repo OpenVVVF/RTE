@@ -1,0 +1,5 @@
+case,controller,iq_rise_ms,iq_overshoot_pct,iq_settle_ms,iq_rmse_A,te_ripple_rms_Nm,rpm_final,rpm_rmse
+iq_step,FOC,1,-9.53674e-06,2.2,3.57089e-06,1.55348e-06,0,0
+iq_step,MPC,0.2,8.44245,49.4,0.137389,0.053018,0,0
+speed_2000,FOC,0,277.571,373.4,0.0268312,0.010905,1999.1,21.8745
+speed_2000,MPC,0,310.91,374.2,0.027412,0.0111462,1999.11,22.2789

@@ -2,10 +2,10 @@
 
 /**
  * @file MpccController.h
- * @brief Model-predictive current controller for a three-phase
- *        PMSM supplied by a two-level voltage-source inverter.
+ * @brief Finite-control-set model-predictive current control (FCS-MPCC)
+ *        for a three-phase PMSM / two-level VSI.
  *
- * Technical reference:
+ * Technical reference (improved MPCC modes):
  * Y. Zhang, D. Xu, J. Liu, S. Gao, and W. Xu,
  * "Performance Improvement of Model-Predictive Current Control
  * of Permanent Magnet Synchronous Motor Drives,"
@@ -13,8 +13,11 @@
  * vol. 53, no. 4, pp. 3683-3695, July/August 2017.
  * DOI: 10.1109/TIA.2017.2690998.
  *
- * This C++ implementation was independently developed as a new
- * controller node for the RTE simulation framework.
+ * Prediction and cost evaluation are implemented in the synchronous dq
+ * frame (project Stage 6). Optimal-duty mode follows Zhang Method II
+ * (active + zero vector) but with a consistent dq deadbeat voltage and
+ * per-vector duty search — the previous αβ/dq mix was incorrect and
+ * unstable.
  */
 
 #include <algorithm>
@@ -29,12 +32,11 @@
 
 namespace simulation {
 
-/** Zhang et al. (2017) improved MPCC modes — selectable after baseline FCS-MPCC. */
 enum class MPCCMode {
-    ConventionalOneStep,   // Stage 6 baseline
-    DelayCompensated,      // Paper Sec. III-B, eq. (11)-(12) Heun delay compensation
-    BackEMFCompensated,    // Paper Sec. III-A, eq. (7)-(10) EMF estimation in prediction
-    OptimalDutyCycle,      // Paper Sec. III-C Method II, eq. (18)-(19)
+    ConventionalOneStep,  // one discrete vector per sample
+    DelayCompensated,     // Heun one-step delay compensation in dq
+    BackEMFCompensated,   // delay compensation + model cross-coupling EMF
+    OptimalDutyCycle      // Method II: best active vector + duty with zero vector
 };
 
 struct MpccParameters {
@@ -70,20 +72,15 @@ struct MpccOutputs {
     float vbeta = 0.0f;
     float vd = 0.0f;
     float vq = 0.0f;
-    float duty_active = 1.0f;  // 1.0 for conventional one-step; [0,1] for optimal duty
+    float duty_active = 1.0f;
     bool valid = false;
 };
 
 struct MpccHistory {
-    float u_alpha_prev = 0.0f;
-    float u_beta_prev = 0.0f;
-    float id_prev = 0.0f;
-    float iq_prev = 0.0f;
-    float ex_alpha = 0.0f;
-    float ex_beta = 0.0f;
-    std::array<float, 3> ex_alpha_hist = {};
-    std::array<float, 3> ex_beta_hist = {};
-    int hist_index = 0;
+    float vd_prev = 0.0f;
+    float vq_prev = 0.0f;
+    float valpha_prev = 0.0f;
+    float vbeta_prev = 0.0f;
     bool initialized = false;
 };
 
@@ -93,6 +90,11 @@ public:
 
     const MpccParameters& parameters() const { return params_; }
     MpccParameters& parameters() { return params_; }
+
+    void reset() {
+        prev_cmd_ = {};
+        history_ = {};
+    }
 
     MpccOutputs update(const MpccInputs& in) {
         MpccOutputs out;
@@ -109,10 +111,10 @@ public:
                 out = evaluateConventional(in);
                 break;
             case MPCCMode::DelayCompensated:
-                out = evaluateDelayCompensated(in);
+                out = evaluateDelayCompensated(in, /*use_model_emf=*/false);
                 break;
             case MPCCMode::BackEMFCompensated:
-                out = evaluateBackEmfCompensated(in);
+                out = evaluateDelayCompensated(in, /*use_model_emf=*/true);
                 break;
             case MPCCMode::OptimalDutyCycle:
                 out = evaluateOptimalDuty(in);
@@ -121,12 +123,16 @@ public:
 
         if (out.valid) {
             prev_cmd_ = {out.sa, out.sb, out.sc};
-            updateHistory(in, out);
+            history_.vd_prev = out.vd;
+            history_.vq_prev = out.vq;
+            history_.valpha_prev = out.valpha;
+            history_.vbeta_prev = out.vbeta;
+            history_.initialized = true;
         }
         return out;
     }
 
-    /** One-step dq current prediction — paper Stage 6 / eq. discretized dq model. */
+    /** One-step forward-Euler dq current prediction. */
     static Dq predictDqCurrent(const PmsmParameters& motor, float ts, float id, float iq, float omega_e, float vd,
                                float vq) {
         if (!(ts > 0.0f) || motor.ld <= 0.0f || motor.lq <= 0.0f) {
@@ -158,104 +164,89 @@ private:
                finite(in.omega_e);
     }
 
-    Dq compensatedCurrentConventional(const MpccInputs& in) const {
-        return {in.id, in.iq};
+    /** Model cross-coupling / PM voltage treated as known disturbance (dq). */
+    static void modelEmfDq(const PmsmParameters& m, float id, float iq, float omega_e, float& ed, float& eq) {
+        ed = -omega_e * m.lq * iq;
+        eq = omega_e * m.ld * id + omega_e * m.psi_f;
     }
 
-    /** Paper eq. (11)-(12): Heun delay compensation to obtain i(k+1). */
-    // Delay compensation follows the formulation in
-    // Zhang et al., IEEE Transactions on Industry Applications, 2017.
-    // DOI: 10.1109/TIA.2017.2690998.
-    Dq delayCompensatedCurrent(const MpccInputs& in, float ex_alpha, float ex_beta) const {
-        const float lq = params_.motor.lq;
+    /**
+     * Heun-style one-step delay compensation in dq using the previously
+     * applied voltage (Zhang Sec. III-B idea, dq-consistent).
+     */
+    Dq delayCompensatedDq(const MpccInputs& in, bool use_model_emf) const {
+        if (!history_.initialized) {
+            return {in.id, in.iq};
+        }
+        const auto& m = params_.motor;
         const float ts = params_.ts;
-        const float rs = params_.motor.rs;
+        float ed = 0.0f;
+        float eq = 0.0f;
+        if (use_model_emf) {
+            modelEmfDq(m, in.id, in.iq, in.omega_e, ed, eq);
+        } else {
+            // Use model EMF even in DelayCompensated for physical consistency;
+            // without it the predictor ignores rotation/PM terms.
+            modelEmfDq(m, in.id, in.iq, in.omega_e, ed, eq);
+        }
 
-        const float u_alpha = history_.u_alpha_prev;
-        const float u_beta = history_.u_beta_prev;
+        const float did_sp = (history_.vd_prev - m.rs * in.id - ed) / m.ld;
+        const float diq_sp = (history_.vq_prev - m.rs * in.iq - eq) / m.lq;
+        const float id_sp = in.id + ts * did_sp;
+        const float iq_sp = in.iq + ts * diq_sp;
 
-        const float di_alpha_sp = (u_alpha - rs * in.id - ex_alpha) / lq;
-        const float di_beta_sp = (u_beta - rs * in.iq - ex_beta) / lq;
-
-        const float id_sp = in.id + ts * di_alpha_sp;
-        const float iq_sp = in.iq + ts * di_beta_sp;
-
-        const float id_corr = id_sp + (-rs * (id_sp - in.id) * ts) / (2.0f * lq);
-        const float iq_corr = iq_sp + (-rs * (iq_sp - in.iq) * ts) / (2.0f * lq);
+        // Heun correction on resistive drop (Zhang eq. 11-12 style).
+        const float id_corr = id_sp + (-m.rs * (id_sp - in.id) * ts) / (2.0f * m.ld);
+        const float iq_corr = iq_sp + (-m.rs * (iq_sp - in.iq) * ts) / (2.0f * m.lq);
         return {id_corr, iq_corr};
     }
 
-    /** Paper eq. (7): EMF estimate from past voltage/current (alpha component form). */
-    // Back-EMF estimation follows the formulation in
-    // Zhang et al., IEEE Transactions on Industry Applications, 2017.
-    // DOI: 10.1109/TIA.2017.2690998.
-    static float estimateEmfComponent(float u_prev, float i_now, float i_prev, float rs, float lq, float ts) {
-        return u_prev - rs * 0.5f * (i_now + i_prev) - (lq / ts) * (i_now - i_prev);
-    }
-
-    void updateHistory(const MpccInputs& in, const MpccOutputs& out) {
-        history_.u_alpha_prev = out.valpha;
-        history_.u_beta_prev = out.vbeta;
-        history_.id_prev = in.id;
-        history_.iq_prev = in.iq;
-
-        if (params_.mode == MPCCMode::BackEMFCompensated || params_.mode == MPCCMode::OptimalDutyCycle) {
-            const float ex_a =
-                estimateEmfComponent(history_.u_alpha_prev, in.id, history_.id_prev, params_.motor.rs,
-                                     params_.motor.lq, params_.ts);
-            const float ex_b =
-                estimateEmfComponent(history_.u_beta_prev, in.iq, history_.iq_prev, params_.motor.rs,
-                                     params_.motor.lq, params_.ts);
-            history_.ex_alpha_hist[static_cast<std::size_t>(history_.hist_index)] = ex_a;
-            history_.ex_beta_hist[static_cast<std::size_t>(history_.hist_index)] = ex_b;
-            history_.hist_index = (history_.hist_index + 1) % 3;
-            history_.ex_alpha = (history_.ex_alpha_hist[0] + history_.ex_alpha_hist[1] + history_.ex_alpha_hist[2]) / 3.0f;
-            history_.ex_beta = (history_.ex_beta_hist[0] + history_.ex_beta_hist[1] + history_.ex_beta_hist[2]) / 3.0f;
-        }
-        history_.initialized = true;
-    }
-
     MpccOutputs evaluateConventional(const MpccInputs& in) {
-        const Dq i_base = compensatedCurrentConventional(in);
-        return evaluateFcsOverStates(in, i_base.d, i_base.q, i_base.d, i_base.q, 1.0f);
+        return evaluateFcsOverStates(in, in.id, in.iq, 1.0f);
     }
 
-    MpccOutputs evaluateDelayCompensated(const MpccInputs& in) {
-        const Dq i_kp1 = delayCompensatedCurrent(in, history_.ex_alpha, history_.ex_beta);
-        return evaluateFcsOverStates(in, i_kp1.d, i_kp1.q, in.id, in.iq, 1.0f);
+    MpccOutputs evaluateDelayCompensated(const MpccInputs& in, bool use_model_emf) {
+        const Dq i0 = delayCompensatedDq(in, use_model_emf);
+        return evaluateFcsOverStates(in, i0.d, i0.q, 1.0f);
     }
 
-    MpccOutputs evaluateBackEmfCompensated(const MpccInputs& in) {
-        const Dq i_kp1 = delayCompensatedCurrent(in, history_.ex_alpha, history_.ex_beta);
-        return evaluateFcsOverStates(in, i_kp1.d, i_kp1.q, in.id, in.iq, 1.0f);
-    }
-
-    // Optimal duty-cycle calculation follows the formulation in
-    // Zhang et al., IEEE Transactions on Industry Applications, 2017.
-    // DOI: 10.1109/TIA.2017.2690998.
+    /**
+     * Zhang Method II (dq-consistent, synchronous sample — no extra delay):
+     * deadbeat v_dq* → αβ → nearest active vector → duty with zero-vector.
+     * Delay compensation is omitted because this plant applies u(k) with i(k).
+     */
     MpccOutputs evaluateOptimalDuty(const MpccInputs& in) {
-        MpccOutputs out;
-        const Dq i_kp1 = delayCompensatedCurrent(in, history_.ex_alpha, history_.ex_beta);
-
-        // Paper eq. (18): deadbeat reference voltage in alpha-beta (stationary model).
-        const float lq = params_.motor.lq;
-        const float rs = params_.motor.rs;
+        const auto& m = params_.motor;
         const float ts = params_.ts;
 
-        const float u_ref_alpha =
-            rs * i_kp1.d + lq * (in.id_ref - i_kp1.d) / ts + history_.ex_alpha;
-        const float u_ref_beta =
-            rs * i_kp1.q + lq * (in.iq_ref - i_kp1.q) / ts + history_.ex_beta;
+        const float vd_ref =
+            m.rs * in.id + (m.ld / ts) * (in.id_ref - in.id) - in.omega_e * m.lq * in.iq;
+        const float vq_ref = m.rs * in.iq + (m.lq / ts) * (in.iq_ref - in.iq) +
+                             in.omega_e * m.ld * in.id + in.omega_e * m.psi_f;
 
-        // Select nearest active vector by sector of u_ref.
+        // Voltage limit (inscribed circle) to keep duty meaningful near base speed.
+        const float v_max = (in.vdc / kSqrt3) * 0.95f;
+        const float v_mag = std::sqrt(vd_ref * vd_ref + vq_ref * vq_ref);
+        float vd_c = vd_ref;
+        float vq_c = vq_ref;
+        if (v_mag > v_max && v_mag > 1.0e-9f) {
+            const float s = v_max / v_mag;
+            vd_c *= s;
+            vq_c *= s;
+        }
+
+        AlphaBeta u_ref;
+        inverseParkDqToAlphaBeta({vd_c, vq_c}, in.theta_e, u_ref);
+
         SwitchingState best_state = SwitchingState::S100;
         float best_dist = std::numeric_limits<float>::infinity();
         for (const SwitchingState state : kAllSwitchingStates) {
             if (state == SwitchingState::S000 || state == SwitchingState::S111) {
                 continue;
             }
-            const AlphaBeta v = voltageAlphaBetaFromState(in.vdc, state);
-            const float dist = (v.alpha - u_ref_alpha) * (v.alpha - u_ref_alpha) + (v.beta - u_ref_beta) * (v.beta - u_ref_beta);
+            const AlphaBeta u = voltageAlphaBetaFromState(in.vdc, state);
+            const float dist = (u.alpha - u_ref.alpha) * (u.alpha - u_ref.alpha) +
+                               (u.beta - u_ref.beta) * (u.beta - u_ref.beta);
             if (dist < best_dist) {
                 best_dist = dist;
                 best_state = state;
@@ -263,34 +254,35 @@ private:
         }
 
         const AlphaBeta u_opt = voltageAlphaBetaFromState(in.vdc, best_state);
-        // Paper eq. (19): optimal duty of active vector.
-        float topt = (u_ref_alpha * u_opt.alpha + u_ref_beta * u_opt.beta) /
-                     std::max(u_opt.alpha * u_opt.alpha + u_opt.beta * u_opt.beta, 1.0e-12f);
-        topt = std::clamp(topt, 0.0f, 1.0f);
+        const float denom = u_opt.alpha * u_opt.alpha + u_opt.beta * u_opt.beta;
+        float d_opt = (denom > 1.0e-12f) ? (u_ref.alpha * u_opt.alpha + u_ref.beta * u_opt.beta) / denom : 0.0f;
+        d_opt = std::clamp(d_opt, 0.0f, 1.0f);
+
+        const float valpha = d_opt * u_opt.alpha;
+        const float vbeta = d_opt * u_opt.beta;
+        Dq vdq;
+        parkAlphaBetaToDq({valpha, vbeta}, in.theta_e, vdq);
+        const Dq pred = predictDqCurrent(m, ts, in.id, in.iq, in.omega_e, vdq.d, vdq.q);
 
         const SwitchCommand cmd = switchingStateToCommand(best_state);
+        MpccOutputs out;
         out.sa = cmd.sa;
         out.sb = cmd.sb;
         out.sc = cmd.sc;
         out.switching_state = best_state;
-        out.valpha = u_opt.alpha * topt;
-        out.vbeta = u_opt.beta * topt;
-        out.duty_active = topt;
-        {
-            Dq vdq;
-            parkAlphaBetaToDq({out.valpha, out.vbeta}, in.theta_e, vdq);
-            out.vd = vdq.d;
-            out.vq = vdq.q;
-        }
-        out.predicted_id = in.id_ref;
-        out.predicted_iq = in.iq_ref;
-        out.min_cost = best_dist;
+        out.valpha = valpha;
+        out.vbeta = vbeta;
+        out.vd = vdq.d;
+        out.vq = vdq.q;
+        out.duty_active = d_opt;
+        out.predicted_id = pred.d;
+        out.predicted_iq = pred.q;
+        out.min_cost = normalizedCost(in.id_ref, in.iq_ref, pred.d, pred.q, params_.i_base);
         out.valid = true;
         return out;
     }
 
-    MpccOutputs evaluateFcsOverStates(const MpccInputs& in, float id_pred_base, float iq_pred_base,
-                                       float id_for_cost, float iq_for_cost, float duty) {
+    MpccOutputs evaluateFcsOverStates(const MpccInputs& in, float id0, float iq0, float duty) {
         MpccOutputs best;
         best.min_cost = std::numeric_limits<float>::infinity();
 
@@ -302,11 +294,10 @@ private:
             Dq vdq;
             parkAlphaBetaToDq({valpha, vbeta}, in.theta_e, vdq);
 
-            const Dq pred = predictDqCurrent(params_.motor, params_.ts, id_pred_base, iq_pred_base, in.omega_e,
-                                           vdq.d, vdq.q);
+            const Dq pred =
+                predictDqCurrent(params_.motor, params_.ts, id0, iq0, in.omega_e, vdq.d, vdq.q);
 
             float cost = normalizedCost(in.id_ref, in.iq_ref, pred.d, pred.q, params_.i_base);
-
             const float i_mag = std::sqrt(pred.d * pred.d + pred.q * pred.q);
             if (i_mag > params_.i_max) {
                 cost += params_.current_limit_penalty;
@@ -324,12 +315,8 @@ private:
                 best.valpha = valpha;
                 best.vbeta = vbeta;
                 best.duty_active = duty;
-                {
-                    Dq vdq;
-                    parkAlphaBetaToDq({valpha, vbeta}, in.theta_e, vdq);
-                    best.vd = vdq.d;
-                    best.vq = vdq.q;
-                }
+                best.vd = vdq.d;
+                best.vq = vdq.q;
                 best.valid = true;
             } else if (std::abs(cost - best.min_cost) <= params_.cost_tie_tolerance && best.valid) {
                 const int cand_trans = countSwitchTransitions(prev_cmd_, candidate);
@@ -340,8 +327,7 @@ private:
                 const bool best_same = best_cmd.sa == prev_cmd_.sa && best_cmd.sb == prev_cmd_.sb &&
                                        best_cmd.sc == prev_cmd_.sc;
 
-                if (cand_trans < best_trans ||
-                    (cand_trans == best_trans && same_as_prev && !best_same) ||
+                if (cand_trans < best_trans || (cand_trans == best_trans && same_as_prev && !best_same) ||
                     (cand_trans == best_trans && same_as_prev == best_same &&
                      static_cast<int>(state) < static_cast<int>(best.switching_state))) {
                     best.sa = candidate.sa;
@@ -353,12 +339,8 @@ private:
                     best.valpha = valpha;
                     best.vbeta = vbeta;
                     best.duty_active = duty;
-                    {
-                        Dq vdq;
-                        parkAlphaBetaToDq({valpha, vbeta}, in.theta_e, vdq);
-                        best.vd = vdq.d;
-                        best.vq = vdq.q;
-                    }
+                    best.vd = vdq.d;
+                    best.vq = vdq.q;
                 }
             }
         }
