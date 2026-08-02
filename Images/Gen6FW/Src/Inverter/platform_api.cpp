@@ -1,6 +1,12 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
+#include "Inverter/Drivers/PWM/ModulationSwitch.h"
+#include "Inverter/Calibration/MotorCalibration.h"
+#include "Inverter/Control/FocControlManager.h"
+#include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -24,6 +30,70 @@ void platform_pwm_set(float du, float dv, float dw) {
 
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
     PWM_SetVoltageVector(valpha, vbeta, vdc);
+}
+
+/* --------------------------------------------------------------------------
+ * Modulation mode switching
+ * -------------------------------------------------------------------------- */
+
+float platform_get_ol_freq_hz(void) {
+    return Inverter::openLoopController().frequencyHz();
+}
+
+float platform_get_elec_freq_hz(void) {
+    /* Controller-agnostic: encoder mechanical speed x pole pairs.  Works for
+     * the graph FOC path, legacy FOC, open-loop — and in pattern mode it is
+     * what lets a supervisor SEE a stall (rotor stops, fe collapses) and
+     * hand back, instead of reading the pattern's own frozen frequency. */
+    const Inverter::MotorCalibration& cal = Inverter::MotorCalibration::instance();
+    if (cal.valid && cal.pole_count > 0.0f) {
+        const float fe = Inverter::encoderADC().rpmMech() *
+                         (cal.pole_count * 0.5f) / 60.0f;
+        return fe < 0.0f ? -fe : fe;
+    }
+    if (Inverter::shepwmIsRunning()) {
+        return Inverter::shepwmFrequencyHz();
+    }
+    if (Inverter::focControlManager().isRunning()) {
+        const float w = Inverter::focControlManager().electricalSpeedRadPerSec();
+        return (w < 0.0f ? -w : w) / 6.283185307f;
+    }
+    return Inverter::openLoopController().frequencyHz();
+}
+
+uint8_t platform_modulation_mode(void) {
+    return static_cast<uint8_t>(Inverter::modulationMode());
+}
+
+bool platform_modulation_to_pattern(uint32_t pulses_per_quarter, float duty) {
+    return Inverter::modulationToPattern(pulses_per_quarter, duty);
+}
+
+bool platform_modulation_to_ramp(void) {
+    return Inverter::modulationToRamp();
+}
+
+void platform_pwm_set_carrier_hz(float freq_hz) {
+    if (freq_hz < 500.0f || freq_hz > 20000.0f) {
+        return;
+    }
+    const float cur = PWM_GetFrequency();
+    if (freq_hz > cur - 5.0f && freq_hz < cur + 5.0f) {
+        return;   /* deadband: ignore lerped churn */
+    }
+    PWM_SetFrequency((uint32_t)(freq_hz + 0.5f));
+}
+
+/**
+ * @brief Live control-loop period [s] (1 / TIM1 update frequency).
+ *
+ * PI/integration nodes must use this rather than a baked Dt whenever the
+ * carrier can change at runtime (CarrierAuto), or integral gains drift
+ * with the carrier.
+ */
+float platform_get_control_dt(void) {
+    const float f = PWM_GetUpdateFrequency();
+    return (f > 1.0f) ? 1.0f / f : 0.0f;
 }
 
 /* --------------------------------------------------------------------------

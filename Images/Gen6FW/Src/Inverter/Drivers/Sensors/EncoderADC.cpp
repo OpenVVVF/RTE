@@ -264,8 +264,8 @@ void EncoderADC::traceDump() {
 }
 
 void EncoderADC::onDmaComplete() {
-    /* Slim ISR: decode + publish only.  No RPM math, no fault evaluation,
-     * no library calls — those live in diagnose() (main loop).  This handler
+    /* Slim ISR: decode + publish + observer step.  No fault evaluation, no
+     * library calls — those live in diagnose() (main loop).  This handler
      * is ~5 us so its priority can sit above the control ISRs without
      * meaningfully delaying them. */
     const uint16_t raw_sin = s_enc_dma_buffer[0];
@@ -274,6 +274,56 @@ void EncoderADC::onDmaComplete() {
     /* Compute angle before touching the snapshot so the ISR writes all three
      * fields atomically relative to the main-loop readers. */
     const float angle = computeAngle(raw_sin, raw_cos);
+
+    /* Tracking observer (2nd-order PLL): theta/omega states corrected per
+     * sample by the wrapped angle error.  Gains from OBS_BW_HZ / OBS_ZETA;
+     * dt from the DWT cycle counter so the observer stays correct when the
+     * encoder trigger follows the carrier (TIM1 TRGO2 during control). */
+    {
+        constexpr float kPi       = 3.14159265358979f;
+        constexpr float kDegToRad = kPi / 180.0f;
+        constexpr float kWn       = 2.0f * kPi * OBS_BW_HZ;
+        constexpr float k1        = 2.0f * OBS_ZETA * kWn;
+        constexpr float k2        = kWn * kWn;
+
+        const uint32_t now_cycles = DWT->CYCCNT;
+        const float dt = static_cast<float>(now_cycles - m_obs_last_cycles) /
+                         static_cast<float>(SystemCoreClock);
+        m_obs_last_cycles = now_cycles;
+
+        const float meas = angle * kDegToRad;
+        if (!m_rpm_init || dt <= 0.0f || dt > 2.0e-3f) {
+            /* First sample or a stalled stream: re-seed, never extrapolate
+             * a dead timer into a phantom speed. */
+            m_obs_theta = meas;
+            m_obs_omega = 0.0f;
+            m_rpm_init = true;
+        } else {
+            float err = meas - m_obs_theta;
+            while (err > kPi) err -= 2.0f * kPi;
+            while (err < -kPi) err += 2.0f * kPi;
+
+            /* Glitch rejection: a real rotor cannot move more than
+             * ~|omega|*dt between samples; an encoder/EMI outlier can be
+             * anywhere on the circle.  Coast through implausible samples
+             * instead of letting one kick omega (and with it the FOC
+             * extrapolated angle). */
+            const float err_lim = 4.0f * fabsf(m_obs_omega) * dt + 0.1f;
+            if (fabsf(err) > err_lim) {
+                ++m_obs_rejects;
+                m_obs_theta += m_obs_omega * dt;
+            } else {
+                /* Euler step of theta' = omega + k1*err, omega' = k2*err.
+                 * (The k1 term MUST be scaled by dt: without it the loop
+                 * overcorrects ~1/dt x and the speed estimate oscillates.) */
+                m_obs_theta += (m_obs_omega + k1 * err) * dt;
+                m_obs_omega += k2 * err * dt;
+            }
+            while (m_obs_theta >= 2.0f * kPi) m_obs_theta -= 2.0f * kPi;
+            while (m_obs_theta < 0.0f) m_obs_theta += 2.0f * kPi;
+        }
+        m_rpm_ema = m_obs_omega * (60.0f / (2.0f * kPi));
+    }
 
     m_snapshot.angle = angle;
     m_snapshot.raw_sin = raw_sin;
@@ -370,42 +420,10 @@ void EncoderADC::onDmaError() {
 void EncoderADC::diagnose() {
     const uint32_t now_ms = HAL_GetTick();
 
-    /* Mechanical speed, evaluated here (main loop) rather than in the DMA
-     * ISR: per-sample angle deltas at 10 kHz multiply angle noise by the
-     * full sample rate, which buries the estimate in EMI at high switching
-     * frequencies.  Time-based window instead of sample-count window so the
-     * estimate is independent of the caller's cadence. */
-    {
-        const float angle = m_snapshot.angle;
-        if (!m_rpm_init) {
-            m_rpm_init = true;
-            m_unwrapped_angle = angle;
-            m_window_ref_angle = angle;
-            m_rpm_prev_angle = angle;
-            m_rpm_filt_angle = angle;
-            m_rpm_ema = 0.0f;
-            m_rpm_window_ms = now_ms;
-        } else {
-            float delta = angle - m_rpm_prev_angle;
-            if (delta > 180.0f) delta -= 360.0f;
-            else if (delta < -180.0f) delta += 360.0f;
-            m_unwrapped_angle += delta;
-            m_rpm_prev_angle = angle;
-
-            const uint32_t win_ms = now_ms - m_rpm_window_ms;
-            if (win_ms >= RPM_WINDOW_MS) {
-                const float win_deg = m_unwrapped_angle - m_window_ref_angle;
-                const float rpm_inst = (win_deg / 360.0f) * (60000.0f / static_cast<float>(win_ms));
-                m_rpm_ema += RPM_ALPHA * (rpm_inst - m_rpm_ema);
-                m_window_ref_angle = m_unwrapped_angle;
-                m_rpm_window_ms = now_ms;
-            }
-        }
-    }
-
-    /* Signal-quality faults (main loop now): magnitude collapse and rail
-     * sticking, evaluated on the latest snapshot raws.  Fault detection is
-     * slow by nature; per-call EMA replaces the per-sample one. */
+    /* Speed estimation lives in the DMA ISR now (tracking observer); this
+     * main-loop pass only evaluates signal-quality faults, which are slow
+     * by nature: magnitude collapse and rail sticking, on the latest
+     * snapshot raws. */
     const bool range_ok = (m_active_sin_max - m_active_sin_min > MIN_AMP_RANGE) &&
                           (m_active_cos_max - m_active_cos_min > MIN_AMP_RANGE);
     if (range_ok) {

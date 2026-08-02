@@ -12,6 +12,7 @@
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
@@ -157,6 +158,11 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
     if (openLoopController().isRunning()) {
         Telemetry::printf("[FOC] stopping open-loop controller first");
         openLoopController().stop();
+    }
+
+    if (activeModulator() == &shepwmModulator()) {
+        Telemetry::printf("[FOC] ERROR: SHEPWM is running; stop it first (shestop)");
+        return false;
     }
 
     if (!allow_during_cal && isAnyCalibrationActive()) {
@@ -495,7 +501,11 @@ void FocControlManager::onPwmPeriod() {
         return;
     }
 
-    float angle_deg = encoderADC().lastAngle();
+    /* Extrapolated to this control instant from the DWT-timestamped snapshot:
+     * smooths the sample staircase between the encoder stream and the 10 kHz
+     * FOC steps (same angle the generated tim_isr domain consumes via
+     * platform_get_encoder_angle_latest()). */
+    float angle_deg = encoderADC().extrapolatedAngleDeg();
     float angle_rad = angle_deg * (3.14159265358979323846f / 180.0f);
 
     /* Forced-angle diagnostic: ignore the encoder and drive the Park angle
@@ -546,6 +556,20 @@ void FocControlManager::onPwmPeriod() {
         m_sample_cb(m_controller.Id_A, m_controller.Iq_A,
                     m_controller.Vd_V, m_controller.Vq_V, m_sample_cb_ctx);
     }
+}
+
+void FocControlManager::suspendForHandoff() {
+    if (!m_running) {
+        return;
+    }
+    PWM_DisableFocMode();
+    PWM_StopUpdateInterrupt();
+    m_running = false;
+    Telemetry::printf("[FOC] suspended for modulation handoff");
+}
+
+bool FocControlManager::restartLastSetpoints() {
+    return start(m_setpoints.iq_a, m_setpoints.id_a, false);
 }
 
 void FocControlManager::requestSafeStopFromIsr() {

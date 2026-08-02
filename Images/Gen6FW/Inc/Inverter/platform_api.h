@@ -33,6 +33,59 @@ void platform_pwm_set(float du, float dv, float dw);
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc);
 
 /* --------------------------------------------------------------------------
+ * Modulation mode switching (open-loop ramp <-> N-pulse pattern)
+ *
+ * HAL-level live handoff primitives: phase-locked both directions, TIM1
+ * always owns the gate pins (dead time, MOE, BKIN stay armed).  A graph
+ * supervisor (e.g. Actuators.ModulationAuto) drives these from thresholds;
+ * the switching machinery itself stays in the base image.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @brief Commanded open-loop ramp frequency [Hz] (0 when not ramping).
+ */
+float platform_get_ol_freq_hz(void);
+
+/**
+ * @brief Best available electrical frequency [Hz]: the pattern's own
+ * frequency in pattern mode, the FOC speed estimate under FOC, otherwise
+ * the commanded open-loop ramp frequency.  Drives mode supervisors.
+ */
+float platform_get_elec_freq_hz(void);
+
+/**
+ * @brief Request a PWM carrier (switching) frequency change [Hz].
+ *
+ * Async-modulation knob: safe while running (ARR preload; the driver keeps
+ * RCR consistent with the active control mode).  Changes smaller than 5 Hz
+ * are ignored to avoid prescaler churn from a continuously-lerped request.
+ */
+void platform_pwm_set_carrier_hz(float freq_hz);
+
+/**
+ * @brief Live control-loop period [s] (1 / TIM1 update frequency).  PI
+ * nodes should prefer this over a baked Dt when the carrier is
+ * runtime-variable.
+ */
+float platform_get_control_dt(void);
+
+/**
+ * @brief Active modulation mode: 0 = ramp (SVPWM), 1 = N-pulse pattern.
+ */
+uint8_t platform_modulation_mode(void);
+
+/**
+ * @brief Phase-locked handoff ramp -> N-pulse pattern at the same frequency.
+ * @return false if the ramp is not running (or FOC is active).
+ */
+bool platform_modulation_to_pattern(uint32_t pulses_per_quarter, float duty);
+
+/**
+ * @brief Phase-locked handoff pattern -> ramp (resumes at the pattern angle).
+ */
+bool platform_modulation_to_ramp(void);
+
+/* --------------------------------------------------------------------------
  * Sensor inputs
  * -------------------------------------------------------------------------- */
 

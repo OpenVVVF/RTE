@@ -10,6 +10,7 @@
 #include "pwm.h"
 #include "tim.h"
 #include "Inverter/AppState.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/LoopStats.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
@@ -42,15 +43,11 @@ static volatile float pwm_switching_freq_hz = (float)PWM_DEFAULT_SWITCHING_FREQ_
  * (dual-update FOC). */
 static volatile float pwm_update_freq_hz = (float)PWM_DEFAULT_SWITCHING_FREQ_HZ;
 
-/* SPWM state, updated in the TIM1 update ISR. */
-static volatile float spwm_angle = 0.0f;
-static volatile float spwm_fundamental_freq_hz = 1.0f;
-static volatile float spwm_modulation_index = 0.0;
-static volatile uint8_t spwm_running = 0;
-static volatile uint32_t spwm_elec_cycles = 0;
-
-/* FOC mode flag. When set, the TIM1 update ISR does not run the SPWM ramp. */
-static volatile uint8_t foc_active = 0;
+/* Closed-loop control hook.  When set, the TIM1 update ISR runs this hook
+ * (the controller, which drives the SVPWM modulator via PWM_SetVoltageVector)
+ * instead of the active self-clocked modulator (SPWM).  Registered by
+ * PWM_EnableFocMode(); nullptr in open-loop / idle. */
+static void (*pwm_control_hook)(void) = nullptr;
 
 /* CKD = DIV1  =>  t_DTS = 1 / TIM1_CLOCK_HZ.
  * Map the requested deadtime to the finest STM32 DTG encoding. */
@@ -109,10 +106,14 @@ void PWM_SetFrequency(uint32_t freq_hz)
     pwm_switching_freq_hz = (float)TIM1_CLOCK_HZ /
                             (2.0f * (float)(arr + 1U) * (float)(psc + 1U));
 
-    /* Default to one update event per switching period (RCR=1), matching the
-     * open-loop SPWM convention.  FOC mode will override this when enabled. */
-    TIM1->RCR = 1U;
-    pwm_update_freq_hz = pwm_switching_freq_hz;
+    /* One update event per switching period (RCR=1) in open-loop, dual-update
+     * (RCR=0) when a closed-loop control hook is registered.  Previously this
+     * always forced RCR=1, silently halving the FOC rate on a live carrier
+     * change. */
+    const bool closed_loop = (pwm_control_hook != nullptr);
+    TIM1->RCR = closed_loop ? 0U : 1U;
+    pwm_update_freq_hz = closed_loop ? 2.0f * pwm_switching_freq_hz
+                                     : pwm_switching_freq_hz;
 }
 
 void PWM_SetDeadTime(uint32_t deadtime_ns)
@@ -176,44 +177,10 @@ void PWM_SetVoltageAngle(float angle_rad, float modulation_index)
 
 void PWM_SetVoltageVector(float valpha_v, float vbeta_v, float vdc_v)
 {
-    if (vdc_v <= 1.0f) {
-        PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
-        return;
-    }
-
-    /* Clamp the alpha/beta magnitude to the linear modulation limit before
-     * converting to three-phase voltages.  The SVPWM linear limit is
-     * Vdc / sqrt(3). */
-    const float sqrt3 = 1.7320508075688772f;
-    float valpha = valpha_v;
-    float vbeta  = vbeta_v;
-    const float v_max_linear = (vdc_v / sqrt3) * 0.95f;
-    const float v_albe_sq = valpha * valpha + vbeta * vbeta;
-    if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
-        const float scale = v_max_linear / sqrtf(v_albe_sq);
-        valpha *= scale;
-        vbeta  *= scale;
-    }
-
-    /* Inverse Clarke: alpha/beta -> A/B/C. */
-    float va = valpha;
-    float vb = -0.5f * valpha + 0.5f * sqrt3 * vbeta;
-    float vc = -0.5f * valpha - 0.5f * sqrt3 * vbeta;
-
-    /* Min-max SVPWM zero-sequence injection. */
-    float v_max = (va > vb) ? ((va > vc) ? va : vc) : ((vb > vc) ? vb : vc);
-    float v_min = (va < vb) ? ((va < vc) ? va : vc) : ((vb < vc) ? vb : vc);
-    float vcom = 0.5f * (v_max + v_min);
-
-    float du = 50.0f + 50.0f * (va - vcom) / vdc_v;
-    float dv = 50.0f + 50.0f * (vb - vcom) / vdc_v;
-    float dw = 50.0f + 50.0f * (vc - vcom) / vdc_v;
-
-    if (du < 0.0f) du = 0.0f; else if (du > 100.0f) du = 100.0f;
-    if (dv < 0.0f) dv = 0.0f; else if (dv > 100.0f) dv = 100.0f;
-    if (dw < 0.0f) dw = 0.0f; else if (dw > 100.0f) dw = 100.0f;
-
-    PWM_SetThreePhaseDuty(du, dv, dw);
+    /* SVPWM modulator (externally clocked): compute duties, then write them.
+     * CCR preload makes the write land atomically at the next update event. */
+    Inverter::svpwmModulator().update(valpha_v, vbeta_v, vdc_v);
+    Inverter::svpwmModulator().commit();
 }
 
 /* TIME_DOMAIN: CLOSED_LOOP_MODULATION_START
@@ -222,7 +189,9 @@ void PWM_SetVoltageVector(float valpha_v, float vbeta_v, float vdc_v)
  */
 void PWM_EnableFocMode(void)
 {
-    foc_active = 1;
+    /* FOC drives the SVPWM modulator from the control hook. */
+    pwm_control_hook = FocControlManager_OnPwmPeriod;
+    Inverter::setActiveModulator(&Inverter::svpwmModulator());
     /* Dual-update FOC: run the control ISR at twice the PWM switching frequency
      * (both top and bottom of the center-aligned triangle).  RCR=0 generates an
      * update event on every counter overflow/underflow. */
@@ -232,14 +201,17 @@ void PWM_EnableFocMode(void)
 
 void PWM_DisableFocMode(void)
 {
-    foc_active = 0;
+    pwm_control_hook = nullptr;
+    if (Inverter::activeModulator() == &Inverter::svpwmModulator()) {
+        Inverter::setActiveModulator(nullptr);
+    }
     TIM1->RCR = 1U;
     pwm_update_freq_hz = pwm_switching_freq_hz;
 }
 
 bool PWM_IsFocModeActive(void)
 {
-    return foc_active != 0;
+    return pwm_control_hook != nullptr;
 }
 
 void PWM_StartUpdateInterrupt(void)
@@ -251,7 +223,7 @@ void PWM_StartUpdateInterrupt(void)
 
 void PWM_StopUpdateInterrupt(void)
 {
-    if (!spwm_running) {
+    if (!Inverter::spwmIsRunning()) {
         __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
         HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
     }
@@ -274,19 +246,15 @@ float PWM_GetUpdateFrequency(void)
  */
 void PWM_StartSPWM(float fundamental_freq_hz, float modulation_index)
 {
-    if (fundamental_freq_hz < 0.0f) fundamental_freq_hz = 0.0f;
-    if (modulation_index < 0.0f) modulation_index = 0.0f;
-    if (modulation_index > SVPWM_M_MAX) modulation_index = SVPWM_M_MAX;
-
     /* SPWM uses one update event per switching period (RCR=1) so the angle
      * advances at the switching frequency. */
     TIM1->RCR = 1U;
     pwm_update_freq_hz = pwm_switching_freq_hz;
 
-    spwm_fundamental_freq_hz = fundamental_freq_hz;
-    spwm_modulation_index = modulation_index;
-    spwm_angle = 0.0f;
-    spwm_running = 1;
+    /* Hand the modulation slot to the self-clocked SPWM modulator. */
+    Inverter::spwmSetParams(fundamental_freq_hz, modulation_index);
+    Inverter::spwmModulator().enter(0.0f, 0.0f);
+    Inverter::setActiveModulator(&Inverter::spwmModulator());
 
     HAL_NVIC_SetPriority(TIM1_UP_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
@@ -295,19 +263,17 @@ void PWM_StartSPWM(float fundamental_freq_hz, float modulation_index)
 
 void PWM_StopSPWM(void)
 {
-    spwm_running = 0;
+    Inverter::spwmModulator().exit();
+    if (Inverter::activeModulator() == &Inverter::spwmModulator()) {
+        Inverter::setActiveModulator(nullptr);
+    }
     __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
     HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
 }
 
 void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
 {
-    if (fundamental_freq_hz < 0.0f) fundamental_freq_hz = 0.0f;
-    if (modulation_index < 0.0f) modulation_index = 0.0f;
-    if (modulation_index > SVPWM_M_MAX) modulation_index = SVPWM_M_MAX;
-
-    spwm_fundamental_freq_hz = fundamental_freq_hz;
-    spwm_modulation_index = modulation_index;
+    Inverter::spwmSetParams(fundamental_freq_hz, modulation_index);
 }
 
 /* TIM1 update ISR callback. Runs at the PWM switching frequency. */
@@ -329,59 +295,58 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
      * superseded once the graph contains nodes assigned to the tim_isr domain. */
     // RTE_EMIT: tim_isr step
 
-    if (foc_active) {
-        FocControlManager_OnPwmPeriod();
+    if (pwm_control_hook != nullptr) {
+        pwm_control_hook();
         return;
     }
 
-    if (!spwm_running) return;
+    /* Drive the active self-clocked modulator (SPWM today).  Externally
+     * clocked modulators (SVPWM) are driven by their control-loop caller;
+     * future synchronous modulators (SHEPWM) run on their own timebase. */
+    Inverter::Modulator* mod = Inverter::activeModulator();
+    if (mod == nullptr || !mod->runsInPwmIsr()) return;
 
-    float angle = spwm_angle;
-    float m = spwm_modulation_index;
-
-    /* Three-phase sinusoidal references, 120° apart. */
-    float u = m * sinf(angle);
-    float v = m * sinf(angle - TWO_PI / 3.0f);
-    float w = m * sinf(angle + TWO_PI / 3.0f);
-
-    /* Min-max SVPWM zero-sequence injection to extend linear range to 2/sqrt(3). */
-    float v_max = (u > v) ? ((u > w) ? u : w) : ((v > w) ? v : w);
-    float v_min = (u < v) ? ((u < w) ? u : w) : ((v < w) ? v : w);
-    float v0 = -0.5f * (v_max + v_min);
-
-    /* Convert to centered duty cycles [0, 100]. */
-    float du = 50.0f + 50.0f * (u + v0);
-    float dv = 50.0f + 50.0f * (v + v0);
-    float dw = 50.0f + 50.0f * (w + v0);
-
-    if (du < 0.0f) du = 0.0f; else if (du > 100.0f) du = 100.0f;
-    if (dv < 0.0f) dv = 0.0f; else if (dv > 100.0f) dv = 100.0f;
-    if (dw < 0.0f) dw = 0.0f; else if (dw > 100.0f) dw = 100.0f;
-
-    PWM_SetThreePhaseDuty(du, dv, dw);
-
-    /* Advance angle by one PWM period. */
-    angle += TWO_PI * spwm_fundamental_freq_hz / pwm_switching_freq_hz;
-    if (angle >= TWO_PI) {
-        angle -= TWO_PI;
-        ++spwm_elec_cycles;
-    }
-    spwm_angle = angle;
+    mod->update(0.0f, 0.0f, 0.0f);
+    mod->commit();
 }
 
 uint32_t PWM_GetSPWMElectricalCycles(void)
 {
-    return spwm_elec_cycles;
+    return Inverter::spwmElectricalCycles();
 }
 
 void PWM_ResetSPWMElectricalCycles(void)
 {
-    spwm_elec_cycles = 0;
+    Inverter::spwmResetElectricalCycles();
 }
 
 float PWM_GetSPWMAngle(void)
 {
-    return spwm_running ? spwm_angle : 0.0f;
+    return Inverter::spwmAngleRad();
+}
+
+void PWM_ForcePhaseLevel(uint8_t phase, bool high)
+{
+    if (phase > 2) return;
+    const uint32_t mode = high ? TIM_OCMODE_ACTIVE : TIM_OCMODE_INACTIVE;
+    switch (phase) {
+    case 0:
+        MODIFY_REG(TIM1->CCMR1, TIM_CCMR1_OC1M, mode);
+        break;
+    case 1:
+        MODIFY_REG(TIM1->CCMR1, TIM_CCMR1_OC2M, mode << 8U);
+        break;
+    default:
+        MODIFY_REG(TIM1->CCMR2, TIM_CCMR2_OC3M, mode);
+        break;
+    }
+}
+
+void PWM_ReleaseForcedOutputs(void)
+{
+    MODIFY_REG(TIM1->CCMR1, TIM_CCMR1_OC1M | TIM_CCMR1_OC2M,
+               TIM_OCMODE_PWM1 | (TIM_OCMODE_PWM1 << 8U));
+    MODIFY_REG(TIM1->CCMR2, TIM_CCMR2_OC3M, TIM_OCMODE_PWM1);
 }
 
 void PWM_StartPhase(uint8_t phase)
@@ -450,8 +415,8 @@ void PWM_PrintSPWMState(void)
     float dw = (arr == 0) ? 0.0f : (__HAL_TIM_GET_COMPARE(&htim1, pwm_phase_channels[2]) * 100.0f / (float)arr);
 
     MCP2221A_Printf("[SPWM] running=%u f=%.2f Hz m=%.3f | duties U=%.1f V=%.1f W=%.1f %%\r\n",
-                     (unsigned)spwm_running,
-                     (double)spwm_fundamental_freq_hz,
-                     (double)spwm_modulation_index,
+                     (unsigned)(Inverter::spwmIsRunning() ? 1U : 0U),
+                     (double)Inverter::spwmFundamentalFreqHz(),
+                     (double)Inverter::spwmModulationIndex(),
                      (double)du, (double)dv, (double)dw);
 }

@@ -4,6 +4,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
@@ -65,6 +66,11 @@ bool ControlSupervisor::start() {
         return false;
     }
 
+    if (activeModulator() == &shepwmModulator()) {
+        Telemetry::printf("[SUP] ERROR: SHEPWM is running; stop it first (shestop)");
+        return false;
+    }
+
     m_state = State::Starting;
 
     if (!gateDriverStartup()) {
@@ -108,6 +114,15 @@ void ControlSupervisor::stop() {
     }
 
     m_state = State::Stopping;
+
+    /* If the pattern modulator owns the slot (handoff mode), release it
+     * first so the outputs actually go quiet. */
+    if (Inverter::shepwmIsRunning()) {
+        Inverter::shepwmModulator().exit();
+        if (Inverter::activeModulator() == &Inverter::shepwmModulator()) {
+            Inverter::setActiveModulator(nullptr);
+        }
+    }
 
     /* Zero generated outputs before stopping the ISR. */
     app::TimIsrStop(appState.tim_isr);

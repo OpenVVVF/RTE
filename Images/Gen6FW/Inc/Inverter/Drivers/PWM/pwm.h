@@ -75,6 +75,25 @@ void PWM_ResetSPWMElectricalCycles(void);
  */
 float PWM_GetSPWMAngle(void);
 
+/**
+ * @brief Force one phase leg's output level immediately (sync modulators).
+ *
+ * high=true forces OCxREF active (high-side on after dead-time insertion);
+ * false forces inactive (low-side on).  The write is immediate (OCxM forced
+ * mode has no preload); dead-time insertion and the BKIN break path stay in
+ * effect, and TIM1 keeps running so the ADC trigger cadence is unchanged.
+ * CH4 (the ADC trigger) is never touched.
+ */
+void PWM_ForcePhaseLevel(uint8_t phase, bool high);
+
+/**
+ * @brief Restore all three phase channels to PWM1 output-compare mode.
+ *
+ * The CCRs keep their last written values; preloaded duties apply from the
+ * next update event, so an async modulator (SVPWM) resumes glitch-free.
+ */
+void PWM_ReleaseForcedOutputs(void);
+
 void PWM_StartPhase(uint8_t phase);
 void PWM_StopPhase(uint8_t phase);
 void PWM_Start(void);

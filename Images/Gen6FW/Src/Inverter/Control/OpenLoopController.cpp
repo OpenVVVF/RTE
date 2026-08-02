@@ -3,6 +3,7 @@
 #include "Inverter/Control/FocControlManager.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/PWM/Modulator.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -275,6 +276,11 @@ bool OpenLoopController::start(float freq_hz, float modulation_index) {
         return false;
     }
 
+    if (activeModulator() == &shepwmModulator()) {
+        Telemetry::printf("[OL] ERROR: SHEPWM is running; stop it first (shestop)");
+        return false;
+    }
+
     if (m_running || m_starting) {
         stop();
     }
@@ -368,6 +374,15 @@ void OpenLoopController::stepStartup(uint32_t now_ms) {
 }
 
 void OpenLoopController::stop() {
+    /* If the pattern modulator owns the slot (handoff mode), release it
+     * first so the outputs actually go quiet and the next start is clean. */
+    if (Inverter::shepwmIsRunning()) {
+        Inverter::shepwmModulator().exit();
+        if (Inverter::activeModulator() == &Inverter::shepwmModulator()) {
+            Inverter::setActiveModulator(nullptr);
+        }
+    }
+
     /* Immediate coast: turn off the PWM outputs and assert the gate-driver
      * reset line so all six IGBTs stop switching right away. */
     PWM_StopSPWM();

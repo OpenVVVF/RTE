@@ -97,9 +97,6 @@ static void init()
     Telemetry::init();
     Telemetry::set_period_us(10000);  /* 100 Hz data frames */
 
-    /* CAN error-status notifications (FDCAN2 is the active interface). */
-    (void)Inverter::fdcanFaultInit();
-
     /* Supply rail monitoring (PVD/AVD/VOSRDY). */
     (void)Inverter::supplyMonitorInit();
 

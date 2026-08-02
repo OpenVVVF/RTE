@@ -1,5 +1,6 @@
 #include "Inverter/Drivers/CAN/CanBus.h"
 
+#include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 
@@ -139,6 +140,10 @@ bool CanBus::init() {
             continue;
         }
     }
+
+    /* Route error-status notifications (bus-off, error-passive, log overflow)
+     * to the FaultManager — only for buses that survived init. */
+    (void)fdcanFaultInit(m_enabled[0], m_enabled[1]);
 
     /* RX FIFO0 + error interrupts share IT0 on each peripheral. */
     HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 6, 0);

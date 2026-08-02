@@ -110,8 +110,9 @@ public:
     /**
      * @brief Mechanical speed in RPM, signed by direction.
      *
-     * Derived in the DMA ISR from unwrapped angle deltas at the 10 kHz
-     * sample rate, low-passed with an EMA (~100 ms settling).
+     * Tracking-observer (2nd-order PLL) estimate, updated per DMA sample;
+     * ~60 Hz bandwidth, ~4 ms tracking lag, per-sample angle noise
+     * strongly attenuated.
      */
     float rpmMech() const { return m_rpm_ema; }
 
@@ -276,17 +277,18 @@ private:
     bool              m_mag_ema_init   = false;
     volatile uint32_t m_isr_count      = 0;
 
-    /* Mechanical speed estimation (main loop, time-based window).
-     * m_sample_hz is measured from the actual trigger rate in diagnose(). */
-    static constexpr float    RPM_ALPHA     = 0.005f;
-    static constexpr uint32_t RPM_WINDOW_MS = 40U;  /* long enough to average
-        away per-sample angle noise (EMI) that a 1-sample delta amplifies. */
+    /* Mechanical speed estimation: tracking observer (2nd-order PLL) on the
+     * angle stream, updated per DMA sample.  ~60 Hz bandwidth tracks in
+     * ~4 ms while crushing per-sample angle noise.  dt comes from the DWT
+     * cycle counter so it stays correct when the sample rate follows the
+     * carrier (TRGO2 sync during control). */
+    static constexpr float    OBS_BW_HZ       = 60.0f;  /**< observer bandwidth */
+    static constexpr float    OBS_ZETA        = 1.0f;   /**< damping ratio */
     float m_sample_hz    = 10000.0f;
-    float m_rpm_prev_angle = 0.0f;
-    float m_rpm_filt_angle = 0.0f;
-    float m_unwrapped_angle = 0.0f;
-    float m_window_ref_angle = 0.0f;
-    uint32_t m_rpm_window_ms = 0;
+    float m_obs_theta    = 0.0f;   /**< mech angle estimate [rad] */
+    float m_obs_omega    = 0.0f;   /**< mech speed estimate [rad/s] */
+    uint32_t m_obs_last_cycles = 0;
+    uint32_t m_obs_rejects = 0;    /**< glitch-rejected samples (diagnostic) */
     bool  m_rpm_init       = false;
     volatile float m_rpm_ema = 0.0f;
 };
