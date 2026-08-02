@@ -1856,7 +1856,7 @@
    "displayName": "Slew Rate Limiter",
    "domain": "",
    "id": "Control.Slew",
-   "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In;\nconst float step = Rate * Dt;\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
+   "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping.\n *\n * dt comes from the live control rate (platform_get_control_dt) so Rate\n * stays in true units/sec when the carrier changes at runtime; the Dt\n * parameter is kept for backward compatibility but ignored. */\nconst float step = Rate * platform_get_control_dt();\nconst float target = In;\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
    "inputPorts": [
     {
      "description": "Target value for the limiter to follow.",
