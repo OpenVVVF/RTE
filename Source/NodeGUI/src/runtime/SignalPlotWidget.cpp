@@ -20,7 +20,7 @@ constexpr int kGridDivisionsY = 6;
 
 // Widget margins around the plot area: the title strip on top, Y tick labels
 // on the left, X tick labels on the bottom.
-constexpr int kMarginTop = 26;
+constexpr int kMarginTop = 30;
 constexpr int kMarginLeft = 64;
 constexpr int kMarginRight = 12;
 constexpr int kMarginBottom = 26;
@@ -259,9 +259,12 @@ void SignalPlotWidget::paintGL()
     painter.fillRect(QRectF(0, kMarginTop, kMarginLeft, ph), marginColor);
     painter.fillRect(QRectF(w - kMarginRight, kMarginTop, kMarginRight, ph), marginColor);
 
-    // Title strip with a per-graph accent line underneath.
+    // Title strip. The "Graph N" titles stay plain white; the strip's darker
+    // background plus the neutral separator provide the contrast.
     painter.fillRect(QRectF(0, 0, w, kMarginTop - 4), QColor(48, 51, 56));
-    painter.fillRect(QRectF(0, kMarginTop - 4, w, 2), accentColor_);
+    painter.fillRect(QRectF(0, kMarginTop - 4, w, 1), QColor(86, 90, 96));
+
+    const QFontMetrics fm = painter.fontMetrics();
 
     QFont bold = normalFont;
     bold.setBold(true);
@@ -271,12 +274,53 @@ void SignalPlotWidget::paintGL()
                      Qt::AlignLeft | Qt::AlignVCenter, title_);
     painter.setFont(normalFont);
 
-    // Unit label, only when every assigned signal resolves to the same unit.
-    const QString units = UnitLabel();
+    // Right side of the strip: unit label (if any) then the color-coded
+    // legend, fitted into the space left of the title. Fitting order: legend
+    // names are elided per-item first, the unit label is dropped next, and
+    // leftmost legend entries are dropped last — nothing ever overflows the
+    // strip or covers the plot.
+    const int titleWidth = fm.horizontalAdvance(title_);
+    int available = w - 12 - (10 + titleWidth + 20);
+
+    struct StripItem {
+        QString text;
+        QColor color;
+        int width;
+    };
+    QList<StripItem> legend;
+    int legendWidth = 0;
+    for (int i = 0; i < signals_.size(); ++i) {
+        const QString elided = fm.elidedText(signals_[i], Qt::ElideMiddle, 110);
+        const int itemWidth = fm.horizontalAdvance(elided) + 14;
+        legend.push_back({elided, SignalColor(i), itemWidth});
+        legendWidth += itemWidth;
+    }
+
+    QString units = UnitLabel();
+    int unitsWidth = units.isEmpty() ? 0 : fm.horizontalAdvance(units) + 14;
+    if (legendWidth + unitsWidth > available) {
+        units.clear();
+        unitsWidth = 0;
+    }
+    while (legendWidth > available && !legend.isEmpty()) {
+        legendWidth -= legend.first().width;
+        legend.removeFirst();
+    }
+
+    int rightEdge = w - 12;
+    for (int i = legend.size() - 1; i >= 0; --i) {
+        const auto& item = legend[i];
+        rightEdge -= item.width - 14;
+        painter.setPen(item.color);
+        painter.drawText(rightEdge, 0, item.width - 14 + 1, kMarginTop - 4,
+                         Qt::AlignLeft | Qt::AlignVCenter, item.text);
+        rightEdge -= 14;
+    }
     if (!units.isEmpty()) {
+        rightEdge -= unitsWidth - 14;
         painter.setPen(QColor(190, 190, 190));
-        painter.drawText(QRect(w / 2, 0, w / 2 - 10, kMarginTop - 4),
-                         Qt::AlignRight | Qt::AlignVCenter, units);
+        painter.drawText(rightEdge, 0, unitsWidth - 14 + 1, kMarginTop - 4,
+                         Qt::AlignLeft | Qt::AlignVCenter, units);
     }
 
     if (signals_.isEmpty()) {
@@ -287,17 +331,6 @@ void SignalPlotWidget::paintGL()
     if (!haveData) {
         painter.setPen(QColor(150, 150, 150));
         painter.drawText(plotRect, Qt::AlignCenter, QStringLiteral("No history yet."));
-    }
-
-    // Color-coded legend, top-right inside the plot area.
-    const QFontMetrics fm = painter.fontMetrics();
-    int legendY = kMarginTop + 4;
-    for (int i = 0; i < signals_.size(); ++i) {
-        const QString& name = signals_[i];
-        const int textWidth = fm.horizontalAdvance(name);
-        painter.setPen(SignalColor(i));
-        painter.drawText(w - kMarginRight - 4 - textWidth, legendY + fm.ascent(), name);
-        legendY += fm.height() + 2;
     }
 
     // Axes: bright left/bottom lines with outward tick marks.
@@ -324,7 +357,10 @@ void SignalPlotWidget::paintGL()
         painter.drawLine(kMarginLeft - 4, py, kMarginLeft, py);
         if (haveData) {
             const double v = y0 + (y1 - y0) * fy;
-            painter.drawText(QRect(2, py - 8, kMarginLeft - 10, 16),
+            // Keep the label inside the plot area so it never pokes into the
+            // title strip or the X-axis row.
+            const int labelY = std::clamp(py - 8, kMarginTop, h - kMarginBottom - 16);
+            painter.drawText(QRect(2, labelY, kMarginLeft - 10, 16),
                              Qt::AlignRight | Qt::AlignVCenter,
                              QString::number(v, 'g', 3));
         }

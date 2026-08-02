@@ -36,10 +36,6 @@ public:
     void SetViewSeconds(double seconds);         // sliding X window, 0.5..60
     double ViewSeconds() const { return viewSeconds_; }
 
-    // Accent color used for the title strip so stacked plots are easy to
-    // tell apart at a glance.
-    void SetAccentColor(const QColor& color) { accentColor_ = color; }
-
 public slots:
     void Refresh();  // called ~30 Hz when store changed; triggers update()
 
@@ -61,7 +57,6 @@ private:
     QString UnitLabel() const;
 
     QString title_;
-    QColor accentColor_{150, 150, 150};
     const TelemetryStore* store_ = nullptr;
     QStringList signals_;
     double viewSeconds_ = 10.0;

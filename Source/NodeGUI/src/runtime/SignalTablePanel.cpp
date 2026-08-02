@@ -35,11 +35,15 @@ SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* paren
     signalTable_->setHorizontalHeaderLabels(
         {QStringLiteral("G1"), QStringLiteral("G2"), QStringLiteral("G3"),
          QStringLiteral("Signal"), QStringLiteral("Value")});
-    signalTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    signalTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    signalTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    signalTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-    signalTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    // User-adjustable columns with sensible starting widths; the Value column
+    // soaks up extra width when the dock is resized.
+    signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    signalTable_->horizontalHeader()->setStretchLastSection(true);
+    signalTable_->setColumnWidth(0, 30);
+    signalTable_->setColumnWidth(1, 30);
+    signalTable_->setColumnWidth(2, 30);
+    signalTable_->setColumnWidth(3, 170);
+    signalTable_->setColumnWidth(4, 90);
     signalTable_->verticalHeader()->setVisible(false);
     signalTable_->setSelectionMode(QAbstractItemView::NoSelection);
     connect(signalTable_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
