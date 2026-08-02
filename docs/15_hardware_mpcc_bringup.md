@@ -5,7 +5,8 @@ enable / PWM path as working FOC**, replacing only the current regulator.
 
 ## What to flash
 
-Use the RTE branch `feature/fcs-mpcc-three-phase-pmsm` and graph
+Use the RTE branch with `mpcc_demo` (e.g. `feature/gen6-foc-vs-mpc-simulation`
+or `feature/fcs-mpcc-three-phase-pmsm`) and graph
 `Assets/Examples/mpcc_demo.json`.
 
 ```bash
@@ -20,45 +21,48 @@ cmake -B build -G Ninja && cmake --build build -j8
   --clean
 ```
 
-## Critical settings (must match working FOC)
+## Critical settings
 
 | Item | Value |
 |------|--------|
 | `Mode` | **3** (deadbeat voltage → SVPWM). Do **not** use 0–2 on Gen6. |
+| `Vdc` | **≥ 40 V** required (controller holds if lower). Prefer **50 V** for quiet bring-up, **~100 V** for higher speed. |
 | Encoder Sign | Same as FOC (`Motor.Encoder.SinCos.Sign`, default **+1**) |
 | Offset / Poles | Same KV keys as `foc_demo` |
 | `Ld/Lq/Rs/PsiF` | Calibrated FRAM values (graph wires `CfgLd`…`CfgPsi`) |
+| `I_Max` | Graph default **8 A** (soft limit) |
+| Iq slew | **10 A/s** |
 | PWM path | `Mpcc.V_Alpha/V_Beta` → `Svpwm` → `PwmOut` |
 
+Mode 3 is softened for smooth spin: `db_scale≈0.35`, weak integral,
+250 ms soft-start, Vdc-aware `|Iq*|` clamp (≈5 A max near 50 V).
+
 Modes 0–2 enumerate full inverter vectors. On ~100 µH motors at Ts=200 µs
-they predict huge Δi and stick on zero vectors. Mode 3 computes a continuous
-voltage like FOC PI, then uses the same SVPWM block.
+they predict huge Δi and stick on zero vectors.
 
-## Safe first-spin procedure
+## Safe first-spin procedure (smooth MPC @ 50 V)
 
-1. Confirm FOC still spins (`foc_demo`) so encoder polarity/offset are trusted.
+1. Set DC bus to **~50 V**. Confirm telemetry `vdc_v` / `cg_vdc_v` ≈ 50 **before** enable.
 2. Flash `mpcc_demo`. Connect telemetry / NodeGUI.
 3. Enable **off**. Duties should sit near **50%**. Check `mpcc_enc_sign` matches FOC.
-4. Set `IdVar = 0`, `IqVar = 0`, then enable.
-5. Ramp `IqVar` slowly (slew is in the graph), e.g. 1 → 3 → 5 A.
+4. Set `IdVar = 0`, `IqVar = 0`, then `control start`.
+5. Ramp `IqVar` slowly: **1 → 2 → 3 A**. Stay there if rotation is smooth.
 6. Watch:
    - `mpcc_id_a`, `mpcc_iq_a` track refs (id≈0, iq→IqVar)
-   - `mpcc_dv` / `mpcc_dw` move **away from 50%** when Iq≠0 (voltage authority)
-   - `hz_tim_isr` ≈ 5–10 kHz
-   - no sustained overcurrent
-7. If currents explode or duties stay at 50%: re-flash `foc_demo`, verify Sign/offset, then retry.
+   - duties move **away from 50%** when Iq≠0
+   - no sustained overcurrent / grinding chatter
+7. If currents explode: `control stop`, IqVar=0, re-check Vdc≥40, then retry at 1 A.
 
-## Higher speed (match FOC ~2000 rpm @ 100 V)
+## Higher bus / higher speed (~100 V)
 
-1. Confirm `cg_vdc_v` ≈ 100 and calibrated `PsiF` / `Ld` / `Lq` (same FRAM as FOC).
-2. Keep **Mode = 3**. Firmware now allows ωe up to ±3000 rad/s (~5700 rpm @ 10 poles).
-3. Raise `IqVar` toward the same current FOC uses at 2000 rpm (watch `cg_iq_a` on FOC).
-4. Iq slew defaults to **50 A/s** (same as `foc_demo`).
-5. Expect duties to leave mid-rail more as speed rises; if `id` drifts, back off Iq or re-check encoder Sign/offset.
+1. Confirm `cg_vdc_v` ≈ 100 and calibrated `PsiF` / `Ld` / `Lq`.
+2. Keep **Mode = 3**. Firmware allows ωe up to ±3000 rad/s.
+3. Raise `IqVar` gradually (still slew-limited). Vdc-aware clamp allows up to ~10 A above 70 V, and up to `I_Max` at higher bus.
+4. Expect duties to leave mid-rail more as speed rises.
 
 ## If something trips
 
-- Re-flash `foc_demo.json` immediately.
-- Confirm Sign matches the FOC run that worked (do not force the opposite polarity).
-- Lower `IqVar` / raise caution on `I_Max`.
-- Keep `Mode = 3`.
+- Re-flash `foc_demo.json` if you need a known-good baseline.
+- Confirm Sign matches the FOC run that worked.
+- Lower `IqVar` / keep `I_Max` conservative.
+- Keep `Mode = 3`. Never bring up Gen6 on Modes 0–2.
