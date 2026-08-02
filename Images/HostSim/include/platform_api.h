@@ -48,11 +48,25 @@ float platform_adc_get_offset_v_a(void);
 
 bool platform_get_encoder_angle(float* angle_deg);
 float platform_get_encoder_angle_latest(void);
+float platform_get_motor_rpm(void);
 float platform_get_dc_link_voltage(void);
+float platform_phase_voltage_u(void);
+float platform_phase_voltage_v(void);
+float platform_phase_voltage_w(void);
 float platform_get_throttle_a(void);
 float platform_get_throttle_b(void);
+bool platform_get_throttle_valid(void);
 float platform_get_motor_temperature(void);
 float platform_get_inverter_temperature(uint8_t channel);
+
+/* Digital IO stubs. */
+bool platform_digital_read(uint8_t pin);
+void platform_digital_write(uint8_t pin, bool value);
+
+/* CAN bus stubs (bus 1 = A, 2 = B). */
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc);
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out);
 void platform_sample_application_sensors(void);
 
 void platform_raise_fault(uint32_t source, uint8_t reason);

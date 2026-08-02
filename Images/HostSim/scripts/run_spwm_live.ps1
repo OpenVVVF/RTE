@@ -1,15 +1,40 @@
-# Emit the SPWM demo graph, build HostSim, and launch live + NodeGUI.
+# Emit a graph into HostSim, build it, and launch live + NodeGUI.
+# Defaults to the SPWM demo graph for backward compatibility with the demo menu.
 param(
     [switch]$NoGui,
-    [switch]$ForceEmit
+    [switch]$ForceEmit,
+    [string]$Graph = "",
+    [string]$Scenario = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $hostSimRoot = Split-Path $PSScriptRoot -Parent
 $repoRoot = Split-Path (Split-Path $hostSimRoot -Parent) -Parent
-$graph = Join-Path $hostSimRoot "graphs\spwm_demo_graph.json"
-$scenario = Join-Path $hostSimRoot "scenarios\spwm_demo.json"
+
+if ([string]::IsNullOrEmpty($Graph)) {
+    $Graph = Join-Path $hostSimRoot "graphs\spwm_demo_graph.json"
+}
+if (-not (Test-Path $Graph)) { throw "Graph not found: $Graph" }
+
+$graphName = [System.IO.Path]::GetFileNameWithoutExtension($Graph)
+
+if ([string]::IsNullOrEmpty($Scenario)) {
+    $scenarioBase = $graphName
+    if ($scenarioBase.EndsWith("_graph")) {
+        $scenarioBase = $scenarioBase.Substring(0, $scenarioBase.Length - 6)
+    }
+    $candidate = Join-Path $hostSimRoot "scenarios\${scenarioBase}.json"
+    if (Test-Path $candidate) {
+        $Scenario = $candidate
+    } else {
+        $Scenario = Join-Path $hostSimRoot "scenarios\default_motor.json"
+    }
+}
+if (-not (Test-Path $Scenario)) { throw "Scenario not found: $Scenario" }
+
+$graph = $Graph
+$scenario = $Scenario
 
 function To-WslPath([string]$p) {
     $full = (Resolve-Path $p).Path
@@ -35,13 +60,13 @@ function Clear-EmittedTree([string]$repoRoot, [string]$relativePath) {
     wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && rm -rf $relativePath" 2>$null
 }
 
-$emittedRel = "build/hostsim_spwm_emitted"
-$buildDir = Join-Path $repoRoot "build\hostsim_spwm_emitted_build"
+$emittedRel = "build/hostsim_${graphName}_emitted"
+$buildDir = Join-Path $repoRoot "build\hostsim_${graphName}_emitted_build"
 
 Write-Host "Stopping running HostSim / NodeGUI (unlocks emit output)..."
 Stop-SimApps
 
-$emitted = Join-Path $repoRoot "build\hostsim_spwm_emitted"
+$emitted = Join-Path $repoRoot "build\hostsim_${graphName}_emitted"
 $exe = Join-Path $buildDir "Debug\host_sim.exe"
 if (-not (Test-Path $exe)) { $exe = Join-Path $buildDir "host_sim.exe" }
 
@@ -59,7 +84,7 @@ if ($needEmit) {
     Clear-EmittedTree $repoRoot $emittedRel
     Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue
 
-    Write-Host "Emitting SPWM graph..."
+    Write-Host "Emitting ${graphName} graph into HostSim..."
     $emitCmd = "cd $wslRepo && ${emitter} --base-src Images/HostSim --graph $wslGraph --output $emittedRel --verbosity info"
     wsl -d Ubuntu -u root -- bash -lc $emitCmd
     if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
@@ -72,12 +97,12 @@ if ($needEmit) {
     $exe = Join-Path $buildDir "Debug\host_sim.exe"
     if (-not (Test-Path $exe)) { $exe = Join-Path $buildDir "host_sim.exe" }
 } else {
-    Write-Host "Using existing emitted SPWM build (pass -ForceEmit to rebuild)."
+    Write-Host "Using existing emitted ${graphName} build (pass -ForceEmit to rebuild)."
 }
 
 if (-not (Test-Path $exe)) { throw "host_sim.exe not found in $buildDir" }
 
-Write-Host "Starting HostSim SPWM live..."
+Write-Host "Starting HostSim live for ${graphName}..."
 Start-Process -FilePath $exe -ArgumentList $scenario, "--live", "--realtime", "1.0" -WorkingDirectory $emitted
 
 if (-not $NoGui) {
@@ -87,11 +112,9 @@ if (-not $NoGui) {
     Start-Process -FilePath (Join-Path $guiWd "NodeGUI.exe") `
         -ArgumentList $graphArg, "--tcp", "127.0.0.1:14608", "--protocol", "ivp" `
         -WorkingDirectory $guiWd
-    Write-Host "NodeGUI opened with SPWM graph + live telemetry."
+    Write-Host "NodeGUI opened with ${graphName} graph + live telemetry."
 }
 
 Write-Host ""
-Write-Host "Live controls:"
-Write-Host "  Throttle A -> modulation index (0..1)"
-Write-Host "  Throttle B -> electrical frequency map (1..20 Hz)"
-Write-Host "Plot: duty_u/v/w (slow), pwm_gate_u/v/w + pwm_v_uv (scope), i_a/b/c"
+Write-Host "Scenario: $scenario"
+Write-Host "Live telemetry: 127.0.0.1:14608 (IVP)"
