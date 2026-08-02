@@ -8,8 +8,8 @@
  * replaces PI with a one-step predictive / deadbeat voltage law:
  *   v_dq = R i + ω cross terms + (L/Ts)(i* - i_pred)
  * Tuned for smooth mid-bus Gen6 spin (≈50–100 V): milder deadbeat,
- * weak integral, longer soft-start. |Iq*| is limited only by I_Max (no
- * hidden Vdc Iq ceiling). Controller still holds if Vdc < 40 V.
+ * current LPF (noise tolerance), longer soft-start. |Id*/Iq*| limited by
+ * I_Max only. Holds if Vdc < 40 V. Under voltage limit, prefer Iq (torque).
  */
 
 static float mpcc_prev_sa = 0.0f;
@@ -20,6 +20,9 @@ static float mpcc_u_beta_prev = 0.0f;
 static float mpcc_id_int = 0.0f;
 static float mpcc_iq_int = 0.0f;
 static float mpcc_enable_s = 0.0f;
+static float mpcc_id_f = 0.0f;
+static float mpcc_iq_f = 0.0f;
+static float mpcc_i_filt_init = 0.0f;
 
 const float ts = Ts;
 float rs = Rs;
@@ -36,11 +39,10 @@ if (psi_f > 0.15f) psi_f = 0.15f;
 const float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;
 const float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;
 const float vdc = V_Dc.in(au::volts);
-const float id = I_D.in(au::amperes);
-const float iq = I_Q.in(au::amperes);
-const float id_ref_in = I_D_Ref;
+const float id_raw = I_D.in(au::amperes);
+const float iq_raw = I_Q.in(au::amperes);
+float id_ref = I_D_Ref;
 float iq_ref = I_Q_Ref;
-const float id_ref = id_ref_in;
 const float theta_e = Theta_E;
 float omega_e = Omega_E;
 /* Cover FOC-class speeds: 2000 rpm @ 10 poles => ωe≈1047 rad/s. */
@@ -59,12 +61,14 @@ const int switch_bits[8][3] = {
     {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}
 };
 
-/* Clamp |Iq*| only to I_Max — no hidden Vdc-based Iq ceiling. */
+/* Clamp |Id*| and |Iq*| to I_Max — no hidden Vdc-based ceiling. */
+if (id_ref > i_max) id_ref = i_max;
+if (id_ref < -i_max) id_ref = -i_max;
 if (iq_ref > i_max) iq_ref = i_max;
 if (iq_ref < -i_max) iq_ref = -i_max;
 
-const float cost_track = ((id_ref - id) / i_base) * ((id_ref - id) / i_base)
-                       + ((iq_ref - iq) / i_base) * ((iq_ref - iq) / i_base);
+const float cost_track = ((id_ref - id_raw) / i_base) * ((id_ref - id_raw) / i_base)
+                       + ((iq_ref - iq_raw) / i_base) * ((iq_ref - iq_raw) / i_base);
 
 /* Hold output unless enabled with a usable DC bus (smooth-spin guard). */
 const bool bus_ok = (vdc >= 40.0f);
@@ -73,8 +77,8 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     S_B = 0.0f;
     S_C = 0.0f;
     State_Index = 0.0f;
-    Pred_I_D = rte::Amperes(id);
-    Pred_I_Q = rte::Amperes(iq);
+    Pred_I_D = rte::Amperes(id_raw);
+    Pred_I_Q = rte::Amperes(iq_raw);
     Cost = cost_track;
     V_Alpha = rte::Volts(0.0f);
     V_Beta = rte::Volts(0.0f);
@@ -88,10 +92,28 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     mpcc_id_int = 0.0f;
     mpcc_iq_int = 0.0f;
     mpcc_enable_s = 0.0f;
+    mpcc_id_f = id_raw;
+    mpcc_iq_f = iq_raw;
+    mpcc_i_filt_init = 0.0f;
 } else if (mode_i == 3) {
     /* -------- Deadbeat predictive voltage → SVPWM (Gen6 spin path) -------- */
     const float cos_t = cosf(theta_e);
     const float sin_t = sinf(theta_e);
+
+    /* LPF measured currents before deadbeat (~500 Hz). Reduces hiss from
+     * ADC/quantization noise on low-L Gen6 without killing torque response. */
+    if (mpcc_i_filt_init < 0.5f) {
+        mpcc_id_f = id_raw;
+        mpcc_iq_f = iq_raw;
+        mpcc_i_filt_init = 1.0f;
+    } else {
+        const float fc = 500.0f;
+        const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc * ts));
+        mpcc_id_f += alpha * (id_raw - mpcc_id_f);
+        mpcc_iq_f += alpha * (iq_raw - mpcc_iq_f);
+    }
+    const float id = mpcc_id_f;
+    const float iq = mpcc_iq_f;
 
     /* Delay compensation: predict i(k+1) under the voltage applied last step. */
     const float vd_prev = mpcc_u_alpha_prev * cos_t + mpcc_u_beta_prev * sin_t;
@@ -116,8 +138,8 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         }
     }
 
-    /* Mild deadbeat: stronger than 0.35 (under-tracked at 50 V), softer than 0.70. */
-    const float db_scale = 0.45f;
+    /* Mild deadbeat with filtered currents (less hiss than raw 0.70). */
+    const float db_scale = 0.40f;
     const float kp_d = (ld / ts) * db_scale;
     const float kp_q = (lq / ts) * db_scale;
     /* Weak integral — deadbeat already provides most of the action. */
@@ -141,13 +163,19 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     float vd_ref = vd_ff * ramp + vd_fb;
     float vq_ref = vq_ff * ramp + vq_fb;
 
-    /* Same linear SVM voltage budget as Control.Pi / Transforms.Svpwm. */
+    /* Voltage limit: keep as much Vq (torque) as possible, shed Vd first.
+     * Matches FOC field-weakening behaviour at low Vdc. */
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
     const bool sat = (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f);
     if (sat) {
-        const float scale = v_max / sqrtf(v_mag_sq);
-        vd_ref *= scale;
-        vq_ref *= scale;
+        if (fabsf(vq_ref) >= v_max) {
+            vq_ref = (vq_ref >= 0.0f) ? v_max : -v_max;
+            vd_ref = 0.0f;
+        } else {
+            const float vd_lim = sqrtf(v_max * v_max - vq_ref * vq_ref);
+            if (vd_ref > vd_lim) vd_ref = vd_lim;
+            if (vd_ref < -vd_lim) vd_ref = -vd_lim;
+        }
         /* Freeze / bleed integrators under saturation (anti-windup). */
         mpcc_id_int *= 0.90f;
         mpcc_iq_int *= 0.90f;
@@ -203,6 +231,8 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     mpcc_u_beta_prev = vbeta_ref;
 } else {
     /* -------- Classic FCS enumeration (Modes 0–2) -------- */
+    const float id = id_raw;
+    const float iq = iq_raw;
     float id_base = id;
     float iq_base = iq;
     if (mode_i >= 1) {

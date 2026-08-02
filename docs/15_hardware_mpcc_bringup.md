@@ -30,11 +30,11 @@ cmake -B build -G Ninja && cmake --build build -j8
 | Encoder Sign | Same as FOC (`Motor.Encoder.SinCos.Sign`, default **+1**) |
 | Offset / Poles | Same KV keys as `foc_demo` |
 | `Ld/Lq/Rs/PsiF` | Calibrated FRAM values (graph wires `CfgLd`…`CfgPsi`) |
-| `I_Max` | Graph default **15 A** (soft limit; only Iq ceiling) |
+| `I_Max` | Graph default **40 A** (soft limit; only Iq ceiling) |
 | Iq slew | **10 A/s** |
 | PWM path | `Mpcc.V_Alpha/V_Beta` → `Svpwm` → `PwmOut` |
 
-Mode 3 is softened for smooth spin: `db_scale≈0.45`, weak integral,
+Mode 3 is softened for smooth spin: `db_scale≈0.40` + ~500 Hz current LPF, weak integral,
 250 ms soft-start. `|Iq*|` is limited only by `I_Max` (no hidden Vdc Iq clamp).
 
 Modes 0–2 enumerate full inverter vectors. On ~100 µH motors at Ts=200 µs
@@ -66,3 +66,11 @@ they predict huge Δi and stick on zero vectors.
 - Confirm Sign matches the FOC run that worked.
 - Lower `IqVar` / keep `I_Max` conservative.
 - Keep `Mode = 3`. Never bring up Gen6 on Modes 0–2.
+
+## Why negative Id helps at 50 V
+
+At ~50 V the inverter is near voltage limit before FOC-class RPM.
+Negative `IdVar` (field weakening) frees voltage for torque/`Iq` and raises
+speed. Compare FOC at the **same** Vdc before concluding MPCC is slow.
+Also verify encoder `OffsetDeg` / `Sign` match a working `foc_demo` run —
+angle error mixes Id/Iq and causes hiss + poor tracking.
