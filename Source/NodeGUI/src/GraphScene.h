@@ -101,8 +101,16 @@ public:
     // message.
     QString RenameNode(QtNodes::NodeId qtId, const std::string& newId);
 
+    // Sets a node's exclude-from-compile flag and greys/restores the node's
+    // rendering to match. Returns an empty string on success.
+    QString SetNodeExcluded(QtNodes::NodeId qtId, bool exclude);
+
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
+
+private:
+    // Applies the greyed (excluded) or normal style to a node.
+    void ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude);
 
 private:
     struct Adjacency {

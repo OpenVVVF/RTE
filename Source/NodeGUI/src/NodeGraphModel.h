@@ -46,6 +46,13 @@ public:
     // Returns true if the QtNodes connection id maps to a NodeAPI Bridge.
     bool IsBridge(QtNodes::ConnectionId const connectionId) const;
 
+    // Returns true when either endpoint node of the connection is excluded
+    // from compile (used to grey out the wire).
+    bool IsExcluded(QtNodes::ConnectionId const connectionId) const;
+
+    // Returns true when the node itself is excluded from compile.
+    bool IsNodeExcluded(QtNodes::NodeId const nodeId) const;
+
     // Retrieve the reason for the last rejected connection attempt and clear it.
     // Returns an empty string if nothing was rejected since the last clear.
     QString TakeLastRejectionReason();

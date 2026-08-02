@@ -114,6 +114,16 @@ bool Graph::SetNodeParameterInputs(const std::string& nodeId,
     return false;
 }
 
+bool Graph::SetNodeExcludeFromCompile(const std::string& nodeId, bool exclude) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.excludeFromCompile = exclude;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Graph::Connect(Connection connection) {
     if (connection.id.empty()) return false;
     if (ConnectionIdTaken(connection.id)) return false;

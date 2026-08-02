@@ -33,6 +33,11 @@ struct Node {
     // normal input port rather than from its value in `parameters`.
     std::vector<std::string> parameterInputs;
 
+    // When true the node stays in the graph (and is shown by editors) but is
+    // excluded from compilation: code emitters must skip it together with any
+    // connections/bridges that touch it.
+    bool excludeFromCompile = false;
+
     friend bool operator==(const Node& lhs, const Node& rhs) = default;
     friend bool operator!=(const Node& lhs, const Node& rhs) = default;
 };

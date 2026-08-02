@@ -294,6 +294,22 @@ bool Emitter::Run(const EmitterOptions& options) const {
     logger_.Debug("Graph has " + std::to_string(graph.GetNodeTypes().size()) +
                   " node type(s) and " + std::to_string(graph.GetNodes().size()) + " node(s)");
 
+    // Drop nodes flagged "exclude from compile" (and their connections and
+    // bridges, which RemoveNode cascades) so they take no part in timing
+    // validation or code generation.
+    {
+        std::vector<std::string> excluded;
+        for (const auto& node : graph.GetNodes()) {
+            if (node.excludeFromCompile) {
+                excluded.push_back(node.id);
+            }
+        }
+        for (const auto& nodeId : excluded) {
+            logger_.Info("Excluding node from compile: " + nodeId);
+            graph.RemoveNode(nodeId);
+        }
+    }
+
     // Validate timing.
     logger_.Info("Validating timing domains");
     NodeAPI::Timing::Validator validator;

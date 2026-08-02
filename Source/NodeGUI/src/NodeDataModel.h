@@ -83,6 +83,10 @@ public:
     // Emits requestNodeUpdate() so the scene repaints.
     void SetDomain(std::string domain);
 
+    // Greys the node out (excluded from compile) or restores it. Emits
+    // requestNodeUpdate() so the scene repaints.
+    void SetExcluded(bool exclude);
+
     // Marks parameters as wireable input ports (or back to constants). The
     // synthesized ports are appended after the type's input ports; wired
     // parameters leave the painted parameter panel. Emits portsInserted()/

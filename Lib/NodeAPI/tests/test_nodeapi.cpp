@@ -162,6 +162,35 @@ TEST(Graph, SetNodeParameters) {
     EXPECT_FALSE(graph.SetNodeParameters("missing", {{"Gain", "1.0"}}));
 }
 
+TEST(Graph, SetNodeExcludeFromCompile) {
+    Graph graph = MakeDemoGraph();
+
+    EXPECT_FALSE(graph.FindNode("source")->excludeFromCompile);
+    EXPECT_TRUE(graph.SetNodeExcludeFromCompile("source", true));
+    EXPECT_TRUE(graph.FindNode("source")->excludeFromCompile);
+    EXPECT_TRUE(graph.SetNodeExcludeFromCompile("source", false));
+    EXPECT_FALSE(graph.FindNode("source")->excludeFromCompile);
+    EXPECT_FALSE(graph.SetNodeExcludeFromCompile("missing", true));
+}
+
+TEST(Serialization, ExcludeFromCompileRoundTrip) {
+    Graph graph = MakeDemoGraph();
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompile("source", true));
+
+    Graph loaded;
+    LoadIntoGraph(loaded, SaveToJson(graph));
+
+    const auto excluded = loaded.FindNode("source");
+    ASSERT_TRUE(excluded.has_value());
+    EXPECT_TRUE(excluded->excludeFromCompile);
+    // Nodes without the flag default to false and stay absent from the JSON.
+    const auto normal = loaded.FindNode("sink");
+    ASSERT_TRUE(normal.has_value());
+    EXPECT_FALSE(normal->excludeFromCompile);
+    EXPECT_EQ(SaveToJson(loaded).find("excludeFromCompile"),
+              SaveToJson(graph).find("excludeFromCompile"));
+}
+
 TEST(Graph, SetNodeDomain) {
     Graph graph = MakeDemoGraph();
 

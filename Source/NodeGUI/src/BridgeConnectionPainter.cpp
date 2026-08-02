@@ -102,7 +102,10 @@ void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
     const bool selected = cgo.isSelected();
     const bool hovered = cgo.connectionState().hovered();
 
-    QColor color = ConnectionColor(cgo);
+    const auto* model = TryGetNodeModel(cgo);
+    const bool excluded = model && model->IsExcluded(cgo.connectionId());
+
+    QColor color = excluded ? QColor(110, 112, 118) : ConnectionColor(cgo);
     if (selected) {
         color = color.darker(200);
     } else if (hovered) {
@@ -188,12 +191,15 @@ void BridgeConnectionPainter::paint(QPainter* painter,
         return;
     }
 
-    painter->setPen(connectionStyle.constructionColor());
-    painter->setBrush(connectionStyle.constructionColor());
+    // Attached-endpoint dots, greyed like the line when excluded.
+    const bool excludedEndpoints = model && model->IsExcluded(cgo.connectionId());
+    const QColor dotColor = excludedEndpoints ? QColor(110, 112, 118)
+                                              : connectionStyle.constructionColor();
+    painter->setPen(dotColor);
+    painter->setBrush(dotColor);
     painter->drawEllipse(cgo.out(), pointRadius, pointRadius);
     painter->drawEllipse(cgo.in(), pointRadius, pointRadius);
 }
-
 QPainterPath BridgeConnectionPainter::getPainterStroke(
     QtNodes::ConnectionGraphicsObject const& cgo) const {
     auto cubic = cubicPath(cgo);

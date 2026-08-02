@@ -148,6 +148,9 @@ json ToJson(const Node& node) {
     if (!node.parameterInputs.empty()) {
         j["parameterInputs"] = node.parameterInputs;
     }
+    if (node.excludeFromCompile) {
+        j["excludeFromCompile"] = true;
+    }
     return j;
 }
 
@@ -158,6 +161,7 @@ Node NodeFromJson(const json& j) {
     node.displayName = j.value("displayName", "");
     node.domain = j.value("domain", "");
     node.position = PositionFromJson(j.at("position"));
+    node.excludeFromCompile = j.value("excludeFromCompile", false);
 
     if (j.contains("parameters") && j.at("parameters").is_object()) {
         for (const auto& [key, value] : j.at("parameters").items()) {

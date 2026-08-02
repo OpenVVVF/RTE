@@ -1177,6 +1177,12 @@ QtNodes::NodeId GraphScene::CreateNodeItem(const NodeAPI::Node& node) {
                         QtNodes::NodeRole::Label,
                         QVariant::fromValue(QString::fromStdString(node.id)));
 
+    // Excluded nodes render greyed out (this also grows the caption, so it
+    // must happen before the size is cached).
+    if (node.excludeFromCompile) {
+        ApplyNodeExcludedVisual(qtId, true);
+    }
+
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
 
     // Optional, parameter-backed ports with existing connections stay visible
@@ -1327,9 +1333,52 @@ QString GraphScene::RenameNode(QtNodes::NodeId qtId, const std::string& newId) {
     model_->setNodeData(qtId,
                         QtNodes::NodeRole::Label,
                         QVariant::fromValue(QString::fromStdString(newId)));
+    // Re-apply the exclusion marker, which lives in the label.
+    if (renamed.excludeFromCompile) {
+        ApplyNodeExcludedVisual(qtId, true);
+    }
     CreateDomainOutlines();
     NotifyChanged();
     return QString{};
+}
+
+QString GraphScene::SetNodeExcluded(QtNodes::NodeId qtId, bool exclude) {
+    const std::string nodeId = NodeApiId(qtId);
+    if (nodeId.empty() || !graph_.SetNodeExcludeFromCompile(nodeId, exclude)) {
+        return QStringLiteral("Node not found");
+    }
+
+    ApplyNodeExcludedVisual(qtId, exclude);
+
+    // The caption gains/loses an "(excluded)" line, which changes the node's
+    // size; refresh the cached geometry and refit the domain outlines.
+    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+    UpdateDomainOutlines();
+
+    NotifyChanged();
+    return QString{};
+}
+
+void GraphScene::ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude) {
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        delegate->SetExcluded(exclude);
+    }
+
+    // The bold top line of the node is the Label role (the node id): mark the
+    // exclusion there rather than in the type caption below it.
+    const std::string nodeId = NodeApiId(qtId);
+    QString label = QString::fromStdString(nodeId);
+    if (exclude) {
+        label += QStringLiteral(" (excluded)");
+    }
+    model_->setNodeData(qtId, QtNodes::NodeRole::Label, QVariant::fromValue(label));
+
+    // Repaint the wires touching the node so they grey out (or restore) too.
+    for (const auto& connectionId : model_->allConnectionIds(qtId)) {
+        if (auto* cgo = scene_->connectionGraphicsObject(connectionId)) {
+            cgo->update();
+        }
+    }
 }
 
 QString GraphScene::AddNodeAt(const std::string& typeId,

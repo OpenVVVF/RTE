@@ -1,6 +1,7 @@
 #include "TypedNodePainter.h"
 
 #include "NodeDataModel.h"
+#include "NodeGraphModel.h"
 #include "ParameterBlock.h"
 #include "PortStyle.h"
 
@@ -174,6 +175,24 @@ void TypedNodePainter::paint(QPainter* painter, QtNodes::NodeGraphicsObject& ngo
     defaultPainter_.drawNodeLabel(painter, ngo);
     defaultPainter_.drawValidationIcon(painter, ngo);
     defaultPainter_.drawProgressValue(painter, ngo);
+
+    // Excluded-from-compile nodes get a faint diagonal hatch across the whole
+    // node so the state reads even at a glance / zoomed out.
+    const auto* model = dynamic_cast<const NodeGraphModel*>(&ngo.graphModel());
+    if (model && model->IsNodeExcluded(ngo.nodeId())) {
+        const QRectF rect = ngo.boundingRect();
+        painter->save();
+        painter->setClipRect(rect, Qt::IntersectClip);
+        QPen pen(QColor(200, 200, 205, 120));
+        pen.setWidthF(1.4);
+        painter->setPen(pen);
+        constexpr double spacing = 7.0;
+        for (double x = rect.left() - rect.height(); x < rect.right(); x += spacing) {
+            painter->drawLine(QPointF(x, rect.bottom()),
+                              QPointF(x + rect.height(), rect.top()));
+        }
+        painter->restore();
+    }
 }
 
 void TypedNodePainter::drawConnectionPoints(QPainter* painter,

@@ -428,4 +428,22 @@ bool NodeGraphModel::IsBridge(QtNodes::ConnectionId const connectionId) const {
     return it != connectionMap_.end() && it->second.isBridge;
 }
 
+bool NodeGraphModel::IsExcluded(QtNodes::ConnectionId const connectionId) const {
+    for (const QtNodes::NodeId qtId : {connectionId.outNodeId, connectionId.inNodeId}) {
+        if (IsNodeExcluded(qtId)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NodeGraphModel::IsNodeExcluded(QtNodes::NodeId const nodeId) const {
+    const std::string apiId = ProducerNodeId(nodeId);
+    if (apiId.empty()) {
+        return false;
+    }
+    const auto node = graph_.FindNode(apiId);
+    return node && node->excludeFromCompile;
+}
+
 }  // namespace NodeGUI

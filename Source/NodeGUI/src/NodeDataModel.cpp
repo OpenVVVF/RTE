@@ -2,6 +2,8 @@
 
 #include <NodeAPI/WireType.h>
 
+#include <QtNodes/StyleCollection>
+
 #include <QString>
 
 #include <algorithm>
@@ -130,6 +132,16 @@ QString NodeInstanceModel::ParameterToolTip(const std::string& name) const {
 
 void NodeInstanceModel::SetDomain(std::string domain) {
     domain_ = std::move(domain);
+    Q_EMIT requestNodeUpdate();
+}
+
+void NodeInstanceModel::SetExcluded(bool exclude) {
+    QtNodes::NodeStyle style(nodeStyle());
+    // Grey to half the theme's opacity when excluded (the theme default is
+    // 0.8, not 1.0); restore to the theme value otherwise.
+    const float base = QtNodes::StyleCollection::nodeStyle().Opacity;
+    style.Opacity = exclude ? base * 0.5f : base;
+    setNodeStyle(style);
     Q_EMIT requestNodeUpdate();
 }
 

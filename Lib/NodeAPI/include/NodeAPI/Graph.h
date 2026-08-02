@@ -64,6 +64,10 @@ public:
     bool SetNodeParameterInputs(const std::string& nodeId,
                                 std::vector<std::string> parameterInputs);
 
+    // Sets the exclude-from-compile flag of an existing node. Returns false
+    // if the node id is not found.
+    bool SetNodeExcludeFromCompile(const std::string& nodeId, bool exclude);
+
     // Connections.
     bool Connect(Connection connection);
     bool Disconnect(const std::string& connectionId);

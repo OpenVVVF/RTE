@@ -126,6 +126,15 @@ void InspectorPanel::Rebuild() {
     formLayout->addRow(QStringLiteral("Domain"), domainCombo_);
     connect(domainCombo_, &QComboBox::activated, this, &InspectorPanel::ApplyDomain);
 
+    // Exclude from compile: node stays in the graph but is skipped by codegen.
+    excludeCheck_ = new QCheckBox(QStringLiteral("Exclude from compile"), form_);
+    excludeCheck_->setChecked(node->excludeFromCompile);
+    excludeCheck_->setToolTip(QStringLiteral(
+        "The node stays visible in the graph (greyed out) but is skipped by "
+        "the code emitter together with its connections."));
+    formLayout->addRow(QStringLiteral("Compile"), excludeCheck_);
+    connect(excludeCheck_, &QCheckBox::toggled, this, &InspectorPanel::ApplyExcluded);
+
     // Parameters: value editor + wire-as-input toggle per row.
     if (!node->parameters.empty()) {
         auto* header = new QLabel(QStringLiteral("Parameters"), form_);
@@ -207,6 +216,16 @@ void InspectorPanel::ApplyDomain() {
     const std::string domain =
         (text == kNoDomainLabel) ? std::string{} : text.toStdString();
     const QString error = scene_->SetNodeDomain(qtId_, domain);
+    if (!error.isEmpty() && onError) {
+        onError(error);
+    }
+}
+
+void InspectorPanel::ApplyExcluded(bool exclude) {
+    if (!scene_) {
+        return;
+    }
+    const QString error = scene_->SetNodeExcluded(qtId_, exclude);
     if (!error.isEmpty() && onError) {
         onError(error);
     }
