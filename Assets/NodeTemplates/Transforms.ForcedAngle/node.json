@@ -2,6 +2,7 @@
   "id": "Transforms.ForcedAngle",
   "displayName": "Forced Angle",
   "defaultName": "ForcedAngle",
+  "description": "Generates a continuously advancing electrical angle for open-loop control.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",
@@ -9,6 +10,7 @@
   "outputPorts": [
     {
       "name": "ThetaElec",
+      "description": "Generated electrical angle wrapped to one revolution.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -19,16 +21,19 @@
   ],
   "parameterTypes": {
     "RateRadPerS": {
+      "description": "Electrical angular velocity in radians per second.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Dt": {
+      "description": "Update period in seconds.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Angle": {
+      "description": "Persistent generated angle state in radians.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

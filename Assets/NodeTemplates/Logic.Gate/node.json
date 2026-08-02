@@ -2,12 +2,14 @@
   "id": "Logic.Gate",
   "displayName": "Gate",
   "defaultName": "Gate",
+  "description": "Passes a value when enabled and outputs zero when disabled.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "Sel",
+      "description": "Enable signal. True passes Val; false selects zero.",
       "direction": "input",
       "type": {
         "quantity": "boolean",
@@ -17,6 +19,7 @@
     },
     {
       "name": "Val",
+      "description": "Value passed through while Sel is true.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -28,6 +31,7 @@
   "outputPorts": [
     {
       "name": "Out",
+      "description": "Val when selected, otherwise zero.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

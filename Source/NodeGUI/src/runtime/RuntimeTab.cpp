@@ -2,14 +2,20 @@
 
 #include "ConsolePanel.h"
 #include "RuntimeController.h"
+#include "RuntimeSessionExporter.h"
 #include "SignalTablePanel.h"
 #include "SimSpeedControl.h"
 #include "TelemetryPanel.h"
 
 #include <QComboBox>
+#include <QDateTime>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QVBoxLayout>
@@ -108,8 +114,9 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     , controller_(controller) {
     auto* layout = new QVBoxLayout(this);
 
-    // Link status header: a few colored chips instead of eleven counters on
-    // one line, with the reject breakdown moved into the health tooltip.
+    // Link status header: compact colored chips, sim pause/speed controls,
+    // and full-session export/clear buttons. The export archive is independent
+    // of the rolling plot buffers.
     auto* headerRow = new QHBoxLayout;
     headerRow->setSpacing(6);
     linkChip_ = MakeChip(this);
@@ -121,11 +128,35 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     headerRow->addWidget(rateChip_);
     headerRow->addWidget(healthChip_);
     headerRow->addStretch(1);
+
+    exportStatus_ = new QLabel(this);
+    headerRow->addWidget(exportStatus_);
+
     pauseButton_ = new QPushButton(QStringLiteral("Pause"), this);
     pauseButton_->setMinimumWidth(90);
     connect(pauseButton_, &QPushButton::clicked, this, &RuntimeTab::OnTogglePause);
     headerRow->addWidget(pauseButton_);
     headerRow->addWidget(new SimSpeedControl(controller_, this));
+
+    auto* clearSessionButton =
+        new QPushButton(QStringLiteral("Clear Session"), this);
+    clearSessionButton->setToolTip(
+        QStringLiteral("Discard all telemetry, console output, and commands recorded in this session"));
+    connect(clearSessionButton,
+            &QPushButton::clicked,
+            this,
+            &RuntimeTab::OnClearSession);
+    headerRow->addWidget(clearSessionButton);
+
+    auto* exportButton =
+        new QPushButton(QStringLiteral("Export Session\u2026"), this);
+    exportButton->setToolTip(
+        QStringLiteral("Save all telemetry, console output, and commands from this runtime session"));
+    connect(exportButton,
+            &QPushButton::clicked,
+            this,
+            &RuntimeTab::OnExportSession);
+    headerRow->addWidget(exportButton);
     layout->addLayout(headerRow);
 
     // Graph-layout presets.
@@ -314,6 +345,72 @@ void RuntimeTab::OnLoadPreset() {
 
     signalTablePanel_->SetGraphSignalSets(sets);
     presetStatus_->setText(QStringLiteral("loaded '%1'").arg(name));
+}
+
+void RuntimeTab::OnExportSession() {
+    const QString timestamp =
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString suggestedPath =
+        QDir::home().filePath(
+            QStringLiteral("runtime-session-%1.jsonl").arg(timestamp));
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Export Runtime Session"),
+        suggestedPath,
+        QStringLiteral("RTE Runtime Session (*.jsonl);;All Files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (QFileInfo(path).suffix().isEmpty()) {
+        path += QStringLiteral(".jsonl");
+    }
+
+    RuntimeSessionMetadata metadata;
+    metadata.port = controller_->Port();
+    metadata.mode = controller_->IsSimulating()
+                        ? QStringLiteral("simulation")
+                        : QStringLiteral("device");
+    metadata.protocol =
+        controller_->GetProtocol() == Protocol::Legacy
+            ? QStringLiteral("legacy")
+            : QStringLiteral("inverter");
+
+    exportStatus_->setText(QStringLiteral("exporting\u2026"));
+    const RuntimeSessionSnapshot session = controller_->CaptureSession();
+    QString error;
+    if (!ExportRuntimeSession(path, session, metadata, error)) {
+        exportStatus_->setText(QStringLiteral("export failed"));
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Export Runtime Session"),
+            QStringLiteral("Could not export the runtime session:\n%1")
+                .arg(error));
+        return;
+    }
+
+    exportStatus_->setText(
+        QStringLiteral("exported %1").arg(QFileInfo(path).fileName()));
+}
+
+void RuntimeTab::OnClearSession() {
+    QMessageBox confirmation(this);
+    confirmation.setIcon(QMessageBox::Warning);
+    confirmation.setWindowTitle(QStringLiteral("Clear Runtime Session"));
+    confirmation.setText(
+        QStringLiteral(
+            "Clear all recorded telemetry, console output, and command "
+            "history?\n\nThis cannot be undone."));
+    auto* clearButton = confirmation.addButton(
+        QStringLiteral("Clear Session"), QMessageBox::DestructiveRole);
+    confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(QMessageBox::Cancel);
+    confirmation.exec();
+    if (confirmation.clickedButton() != clearButton) {
+        return;
+    }
+
+    controller_->ClearSession();
+    exportStatus_->setText(QStringLiteral("session cleared"));
 }
 
 void RuntimeTab::RefreshRecentCombo() {

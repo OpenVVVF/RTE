@@ -139,6 +139,8 @@ ConsolePanel::ConsolePanel(RuntimeController* controller, QWidget* parent)
             this, &ConsolePanel::OnStoreChanged);
     connect(controller_, &RuntimeController::simPauseChanged,
             this, &ConsolePanel::OnSimPauseChanged);
+    connect(controller_, &RuntimeController::sessionCleared,
+            this, &ConsolePanel::OnSessionCleared);
     OnSimPauseChanged(controller_->IsSimPaused());
 }
 
@@ -217,6 +219,14 @@ void ConsolePanel::OnSimPauseChanged(bool paused) {
         pauseButton_->setText(paused ? QStringLiteral("Resume Sim")
                                      : QStringLiteral("Pause Sim"));
     }
+}
+
+void ConsolePanel::OnSessionCleared() {
+    consoleView_->clear();
+    commandEdit_->clear();
+    commandHistory_.clear();
+    historyIndex_ = -1;
+    lastConsoleSeq_ = 0;
 }
 
 }  // namespace NodeGUI::runtime

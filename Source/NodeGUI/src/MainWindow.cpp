@@ -153,6 +153,7 @@ MainWindow::MainWindow(QWidget* parent)
     layout->setContentsMargins(0, 0, 0, 0);
 
     view_ = new GraphView(graphScene_->Scene());
+    view_->SetPanMouseButton(preferences_.panMouseButton);
     view_->installEventFilter(this);
 
     // Note: measured on the target machine, a QOpenGLWidget viewport was ~3x
@@ -174,6 +175,19 @@ MainWindow::MainWindow(QWidget* parent)
     // Right-click on a node: offer the domain selection menu.
     view_->onNodeContextMenu = [this](const QPointF& globalPos, QtNodes::NodeId qtId) {
         ShowNodeDomainMenu(globalPos, qtId);
+    };
+
+    view_->onDomainDoubleClicked = [this](const QPointF& scenePos) {
+        return graphScene_->SelectDomainAt(scenePos);
+    };
+    view_->onDomainDragStarted = [this](const QPointF& scenePos) {
+        return graphScene_->BeginSelectedDomainDrag(scenePos);
+    };
+    view_->onDomainDragged = [this](const QPointF& delta) {
+        graphScene_->MoveSelectedDomain(delta);
+    };
+    view_->onDomainDragFinished = [this] {
+        graphScene_->EndSelectedDomainDrag();
     };
 
     layout->addWidget(view_);
@@ -748,6 +762,9 @@ void MainWindow::RegisterShortcut(QAction* action,
 
 void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     preferences_ = preferences;
+    if (view_) {
+        view_->SetPanMouseButton(preferences_.panMouseButton);
+    }
     if (buildLogView_) {
         buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     }

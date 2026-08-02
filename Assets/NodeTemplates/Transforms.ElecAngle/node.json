@@ -2,12 +2,14 @@
   "id": "Transforms.ElecAngle",
   "displayName": "Electrical Angle",
   "defaultName": "ElecAngle",
+  "description": "Converts mechanical rotor angle to wrapped electrical angle using pole count, direction, and offset.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "ThetaMech",
+      "description": "Mechanical rotor angle in radians.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -17,6 +19,7 @@
     },
     {
       "name": "OffsetDeg",
+      "description": "Electrical-angle calibration offset in degrees.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -27,6 +30,7 @@
     },
     {
       "name": "EncoderSign",
+      "description": "Encoder direction multiplier, normally 1 or -1.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -37,6 +41,7 @@
     },
     {
       "name": "Poles",
+      "description": "Motor pole count used to convert mechanical to electrical angle.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -49,6 +54,7 @@
   "outputPorts": [
     {
       "name": "ThetaElec",
+      "description": "Electrical rotor angle wrapped to the range 0 through 2π radians.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -59,16 +65,19 @@
   ],
   "parameterTypes": {
     "EncoderSign": {
+      "description": "Fallback encoder direction multiplier when the input is not wired.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Poles": {
+      "description": "Fallback motor pole count when the input is not wired.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "OffsetDeg": {
+      "description": "Fallback electrical-angle calibration offset in degrees when the input is not wired.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

@@ -2,6 +2,7 @@
   "id": "Sensors.PhaseCurrents",
   "displayName": "Phase Currents",
   "defaultName": "PhaseCurrents",
+  "description": "Samples the three inverter phase-current channels from the platform current sensors.",
   "maxInstances": 1,
   "isEntryPoint": true,
   "domain": "",
@@ -9,6 +10,7 @@
   "outputPorts": [
     {
       "name": "I_A",
+      "description": "Measured phase A current in amperes.",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -18,6 +20,7 @@
     },
     {
       "name": "I_B",
+      "description": "Measured phase B current in amperes.",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -27,6 +30,7 @@
     },
     {
       "name": "I_C",
+      "description": "Measured phase C current in amperes.",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -35,5 +39,12 @@
       }
     }
   ],
-  "parameterTypes": {}
+  "parameterTypes": {
+    "InvertPolarity": {
+      "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
 }

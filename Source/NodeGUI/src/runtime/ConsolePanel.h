@@ -28,6 +28,7 @@ private slots:
     void OnClearOverrides();
     void OnTogglePause();
     void OnSimPauseChanged(bool paused);
+    void OnSessionCleared();
 
 private:
     RuntimeController* controller_;

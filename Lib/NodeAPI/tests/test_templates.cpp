@@ -49,8 +49,13 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_EQ(ic->type.frame, Frame::Scalar);
     EXPECT_EQ(ic->type.dtype, DType::F32);
 
+    const auto invertPolarity = type->FindParameterType("InvertPolarity");
+    ASSERT_TRUE(invertPolarity.has_value());
+    EXPECT_EQ(invertPolarity->quantity, Quantity::Boolean);
+
     EXPECT_FALSE(type->inlineCode.empty());
     EXPECT_NE(type->inlineCode.find("platform_get_phase_currents"), std::string::npos);
+    EXPECT_NE(type->inlineCode.find("InvertPolarity"), std::string::npos);
 }
 
 TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
@@ -61,6 +66,34 @@ TEST(NodeTemplates, LoadsCodeFromSeparateFiles) {
     const auto clarke = graph.FindNodeType("Transforms.Clarke");
     ASSERT_TRUE(clarke.has_value());
     EXPECT_NE(clarke->inlineCode.find("I_Alpha = I_A;"), std::string::npos);
+}
+
+TEST(NodeTemplates, AllShippedMetadataHasDescriptions) {
+    Graph graph;
+    const auto result =
+        LoadNodeTypesFromDirectory(graph, GetTemplatesDirectory());
+    ASSERT_TRUE(result.ok);
+
+    for (const auto& type : graph.GetNodeTypes()) {
+        SCOPED_TRACE(type.id);
+        EXPECT_FALSE(type.description.empty());
+        for (const auto& port : type.inputPorts) {
+            SCOPED_TRACE("input port: " + port.name);
+            EXPECT_FALSE(port.description.empty());
+        }
+        for (const auto& port : type.outputPorts) {
+            SCOPED_TRACE("output port: " + port.name);
+            EXPECT_FALSE(port.description.empty());
+        }
+        for (const auto& [name, wireType] : type.parameterTypes) {
+            (void)wireType;
+            SCOPED_TRACE("property: " + name);
+            const auto description =
+                type.FindParameterDescription(name);
+            ASSERT_TRUE(description.has_value());
+            EXPECT_FALSE(description->empty());
+        }
+    }
 }
 
 TEST(NodeTemplates, RejectsMissingDirectory) {

@@ -51,7 +51,8 @@ ParameterBlockData PrepareParameterBlock(const ParameterMap& parameters) {
         // Lock the layout to the panel font so drawing never re-lays out.
         row.prepare(QTransform(), ParameterFont());
         textWidth = std::max(textWidth, row.size().width());
-        block.rows.push_back(std::move(row));
+        block.rows.push_back(ParameterBlockRow{.name = name,
+                                               .text = std::move(row)});
     }
 
     const double height = static_cast<double>(block.rows.size()) * RowHeight()
@@ -74,6 +75,27 @@ QRectF ParameterBlockRect(const ParameterBlockData& block, const QSize& nodeSize
                   block.size.height());
 }
 
+std::optional<std::string> ParameterAtPosition(
+    const ParameterBlockData& block,
+    const QSize& nodeSize,
+    const QPointF& position) {
+    const QRectF rect = ParameterBlockRect(block, nodeSize);
+    if (rect.isNull() || !rect.contains(position)) {
+        return std::nullopt;
+    }
+
+    const double rowPosition = position.y() - rect.top() - kPaddingY;
+    if (rowPosition < 0.0) {
+        return std::nullopt;
+    }
+    const auto rowIndex =
+        static_cast<std::size_t>(rowPosition / RowHeight());
+    if (rowIndex >= block.rows.size()) {
+        return std::nullopt;
+    }
+    return block.rows[rowIndex].name;
+}
+
 void PaintParameterBlock(QPainter* painter,
                          const ParameterBlockData& block,
                          const QSize& nodeSize) {
@@ -92,8 +114,9 @@ void PaintParameterBlock(QPainter* painter,
     painter->setPen(QColor(0xe8, 0xc0, 0x7a));
 
     double y = rect.top() + kPaddingY;
-    for (const QStaticText& row : block.rows) {
-        painter->drawStaticText(QPointF(rect.left() + kPaddingX, y), row);
+    for (const ParameterBlockRow& row : block.rows) {
+        painter->drawStaticText(QPointF(rect.left() + kPaddingX, y),
+                                row.text);
         y += RowHeight();
     }
 

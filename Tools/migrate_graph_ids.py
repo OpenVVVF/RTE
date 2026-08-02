@@ -127,11 +127,28 @@ def migrate(path, write=True, templates_dir=None):
 
     changed = 0
     for node in g.get("nodes", []):
-        new = ID_MAP.get(node.get("type"))
+        old_type = node.get("type")
+        new = ID_MAP.get(old_type)
         if new:
             node["type"] = new
             changed += 1
-        if node.get("type") == "constant.current":
+
+        if old_type in ("hw.adc.phase_currents", "hw.phase_current_reader"):
+            params = node.setdefault("parameters", OrderedDict())
+            params.setdefault(
+                "InvertPolarity",
+                "1.0" if old_type == "hw.adc.phase_currents" else "0.0",
+            )
+            changed += 1
+        elif node.get("type") == "Sensors.PhaseCurrents":
+            params = node.setdefault("parameters", OrderedDict())
+            if "InvertPolarity" not in params:
+                params["InvertPolarity"] = (
+                    "1.0" if node.get("domain") == "adc_isr" else "0.0"
+                )
+                changed += 1
+
+        if old_type == "constant.current":
             params = node.get("parameters", {})
             if "Amps" in params:
                 params["Value"] = params.pop("Amps")

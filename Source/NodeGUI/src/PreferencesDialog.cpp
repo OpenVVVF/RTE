@@ -31,6 +31,10 @@ constexpr int kMaximumHistoryLimit = 1000;
 constexpr int kMinimumLogLines = 100;
 constexpr int kMaximumLogLines = 100000;
 
+bool IsSupportedPanButton(Qt::MouseButton button) {
+    return button == Qt::LeftButton || button == Qt::MiddleButton;
+}
+
 }  // namespace
 
 AppPreferences LoadAppPreferences() {
@@ -54,6 +58,9 @@ AppPreferences LoadAppPreferences() {
     preferences.firmwareBuildType =
         settings.value(QStringLiteral("firmwareBuildType"),
                        QStringLiteral("Release")).toString();
+    preferences.panMouseButton = static_cast<Qt::MouseButton>(
+        settings.value(QStringLiteral("panMouseButton"),
+                       static_cast<int>(Qt::MiddleButton)).toInt());
     settings.endGroup();
 
     const QStringList supportedBuildTypes = {
@@ -64,6 +71,9 @@ AppPreferences LoadAppPreferences() {
     };
     if (!supportedBuildTypes.contains(preferences.firmwareBuildType)) {
         preferences.firmwareBuildType = QStringLiteral("Release");
+    }
+    if (!IsSupportedPanButton(preferences.panMouseButton)) {
+        preferences.panMouseButton = Qt::MiddleButton;
     }
     return preferences;
 }
@@ -81,6 +91,8 @@ void SaveAppPreferences(const AppPreferences& preferences) {
                       preferences.buildLogLineLimit);
     settings.setValue(QStringLiteral("firmwareBuildType"),
                       preferences.firmwareBuildType);
+    settings.setValue(QStringLiteral("panMouseButton"),
+                      static_cast<int>(preferences.panMouseButton));
     settings.endGroup();
 }
 
@@ -169,6 +181,21 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
 
     auto* shortcutsPage = new QWidget(tabs);
     auto* shortcutsLayout = new QVBoxLayout(shortcutsPage);
+
+    auto* mouseBindingsLayout = new QFormLayout;
+    panMouseButtonCombo_ = new QComboBox(shortcutsPage);
+    panMouseButtonCombo_->addItem(QStringLiteral("Middle Mouse"),
+                                  static_cast<int>(Qt::MiddleButton));
+    panMouseButtonCombo_->addItem(QStringLiteral("Left Mouse"),
+                                  static_cast<int>(Qt::LeftButton));
+    const int panButtonIndex =
+        panMouseButtonCombo_->findData(static_cast<int>(preferences.panMouseButton));
+    panMouseButtonCombo_->setCurrentIndex(std::max(0, panButtonIndex));
+    panMouseButtonCombo_->setToolTip(
+        QStringLiteral("Drag with this button to pan the node canvas"));
+    mouseBindingsLayout->addRow(QStringLiteral("Pan canvas"), panMouseButtonCombo_);
+    shortcutsLayout->addLayout(mouseBindingsLayout);
+
     auto* shortcutHint = new QLabel(
         QStringLiteral("Select a shortcut field and press the desired key combination. "
                        "Clear the field to leave an action unbound."),
@@ -210,7 +237,7 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     shortcutsLayout->addWidget(table, 1);
 
     auto* resetShortcuts =
-        new QPushButton(QStringLiteral("Restore Shortcut Defaults"), shortcutsPage);
+        new QPushButton(QStringLiteral("Restore Input Defaults"), shortcutsPage);
     connect(resetShortcuts, &QPushButton::clicked,
             this, &PreferencesDialog::RestoreShortcutDefaults);
     shortcutsLayout->addWidget(resetShortcuts, 0, Qt::AlignLeft);
@@ -237,6 +264,8 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.undoHistoryLimit = undoHistoryLimitSpin_->value();
     preferences.buildLogLineLimit = buildLogLineLimitSpin_->value();
     preferences.firmwareBuildType = buildTypeCombo_->currentText();
+    preferences.panMouseButton = static_cast<Qt::MouseButton>(
+        panMouseButtonCombo_->currentData().toInt());
     return preferences;
 }
 
@@ -279,6 +308,8 @@ void PreferencesDialog::RestoreShortcutDefaults() {
             editor->setKeySequence(binding.defaultSequence);
         }
     }
+    panMouseButtonCombo_->setCurrentIndex(
+        panMouseButtonCombo_->findData(static_cast<int>(Qt::MiddleButton)));
     shortcutErrorLabel_->hide();
 }
 

@@ -2,11 +2,13 @@
   "id": "Transforms.SinCos",
   "displayName": "Sin/Cos",
   "defaultName": "SinCos",
+  "description": "Computes the sine and cosine of an input angle.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {
       "name": "Theta",
+      "description": "Input angle in radians.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -18,6 +20,7 @@
   "outputPorts": [
     {
       "name": "SinTheta",
+      "description": "Sine of the input angle.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -27,6 +30,7 @@
     },
     {
       "name": "CosTheta",
+      "description": "Cosine of the input angle.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

@@ -43,6 +43,8 @@ private slots:
     void OnLoadBuiltinSpwm();
     void OnTogglePause();
     void OnSimPauseChanged(bool paused);
+    void OnExportSession();
+    void OnClearSession();
 
 private:
     void RefreshRecentCombo();
@@ -58,6 +60,8 @@ private:
     QLabel* rateChip_ = nullptr;
     QLabel* healthChip_ = nullptr;
     QPushButton* pauseButton_ = nullptr;
+
+    QLabel* exportStatus_ = nullptr;
     QLineEdit* presetNameEdit_ = nullptr;
     QComboBox* recentCombo_ = nullptr;
     QLabel* presetStatus_ = nullptr;

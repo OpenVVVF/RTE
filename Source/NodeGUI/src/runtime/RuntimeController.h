@@ -44,6 +44,14 @@ public:
     TelemetryStore& Store() { return store_; }
     const TelemetryStore& Store() const { return store_; }
 
+    // Drains the last queued device batch, then returns the complete runtime
+    // session accumulated since this controller was created.
+    RuntimeSessionSnapshot CaptureSession();
+
+    // Discards both rolling UI data and the full export archive, then starts
+    // a new session at the current time.
+    void ClearSession();
+
     QString Port() const { return port_; }
     QString ConnectionLabel() const;
     bool IsSimulating() const { return simulate_; }
@@ -68,6 +76,7 @@ signals:
     void simPauseChanged(bool paused);
     void plotTimeFreezeChanged(bool frozen, double anchorSimSec);
     void simSpeedChanged(double factor);
+    void sessionCleared();
 
 private:
     struct F32Item {

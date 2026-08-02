@@ -10,7 +10,7 @@ Each node type is a directory named `<category>.<name>/` containing:
 
 | File | Purpose |
 |------|---------|
-| `node.json` | Metadata: `id`, `displayName`, `inputPorts`, `outputPorts`, `parameterTypes`, `maxInstances`, `isEntryPoint`, `domain`. |
+| `node.json` | Metadata: `id`, names and descriptions, ports, properties, instance limits, and timing-domain behavior. |
 | `inline.cpp` | Per-step code body. Runs once per timing-domain invocation. |
 | `constructor.cpp` | Optional constructor / init body for class-based nodes. |
 | `class_header.h` | Optional C++ class declaration. |
@@ -33,11 +33,21 @@ Assets/NodeTemplates/
 ## Schema notes
 
 - `id`: use dotted namespaces, e.g. `hw.adc.phase_currents`.
+- `description`: a concise explanation of what the node does. The editor shows
+  it in the node palette, on canvas hover, and in the inspector.
 - `domain`: leave empty on the type; instances set their own domain, unless the type forces one.
 - `isEntryPoint`: true only for nodes that start a timing domain (e.g. an ISR vector).
 - `maxInstances`: 1 for hardware singletons, 0 for unlimited reusable math blocks.
-- `parameterTypes`: map of parameter name to `WireType`. Tells the codegen what unit/type to emit for each parameter. Parameters not listed default to dimensionless `float`.
-- Port `type` uses `{quantity, frame, dtype}`. Physical quantities use the Au-backed types emitted by `InverterCodegen` (see `Lib/InverterCodegen/include/InverterCodegen/RteQuantity.h`).
+- `parameterTypes`: map of property name to `WireType`. Each property type also
+  carries a `description` shown in the inspector. The description is UI
+  metadata and does not affect code generation. Parameters not listed default
+  to dimensionless `float`.
+- Every input and output port has a `description` alongside its name,
+  direction, and type. Hovering its connection point in the canvas shows the
+  description.
+- Port and property types use `{quantity, frame, dtype}`. Physical quantities
+  use the Au-backed types emitted by `InverterCodegen` (see
+  `Lib/InverterCodegen/include/InverterCodegen/RteQuantity.h`).
 
 ## Code block conventions
 

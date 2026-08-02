@@ -2,6 +2,7 @@
   "id": "Sensors.Encoder",
   "displayName": "Encoder",
   "defaultName": "Encoder",
+  "description": "Reads the latest mechanical rotor angle and motor speed from the encoder driver.",
   "maxInstances": 0,
   "isEntryPoint": true,
   "domain": "",
@@ -9,6 +10,7 @@
   "outputPorts": [
     {
       "name": "Theta",
+      "description": "Mechanical rotor angle in radians.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -18,6 +20,7 @@
     },
     {
       "name": "Omega",
+      "description": "Mechanical motor speed in revolutions per minute.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

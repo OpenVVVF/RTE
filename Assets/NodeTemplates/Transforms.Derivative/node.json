@@ -2,12 +2,14 @@
   "id": "Transforms.Derivative",
   "displayName": "Derivative",
   "defaultName": "Deriv",
+  "description": "Estimates a signal derivative with an optional first-order low-pass filter.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "In",
+      "description": "Signal whose time derivative is estimated.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -19,6 +21,7 @@
   "outputPorts": [
     {
       "name": "Out",
+      "description": "Filtered derivative estimate.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -29,21 +32,25 @@
   ],
   "parameterTypes": {
     "Dt": {
+      "description": "Sample period in seconds.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Fc": {
+      "description": "Low-pass cutoff frequency in hertz. Values at or below zero disable filtering.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Prev": {
+      "description": "Persistent previous input sample used by the finite difference.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "OutState": {
+      "description": "Persistent filtered derivative state.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

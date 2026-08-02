@@ -2,12 +2,14 @@
   "id": "Debug.TelemetryLog",
   "displayName": "Telemetry Log",
   "defaultName": "Log",
+  "description": "Publishes a scalar value to runtime telemetry under a configurable key.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
   "inputPorts": [
     {
       "name": "Value",
+      "description": "Scalar value to publish.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -19,6 +21,7 @@
   "outputPorts": [],
   "parameterTypes": {
     "Key": {
+      "description": "Telemetry channel name used when publishing the value.",
       "quantity": "string",
       "frame": "scalar",
       "dtype": "f32"
