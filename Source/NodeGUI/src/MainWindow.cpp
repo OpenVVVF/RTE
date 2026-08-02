@@ -589,7 +589,12 @@ void MainWindow::SetupMenu() {
     QAction* spwmAction = fileMenu->addAction(QStringLiteral("Open SPWM &Demo Graph..."));
     spwmAction->setToolTip(QStringLiteral(
         "Load Images/HostSim/graphs/spwm_demo_graph.json. "
-        "Run: powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));
+#ifdef _WIN32
+        "Run: powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+        "Run: Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+        ));
     connect(spwmAction, &QAction::triggered, this, &MainWindow::OnOpenSpwmDemo);
 
     fileMenu->addSeparator();
@@ -950,30 +955,27 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
 
 #ifdef _WIN32
     // Windows execution path: use PowerShell scripts for clean native execution
-    program = QStringLiteral("powershell.exe");
     if (command == BuildCommand::BuildSimulation) {
-        const std::filesystem::path psScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
+        program = QStringLiteral("powershell.exe");
+        const std::filesystem::path psScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.ps1";
         arguments << QStringLiteral("-NoProfile")
                   << QStringLiteral("-ExecutionPolicy") << QStringLiteral("Bypass")
                   << QStringLiteral("-File") << QString::fromStdString(psScript.string())
                   << QStringLiteral("-ForceEmit")
                   << QStringLiteral("-KeepGui");
     } else {
-        const std::filesystem::path psScript = projectRoot / "Images" / "NucleoL476FW" / "scripts" / "emit_and_build.ps1";
-        arguments << QStringLiteral("-NoProfile")
-                  << QStringLiteral("-ExecutionPolicy") << QStringLiteral("Bypass")
-                  << QStringLiteral("-File") << QString::fromStdString(psScript.string())
-                  << QStringLiteral("-Graph") << absoluteGraphPath;
-        if (command == BuildCommand::Flash || command == BuildCommand::GenerateAndFlash) {
-            arguments << QStringLiteral("-Flash");
-        }
+        AppendBuildLog(
+            QStringLiteral("\n[error] Firmware build/flash on Windows is not included in this "
+                           "branch. Use Tools/build_flash_graph.sh on Linux/WSL, or restore the "
+                           "firmware image scripts.\n"));
+        return;
     }
 #else
     // Linux / POSIX execution path
     if (command == BuildCommand::BuildSimulation) {
         program = QStringLiteral("bash");
-        const std::filesystem::path psScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_svpwm_live.ps1";
-        arguments << QString::fromStdString(psScript.string()) << QStringLiteral("-ForceEmit");
+        const std::filesystem::path shScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.sh";
+        arguments << QString::fromStdString(shScript.string()) << QStringLiteral("--force-emit") << QStringLiteral("--no-gui");
     } else {
         const std::filesystem::path script = projectRoot / "Tools" / "build_flash_graph.sh";
         if (!std::filesystem::is_regular_file(script)) {
@@ -1153,7 +1155,12 @@ void MainWindow::OnOpenSpwmDemo() {
     if (path.empty()) {
         ShowToast(QStringLiteral(
             "SPWM graph not found. Run from the repo root or use "
-            "Images/HostSim/scripts/run_spwm_live.ps1"));
+#ifdef _WIN32
+            "Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+            "Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+            ));
         OnOpen();
         return;
     }
@@ -1165,7 +1172,12 @@ void MainWindow::OnOpenSpwmDemo() {
         }
         ShowToast(QStringLiteral(
             "SPWM graph loaded. Start live sim: "
-            "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"));
+#ifdef _WIN32
+            "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+            "Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+            ));
     }
 }
 

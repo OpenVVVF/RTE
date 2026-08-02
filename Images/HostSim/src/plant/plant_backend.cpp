@@ -12,10 +12,13 @@ std::unique_ptr<IPlant> CreatePlantBackend(const std::string& type) {
         if (ng->IsSharedspiceLoaded()) {
             return ng;
         }
-        std::cerr << "HostSim: ngspice shared library not available; "
-                     "falling back to OdePlant.\n";
+        std::cerr << "HostSim: ngspice backend requested but libngspice.so "
+                     "could not be loaded (or the experimental backend is not "
+                     "yet functional). Falling back to OdePlant.\n";
         return std::make_unique<OdePlant>();
     }
+    // Default and fallback: fast discrete PMSM ODE. This is the only
+    // fully-supported plant backend today.
     return std::make_unique<OdePlant>();
 }
 
