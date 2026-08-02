@@ -962,7 +962,9 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
                   << QStringLiteral("-ExecutionPolicy") << QStringLiteral("Bypass")
                   << QStringLiteral("-File") << QString::fromStdString(psScript.string())
                   << QStringLiteral("-ForceEmit")
-                  << QStringLiteral("-KeepGui");
+                  << QStringLiteral("-KeepGui")
+                  << QStringLiteral("-Graph")
+                  << absoluteGraphPath;
     } else {
         AppendBuildLog(
             QStringLiteral("\n[error] Firmware build/flash on Windows is not included in this "
@@ -975,7 +977,11 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
     if (command == BuildCommand::BuildSimulation) {
         program = QStringLiteral("bash");
         const std::filesystem::path shScript = projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.sh";
-        arguments << QString::fromStdString(shScript.string()) << QStringLiteral("--force-emit") << QStringLiteral("--no-gui");
+        arguments << QString::fromStdString(shScript.string())
+                  << QStringLiteral("--force-emit")
+                  << QStringLiteral("--no-gui")
+                  << QStringLiteral("--graph")
+                  << absoluteGraphPath;
     } else {
         const std::filesystem::path script = projectRoot / "Tools" / "build_flash_graph.sh";
         if (!std::filesystem::is_regular_file(script)) {

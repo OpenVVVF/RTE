@@ -179,8 +179,39 @@ float platform_get_encoder_angle_latest(void) {
     return hostsim::g_motor->ThetaElectricalDeg();
 }
 
+float platform_get_motor_rpm(void) {
+    float omega_e = 0.0f;
+    int pole_pairs = 7;
+    if (hostsim::g_plant) {
+        omega_e = hostsim::g_plant->OmegaElectricalRadPerSec();
+    } else if (hostsim::g_motor) {
+        omega_e = hostsim::g_motor->OmegaElectricalRadPerSec();
+    } else {
+        return 0.0f;
+    }
+    if (hostsim::g_motor) {
+        pole_pairs = hostsim::g_motor->Params().pole_pairs;
+    }
+    return omega_e * 60.0f / (hostsim::kTwoPi * static_cast<float>(pole_pairs));
+}
+
 float platform_get_dc_link_voltage(void) {
     return hostsim::GetSimContext().vdc_v;
+}
+
+float platform_phase_voltage_u(void) {
+    const auto& c = hostsim::GetSimContext();
+    return c.duty_u * c.vdc_v / 100.0f;
+}
+
+float platform_phase_voltage_v(void) {
+    const auto& c = hostsim::GetSimContext();
+    return c.duty_v * c.vdc_v / 100.0f;
+}
+
+float platform_phase_voltage_w(void) {
+    const auto& c = hostsim::GetSimContext();
+    return c.duty_w * c.vdc_v / 100.0f;
 }
 
 float platform_get_throttle_a(void) {
@@ -191,10 +222,45 @@ float platform_get_throttle_b(void) {
     return hostsim::GetSimContext().throttle_b;
 }
 
+bool platform_get_throttle_valid(void) {
+    const float a = platform_get_throttle_a();
+    const float b = platform_get_throttle_b();
+    if (a < 0.0f || a > 1.0f || b < 0.0f || b > 1.0f) return false;
+    return std::fabs(a - b) < 0.1f;
+}
+
 float platform_get_motor_temperature(void) { return 25.0f; }
 float platform_get_inverter_temperature(uint8_t channel) {
     (void)channel;
     return 25.0f;
+}
+
+bool platform_digital_read(uint8_t pin) {
+    (void)pin;
+    return false;
+}
+
+void platform_digital_write(uint8_t pin, bool value) {
+    (void)pin;
+    (void)value;
+}
+
+bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
+                       const uint8_t* data, uint8_t dlc) {
+    (void)bus;
+    (void)id;
+    (void)ext;
+    (void)data;
+    (void)dlc;
+    return false;
+}
+
+int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out) {
+    (void)bus;
+    (void)id;
+    (void)data;
+    (void)seq_out;
+    return -1;
 }
 
 void platform_sample_application_sensors(void) {}
