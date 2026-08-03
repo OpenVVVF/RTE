@@ -22,6 +22,9 @@ public:
     /* Read up to `cap` bytes. Returns bytes read (>=0). */
     int read(uint8_t* buf, int cap);
 
+    /* Native file descriptor for poll()/select(), or -1 when closed. */
+    int nativeHandle() const;
+
     /* Write exactly `n` bytes. Returns true on full success. */
     bool write(const uint8_t* data, int n);
 

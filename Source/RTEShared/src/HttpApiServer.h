@@ -49,6 +49,10 @@ public:
     // Reported as "app" by GET /api/info. Default "NodeGUI".
     void setAppName(const std::string& name);
 
+    // Address to bind. Default "127.0.0.1" (loopback only). Set before
+    // start(); "0.0.0.0" exposes the API to the LAN — use with care.
+    void setBindAddress(const std::string& address);
+
 private:
     void threadMain();
 
@@ -64,6 +68,7 @@ private:
     std::string device_port_;
     std::function<bool(const std::string&)> command_handler_;
     std::string app_name_ = "NodeGUI";
+    std::string bind_address_ = "127.0.0.1";
 
     int listen_fd_ = -1;
     std::thread thread_;
