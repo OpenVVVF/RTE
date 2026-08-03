@@ -1276,6 +1276,7 @@
       "inputPorts": [
         {
           "name": "Setpoint",
+          "description": "Desired target value.",
           "direction": "input",
           "type": {
             "quantity": "dimensionless",
@@ -1285,6 +1286,7 @@
         },
         {
           "name": "Measurement",
+          "description": "Measured process value subtracted from the setpoint.",
           "direction": "input",
           "type": {
             "quantity": "dimensionless",
@@ -1298,6 +1300,7 @@
       "outputPorts": [
         {
           "name": "Output",
+          "description": "Clamped PI control effort.",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -1308,36 +1311,43 @@
       ],
       "parameterTypes": {
         "Kp": {
+          "description": "Proportional gain applied to the current error.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "Ki": {
+          "description": "Integral gain applied to the accumulated error.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "Dt": {
+          "description": "Controller step period in seconds.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "Integral": {
+          "description": "Persistent accumulated-error state.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "OutputMax": {
+          "description": "Upper output clamp, additionally limited by the measured DC-link voltage.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "OutputMin": {
+          "description": "Lower output clamp, additionally limited by the measured DC-link voltage.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "AwGain": {
+          "description": "Back-calculation anti-windup gain. Zero disables anti-windup.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
@@ -1358,6 +1368,7 @@
       "outputPorts": [
         {
           "name": "Theta",
+          "description": "Mechanical rotor angle in radians.",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -1367,6 +1378,7 @@
         },
         {
           "name": "Omega",
+          "description": "Mechanical motor speed in revolutions per minute.",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -1384,13 +1396,14 @@
       "displayName": "Phase Currents",
       "domain": "",
       "id": "Sensors.PhaseCurrents",
-      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    /* Keep raw sensor polarity available for general telemetry, while FOC\n     * graphs enable inversion for this hardware's current-sensor wiring. */\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
       "outputPorts": [
         {
           "name": "I_A",
+          "description": "Measured phase A current in amperes.",
           "direction": "output",
           "type": {
             "quantity": "current",
@@ -1400,6 +1413,7 @@
         },
         {
           "name": "I_B",
+          "description": "Measured phase B current in amperes.",
           "direction": "output",
           "type": {
             "quantity": "current",
@@ -1409,9 +1423,37 @@
         },
         {
           "name": "I_C",
+          "description": "Measured phase C current in amperes.",
           "direction": "output",
           "type": {
             "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Diudt",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Divdt",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "BurstTimeUs",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
             "frame": "scalar",
             "dtype": "f32"
           }
@@ -1437,6 +1479,7 @@
       "inputPorts": [
         {
           "name": "In",
+          "description": "Optional value that replaces the configured constant when wired.",
           "direction": "input",
           "type": {
             "quantity": "dimensionless",
@@ -1451,6 +1494,7 @@
       "outputPorts": [
         {
           "name": "Out",
+          "description": "Configured constant or the value supplied through In.",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -1461,11 +1505,13 @@
       ],
       "parameterTypes": {
         "Value": {
+          "description": "Constant value emitted when no input overrides it.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
         },
         "In": {
+          "description": "Fallback storage for the optional In port.",
           "quantity": "dimensionless",
           "frame": "scalar",
           "dtype": "f32"
