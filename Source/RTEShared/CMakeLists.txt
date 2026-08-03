@@ -23,6 +23,10 @@ target_include_directories(RTEShared
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+target_compile_definitions(RTEShared
+    PRIVATE RTE_TOOLS_DIR="${CMAKE_SOURCE_DIR}/Tools"
+)
+
 target_link_libraries(RTEShared
     PUBLIC InverterProtocol
     PRIVATE project_warnings

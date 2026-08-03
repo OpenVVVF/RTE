@@ -72,7 +72,6 @@ target_compile_definitions(NodeGUI
     PRIVATE
         RTE_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
         RTE_NODE_TEMPLATES_DIR="${CMAKE_SOURCE_DIR}/Assets/NodeTemplates"
-        RTE_TOOLS_DIR="${CMAKE_SOURCE_DIR}/Tools"
 )
 
 if(NODEGUI_ENABLE_FPS_OVERLAY)
