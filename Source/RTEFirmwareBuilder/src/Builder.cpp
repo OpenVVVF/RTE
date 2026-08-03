@@ -279,24 +279,37 @@ bool Builder::RunCommand(const std::string& description,
         return true;
     }
 
-    FILE* pipe = popen(cmd.c_str(), "r");
+    // Merge stderr into the pipe so compiler errors are captured too, and
+    // buffer the output: on failure the full message is replayed at Error
+    // level (it used to be logged at Debug, where default verbosity hid it).
+    FILE* pipe = popen((cmd + " 2>&1").c_str(), "r");
     if (!pipe) {
         logger_.Error("Failed to start command: " + cmd);
         return false;
     }
 
+    std::vector<std::string> output;
     std::array<char, 1024> buffer{};
     while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
         size_t len = std::strlen(buffer.data());
         if (len > 0 && buffer[len - 1] == '\n') --len;
-        logger_.Debug(std::string_view(buffer.data(), len));
+        output.emplace_back(buffer.data(), len);
     }
 
-    int status = pclose(pipe);
+    const int status = pclose(pipe);
     if (status != 0) {
         logger_.Error("Command failed with exit code " + std::to_string(status) +
                       ": " + cmd);
+        logger_.Error("---- full output ----");
+        for (const auto& line : output) {
+            logger_.Error(line);
+        }
+        logger_.Error("---------------------");
         return false;
+    }
+
+    for (const auto& line : output) {
+        logger_.Debug(line);
     }
     return true;
 }
