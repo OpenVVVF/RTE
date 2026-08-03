@@ -471,7 +471,7 @@ void EncoderOffsetCalibrator::update() {
                                       static_cast<double>(encoder_mech),
                                       static_cast<double>(moved_field));
                 }
-                if (moved_field > 270.0f && !m_offset_acquisition_active) {
+                if (moved_field > 450.0f && !m_offset_acquisition_active) {
                     PWM_StopSPWM();
                     fail("[CAL] ENC: FAIL: rotor did not lock after %.1f deg field rotation (insufficient torque?)",
                          static_cast<double>(moved_field));
