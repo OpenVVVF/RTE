@@ -19,6 +19,8 @@
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QFrame>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -124,6 +126,64 @@ MainWindow::MainWindow(QWidget* parent)
     auto* central = new QWidget(this);
     auto* layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // Persistent banner shown when the opened graph changes on disk (e.g. a
+    // git pull). Stays up until the user picks Load / Save Copy / Ignore.
+    reloadBanner_ = new QFrame(central);
+    reloadBanner_->setStyleSheet(QStringLiteral(
+        "QFrame { background: #4a3d22; border-bottom: 1px solid #8a6d3b; }"
+        "QLabel { color: #ffd97a; background: transparent; }"
+        "QPushButton { padding: 2px 10px; }"));
+    auto* bannerLayout = new QHBoxLayout(reloadBanner_);
+    bannerLayout->setContentsMargins(8, 4, 8, 4);
+    reloadBannerText_ = new QLabel(reloadBanner_);
+    bannerLayout->addWidget(reloadBannerText_, 1);
+    auto* loadButton = new QPushButton(QStringLiteral("Load"), reloadBanner_);
+    loadButton->setObjectName(QStringLiteral("reloadBannerLoad"));
+    connect(loadButton, &QPushButton::clicked, this, [this] {
+        HideReloadBanner();
+        // Capture the current graph so a mis-clicked Load is one Ctrl+Z away.
+        const std::string preLoad = graphScene_ ? graphScene_->Snapshot() : std::string{};
+        if (currentPath_.empty() || !OpenGraph(currentPath_)) {
+            // Keep offering until the load succeeds or the user ignores.
+            ShowReloadBanner();
+            return;
+        }
+        // OpenGraph resets the undo history; seed it with the pre-load state.
+        if (!preLoad.empty() && preLoad != currentHistorySnapshot_) {
+            undoHistory_.push_back(std::move(preLoad));
+            UpdateHistoryActions();
+        }
+    });
+    bannerLayout->addWidget(loadButton);
+    auto* saveCopyButton = new QPushButton(QStringLiteral("Save Copy..."), reloadBanner_);
+    saveCopyButton->setObjectName(QStringLiteral("reloadBannerSaveCopy"));
+    connect(saveCopyButton, &QPushButton::clicked, this, [this] {
+        const QString fileName = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Save Current Graph as Copy"), QString(),
+            QStringLiteral("JSON (*.json)"));
+        if (!fileName.isEmpty()) {
+            HideReloadBanner();
+            DoSave(fileName.toStdString());
+        }
+    });
+    bannerLayout->addWidget(saveCopyButton);
+    auto* ignoreButton = new QPushButton(QStringLiteral("Ignore"), reloadBanner_);
+    ignoreButton->setObjectName(QStringLiteral("reloadBannerIgnore"));
+    connect(ignoreButton, &QPushButton::clicked, this, &MainWindow::HideReloadBanner);
+    bannerLayout->addWidget(ignoreButton);
+    reloadBanner_->hide();
+    layout->addWidget(reloadBanner_);
+
+    // Watches the currently opened graph for on-disk changes.
+    graphWatcher_ = new QFileSystemWatcher(this);
+    connect(graphWatcher_, &QFileSystemWatcher::fileChanged,
+            this, &MainWindow::OnGraphFileChanged);
+    reloadDebounce_ = new QTimer(this);
+    reloadDebounce_->setSingleShot(true);
+    reloadDebounce_->setInterval(250);
+    connect(reloadDebounce_, &QTimer::timeout, this, &MainWindow::ShowReloadBanner);
 
     view_ = new GraphView(graphScene_->Scene());
     view_->SetPanMouseButton(preferences_.panMouseButton);
@@ -446,6 +506,8 @@ bool MainWindow::OpenGraph(const std::string& path) {
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
     ResetHistory();
     UpdateStatus();
+    HideReloadBanner();
+    UpdateGraphWatcher();
     return true;
 }
 
@@ -474,6 +536,8 @@ void MainWindow::OnNew() {
     setWindowTitle(QStringLiteral("NodeGUI"));
     ResetHistory();
     UpdateStatus();
+    HideReloadBanner();
+    UpdateGraphWatcher();
 }
 
 void MainWindow::StripBrokenSceneActions() {
@@ -789,15 +853,62 @@ void MainWindow::OnTabChanged(int index) {
 bool MainWindow::DoSave(const std::string& path) {
     graphScene_->SyncPositionsFromScene();
 
+    // Our own write trips the file watcher; suppress the reload banner for
+    // it and re-arm the watch on the (possibly new) path.
+    suppressWatch_ = true;
     const QString error = graphScene_->SaveGraph(path);
     if (!error.isEmpty()) {
+        suppressWatch_ = false;
         ShowToast(QStringLiteral("Failed to save graph: %1").arg(error));
         return false;
     }
 
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    UpdateGraphWatcher();
+    QTimer::singleShot(500, this, [this] { suppressWatch_ = false; });
     return true;
+}
+
+void MainWindow::UpdateGraphWatcher() {
+    if (!graphWatcher_) {
+        return;
+    }
+    const QStringList watched = graphWatcher_->files();
+    if (!watched.isEmpty()) {
+        graphWatcher_->removePaths(watched);
+    }
+    if (currentPath_.empty()) {
+        return;
+    }
+    const QString path = QString::fromStdString(currentPath_);
+    if (QFileInfo::exists(path)) {
+        graphWatcher_->addPath(path);
+    }
+}
+
+void MainWindow::OnGraphFileChanged(const QString& /*path*/) {
+    // QFileSystemWatcher drops paths that get replaced (atomic saves, git
+    // checkout), so re-arm on every notification.
+    UpdateGraphWatcher();
+    if (suppressWatch_ || reloadBanner_->isVisible()) {
+        return;
+    }
+    reloadDebounce_->start();
+}
+
+void MainWindow::ShowReloadBanner() {
+    if (currentPath_.empty() || suppressWatch_) {
+        return;
+    }
+    const QString name = QFileInfo(QString::fromStdString(currentPath_)).fileName();
+    reloadBannerText_->setText(
+        QStringLiteral("'%1' changed on disk. Load the changes?").arg(name));
+    reloadBanner_->show();
+}
+
+void MainWindow::HideReloadBanner() {
+    reloadBanner_->hide();
 }
 
 bool MainWindow::EnsureGraphSaved() {

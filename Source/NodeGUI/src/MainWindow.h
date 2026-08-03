@@ -18,6 +18,8 @@
 
 class QAction;
 class QDockWidget;
+class QFileSystemWatcher;
+class QFrame;
 class QLabel;
 class QMenu;
 class QPlainTextEdit;
@@ -66,6 +68,7 @@ private slots:
     void OnExit();
     void CheckForRejectionReason();
     void OnTabChanged(int index);
+    void OnGraphFileChanged(const QString& path);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -116,6 +119,13 @@ private:
     void ShowToast(const QString& message);
     void RepositionToast();
 
+    // On-disk change notification for the currently opened graph: a
+    // persistent banner at the top of the Node Editor offers Load / Save
+    // Copy / Ignore until the user picks one (GitHub issue #33).
+    void UpdateGraphWatcher();
+    void ShowReloadBanner();
+    void HideReloadBanner();
+
     std::unique_ptr<GraphScene> graphScene_;
     QPointer<GraphView> view_;
     QPointer<NodePalette> palette_;
@@ -165,6 +175,15 @@ private:
     std::unique_ptr<runtime::HttpApiServer> httpApiServer_;
     QPointer<runtime::RuntimeTab> runtimeTab_;
     QPointer<runtime::FlashPanel> firmwareUpdateTab_;
+
+    // Disk-change watch on the currently opened graph (see ShowReloadBanner).
+    QFileSystemWatcher* graphWatcher_ = nullptr;
+    QFrame* reloadBanner_ = nullptr;
+    QLabel* reloadBannerText_ = nullptr;
+    QTimer* reloadDebounce_ = nullptr;
+    // True while we save the watched file ourselves, so our own write does
+    // not raise the reload banner.
+    bool suppressWatch_ = false;
 };
 
 }  // namespace NodeGUI
