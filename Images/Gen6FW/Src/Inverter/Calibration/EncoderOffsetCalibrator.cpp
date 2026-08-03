@@ -373,6 +373,17 @@ void EncoderOffsetCalibrator::update() {
 
             if (status == BreakawayFinder::Status::RUNNING) {
                 PWM_SetSPWMParams(OFFSET_ROTATION_FREQUENCY_HZ, mod);
+
+                /* Floating/disconnected encoder inputs often produce smooth
+                 * phantom rotation while the rotor is stationary.  If we see
+                 * significant encoder movement before the applied voltage is
+                 * high enough to cause real motion, abort with a clear message
+                 * instead of ramping to max_mod and timing out. */
+                if (m_breakaway.phantomMotionDetected()) {
+                    PWM_StopSPWM();
+                    fail("[CAL] ENC: FAIL: encoder shows motion with no applied voltage (floating inputs?)");
+                    return;
+                }
             } else if (status == BreakawayFinder::Status::TIMEOUT) {
                 PWM_StopSPWM();
                 fail("[CAL] ENC: FAIL: rotor did not move during voltage ramp");

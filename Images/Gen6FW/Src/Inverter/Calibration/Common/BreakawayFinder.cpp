@@ -16,11 +16,18 @@ void BreakawayFinder::start(float step, uint32_t period_ms, float max_mod,
     m_torque_margin = torque_margin;
     m_stall_timeout_ms = stall_timeout_ms;
 
+    /* A stationary rotor cannot move at zero or near-zero modulation.
+     * Require the ramp to reach a few steps before trusting any encoder
+     * movement as real breakaway. */
+    m_min_trusted_mod = std::max(0.01f, 3.0f * step);
+
     m_mod = 0.0f;
     m_breakaway_mod = 0.0f;
     m_last_ramp_ms = 0;  /* set on first update */
     m_last_move_ms = 0;
     m_last_cycles = 0.0f;
+    m_in_trusted_region = false;
+    m_max_phantom_cycles = 0.0f;
     resetReference();
 }
 
@@ -45,6 +52,41 @@ BreakawayFinder::Status BreakawayFinder::update(uint32_t now_ms, float encoder_m
 
     const float moved_cycles = encoder_moved_cycles - m_start_cycles;
 
+    if ((now_ms - m_last_ramp_ms) >= m_period_ms) {
+        m_last_ramp_ms = now_ms;
+        m_mod += m_step;
+        if (m_mod > m_max_mod) {
+            m_mod = m_max_mod;
+        }
+    }
+
+    out_mod = m_mod;
+
+    /* Do not trust encoder movement until the modulation is high enough for
+     * it to be physically possible.  Phantom motion from floating sin/cos
+     * inputs is common at zero voltage and would otherwise false-trigger
+     * breakaway at mod=0. */
+    if (!m_in_trusted_region) {
+        if (std::fabs(moved_cycles) > m_max_phantom_cycles) {
+            m_max_phantom_cycles = std::fabs(moved_cycles);
+        }
+        if (m_mod < m_min_trusted_mod) {
+            /* Still below the trusted threshold: keep the ramp moving but do
+             * not let phantom motion reset the stall timer or accumulate
+             * toward the detection threshold. */
+            return Status::RUNNING;
+        }
+        /* First crossing into the trusted region: discard all movement that
+         * happened while modulation was too low to be real. */
+        Telemetry::printf("[CAL] RAMP: entering trusted region at mod=%.3f, discarding %.3f cycles of phantom motion",
+                          static_cast<double>(m_mod),
+                          static_cast<double>(moved_cycles));
+        m_in_trusted_region = true;
+        resetReference();
+        m_last_move_ms = now_ms;
+        return Status::RUNNING;
+    }
+
     if (std::fabs(moved_cycles - m_last_cycles) > 0.01f) {
         m_last_cycles = moved_cycles;
         m_last_move_ms = now_ms;
@@ -64,16 +106,6 @@ BreakawayFinder::Status BreakawayFinder::update(uint32_t now_ms, float encoder_m
         out_mod = m_mod;
         return Status::FOUND;
     }
-
-    if ((now_ms - m_last_ramp_ms) >= m_period_ms) {
-        m_last_ramp_ms = now_ms;
-        m_mod += m_step;
-        if (m_mod > m_max_mod) {
-            m_mod = m_max_mod;
-        }
-    }
-
-    out_mod = m_mod;
 
     if (m_mod >= m_max_mod && (now_ms - m_last_move_ms) > m_stall_timeout_ms) {
         Telemetry::printf("[CAL] RAMP: breakaway TIMEOUT at mod=%.3f moved=%.3f",
