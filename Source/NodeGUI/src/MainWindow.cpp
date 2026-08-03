@@ -371,6 +371,9 @@ MainWindow::MainWindow(QWidget* parent)
         }
         palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
         ConnectModelSignals();
+        if (!graphScene_->LoadWarning().isEmpty()) {
+            ShowToast(graphScene_->LoadWarning());
+        }
     } else {
         ShowToast(templatesError);
     }
@@ -508,6 +511,9 @@ bool MainWindow::OpenGraph(const std::string& path) {
     UpdateStatus();
     HideReloadBanner();
     UpdateGraphWatcher();
+    if (!graphScene_->LoadWarning().isEmpty()) {
+        ShowToast(graphScene_->LoadWarning());
+    }
     return true;
 }
 

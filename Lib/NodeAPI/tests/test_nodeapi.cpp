@@ -173,6 +173,36 @@ TEST(Graph, SetNodeExcludeFromCompile) {
     EXPECT_FALSE(graph.SetNodeExcludeFromCompile("missing", true));
 }
 
+TEST(Serialization, SchemaVersionWrittenAndChecked) {
+    Graph graph = MakeDemoGraph();
+    const std::string json = SaveToJson(graph);
+
+    // Freshly saved graphs carry the current schema version and pass cleanly.
+    EXPECT_NE(json.find("\"schemaVersion\": 1"), std::string::npos);
+    EXPECT_EQ(CheckGraphSchema(json).status, SchemaStatus::kCurrent);
+
+    // Pre-versioning files (no schemaVersion) are legacy: no warning.
+    const std::string legacy = R"({"name":"g","nodeTypes":[],"nodes":[],"connections":[]})";
+    EXPECT_EQ(CheckGraphSchema(legacy).status, SchemaStatus::kCurrent);
+    EXPECT_TRUE(CheckGraphSchema(legacy).warning.empty());
+
+    // schemaVersion 0 is treated as legacy too.
+    const std::string zero = R"({"schemaVersion": 0})";
+    EXPECT_EQ(CheckGraphSchema(zero).status, SchemaStatus::kCurrent);
+
+    // Older files load with a warning; newer files warn louder.
+    const auto olderStatus = CheckSchemaVersion(1, 2, "graph");
+    EXPECT_EQ(olderStatus.status, SchemaStatus::kOlder);
+    EXPECT_FALSE(olderStatus.warning.empty());
+
+    const auto newer = CheckGraphSchema(R"({"schemaVersion": 999})");
+    EXPECT_EQ(newer.status, SchemaStatus::kNewer);
+    EXPECT_NE(newer.warning.find("NEWER"), std::string::npos);
+
+    // Garbage input never throws and reports nothing.
+    EXPECT_EQ(CheckGraphSchema("not json").status, SchemaStatus::kCurrent);
+}
+
 TEST(Serialization, ExcludeFromCompileRoundTrip) {
     Graph graph = MakeDemoGraph();
     ASSERT_TRUE(graph.SetNodeExcludeFromCompile("source", true));

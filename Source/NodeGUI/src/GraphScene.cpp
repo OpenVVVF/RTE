@@ -100,6 +100,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
                               const std::string& templatesDir) {
     graph_ = NodeAPI::Graph{};
     nodeIdMap_.clear();
+    loadWarning_.clear();
 
     const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir);
     if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
@@ -121,6 +122,17 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     } catch (const std::exception& e) {
         return QStringLiteral("Failed to parse graph JSON: %1").arg(QString::fromStdString(e.what()));
     }
+
+    // Collect non-fatal schema-version warnings (graph file + templates).
+    QStringList warnings;
+    const auto graphSchema = NodeAPI::CheckGraphSchema(*graphText);
+    if (graphSchema.status != NodeAPI::SchemaStatus::kCurrent) {
+        warnings.push_back(QString::fromStdString(graphSchema.warning));
+    }
+    for (const auto& warning : templatesResult.warnings) {
+        warnings.push_back(QString::fromStdString(warning));
+    }
+    loadWarning_ = warnings.join(QStringLiteral("\n"));
 
     templatesDir_ = templatesDir;
     RebuildScene();
@@ -144,6 +156,7 @@ QString GraphScene::NewGraph() {
 
 QString GraphScene::LoadTemplates(const std::string& templatesDir) {
     graph_ = NodeAPI::Graph{};
+    loadWarning_.clear();
 
     const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir);
     if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
@@ -154,6 +167,12 @@ QString GraphScene::LoadTemplates(const std::string& templatesDir) {
         }
         return QString::fromStdString(message.str());
     }
+
+    QStringList warnings;
+    for (const auto& warning : templatesResult.warnings) {
+        warnings.push_back(QString::fromStdString(warning));
+    }
+    loadWarning_ = warnings.join(QStringLiteral("\n"));
 
     templatesDir_ = templatesDir;
     RebuildScene();

@@ -282,6 +282,14 @@ bool Emitter::Run(const EmitterOptions& options) const {
         logger_.Info("Loaded " + std::to_string(templateResult.typesLoaded) +
                      " template(s) from " + std::to_string(templateResult.filesLoaded) +
                      " folder(s)");
+        for (const auto& warning : templateResult.warnings) {
+            logger_.Warning(warning);
+        }
+    }
+
+    const auto graphSchema = NodeAPI::CheckGraphSchema(jsonText);
+    if (graphSchema.status != NodeAPI::SchemaStatus::kCurrent) {
+        logger_.Warning(graphSchema.warning);
     }
 
     try {

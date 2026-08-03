@@ -233,8 +233,39 @@ Bridge BridgeFromJson(const json& j) {
 
 }  // namespace
 
+SchemaCheck CheckSchemaVersion(int fileVersion, int currentVersion, const char* kind) {
+    SchemaCheck check;
+    if (fileVersion <= 0 || fileVersion == currentVersion) {
+        return check;  // legacy (pre-versioning) or current: nothing to say.
+    }
+    if (fileVersion < currentVersion) {
+        check.status = SchemaStatus::kOlder;
+        check.warning = "This " + std::string(kind) + " was saved with schema v"
+                        + std::to_string(fileVersion) + " (current v"
+                        + std::to_string(currentVersion)
+                        + "). It still loads, and will be upgraded the next time it is saved.";
+    } else {
+        check.status = SchemaStatus::kNewer;
+        check.warning = "This " + std::string(kind) + " was saved with a NEWER schema v"
+                        + std::to_string(fileVersion) + " than this build supports (v"
+                        + std::to_string(currentVersion)
+                        + "). Some data may be missing or misread.";
+    }
+    return check;
+}
+
+SchemaCheck CheckGraphSchema(std::string_view jsonText) {
+    try {
+        const json j = json::parse(jsonText);
+        return CheckSchemaVersion(j.value("schemaVersion", 0), kGraphSchemaVersion, "graph");
+    } catch (...) {
+        return SchemaCheck{};
+    }
+}
+
 std::string SaveToJson(const Graph& graph) {
     json j;
+    j["schemaVersion"] = kGraphSchemaVersion;
     j["name"] = graph.GetName();
     j["nodeTypes"] = json::array();
     j["nodes"] = json::array();

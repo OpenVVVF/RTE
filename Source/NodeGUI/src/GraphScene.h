@@ -48,6 +48,10 @@ public:
     // string on success.
     QString LoadTemplates(const std::string& templatesDir);
 
+    // Non-fatal schema-version warnings from the most recent LoadGraph /
+    // LoadTemplates call (empty when everything matched this build).
+    QString LoadWarning() const { return loadWarning_; }
+
     QtNodes::BasicGraphicsScene* Scene() const { return scene_.get(); }
 
     NodeGraphModel* Model() const { return model_.get(); }
@@ -194,6 +198,7 @@ public:
     std::unique_ptr<NodeGraphModel> model_;
     std::unique_ptr<QtNodes::BasicGraphicsScene> scene_;
     std::string templatesDir_;
+    QString loadWarning_;
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;
