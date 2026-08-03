@@ -13,6 +13,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -47,6 +48,10 @@ public:
     // string on success.
     QString LoadTemplates(const std::string& templatesDir);
 
+    // Non-fatal schema-version warnings from the most recent LoadGraph /
+    // LoadTemplates call (empty when everything matched this build).
+    QString LoadWarning() const { return loadWarning_; }
+
     QtNodes::BasicGraphicsScene* Scene() const { return scene_.get(); }
 
     NodeGraphModel* Model() const { return model_.get(); }
@@ -60,6 +65,15 @@ public:
     // Write the current graph (including any moved node positions) to disk.
     // Returns an empty string on success, otherwise an error message.
     QString SaveGraph(const std::string& path) const;
+
+    // Serialize/restore the complete live graph for application-level
+    // Undo/Redo. Snapshot synchronizes manual node movements first.
+    std::string Snapshot();
+    QString RestoreSnapshot(const std::string& json);
+
+    // Invoked after a user-visible graph mutation has fully reached the
+    // NodeAPI model.
+    void SetChangeCallback(std::function<void()> callback);
 
     // Instantiates a node of the given type at the given scene position.
     // When requestedId is non-empty it is used as the instance id (must be
@@ -92,8 +106,29 @@ public:
     // message.
     QString RenameNode(QtNodes::NodeId qtId, const std::string& newId);
 
+    // Sets a node's exclude-from-compile flag and greys/restores the node's
+    // rendering to match. Returns an empty string on success.
+    QString SetNodeExcluded(QtNodes::NodeId qtId, bool exclude);
+
+    // Sets a node's exclude-from-compile-and-children flag: the node and its
+    // whole downstream chain are excluded. Returns an empty string on success.
+    QString SetNodeExcludedRecursive(QtNodes::NodeId qtId, bool exclude);
+
+    // If the node is excluded because a recursive-flagged ancestor excludes
+    // it, returns that ancestor's id; empty string otherwise.
+    std::string ExclusionParent(const std::string& nodeId) const;
+
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
+
+private:
+    // Applies the greyed (excluded) or normal style to a node.
+    void ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude);
+
+    // Recomputes the effective exclusion set (direct flags + downstream
+    // chains), refreshes node visuals for nodes whose state changed, and
+    // updates the model's painter cache.
+    void RefreshExclusionVisuals();
 
 private:
     struct Adjacency {
@@ -134,6 +169,7 @@ private:
     void CreateBridges();
     // Rebuilds model and scene from graph_ (after load/new).
     void RebuildScene();
+    void NotifyChanged();
 
     // Visual domain grouping: colored outline + label per timing domain.
     void CreateDomainOutlines();
@@ -144,6 +180,15 @@ public:
     // Public so the scene event filter can call it during node drags.
     void UpdateDomainOutlines();
 
+    // Domain group interaction used by GraphView. A domain is activated by
+    // double-clicking its outline/label or empty interior, then its background
+    // can be dragged to move every member node together.
+    bool SelectDomainAt(const QPointF& scenePos);
+    bool BeginSelectedDomainDrag(const QPointF& scenePos);
+    void MoveSelectedDomain(const QPointF& delta);
+    void EndSelectedDomainDrag();
+    void ClearDomainSelection();
+
     QtNodes::PortIndex FindPortIndex(const std::string& nodeId,
                                      const std::string& portName,
                                      QtNodes::PortType portType) const;
@@ -153,6 +198,7 @@ public:
     std::unique_ptr<NodeGraphModel> model_;
     std::unique_ptr<QtNodes::BasicGraphicsScene> scene_;
     std::string templatesDir_;
+    QString loadWarning_;
 
     // Map NodeAPI node id -> QtNodes NodeId.
     std::map<std::string, QtNodes::NodeId> nodeIdMap_;
@@ -166,6 +212,10 @@ public:
     // full geometry system on every mouse-move event.
     std::unordered_map<QtNodes::NodeId, QSize> nodeSizeCache_;
 
+    // Effective exclusion state from the last RefreshExclusionVisuals() pass.
+    std::set<std::string> effectiveExcluded_;
+    std::map<std::string, std::string> exclusionParents_;
+
     // Event filter that keeps domain outlines synced while dragging nodes.
     std::unique_ptr<QObject> sceneEventFilter_;
 
@@ -175,7 +225,13 @@ public:
         QColor color;
     };
     std::map<std::string, DomainVisuals> domainVisuals_;
+    std::string selectedDomain_;
+    bool selectedDomainMoved_ = false;
     std::vector<QColor> domainColors_;
+    std::function<void()> changeCallback_;
+
+    bool PointHitsGraphContent(const QPointF& scenePos) const;
+    void UpdateDomainSelectionStyle();
 };
 
 }  // namespace NodeGUI

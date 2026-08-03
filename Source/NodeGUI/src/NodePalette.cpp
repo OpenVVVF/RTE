@@ -40,7 +40,16 @@ void NodePalette::SetNodeTypes(const std::vector<NodeAPI::NodeType>& nodeTypes) 
                                     : QString::fromStdString(nodeType.displayName);
         auto* item = new QTreeWidgetItem(parent, {display});
         item->setData(0, Qt::UserRole, QString::fromStdString(nodeType.id));
-        item->setToolTip(0, QString::fromStdString(nodeType.id));
+        QString toolTip =
+            QStringLiteral("<b>%1</b>").arg(display.toHtmlEscaped());
+        if (!nodeType.description.empty()) {
+            toolTip += QStringLiteral("<br>%1")
+                           .arg(QString::fromStdString(nodeType.description)
+                                    .toHtmlEscaped());
+        }
+        toolTip += QStringLiteral("<br><span style=\"color:#999\">%1</span>")
+                       .arg(QString::fromStdString(nodeType.id).toHtmlEscaped());
+        item->setToolTip(0, toolTip);
         item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
     }
 

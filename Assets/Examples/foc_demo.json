@@ -735,7 +735,7 @@
       "defaultName": "Mux",
       "displayName": "Mux",
       "domain": "",
-      "id": "math.mux",
+      "id": "Logic.Mux",
       "inlineCode": "Out = Sel ? A : B;\n",
       "inputPorts": [
         {
@@ -791,7 +791,7 @@
       "defaultName": "Park",
       "displayName": "Park Transform",
       "domain": "",
-      "id": "math.park",
+      "id": "Transforms.Park",
       "inlineCode": "const float cos_theta = cosf(Theta);\nconst float sin_theta = sinf(Theta);\nI_D = I_Alpha * cos_theta + I_Beta * sin_theta;\nI_Q = -I_Alpha * sin_theta + I_Beta * cos_theta;\n",
       "inputPorts": [
         {
@@ -857,7 +857,7 @@
       "defaultName": "Pi",
       "displayName": "PI Controller (Current)",
       "domain": "",
-      "id": "control.pi_current",
+      "id": "Custom.PiCurrent",
       "inlineCode": "const float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage, matching the base\n * image's VectorPIController convention: max = Vdc * 0.5 * MaxModulation. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
       "inputPorts": [
         {
@@ -940,7 +940,7 @@
       "defaultName": "Var",
       "displayName": "Var (Float)",
       "domain": "",
-      "id": "var.float",
+      "id": "Custom.VarFloat",
       "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n",
       "inputPorts": [
         {
@@ -1003,7 +1003,7 @@
       "defaultName": "PwmOut",
       "displayName": "Set PWM Duty Cycles",
       "domain": "tim_isr",
-      "id": "hw.pwm.set_duty",
+      "id": "Actuators.PwmOut",
       "inlineCode": "platform_pwm_set(Duty_A, Duty_B, Duty_C);\n",
       "inputPorts": [
         {
@@ -1048,7 +1048,7 @@
       "defaultName": "VdcSense",
       "displayName": "DC Link Voltage",
       "domain": "",
-      "id": "hw.dc_link_voltage",
+      "id": "Sensors.DcLinkVoltage",
       "inlineCode": "V_Dc = rte::Volts(platform_get_dc_link_voltage());\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -1073,7 +1073,7 @@
       "defaultName": "Dout",
       "displayName": "Digital Out",
       "domain": "",
-      "id": "hw.digital_out",
+      "id": "Actuators.DigitalOut",
       "inlineCode": "/* User digital output. Pin 1..4 -> USER_DOUT_1..4, 5 -> green LED,\n * 6 -> orange LED (see platform_api.h). */\nplatform_digital_write(static_cast<uint8_t>(Pin), In);\n",
       "inputPorts": [
         {
@@ -1105,7 +1105,7 @@
       "defaultName": "VoltSense",
       "displayName": "Phase Voltages",
       "domain": "",
-      "id": "hw.phase_voltages",
+      "id": "Sensors.PhaseVoltages",
       "inlineCode": "/* All voltage sense channels from the MAX22530 isolated ADC, filtered. */\nV_U  = rte::Volts(platform_phase_voltage_u());\nV_V  = rte::Volts(platform_phase_voltage_v());\nV_W  = rte::Volts(platform_phase_voltage_w());\nV_Dc = rte::Volts(platform_get_dc_link_voltage());\n",
       "inputPorts": [],
       "isEntryPoint": false,
@@ -1160,7 +1160,7 @@
       "defaultName": "CanRx",
       "displayName": "CAN RX",
       "domain": "",
-      "id": "hw.can_rx",
+      "id": "Sensors.CanRx",
       "inlineCode": "/* CAN receive mailbox for Id on Bus (1=A/FDCAN1, 2=B/FDCAN2).\n * Fresh is true for one step when a new frame arrived; Dlc/bytes hold the\n * latest payload otherwise. */\nuint8_t buf[8] = {};\nuint32_t seq = 0;\nconst int dlc = platform_can_rx(static_cast<uint8_t>(Bus),\n                                static_cast<uint32_t>(Id), buf, &seq);\nFresh = (seq != LastSeq);\nLastSeq = static_cast<float>(seq);\nif (dlc > 0) {\n    Dlc = static_cast<float>(dlc);\n    D0 = buf[0]; D1 = buf[1]; D2 = buf[2]; D3 = buf[3];\n    D4 = buf[4]; D5 = buf[5]; D6 = buf[6]; D7 = buf[7];\n} else {\n    Dlc = 0.0f;\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -1292,7 +1292,7 @@
       "defaultName": "Clarke",
       "displayName": "Clarke Transform",
       "domain": "",
-      "id": "math.clarke",
+      "id": "Transforms.Clarke",
       "inlineCode": "I_Alpha = I_A;\nI_Beta = (I_B - I_C) * 0.57735026919f;\n",
       "inputPorts": [
         {
@@ -1414,7 +1414,7 @@
       "defaultName": "EncoderDecode",
       "displayName": "Encoder Decoder",
       "domain": "",
-      "id": "hw.encoder.decode",
+      "id": "Custom.EncoderDecode",
       "inlineCode": "const float counts_per_rad = CountsPerRev / 6.28318530718f;\nconst float dt_s = SampleTime;\n\nTheta = static_cast<float>(RawCounts) / counts_per_rad;\n\nconst float delta = static_cast<float>(RawCounts) - prev_counts;\nOmega = rte::RadiansPerSecond(delta / (counts_per_rad * dt_s));\nprev_counts = static_cast<float>(RawCounts);\n",
       "inputPorts": [
         {
@@ -1472,7 +1472,7 @@
       "defaultName": "SinCos",
       "displayName": "Sin/Cos",
       "domain": "",
-      "id": "math.sincos",
+      "id": "Transforms.SinCos",
       "inlineCode": "SinTheta = sinf(Theta);\nCosTheta = cosf(Theta);\n",
       "inputPorts": [
         {
@@ -1518,7 +1518,7 @@
       "defaultName": "Temps",
       "displayName": "Temperatures",
       "domain": "",
-      "id": "hw.temperatures",
+      "id": "Sensors.Temperatures",
       "inlineCode": "/* Motor + board temperatures from the base-image ApplicationSensors driver.\n * NAN while a channel is disabled or out of range (open/short). */\nT_Motor = rte::Celsius(platform_get_motor_temperature());\nT_Inv1  = rte::Celsius(platform_get_inverter_temperature(0));\nT_Inv2  = rte::Celsius(platform_get_inverter_temperature(1));\nT_Inv3  = rte::Celsius(platform_get_inverter_temperature(2));\n",
       "inputPorts": [],
       "isEntryPoint": false,
@@ -1573,7 +1573,7 @@
       "defaultName": "Gate",
       "displayName": "Gate",
       "domain": "",
-      "id": "control.gate",
+      "id": "Logic.Gate",
       "inlineCode": "Out = Sel ? Val : rte::Amperes(0.0f);\n",
       "inputPorts": [
         {
@@ -1619,7 +1619,7 @@
       "defaultName": "Din",
       "displayName": "Digital In",
       "domain": "",
-      "id": "hw.digital_in",
+      "id": "Sensors.DigitalIn",
       "inlineCode": "/* User digital input. Pin 1..8 -> USER_DIN_1..8 (see platform_api.h). */\nOut = platform_digital_read(static_cast<uint8_t>(Pin));\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -1686,7 +1686,7 @@
       "defaultName": "Log",
       "displayName": "Telemetry Log",
       "domain": "",
-      "id": "app.telemetry_log",
+      "id": "Debug.TelemetryLog",
       "inlineCode": "platform_telemetry_log_f32(Key, Value);\n",
       "inputPorts": [
         {
@@ -1718,7 +1718,7 @@
       "defaultName": "InvClarke",
       "displayName": "Inverse Clarke Transform",
       "domain": "",
-      "id": "math.inverse_clarke",
+      "id": "Transforms.InverseClarke",
       "inlineCode": "V_A = V_Alpha;\nV_B = -0.5f * V_Alpha + 0.86602540378f * V_Beta;\nV_C = -0.5f * V_Alpha - 0.86602540378f * V_Beta;\n",
       "inputPorts": [
         {
@@ -1784,7 +1784,7 @@
       "defaultName": "Var",
       "displayName": "Var (Bool)",
       "domain": "",
-      "id": "var.bool",
+      "id": "Values.VarBool",
       "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n",
       "inputPorts": [
         {
@@ -1847,7 +1847,7 @@
       "defaultName": "Throttle",
       "displayName": "Throttle",
       "domain": "",
-      "id": "hw.throttle",
+      "id": "Sensors.Throttle",
       "inlineCode": "/* Dual throttle channels, normalized [0..1] by the base-image driver\n * (KV calibration Hw.ThrA/B.MinV/MaxV).  Both read 0 and Valid is false\n * while the channels disagree beyond the plausibility tolerance. */\nA = platform_get_throttle_a();\nB = platform_get_throttle_b();\nValid = platform_get_throttle_valid();\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -1892,7 +1892,7 @@
       "defaultName": "ElecAngle",
       "displayName": "Encoder Electrical Angle",
       "domain": "",
-      "id": "math.encoder_elec_angle",
+      "id": "Transforms.ElecAngle",
       "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(ThetaMech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset (elec deg) + sign * encoder_angle * (Poles / 2).\n * Matches the base-image FocController convention. */\nconstexpr float DEG_TO_RAD = 0.01745329251f;\nfloat elec = OffsetDeg * DEG_TO_RAD + EncoderSign * theta * Poles * 0.5f;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\nThetaElec = elec;\n",
       "inputPorts": [
         {
@@ -1975,7 +1975,7 @@
       "defaultName": "Var",
       "displayName": "Var (Current)",
       "domain": "",
-      "id": "var.current",
+      "id": "Custom.VarCurrent",
       "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n",
       "inputPorts": [
         {
@@ -2038,7 +2038,7 @@
       "defaultName": "Currents",
       "displayName": "Phase Current Reader",
       "domain": "app_loop",
-      "id": "hw.phase_current_reader",
+      "id": "Custom.PhaseCurrentsReader",
       "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    I_U = rte::Amperes(iu_f);\n    I_V = rte::Amperes(iv_f);\n    I_W = rte::Amperes(iw_f);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -2219,7 +2219,7 @@
       "defaultName": "Gt",
       "displayName": "Greater Than",
       "domain": "",
-      "id": "math.greater",
+      "id": "Logic.Greater",
       "inlineCode": "Out = (A > B);\n",
       "inputPorts": [
         {
@@ -2272,7 +2272,7 @@
       "defaultName": "Svpwm",
       "displayName": "Space Vector PWM",
       "domain": "",
-      "id": "math.svpwm",
+      "id": "Transforms.Svpwm",
       "inlineCode": "/* Clamp the alpha/beta voltage vector to the linear SVM limit.\n * The maximum line-to-neutral voltage magnitude for linear modulation is\n * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation\n * boundary. */\nconst float sqrt3 = 1.7320508075688772f;\nconst float v_max_linear = (V_Dc.in(au::volts) / sqrt3) * 0.95f;\nfloat valpha = V_Alpha.in(au::volts);\nfloat vbeta  = V_Beta.in(au::volts);\nconst float v_albe_sq = valpha * valpha + vbeta * vbeta;\nif (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n    const float scale = v_max_linear / sqrtf(v_albe_sq);\n    valpha *= scale;\n    vbeta  *= scale;\n}\n\n/* Inverse Clarke: alpha/beta -> A/B/C. */\nconst float v_a = valpha / V_Dc.in(au::volts);\nconst float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);\nconst float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\n/* Convert to percent duty and clamp.  Linear SVM stays roughly in\n * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\nfloat duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\nfloat duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\nfloat duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\nif (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\nif (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\nif (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\nDuty_A = duty_a_pct;\nDuty_B = duty_b_pct;\nDuty_C = duty_c_pct;\n",
       "inputPorts": [
         {
@@ -2348,7 +2348,7 @@
       "defaultName": "Slew",
       "displayName": "Slew Rate Limiter",
       "domain": "",
-      "id": "control.slew",
+      "id": "Control.Slew",
       "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In.in(au::amperes);\nconst float step = Rate * Dt;\nfloat v = Value.in(au::amperes);\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = rte::Amperes(v);\nOut = Value;\n",
       "inputPorts": [
         {
@@ -2444,7 +2444,7 @@
       "defaultName": "ForcedAngle",
       "displayName": "Forced Electrical Angle",
       "domain": "",
-      "id": "math.forced_angle",
+      "id": "Transforms.ForcedAngle",
       "inlineCode": "Angle += RateRadPerS * Dt;\nif (Angle >= 6.28318530718f) Angle -= 6.28318530718f;\nThetaElec = Angle;\n",
       "inputPorts": [],
       "isEntryPoint": false,
@@ -2486,7 +2486,7 @@
       "defaultName": "CanTx",
       "displayName": "CAN TX",
       "domain": "",
-      "id": "hw.can_tx",
+      "id": "Actuators.CanTx",
       "inlineCode": "/* CAN transmit, rate-limited by wall clock: sends when 1000/Rate ms have\n * elapsed since the previous send (Rate <= 0 sends every step).\n * D0..D7 = payload bytes (unconnected = 0), Dlc = how many of the 8 to\n * send, Ext: 0 std / 1 ext. */\nconst uint32_t period_ms = (Rate > 0.0f) ? static_cast<uint32_t>(1000.0f / Rate) : 0U;\nconst uint32_t now_ms = platform_millis();\nif (period_ms == 0U || (now_ms - static_cast<uint32_t>(LastMs)) >= period_ms) {\n    LastMs = static_cast<float>(now_ms);\n    const uint8_t b[8] = {\n        static_cast<uint8_t>(D0), static_cast<uint8_t>(D1),\n        static_cast<uint8_t>(D2), static_cast<uint8_t>(D3),\n        static_cast<uint8_t>(D4), static_cast<uint8_t>(D5),\n        static_cast<uint8_t>(D6), static_cast<uint8_t>(D7),\n    };\n    uint8_t n = static_cast<uint8_t>(Dlc);\n    if (n > 8) n = 8;\n    platform_can_send(static_cast<uint8_t>(Bus), static_cast<uint32_t>(Id),\n                      Ext > 0.5f, b, n);\n}\n",
       "inputPorts": [
         {
@@ -2653,7 +2653,7 @@
       "defaultName": "IRef",
       "displayName": "Constant Current",
       "domain": "",
-      "id": "constant.current",
+      "id": "Custom.ConstantCurrent",
       "inlineCode": "Value = Amps;\n",
       "inputPorts": [
         {
@@ -2696,7 +2696,7 @@
       "defaultName": "InvPark",
       "displayName": "Inverse Park Transform",
       "domain": "",
-      "id": "math.inverse_park",
+      "id": "Transforms.InversePark",
       "inlineCode": "const float cos_theta = cosf(Theta);\nconst float sin_theta = sinf(Theta);\nV_Alpha = V_D * cos_theta - V_Q * sin_theta;\nV_Beta = V_D * sin_theta + V_Q * cos_theta;\n",
       "inputPorts": [
         {
@@ -2762,7 +2762,7 @@
       "defaultName": "",
       "displayName": "Phase Currents (ISR)",
       "domain": "adc_isr",
-      "id": "hw.adc.phase_currents",
+      "id": "Custom.PhaseCurrentsBurst",
       "inlineCode": "/* Micro-burst phase-current sampling:\n *   ADC1 injected: [U_sig, V_sig, U_sig, V_sig] (ranks 1..4)\n *   ADC2 injected: [U_ref, V_ref, U_ref, V_ref] (ranks 1..4)\n * Average the two points per phase for a cleaner sample. */\nfloat iu0 = 0.0f, iv0 = 0.0f, iu1 = 0.0f, iv1 = 0.0f;\nuint32_t burst_time_us = 0;\nif (platform_adc_get_burst_sample(&iu0, &iv0, &iu1, &iv1, &burst_time_us)) {\n    const float iu_avg = 0.5f * (iu0 + iu1);\n    const float iv_avg = 0.5f * (iv0 + iv1);\n\n    /* W is computed from the two measured phases (three-wire balanced load). */\n    const float iw_avg = -(iu_avg + iv_avg);\n\n    /* The phase-current sensors on this hardware are wired with inverted\n     * polarity relative to the FOC convention.  Negate all three so\n     * downstream transforms see the correct sign. */\n    I_A = rte::Amperes(-iu_avg);\n    I_B = rte::Amperes(-iv_avg);\n    I_C = rte::Amperes(-iw_avg);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -2849,7 +2849,7 @@
       "defaultName": "CurrentLog",
       "displayName": "Telemetry Current Sink",
       "domain": "",
-      "id": "app.telemetry_current_sink",
+      "id": "Debug.TelemetryCurrentSink",
       "inlineCode": "platform_telemetry_log_f32(\"cg_iu_a\", I_A.in(au::amperes));\nplatform_telemetry_log_f32(\"cg_iv_a\", I_B.in(au::amperes));\nplatform_telemetry_log_f32(\"cg_iw_a\", I_C.in(au::amperes));\n",
       "inputPorts": [
         {
@@ -2894,7 +2894,7 @@
       "defaultName": "Encoder",
       "displayName": "Encoder Angle",
       "domain": "",
-      "id": "hw.encoder_angle",
+      "id": "Custom.EncoderAngle",
       "inlineCode": "Theta = platform_get_encoder_angle_latest() * 0.01745329251f;  // deg -> rad\n",
       "inputPorts": [],
       "isEntryPoint": true,
@@ -2919,7 +2919,7 @@
       "defaultName": "Pi",
       "displayName": "PI Controller",
       "domain": "",
-      "id": "control.pi",
+      "id": "Custom.Pi",
       "inlineCode": "const float error = Setpoint - Measurement;\nintegral += error;\nfloat raw_output = Kp * error + Ki * integral;\nif (raw_output > OutputMax) raw_output = OutputMax;\nif (raw_output < OutputMin) raw_output = OutputMin;\nOutput = raw_output;\n",
       "inputPorts": [
         {
@@ -2987,7 +2987,7 @@
       "defaultName": "Cfg",
       "displayName": "Config Value",
       "domain": "",
-      "id": "config.value",
+      "id": "Values.Config",
       "inlineCode": "Value = Cached;\n",
       "inputPorts": [],
       "isEntryPoint": false,
@@ -3064,7 +3064,7 @@
       "defaultName": "Lt",
       "displayName": "Less Than",
       "domain": "",
-      "id": "math.less",
+      "id": "Logic.Less",
       "inlineCode": "Out = (A < B);\n",
       "inputPorts": [
         {
@@ -3121,7 +3121,7 @@
         "x": 422.77777777777794,
         "y": 2389.7777777777783
       },
-      "type": "math.clarke"
+      "type": "Transforms.Clarke"
     },
     {
       "displayName": "",
@@ -3135,7 +3135,7 @@
         "x": -172.14506172839504,
         "y": 1277.9166666666667
       },
-      "type": "hw.adc.phase_currents"
+      "type": "Custom.PhaseCurrentsBurst"
     },
     {
       "displayName": "",
@@ -3150,7 +3150,7 @@
         "x": 320.0,
         "y": 2640.222222222222
       },
-      "type": "math.encoder_elec_angle"
+      "type": "Transforms.ElecAngle"
     },
     {
       "displayName": "",
@@ -3161,7 +3161,7 @@
         "x": 38.888888888888914,
         "y": 2369.3333333333335
       },
-      "type": "hw.encoder_angle"
+      "type": "Custom.EncoderAngle"
     },
     {
       "displayName": "",
@@ -3172,7 +3172,7 @@
         "x": 885.3333333333333,
         "y": 980.6666666666663
       },
-      "type": "hw.encoder_angle"
+      "type": "Custom.EncoderAngle"
     },
     {
       "displayName": "",
@@ -3185,7 +3185,7 @@
         "x": -225.0,
         "y": 2086.7777777777783
       },
-      "type": "constant.current"
+      "type": "Custom.ConstantCurrent"
     },
     {
       "displayName": "",
@@ -3196,7 +3196,7 @@
         "x": 1815.0548411065377,
         "y": 2777.6099965706444
       },
-      "type": "math.inverse_park"
+      "type": "Transforms.InversePark"
     },
     {
       "displayName": "",
@@ -3209,7 +3209,7 @@
         "x": -291.66666666666663,
         "y": 2273.111111111111
       },
-      "type": "constant.current"
+      "type": "Custom.ConstantCurrent"
     },
     {
       "displayName": "",
@@ -3222,7 +3222,7 @@
         "x": 2668.984567901234,
         "y": 2235.7746913580245
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3235,7 +3235,7 @@
         "x": 2655.481481481482,
         "y": 2406.1358024691353
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3248,7 +3248,7 @@
         "x": 2641.9783950617293,
         "y": 2564.9228395061727
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3261,7 +3261,7 @@
         "x": 1110.6790123456788,
         "y": 2614.484567901234
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3274,7 +3274,7 @@
         "x": 1110.6790123456788,
         "y": 2775.5221193415637
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3287,7 +3287,7 @@
         "x": 1347.6666666666667,
         "y": 369.33333333333326
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3300,7 +3300,7 @@
         "x": 1038.6666666666667,
         "y": 484.33333333333326
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3313,7 +3313,7 @@
         "x": 1038.6666666666667,
         "y": 637.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3326,7 +3326,7 @@
         "x": 1340.361111111111,
         "y": 3645.1790123456785
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3339,7 +3339,7 @@
         "x": 1347.6666666666667,
         "y": 1440.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3352,7 +3352,7 @@
         "x": 1819.9166666666667,
         "y": 2582.9969135802467
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3365,7 +3365,7 @@
         "x": 1038.6666666666667,
         "y": 790.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3376,7 +3376,7 @@
         "x": 845.8888888888887,
         "y": 2710.7777777777783
       },
-      "type": "math.park"
+      "type": "Transforms.Park"
     },
     {
       "displayName": "",
@@ -3399,7 +3399,7 @@
         "x": 1048.9506172839508,
         "y": 3542.234567901235
       },
-      "type": "control.pi_current"
+      "type": "Custom.PiCurrent"
     },
     {
       "displayName": "",
@@ -3422,7 +3422,7 @@
         "x": 1494.468621399177,
         "y": 2768.2926954732507
       },
-      "type": "control.pi_current"
+      "type": "Custom.PiCurrent"
     },
     {
       "displayName": "",
@@ -3433,7 +3433,7 @@
         "x": 2618.8302469135806,
         "y": 2721.78086419753
       },
-      "type": "hw.pwm.set_duty"
+      "type": "Actuators.PwmOut"
     },
     {
       "displayName": "",
@@ -3444,7 +3444,7 @@
         "x": 2111.058641975309,
         "y": 2795.188271604938
       },
-      "type": "math.svpwm"
+      "type": "Transforms.Svpwm"
     },
     {
       "displayName": "",
@@ -3455,7 +3455,7 @@
         "x": 872.0,
         "y": 1522.3333333333333
       },
-      "type": "hw.dc_link_voltage"
+      "type": "Sensors.DcLinkVoltage"
     },
     {
       "displayName": "",
@@ -3466,7 +3466,7 @@
         "x": 1839.9140946502052,
         "y": 2992.877057613169
       },
-      "type": "hw.dc_link_voltage"
+      "type": "Sensors.DcLinkVoltage"
     },
     {
       "displayName": "CfgEncSign",
@@ -3481,7 +3481,7 @@
         "x": -250.0,
         "y": 2710.2222222222226
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "CfgEncOffset",
@@ -3496,7 +3496,7 @@
         "x": -219.44444444444446,
         "y": 2477.888888888889
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "CfgPoles",
@@ -3511,7 +3511,7 @@
         "x": -247.22222222222223,
         "y": 2906.444444444444
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "VoltSense",
@@ -3522,7 +3522,7 @@
         "x": 3226.8003415040007,
         "y": 1631.287785472
       },
-      "type": "hw.phase_voltages"
+      "type": "Sensors.PhaseVoltages"
     },
     {
       "displayName": "LogVu",
@@ -3535,7 +3535,7 @@
         "x": 3517.640561152001,
         "y": 1626.1280051199997
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "LogVv",
@@ -3548,7 +3548,7 @@
         "x": 3512.480780799999,
         "y": 1768.8084444160008
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "LogVw",
@@ -3561,7 +3561,7 @@
         "x": 3512.480780799999,
         "y": 1921.8084444160008
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "CfgKpQ",
@@ -3576,7 +3576,7 @@
         "x": 1171.764403292181,
         "y": 2418.699588477367
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "CfgEnable",
@@ -3591,7 +3591,7 @@
         "x": 86.11111111111114,
         "y": 2098.333333333333
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "EnableCmp",
@@ -3604,7 +3604,7 @@
         "x": 445.0,
         "y": 2131.2222222222226
       },
-      "type": "math.greater"
+      "type": "Logic.Greater"
     },
     {
       "displayName": "ThrottleEnable",
@@ -3619,7 +3619,7 @@
         "x": 674.0781893004116,
         "y": 2132.8940329218112
       },
-      "type": "var.bool"
+      "type": "Values.VarBool"
     },
     {
       "displayName": "IqGate",
@@ -3630,7 +3630,7 @@
         "x": 1259.5344650205757,
         "y": 2922.0920781893005
       },
-      "type": "control.gate"
+      "type": "Logic.Gate"
     },
     {
       "displayName": "IqVar",
@@ -3645,7 +3645,7 @@
         "x": 33.33333333333334,
         "y": 3293.3333333333335
       },
-      "type": "var.current"
+      "type": "Custom.VarCurrent"
     },
     {
       "displayName": "IdVar",
@@ -3660,7 +3660,7 @@
         "x": 797.1234567901234,
         "y": 3404.746913580246
       },
-      "type": "var.current"
+      "type": "Custom.VarCurrent"
     },
     {
       "displayName": "",
@@ -3673,7 +3673,7 @@
         "x": 1055.2398933333334,
         "y": 224.7762133333336
       },
-      "type": "hw.digital_in"
+      "type": "Sensors.DigitalIn"
     },
     {
       "displayName": "",
@@ -3686,7 +3686,7 @@
         "x": 1377.666666666667,
         "y": 146.33333333333331
       },
-      "type": "hw.digital_out"
+      "type": "Actuators.DigitalOut"
     },
     {
       "displayName": "",
@@ -3697,7 +3697,7 @@
         "x": 925.3333333333333,
         "y": 1159.0000000000002
       },
-      "type": "hw.temperatures"
+      "type": "Sensors.Temperatures"
     },
     {
       "displayName": "",
@@ -3708,7 +3708,7 @@
         "x": 912.0,
         "y": 1354.6666666666667
       },
-      "type": "hw.throttle"
+      "type": "Sensors.Throttle"
     },
     {
       "displayName": "",
@@ -3721,7 +3721,7 @@
         "x": 1347.6666666666667,
         "y": 981.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3734,7 +3734,7 @@
         "x": 1347.6666666666667,
         "y": 522.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3747,7 +3747,7 @@
         "x": 1347.6666666666667,
         "y": 675.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3760,7 +3760,7 @@
         "x": 1347.6666666666667,
         "y": 828.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3773,7 +3773,7 @@
         "x": 1347.6666666666667,
         "y": 1134.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3786,7 +3786,7 @@
         "x": 1347.6666666666667,
         "y": 1287.3333333333333
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3804,7 +3804,7 @@
         "x": 475.55555555555554,
         "y": 3339.222222222222
       },
-      "type": "control.slew"
+      "type": "Control.Slew"
     },
     {
       "displayName": "",
@@ -3819,7 +3819,7 @@
         "x": 13.888888888888872,
         "y": 3447.1111111111104
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "",
@@ -3834,7 +3834,7 @@
         "x": 734.7777777777778,
         "y": 3563.771604938272
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "",
@@ -3849,7 +3849,7 @@
         "x": 745.8888888888886,
         "y": 3741.7777777777783
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "",
@@ -3864,7 +3864,7 @@
         "x": 1207.1296296296298,
         "y": 2206.8395061728397
       },
-      "type": "config.value"
+      "type": "Values.Config"
     },
     {
       "displayName": "",
@@ -3888,7 +3888,7 @@
         "x": 2967.5681822511824,
         "y": 2958.265460676726
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3912,7 +3912,7 @@
         "x": 586.757987540009,
         "y": 2931.972808070416
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3925,7 +3925,7 @@
         "x": 597.3653120713304,
         "y": 3054.209790809328
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3949,7 +3949,7 @@
         "x": 575.9935108183458,
         "y": 3121.063088229692
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -3962,7 +3962,7 @@
         "x": 591.498046775771,
         "y": 3195.484860825332
       },
-      "type": "app.telemetry_log"
+      "type": "Debug.TelemetryLog"
     }
   ]
 }

@@ -1,0 +1,30 @@
+{
+  "id": "Sensors.DigitalIn",
+  "displayName": "Digital In",
+  "defaultName": "Din",
+  "description": "Reads a boolean level from one of the platform user digital inputs.",
+  "maxInstances": 0,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "Out",
+      "description": "Current logic level of the selected digital input.",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Pin": {
+      "description": "User digital input selector in the range 1 through 8.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

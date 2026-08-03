@@ -72,18 +72,147 @@
           "dtype": "f32"
         }
       }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "PI Controller",
+      "domain": "",
+      "id": "Control.Pi",
+      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
+      "inputPorts": [
+        {
+          "name": "Setpoint",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Measurement",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "name": "Output",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Kp": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Ki": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Dt": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Integral": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "OutputMax": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "OutputMin": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "AwGain": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "displayName": "Phase Currents",
+      "domain": "",
+      "id": "Sensors.PhaseCurrents",
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "name": "I_A",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "I_B",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "I_C",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "InvertPolarity": {
+          "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
     }
   ],
   "nodes": [
     {
       "id": "currents",
-      "type": "hw.adc.phase_currents",
+      "type": "Sensors.PhaseCurrents",
       "domain": "adc_isr",
       "position": {
         "x": 0,
         "y": 0
       },
       "parameters": {
+        "InvertPolarity": "1.0",
         "OffsetU": "0.0",
         "OffsetV": "0.0",
         "offset_w_12bit": "0.0",
@@ -92,7 +221,7 @@
     },
     {
       "id": "clarke",
-      "type": "math.clarke",
+      "type": "Transforms.Clarke",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -102,7 +231,7 @@
     },
     {
       "id": "park",
-      "type": "math.park",
+      "type": "Transforms.Park",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -122,7 +251,7 @@
     },
     {
       "id": "pi_d",
-      "type": "control.pi_current",
+      "type": "Control.Pi",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -138,7 +267,7 @@
     },
     {
       "id": "pi_q",
-      "type": "control.pi_current",
+      "type": "Control.Pi",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -166,7 +295,7 @@
     },
     {
       "id": "inverse_park",
-      "type": "math.inverse_park",
+      "type": "Transforms.InversePark",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -176,7 +305,7 @@
     },
     {
       "id": "inverse_clarke",
-      "type": "math.inverse_clarke",
+      "type": "Transforms.InverseClarke",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -198,7 +327,7 @@
     },
     {
       "id": "svpwm",
-      "type": "math.svpwm",
+      "type": "Transforms.Svpwm",
       "domain": "tim_isr",
       "position": {
         "x": 0,
@@ -208,7 +337,7 @@
     },
     {
       "id": "pwm",
-      "type": "hw.pwm.set_duty",
+      "type": "Actuators.PwmOut",
       "domain": "tim_isr",
       "position": {
         "x": 0,

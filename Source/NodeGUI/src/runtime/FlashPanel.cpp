@@ -1,6 +1,6 @@
 #include "FlashPanel.h"
 
-#include "HttpApiServer.h"
+#include "RemoteFlashBackend.h"
 #include "RuntimeController.h"
 
 #include <QCheckBox>
@@ -10,24 +10,23 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTimer>
 #include <QVBoxLayout>
 
 namespace NodeGUI::runtime {
 
-FlashPanel::FlashPanel(FirmwareUpdater* updater,
+FlashPanel::FlashPanel(FlashBackend* backend,
                        RuntimeController* controller,
-                       HttpApiServer* httpServer,
                        QWidget* parent)
     : QWidget(parent)
-    , updater_(updater)
-    , controller_(controller)
-    , httpServer_(httpServer) {
+    , backend_(backend)
+    , controller_(controller) {
     auto* layout = new QVBoxLayout(this);
 
-    portLabel_ = new QLabel(QStringLiteral("Port: %1").arg(controller_->Port()), this);
-    layout->addWidget(portLabel_);
+    serverLabel_ = new QLabel(this);
+    layout->addWidget(serverLabel_);
 
     auto* pathRow = new QHBoxLayout;
     pathRow->addWidget(new QLabel(QStringLiteral("Firmware path"), this));
@@ -59,36 +58,20 @@ FlashPanel::FlashPanel(FirmwareUpdater* updater,
     manualHint_->setVisible(false);
     layout->addWidget(manualHint_);
 
-    auto* line1 = new QFrame(this);
-    line1->setFrameShape(QFrame::HLine);
-    line1->setFrameShadow(QFrame::Sunken);
-    layout->addWidget(line1);
-
-    auto* httpRow = new QHBoxLayout;
-    httpRow->addWidget(new QLabel(QStringLiteral("HTTP port"), this));
-    httpPortEdit_ = new QLineEdit(QStringLiteral("18080"), this);
-    httpPortEdit_->setMaximumWidth(90);
-    httpRow->addWidget(httpPortEdit_);
-    httpButton_ = new QPushButton(this);
-    connect(httpButton_, &QPushButton::clicked, this, &FlashPanel::OnHttpToggle);
-    httpRow->addWidget(httpButton_);
-    httpStatus_ = new QLabel(this);
-    httpRow->addWidget(httpStatus_);
-    httpRow->addStretch(1);
-    layout->addLayout(httpRow);
-
-    auto* httpHint = new QLabel(
-        QStringLiteral("POST the raw .bin body to /flash to queue an update."),
-        this);
-    layout->addWidget(httpHint);
-
-    auto* line2 = new QFrame(this);
-    line2->setFrameShape(QFrame::HLine);
-    line2->setFrameShadow(QFrame::Sunken);
-    layout->addWidget(line2);
+    auto* line = new QFrame(this);
+    line->setFrameShape(QFrame::HLine);
+    line->setFrameShadow(QFrame::Sunken);
+    layout->addWidget(line);
 
     stateLabel_ = new QLabel(this);
     layout->addWidget(stateLabel_);
+
+    progressBar_ = new QProgressBar(this);
+    progressBar_->setRange(0, 100);
+    progressBar_->setTextVisible(true);
+    progressBar_->hide();  // shown while a flash job runs
+    layout->addWidget(progressBar_);
+
     errorLabel_ = new QLabel(this);
     errorLabel_->setStyleSheet(QStringLiteral("color: #ef5350;"));
     errorLabel_->setWordWrap(true);
@@ -113,12 +96,8 @@ void FlashPanel::OnFlashClicked() {
         return;
     }
 
-    FlashJob job;
-    job.firmware_path = path.toStdString();
-    job.port = controller_->Port().toStdString();
-    job.auto_gpio = autoGpioCheck_->isChecked();
-    if (!updater_->queueFlash(job, false)) {
-        errorLabel_->setText(QStringLiteral("Error: a flash job is already running"));
+    if (!backend_->QueueFlash(path.toStdString(), autoGpioCheck_->isChecked())) {
+        // The concrete reason surfaces through Status() on the next poll.
     }
     shownLogLines_ = 0;
     logView_->clear();
@@ -133,35 +112,56 @@ void FlashPanel::OnBrowse() {
     }
 }
 
-void FlashPanel::OnHttpToggle() {
-    if (httpServer_->isRunning()) {
-        httpServer_->stop();
-    } else {
-        httpServer_->start(httpPortEdit_->text().trimmed().toStdString());
-    }
-    PollStatus();
-}
-
 void FlashPanel::PollStatus() {
-    const FlashStatus status = updater_->status();
+    const FlashBackendStatus status = backend_->Status();
 
-    const char* stateText = FirmwareUpdater::stateString(status.state);
+    if (auto* remote = dynamic_cast<RemoteFlashBackend*>(backend_)) {
+        serverLabel_->setText(QStringLiteral("Server: %1:%2")
+                                  .arg(remote->Host())
+                                  .arg(remote->HttpPort()));
+    }
+
     QString color = QStringLiteral("#e0e0e0");
-    if (status.state == FlashState::Done) {
+    QString stateText = QString::fromStdString(status.state);
+    if (!status.reachable) {
+        color = QStringLiteral("#ef5350");
+        stateText = QStringLiteral("Unreachable");
+    } else if (status.state == "Done") {
         color = QStringLiteral("#66bb6a");
-    } else if (status.state == FlashState::Failed) {
+    } else if (status.state == "Failed") {
         color = QStringLiteral("#ef5350");
     } else if (status.busy) {
         color = QStringLiteral("#ffb74d");
     }
     stateLabel_->setText(QStringLiteral("State: <span style=\"color:%1\">%2</span>")
-                             .arg(color, QString::fromUtf8(stateText)));
-    errorLabel_->setText(status.last_error.empty()
+                             .arg(color, stateText));
+    errorLabel_->setText(status.lastError.empty()
                              ? QString()
                              : QStringLiteral("Error: %1").arg(
-                                   QString::fromStdString(status.last_error)));
+                                   QString::fromStdString(status.lastError)));
 
     flashButton_->setEnabled(!status.busy);
+
+    // Progress bar: determinate once the server reports percentages (flash /
+    // verify phases), busy-bounce during drains and GPIO waits, hidden when
+    // idle.
+    if (status.busy) {
+        progressBar_->show();
+        if (status.progress >= 0) {
+            progressBar_->setRange(0, 100);
+            progressBar_->setValue(status.progress);
+        } else {
+            progressBar_->setRange(0, 0);  // indeterminate
+        }
+    } else {
+        if (status.state == "Done") {
+            progressBar_->setRange(0, 100);
+            progressBar_->setValue(100);
+        } else {
+            progressBar_->hide();
+            progressBar_->setValue(0);
+        }
+    }
 
     if (status.log.size() < shownLogLines_) {
         shownLogLines_ = 0;
@@ -171,17 +171,6 @@ void FlashPanel::PollStatus() {
         logView_->appendPlainText(QString::fromStdString(status.log[i]));
     }
     shownLogLines_ = status.log.size();
-
-    if (httpServer_->isRunning()) {
-        httpButton_->setText(QStringLiteral("Stop Server"));
-        httpStatus_->setText(
-            QStringLiteral("<span style=\"color:#66bb6a\">Running on "
-                           "http://localhost:%1/flash</span>")
-                .arg(httpServer_->actualPort()));
-    } else {
-        httpButton_->setText(QStringLiteral("Start Server"));
-        httpStatus_->setText(QString());
-    }
 }
 
 }  // namespace NodeGUI::runtime

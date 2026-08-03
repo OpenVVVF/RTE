@@ -1,0 +1,30 @@
+{
+  "id": "Actuators.DigitalOut",
+  "displayName": "Digital Out",
+  "defaultName": "Dout",
+  "description": "Writes a boolean signal to a user digital output or onboard status LED.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "In",
+      "description": "Logic level to write to the selected output.",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [],
+  "parameterTypes": {
+    "Pin": {
+      "description": "Output selector: 1-4 are user digital outputs, 5 is the green LED, and 6 is the orange LED.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

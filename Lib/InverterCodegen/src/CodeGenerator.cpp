@@ -248,7 +248,7 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
 // string key. They must declare a string parameter "Key" and a scalar parameter
 // "Cached" (the live RAM state backing the node's output).
 bool IsConfigNodeType(const NodeAPI::NodeType& nodeType) {
-    return nodeType.id.rfind("config.", 0) == 0;
+    return nodeType.id.rfind("config.", 0) == 0 || nodeType.id == "Values.Config";
 }
 
 // Returns the config key, or nullopt when the node has no valid non-empty
@@ -302,16 +302,69 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
     return "";
 }
 
-// Var nodes (type id "var.*") hold machine-owned RAM state in their "Stored"
-// parameter; a runtime registry lets the shell adjust them by node id.
+/* Unit injection (mirror of ExtractionSuffix): when a physical-quantity
+ * scalar input binds from a dimensionless scalar source, the emitted
+ * expression must be wrapped in the input's unit.  Returns the wrapper
+ * function name (e.g. "rte::Amperes") or "" when no injection applies. */
+std::string InjectionWrapper(const NodeAPI::Graph& graph,
+                             const std::string& targetNodeId,
+                             const std::string& targetPortName) {
+    const auto targetNode = graph.FindNode(targetNodeId);
+    if (!targetNode) return "";
+    const auto targetType = graph.FindNodeType(targetNode->type);
+    if (!targetType) return "";
+    const auto targetPort = targetType->FindInputPort(targetPortName);
+    if (!targetPort) return "";
+    const auto q = targetPort->type.quantity;
+    if (targetPort->type.frame != NodeAPI::Frame::Scalar ||
+        q == NodeAPI::Quantity::Dimensionless ||
+        q == NodeAPI::Quantity::Boolean) {
+        return "";
+    }
+
+    for (const auto& c : graph.GetConnections()) {
+        if (c.to.nodeId == targetNodeId && c.to.portName == targetPortName) {
+            const auto srcNode = graph.FindNode(c.from.nodeId);
+            if (!srcNode) return "";
+            const auto srcType = graph.FindNodeType(srcNode->type);
+            if (!srcType) return "";
+            const auto srcPort = srcType->FindOutputPort(c.from.portName);
+            if (!srcPort || srcPort->type.quantity != NodeAPI::Quantity::Dimensionless ||
+                srcPort->type.frame != NodeAPI::Frame::Scalar) {
+                return "";
+            }
+            switch (q) {
+                case NodeAPI::Quantity::Voltage:         return "rte::Volts";
+                case NodeAPI::Quantity::Current:         return "rte::Amperes";
+                case NodeAPI::Quantity::Temperature:     return "rte::Celsius";
+                case NodeAPI::Quantity::Torque:          return "rte::NewtonMeters";
+                case NodeAPI::Quantity::AngularVelocity: return "rte::RadiansPerSecond";
+                default:                                 return "";
+            }
+        }
+    }
+    return "";
+}
+
+// Var nodes (type id "Values.Var*") hold machine-owned RAM state in their
+// "Stored" parameter; a runtime registry lets the shell adjust them by node id.
 bool IsVarNodeType(const NodeAPI::NodeType& nodeType) {
-    return nodeType.id.rfind("var.", 0) == 0;
+    return nodeType.id.rfind("Values.Var", 0) == 0;
 }
 
 /* True when the instance flags this parameter as a parameterInput (bound
  * from a connection like an input port instead of a constant). */
 bool IsParameterInput(const NodeAPI::Node& node, const std::string& key) {
     for (const auto& name : node.parameterInputs) {
+        if (name == key) return true;
+    }
+    return false;
+}
+
+// True when the input was zero-bound by the emitter because its producer was
+// excluded from compilation.
+bool IsZeroInput(const NodeAPI::Node& node, const std::string& key) {
+    for (const auto& name : node.zeroInputs) {
         if (name == key) return true;
     }
     return false;
@@ -578,6 +631,13 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& port : nodeType->inputPorts) {
                 auto src = FindSourceExpression(graph_, node->id, port.name);
                 if (!src) {
+                    if (IsZeroInput(*node, port.name)) {
+                        /* Producer was excluded from compile: bind the zero
+                         * "nothing" value of the port's type. */
+                        source << "        const " << WireTypeToCpp(port.type) << " "
+                               << port.name << " = " << WireTypeToCpp(port.type) << "{};\n";
+                        continue;
+                    }
                     if (port.optional) {
                         /* Optional unconnected input: bind a const ref to the
                          * parameter with the same name, if it exists. */
@@ -594,20 +654,35 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                             "' is not connected";
                     return false;
                 }
-                source << "        const " << WireTypeToCpp(port.type) << " " << port.name
-                       << " = " << *src
-                       << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
+                const std::string wrap = InjectionWrapper(graph_, node->id, port.name);
+                if (!wrap.empty()) {
+                    source << "        const " << WireTypeToCpp(port.type) << " " << port.name
+                           << " = " << wrap << "(" << *src << ");\n";
+                } else {
+                    source << "        const " << WireTypeToCpp(port.type) << " " << port.name
+                           << " = " << *src
+                           << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
+                }
             }
 
             // Parameters flagged as parameterInputs bind from connections too.
             for (const auto& key : node->parameterInputs) {
                 auto src = FindSourceExpression(graph_, node->id, key);
+                auto paramType = nodeType->FindParameterType(key);
                 if (!src) {
+                    if (IsZeroInput(*node, key)) {
+                        /* Producer was excluded from compile: zero value. */
+                        source << "        const "
+                               << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                               << " " << key << " = "
+                               << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                               << "{};\n";
+                        continue;
+                    }
                     error = "parameterInput '" + key + "' of node '" + node->id +
                             "' is not connected";
                     return false;
                 }
-                auto paramType = nodeType->FindParameterType(key);
                 source << "        const "
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
                        << " " << key << " = " << *src

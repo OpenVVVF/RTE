@@ -1,0 +1,42 @@
+{
+  "id": "Values.Config",
+  "displayName": "Config Value",
+  "defaultName": "Cfg",
+  "description": "Exposes a named configuration value, using a default when no stored value is available.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "Value",
+      "description": "Cached configuration value supplied to the graph.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Key": {
+      "description": "Name used to look up the value in platform configuration storage.",
+      "quantity": "string",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "DefaultValue": {
+      "description": "Value used when the configuration key has not been stored.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Cached": {
+      "description": "Persistent cached configuration value exposed by the output.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

@@ -1,6 +1,8 @@
 #include "NodeAPI/Graph.h"
 
 #include <algorithm>
+#include <queue>
+#include <unordered_map>
 
 namespace NodeAPI {
 
@@ -112,6 +114,77 @@ bool Graph::SetNodeParameterInputs(const std::string& nodeId,
         }
     }
     return false;
+}
+
+bool Graph::SetNodeExcludeFromCompile(const std::string& nodeId, bool exclude) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.excludeFromCompile = exclude;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Graph::SetNodeExcludeFromCompileRecursive(const std::string& nodeId, bool exclude) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.excludeFromCompileRecursive = exclude;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Graph::SetNodeZeroInputs(const std::string& nodeId, std::vector<std::string> zeroInputs) {
+    for (auto& node : nodes_) {
+        if (node.id == nodeId) {
+            node.zeroInputs = std::move(zeroInputs);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::map<std::string, std::string> Graph::ComputeExcludedNodes() const {
+    std::map<std::string, std::string> excluded;
+
+    // Directly flagged nodes map to themselves.
+    for (const auto& node : nodes_) {
+        if (node.excludeFromCompile || node.excludeFromCompileRecursive) {
+            excluded[node.id] = node.id;
+        }
+    }
+
+    // Producer -> consumers adjacency across connections and bridges.
+    std::unordered_map<std::string, std::vector<std::string>> children;
+    for (const auto& connection : connections_) {
+        children[connection.from.nodeId].push_back(connection.to.nodeId);
+    }
+    for (const auto& bridge : bridges_) {
+        children[bridge.producer.nodeId].push_back(bridge.consumer.nodeId);
+    }
+
+    // BFS from each recursive-flagged node; first ancestor to reach a child
+    // wins so the reported parent is deterministic.
+    for (const auto& node : nodes_) {
+        if (!node.excludeFromCompileRecursive) continue;
+        std::queue<std::string> pending;
+        for (const auto& child : children[node.id]) {
+            pending.push(child);
+        }
+        while (!pending.empty()) {
+            const std::string current = pending.front();
+            pending.pop();
+            if (excluded.count(current)) continue;
+            excluded[current] = node.id;
+            for (const auto& child : children[current]) {
+                pending.push(child);
+            }
+        }
+    }
+
+    return excluded;
 }
 
 bool Graph::Connect(Connection connection) {
@@ -230,6 +303,17 @@ bool Graph::TypeCheck(const Connection& connection) const {
         (fromPort->type.quantity == Quantity::Voltage ||
          fromPort->type.quantity == Quantity::Current ||
          fromPort->type.quantity == Quantity::Temperature)) {
+        return true;
+    }
+
+    /* Implicit unit injection: a physical-quantity scalar input accepts a
+     * dimensionless scalar output; codegen wraps the value in the input's
+     * unit at the binding site.  Boolean stays strictly typed. */
+    if (toPort->type.frame == Frame::Scalar &&
+        toPort->type.quantity != Quantity::Dimensionless &&
+        toPort->type.quantity != Quantity::Boolean &&
+        fromPort->type.frame == Frame::Scalar &&
+        fromPort->type.quantity == Quantity::Dimensionless) {
         return true;
     }
 

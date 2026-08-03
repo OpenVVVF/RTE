@@ -1,0 +1,65 @@
+{
+  "id": "Values.VarBool",
+  "displayName": "Var (Bool)",
+  "defaultName": "Var",
+  "description": "Stores a boolean value and updates it when the Set input is true.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "In",
+      "description": "New boolean value to store when Set is true.",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Set",
+      "description": "Write enable. When true, copies In into the stored value.",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Value",
+      "description": "Current stored boolean value.",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Stored": {
+      "description": "Persistent boolean storage state.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Set": {
+      "description": "Fallback write-enable value when the Set input is not wired.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "In": {
+      "description": "Fallback new boolean value when the In input is not wired.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

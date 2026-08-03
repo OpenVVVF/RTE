@@ -64,16 +64,21 @@ NodeType MakePiControllerType() {
     return NodeType{
         .id = "control.pi",
         .displayName = "PI Controller",
+        .description = "Controls an error with proportional and integral action.",
         .inputPorts = {Port{.name = "error",
                             .direction = PortDirection::Input,
                             .type = WireType{.quantity = Quantity::Dimensionless,
                                              .frame = Frame::Scalar,
-                                             .dtype = DType::F32}}},
+                                             .dtype = DType::F32},
+                            .description = "Setpoint minus measurement."}},
         .outputPorts = {Port{.name = "out",
                              .direction = PortDirection::Output,
                              .type = WireType{.quantity = Quantity::Dimensionless,
                                               .frame = Frame::Scalar,
-                                              .dtype = DType::F32}}},
+                                              .dtype = DType::F32},
+                             .description = "Controller output."}},
+        .parameterTypes = {{"Kp", WireType{}}},
+        .parameterDescriptions = {{"Kp", "Proportional gain."}},
         .inlineCode = "return params.kp * error + integrator;",
         .constructorCode = "integrator = 0.0f;",
         .classHeader = "class PiController { float integrator; public: float Step(float error); };",
@@ -155,6 +160,140 @@ TEST(Graph, SetNodeParameters) {
     EXPECT_EQ(graph.FindNode("source")->parameters.size(), 1u);
 
     EXPECT_FALSE(graph.SetNodeParameters("missing", {{"Gain", "1.0"}}));
+}
+
+TEST(Graph, SetNodeExcludeFromCompile) {
+    Graph graph = MakeDemoGraph();
+
+    EXPECT_FALSE(graph.FindNode("source")->excludeFromCompile);
+    EXPECT_TRUE(graph.SetNodeExcludeFromCompile("source", true));
+    EXPECT_TRUE(graph.FindNode("source")->excludeFromCompile);
+    EXPECT_TRUE(graph.SetNodeExcludeFromCompile("source", false));
+    EXPECT_FALSE(graph.FindNode("source")->excludeFromCompile);
+    EXPECT_FALSE(graph.SetNodeExcludeFromCompile("missing", true));
+}
+
+TEST(Serialization, SchemaVersionWrittenAndChecked) {
+    Graph graph = MakeDemoGraph();
+    const std::string json = SaveToJson(graph);
+
+    // Freshly saved graphs carry the current schema version and pass cleanly.
+    EXPECT_NE(json.find("\"schemaVersion\": 1"), std::string::npos);
+    EXPECT_EQ(CheckGraphSchema(json).status, SchemaStatus::kCurrent);
+
+    // Pre-versioning files (no schemaVersion) are legacy: no warning.
+    const std::string legacy = R"({"name":"g","nodeTypes":[],"nodes":[],"connections":[]})";
+    EXPECT_EQ(CheckGraphSchema(legacy).status, SchemaStatus::kCurrent);
+    EXPECT_TRUE(CheckGraphSchema(legacy).warning.empty());
+
+    // schemaVersion 0 is treated as legacy too.
+    const std::string zero = R"({"schemaVersion": 0})";
+    EXPECT_EQ(CheckGraphSchema(zero).status, SchemaStatus::kCurrent);
+
+    // Older files load with a warning; newer files warn louder.
+    const auto olderStatus = CheckSchemaVersion(1, 2, "graph");
+    EXPECT_EQ(olderStatus.status, SchemaStatus::kOlder);
+    EXPECT_FALSE(olderStatus.warning.empty());
+
+    const auto newer = CheckGraphSchema(R"({"schemaVersion": 999})");
+    EXPECT_EQ(newer.status, SchemaStatus::kNewer);
+    EXPECT_NE(newer.warning.find("NEWER"), std::string::npos);
+
+    // Garbage input never throws and reports nothing.
+    EXPECT_EQ(CheckGraphSchema("not json").status, SchemaStatus::kCurrent);
+}
+
+TEST(Serialization, ExcludeFromCompileRoundTrip) {
+    Graph graph = MakeDemoGraph();
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompile("source", true));
+
+    Graph loaded;
+    LoadIntoGraph(loaded, SaveToJson(graph));
+
+    const auto excluded = loaded.FindNode("source");
+    ASSERT_TRUE(excluded.has_value());
+    EXPECT_TRUE(excluded->excludeFromCompile);
+    // Nodes without the flag default to false and stay absent from the JSON.
+    const auto normal = loaded.FindNode("sink");
+    ASSERT_TRUE(normal.has_value());
+    EXPECT_FALSE(normal->excludeFromCompile);
+    EXPECT_EQ(SaveToJson(loaded).find("excludeFromCompile"),
+              SaveToJson(graph).find("excludeFromCompile"));
+}
+
+TEST(Graph, ComputeExcludedNodes) {
+    // Chain: a -> b -> c, plus standalone d (single exclusion) and e (clean).
+    NodeType passThrough{
+        .id = "test.passthrough",
+        .displayName = "Pass",
+        .inputPorts = {Port{.name = "in",
+                            .direction = PortDirection::Input,
+                            .type = WireType{.quantity = Quantity::Dimensionless,
+                                             .frame = Frame::Scalar,
+                                             .dtype = DType::F32}}},
+        .outputPorts = {Port{.name = "out",
+                             .direction = PortDirection::Output,
+                             .type = WireType{.quantity = Quantity::Dimensionless,
+                                              .frame = Frame::Scalar,
+                                              .dtype = DType::F32}}},
+    };
+
+    Graph graph;
+    graph.AddNodeType(passThrough);
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "a", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "b", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "c", .type = "display.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "d", .type = "display.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "e", .type = "display.value", .domain = "app_loop"});
+    graph.Connect(Connection{.id = "c1",
+                             .from = PortRef{.nodeId = "a", .portName = "out"},
+                             .to = PortRef{.nodeId = "b", .portName = "in"}});
+    graph.Connect(Connection{.id = "c2",
+                             .from = PortRef{.nodeId = "b", .portName = "out"},
+                             .to = PortRef{.nodeId = "c", .portName = "in"}});
+    graph.Connect(Connection{.id = "c3",
+                             .from = PortRef{.nodeId = "a", .portName = "out"},
+                             .to = PortRef{.nodeId = "e", .portName = "in"}});
+
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("a", true));
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompile("d", true));
+
+    const auto excluded = graph.ComputeExcludedNodes();
+
+    // The recursive flag pulls in the whole downstream chain (a, b, c, e).
+    EXPECT_EQ(excluded.at("a"), "a");
+    EXPECT_EQ(excluded.at("b"), "a");
+    EXPECT_EQ(excluded.at("c"), "a");
+    EXPECT_EQ(excluded.at("e"), "a");
+    // Directly flagged nodes map to themselves.
+    EXPECT_EQ(excluded.at("d"), "d");
+    EXPECT_EQ(excluded.size(), 5u);
+
+    // Clearing the flag releases the chain.
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("a", false));
+    const auto after = graph.ComputeExcludedNodes();
+    EXPECT_EQ(after.size(), 1u);
+    EXPECT_EQ(after.count("d"), 1u);
+
+    EXPECT_FALSE(graph.SetNodeExcludeFromCompileRecursive("missing", true));
+}
+
+TEST(Serialization, RecursiveExclusionRoundTrip) {
+    Graph graph = MakeDemoGraph();
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("source", true));
+
+    Graph loaded;
+    LoadIntoGraph(loaded, SaveToJson(graph));
+
+    const auto node = loaded.FindNode("source");
+    ASSERT_TRUE(node.has_value());
+    EXPECT_TRUE(node->excludeFromCompileRecursive);
+    EXPECT_FALSE(loaded.FindNode("sink")->excludeFromCompileRecursive);
+
+    // zeroInputs is an emitter-computed artifact and must not be serialized.
+    ASSERT_TRUE(graph.SetNodeZeroInputs("sink", {"in"}));
+    EXPECT_EQ(SaveToJson(graph).find("zeroInputs"), std::string::npos);
 }
 
 TEST(Graph, SetNodeDomain) {
@@ -267,6 +406,67 @@ TEST(Graph, TypeCheckImplicitExtraction) {
     EXPECT_TRUE(graph.Connect(c));
 }
 
+TEST(Graph, TypeCheckImplicitInjection) {
+    /* A physical-quantity scalar input accepts a dimensionless scalar output
+     * (implicit unit injection at the codegen binding site). */
+    Graph graph;
+    graph.AddNodeType(NodeType{
+        .id = "constant.value",
+        .displayName = "Value",
+        .outputPorts = {Port{.name = "out",
+                             .direction = PortDirection::Output,
+                             .type = WireType{.quantity = Quantity::Dimensionless,
+                                              .frame = Frame::Scalar,
+                                              .dtype = DType::F32}}},
+    });
+    graph.AddNodeType(MakeCurrentSinkType());
+    graph.AddNode(Node{.id = "value", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "load.current", .domain = "app_loop"});
+
+    Connection c{
+        .id = "c1",
+        .from = PortRef{.nodeId = "value", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    };
+
+    EXPECT_TRUE(graph.TypeCheck(c));
+    EXPECT_TRUE(graph.Connect(c));
+}
+
+TEST(Graph, TypeCheckRejectsBooleanInjection) {
+    /* Boolean ports never participate in implicit conversions. */
+    Graph graph;
+    graph.AddNodeType(NodeType{
+        .id = "constant.value",
+        .displayName = "Value",
+        .outputPorts = {Port{.name = "out",
+                             .direction = PortDirection::Output,
+                             .type = WireType{.quantity = Quantity::Dimensionless,
+                                              .frame = Frame::Scalar,
+                                              .dtype = DType::F32}}},
+    });
+    graph.AddNodeType(NodeType{
+        .id = "load.flag",
+        .displayName = "Flag Sink",
+        .inputPorts = {Port{.name = "in",
+                            .direction = PortDirection::Input,
+                            .type = WireType{.quantity = Quantity::Boolean,
+                                             .frame = Frame::Scalar,
+                                             .dtype = DType::F32}}},
+    });
+    graph.AddNode(Node{.id = "value", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "load.flag", .domain = "app_loop"});
+
+    Connection c{
+        .id = "c1",
+        .from = PortRef{.nodeId = "value", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    };
+
+    EXPECT_FALSE(graph.TypeCheck(c));
+    EXPECT_FALSE(graph.Connect(c));
+}
+
 TEST(Graph, TypeCheckRejectsNonConvertibleMismatch) {
     /* voltage -> current is still a hard type error (no implicit rule). */
     Graph graph;
@@ -352,6 +552,15 @@ TEST(Serialization, RoundTrip) {
 
     const auto piType = loaded.FindNodeType("control.pi");
     ASSERT_TRUE(piType.has_value());
+    EXPECT_EQ(piType->description,
+              "Controls an error with proportional and integral action.");
+    EXPECT_EQ(piType->FindInputPort("error")->description,
+              "Setpoint minus measurement.");
+    EXPECT_EQ(piType->FindOutputPort("out")->description,
+              "Controller output.");
+    ASSERT_TRUE(piType->FindParameterDescription("Kp").has_value());
+    EXPECT_EQ(*piType->FindParameterDescription("Kp"),
+              "Proportional gain.");
     EXPECT_EQ(piType->inlineCode, "return params.kp * error + integrator;");
     EXPECT_EQ(piType->constructorCode, "integrator = 0.0f;");
     EXPECT_FALSE(piType->classHeader.empty());

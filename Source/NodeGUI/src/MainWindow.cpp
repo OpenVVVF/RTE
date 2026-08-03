@@ -19,6 +19,8 @@
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QFrame>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -32,7 +34,7 @@
 #include <QResizeEvent>
 #include <QScreen>
 #include <QScrollBar>
-#include <QShortcut>
+#include <QSettings>
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -116,14 +118,75 @@ bool AskYesNo(QWidget* parent, const QString& title, const QString& text) {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , graphScene_{std::make_unique<GraphScene>()} {
+    preferences_ = LoadAppPreferences();
+
     setWindowTitle(QStringLiteral("NodeGUI"));
     resize(1280, 800);
 
     auto* central = new QWidget(this);
     auto* layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // Persistent banner shown when the opened graph changes on disk (e.g. a
+    // git pull). Stays up until the user picks Load / Save Copy / Ignore.
+    reloadBanner_ = new QFrame(central);
+    reloadBanner_->setStyleSheet(QStringLiteral(
+        "QFrame { background: #4a3d22; border-bottom: 1px solid #8a6d3b; }"
+        "QLabel { color: #ffd97a; background: transparent; }"
+        "QPushButton { padding: 2px 10px; }"));
+    auto* bannerLayout = new QHBoxLayout(reloadBanner_);
+    bannerLayout->setContentsMargins(8, 4, 8, 4);
+    reloadBannerText_ = new QLabel(reloadBanner_);
+    bannerLayout->addWidget(reloadBannerText_, 1);
+    auto* loadButton = new QPushButton(QStringLiteral("Load"), reloadBanner_);
+    loadButton->setObjectName(QStringLiteral("reloadBannerLoad"));
+    connect(loadButton, &QPushButton::clicked, this, [this] {
+        HideReloadBanner();
+        // Capture the current graph so a mis-clicked Load is one Ctrl+Z away.
+        const std::string preLoad = graphScene_ ? graphScene_->Snapshot() : std::string{};
+        if (currentPath_.empty() || !OpenGraph(currentPath_)) {
+            // Keep offering until the load succeeds or the user ignores.
+            ShowReloadBanner();
+            return;
+        }
+        // OpenGraph resets the undo history; seed it with the pre-load state.
+        if (!preLoad.empty() && preLoad != currentHistorySnapshot_) {
+            undoHistory_.push_back(std::move(preLoad));
+            UpdateHistoryActions();
+        }
+    });
+    bannerLayout->addWidget(loadButton);
+    auto* saveCopyButton = new QPushButton(QStringLiteral("Save Copy..."), reloadBanner_);
+    saveCopyButton->setObjectName(QStringLiteral("reloadBannerSaveCopy"));
+    connect(saveCopyButton, &QPushButton::clicked, this, [this] {
+        const QString fileName = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Save Current Graph as Copy"), QString(),
+            QStringLiteral("JSON (*.json)"));
+        if (!fileName.isEmpty()) {
+            HideReloadBanner();
+            DoSave(fileName.toStdString());
+        }
+    });
+    bannerLayout->addWidget(saveCopyButton);
+    auto* ignoreButton = new QPushButton(QStringLiteral("Ignore"), reloadBanner_);
+    ignoreButton->setObjectName(QStringLiteral("reloadBannerIgnore"));
+    connect(ignoreButton, &QPushButton::clicked, this, &MainWindow::HideReloadBanner);
+    bannerLayout->addWidget(ignoreButton);
+    reloadBanner_->hide();
+    layout->addWidget(reloadBanner_);
+
+    // Watches the currently opened graph for on-disk changes.
+    graphWatcher_ = new QFileSystemWatcher(this);
+    connect(graphWatcher_, &QFileSystemWatcher::fileChanged,
+            this, &MainWindow::OnGraphFileChanged);
+    reloadDebounce_ = new QTimer(this);
+    reloadDebounce_->setSingleShot(true);
+    reloadDebounce_->setInterval(250);
+    connect(reloadDebounce_, &QTimer::timeout, this, &MainWindow::ShowReloadBanner);
 
     view_ = new GraphView(graphScene_->Scene());
+    view_->SetPanMouseButton(preferences_.panMouseButton);
     view_->installEventFilter(this);
 
     // Note: measured on the target machine, a QOpenGLWidget viewport was ~3x
@@ -145,6 +208,19 @@ MainWindow::MainWindow(QWidget* parent)
     // Right-click on a node: offer the domain selection menu.
     view_->onNodeContextMenu = [this](const QPointF& globalPos, QtNodes::NodeId qtId) {
         ShowNodeDomainMenu(globalPos, qtId);
+    };
+
+    view_->onDomainDoubleClicked = [this](const QPointF& scenePos) {
+        return graphScene_->SelectDomainAt(scenePos);
+    };
+    view_->onDomainDragStarted = [this](const QPointF& scenePos) {
+        return graphScene_->BeginSelectedDomainDrag(scenePos);
+    };
+    view_->onDomainDragged = [this](const QPointF& delta) {
+        graphScene_->MoveSelectedDomain(delta);
+    };
+    view_->onDomainDragFinished = [this] {
+        graphScene_->EndSelectedDomainDrag();
     };
 
     layout->addWidget(view_);
@@ -221,17 +297,36 @@ MainWindow::MainWindow(QWidget* parent)
     connect(appSwitcher_, &QTabBar::currentChanged,
             this, &MainWindow::OnTabChanged);
 
-    auto addScreenShortcut = [this](const QKeySequence& key, int screenIndex) {
-        auto* shortcut = new QShortcut(key, this);
-        connect(shortcut, &QShortcut::activated, this, [this, screenIndex] {
+    auto addScreenShortcut = [this](const QString& id,
+                                    const QString& label,
+                                    const QKeySequence& key,
+                                    int screenIndex) {
+        auto* action = new QAction(label, this);
+        action->setShortcutContext(Qt::WindowShortcut);
+        connect(action, &QAction::triggered, this, [this, screenIndex] {
             if (screenIndex < appSwitcher_->count()) {
                 appSwitcher_->setCurrentIndex(screenIndex);
             }
         });
+        addAction(action);
+        RegisterShortcut(action,
+                         id,
+                         QStringLiteral("Navigation"),
+                         label,
+                         key);
     };
-    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+1")), 0);
-    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+2")), 1);
-    addScreenShortcut(QKeySequence(QStringLiteral("Ctrl+3")), 2);
+    addScreenShortcut(QStringLiteral("navigation.nodeEditor"),
+                      QStringLiteral("Switch to Node Editor"),
+                      QKeySequence(QStringLiteral("Ctrl+1")),
+                      0);
+    addScreenShortcut(QStringLiteral("navigation.runtime"),
+                      QStringLiteral("Switch to Runtime"),
+                      QKeySequence(QStringLiteral("Ctrl+2")),
+                      1);
+    addScreenShortcut(QStringLiteral("navigation.firmwareUpdate"),
+                      QStringLiteral("Switch to Firmware Update"),
+                      QKeySequence(QStringLiteral("Ctrl+3")),
+                      2);
 
     buildProcess_ = new QProcess(this);
     buildProcess_->setProcessChannelMode(QProcess::MergedChannels);
@@ -276,6 +371,9 @@ MainWindow::MainWindow(QWidget* parent)
         }
         palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
         ConnectModelSignals();
+        if (!graphScene_->LoadWarning().isEmpty()) {
+            ShowToast(graphScene_->LoadWarning());
+        }
     } else {
         ShowToast(templatesError);
     }
@@ -288,44 +386,47 @@ MainWindow::MainWindow(QWidget* parent)
 #endif
 
     SetupMenu();
+    graphScene_->SetChangeCallback([this] { RecordHistorySnapshot(); });
+    ResetHistory();
     UpdateStatus();
 
-    if (QScreen* screen = QApplication::primaryScreen()) {
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    const QByteArray savedGeometry = settings.value(QStringLiteral("window/geometry")).toByteArray();
+    if (preferences_.rememberWindowGeometry && !savedGeometry.isEmpty()) {
+        restoreGeometry(savedGeometry);
+    } else if (QScreen* screen = QApplication::primaryScreen()) {
         move(screen->availableGeometry().center() - frameGeometry().center());
     }
 }
 
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
-                              runtime::Protocol protocol) {
-    runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
-    firmwareUpdater_ = std::make_unique<runtime::FirmwareUpdater>();
-    httpApiServer_ = std::make_unique<runtime::HttpApiServer>(*firmwareUpdater_,
-                                                              runtimeController_->Store());
+                              runtime::Protocol protocol,
+                              const QString& connectHost) {
+    serialPort_ = serialPort;
+    {
+        QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+        remoteHost_ = connectHost.isEmpty()
+                          ? settings.value(QStringLiteral("runtime/serverHost")).toString()
+                          : connectHost;
+    }
 
-    firmwareUpdater_->setSuspendCallback([this](bool suspend) {
-        if (suspend) {
-            runtimeController_->SuspendForFlash();
-        } else {
-            runtimeController_->ResumeAfterFlash();
-        }
-    });
-    firmwareUpdater_->setCurrentPort(serialPort.toStdString());
-
-    httpApiServer_->setDevicePort(serialPort.toStdString());
-    httpApiServer_->setCommandHandler(
-        [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
+    runtimeController_ = std::make_unique<runtime::RuntimeController>(
+        QStringLiteral("127.0.0.1"), 4001, serialPort, simulate, protocol);
+    flashBackend_ = std::make_unique<runtime::RemoteFlashBackend>(
+        QStringLiteral("127.0.0.1"), 18080);
 
     runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(), this);
     screens_->addWidget(runtimeTab_);
     appSwitcher_->addTab(QStringLiteral("Runtime"));
     runtimeTab_->LoadAutosave();
+    runtimeTab_->SetConnectionState(!remoteHost_.isEmpty(), remoteHost_);
+    connect(runtimeTab_, &runtime::RuntimeTab::connectRequested,
+            this, &MainWindow::ConnectToServer);
 
-    firmwareUpdateTab_ = new runtime::FlashPanel(firmwareUpdater_.get(),
-                                                  runtimeController_.get(),
-                                                  httpApiServer_.get(),
-                                                  this);
+    firmwareUpdateTab_ = new runtime::FlashPanel(flashBackend_.get(),
+                                                 runtimeController_.get(),
+                                                 this);
     screens_->addWidget(firmwareUpdateTab_);
     appSwitcher_->addTab(QStringLiteral("Firmware Update"));
 
@@ -365,7 +466,7 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     logsLayout->addWidget(clearLogsButton, 0, Qt::AlignLeft);
     buildLogView_ = new QPlainTextEdit(logsPage);
     buildLogView_->setReadOnly(true);
-    buildLogView_->setMaximumBlockCount(5000);
+    buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     logsLayout->addWidget(buildLogView_, 1);
     editorConsoleTabs_->addTab(logsPage, QStringLiteral("Logs"));
 
@@ -374,10 +475,96 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     editorConsoleDock_->hide();
 
     runtimeController_->Start();
-    httpApiServer_->start();
+
+    // Connect to the RTEServer: a saved/CLI remote host wins, otherwise we
+    // spawn a local one on the serial port.
+    ConnectToServer(!remoteHost_.isEmpty(), remoteHost_);
 
     // The View menu gains the new docks' toggle actions.
     RebuildViewMenu();
+}
+
+void MainWindow::ConnectToServer(bool remote, const QString& host) {
+    StopLocalServer();
+
+    QString target = host;
+    if (!remote) {
+        target = QStringLiteral("127.0.0.1");
+        if (!runtimeController_->IsSimulating() && !SpawnLocalServer()) {
+            ShowToast(QStringLiteral("Failed to start the local RTEServer process"));
+            if (runtimeTab_) {
+                runtimeTab_->SetServerStatus(QStringLiteral("failed to start"));
+            }
+        }
+    }
+
+    remoteHost_ = remote ? host : QString();
+    runtimeController_->ConnectTo(target, 4001);
+    flashBackend_->SetServer(target, 18080);
+    if (runtimeTab_) {
+        runtimeTab_->SetServerStatus(remote ? QStringLiteral("remote: %1").arg(target)
+                                            : QStringLiteral("local server"));
+        runtimeTab_->SetConnectionState(remote, host);
+    }
+
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    settings.setValue(QStringLiteral("runtime/serverHost"), remoteHost_);
+}
+
+QString MainWindow::FindServerExecutable() const {
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        appDir + QStringLiteral("/RTEServer"),
+#ifdef RTE_PROJECT_ROOT
+        QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/build/Source/RTEServer/RTEServer"),
+#endif
+    };
+    for (const QString& candidate : candidates) {
+        if (QFileInfo(candidate).isExecutable()) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+bool MainWindow::SpawnLocalServer() {
+    const QString exe = FindServerExecutable();
+    if (exe.isEmpty()) {
+        return false;
+    }
+    StopLocalServer();
+    serverProcess_ = new QProcess(this);
+    connect(serverProcess_,
+            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this,
+            [this](int, QProcess::ExitStatus) {
+                if (runtimeTab_) {
+                    runtimeTab_->SetServerStatus(QStringLiteral("local server stopped"));
+                }
+            });
+    QStringList args;
+    args << QStringLiteral("--serial") << serialPort_
+         << QStringLiteral("--bind") << QStringLiteral("127.0.0.1");
+    serverProcess_->start(exe, args);
+    return serverProcess_->waitForStarted(3000);
+}
+
+void MainWindow::StopLocalServer() {
+    if (!serverProcess_) {
+        return;
+    }
+    auto* process = serverProcess_;
+    serverProcess_ = nullptr;
+    process->terminate();
+    if (!process->waitForFinished(2000)) {
+        process->kill();
+        process->waitForFinished(1000);
+    }
+    process->deleteLater();
+}
+
+MainWindow::~MainWindow() {
+    StopLocalServer();
 }
 
 bool MainWindow::OpenGraph(const std::string& path) {
@@ -403,14 +590,21 @@ bool MainWindow::OpenGraph(const std::string& path) {
 
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    ResetHistory();
     UpdateStatus();
+    HideReloadBanner();
+    UpdateGraphWatcher();
+    if (!graphScene_->LoadWarning().isEmpty()) {
+        ShowToast(graphScene_->LoadWarning());
+    }
     return true;
 }
 
 void MainWindow::OnNew() {
-    if (!AskYesNo(this,
-                  QStringLiteral("New Graph"),
-                  QStringLiteral("Discard the current graph and start a new empty one?"))) {
+    if (preferences_.confirmNewGraph
+        && !AskYesNo(this,
+                     QStringLiteral("New Graph"),
+                     QStringLiteral("Discard the current graph and start a new empty one?"))) {
         return;
     }
 
@@ -429,7 +623,10 @@ void MainWindow::OnNew() {
     ConnectModelSignals();
     currentPath_.clear();
     setWindowTitle(QStringLiteral("NodeGUI"));
+    ResetHistory();
     UpdateStatus();
+    HideReloadBanner();
+    UpdateGraphWatcher();
 }
 
 void MainWindow::StripBrokenSceneActions() {
@@ -442,8 +639,24 @@ void MainWindow::StripBrokenSceneActions() {
         QKeySequence(QKeySequence::Paste),
         QKeySequence(Qt::CTRL | Qt::Key_D),
     };
+    const QStringList replacedEditorActions = {
+        QStringLiteral("Clear Selection"),
+        QStringLiteral("Delete Selection"),
+        QStringLiteral("Cut Selection"),
+        QStringLiteral("Copy Selection"),
+    };
     QList<QAction*> toRemove;
     for (QAction* action : view_->actions()) {
+        if (action == clearSelectionAction_
+            || action == deleteAction_
+            || action == cutAction_
+            || action == copyAction_) {
+            continue;
+        }
+        if (replacedEditorActions.contains(action->text())) {
+            toRemove.push_back(action);
+            continue;
+        }
         for (const QKeySequence& shortcut : action->shortcuts()) {
             if (broken.contains(shortcut)) {
                 toRemove.push_back(action);
@@ -463,35 +676,154 @@ void MainWindow::SetupMenu() {
     QMenu* fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
 
     QAction* newAction = fileMenu->addAction(QStringLiteral("&New"));
-    newAction->setShortcuts(QKeySequence::New);
+    RegisterShortcut(newAction,
+                     QStringLiteral("file.new"),
+                     QStringLiteral("File"),
+                     QStringLiteral("New Graph"),
+                     QKeySequence(QKeySequence::New));
     connect(newAction, &QAction::triggered, this, &MainWindow::OnNew);
 
     QAction* openAction = fileMenu->addAction(QStringLiteral("&Open..."));
-    openAction->setShortcuts(QKeySequence::Open);
+    RegisterShortcut(openAction,
+                     QStringLiteral("file.open"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Open Graph"),
+                     QKeySequence(QKeySequence::Open));
     connect(openAction, &QAction::triggered, this, &MainWindow::OnOpen);
 
     QAction* saveAction = fileMenu->addAction(QStringLiteral("&Save"));
-    saveAction->setShortcuts(QKeySequence::Save);
+    RegisterShortcut(saveAction,
+                     QStringLiteral("file.save"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Save Graph"),
+                     QKeySequence(QKeySequence::Save));
     connect(saveAction, &QAction::triggered, this, &MainWindow::OnSave);
 
     QAction* saveAsAction = fileMenu->addAction(QStringLiteral("Save &As..."));
-    saveAsAction->setShortcuts(QKeySequence::SaveAs);
+    RegisterShortcut(saveAsAction,
+                     QStringLiteral("file.saveAs"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Save Graph As"),
+                     QKeySequence(QKeySequence::SaveAs));
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::OnSaveAs);
 
     fileMenu->addSeparator();
 
     QAction* exitAction = fileMenu->addAction(QStringLiteral("E&xit"));
-    exitAction->setShortcuts(QKeySequence::Quit);
+    RegisterShortcut(exitAction,
+                     QStringLiteral("file.exit"),
+                     QStringLiteral("File"),
+                     QStringLiteral("Exit"),
+                     QKeySequence(QKeySequence::Quit));
     connect(exitAction, &QAction::triggered, this, &MainWindow::OnExit);
+
+    QMenu* editMenu = menuBar()->addMenu(QStringLiteral("&Edit"));
+
+    undoAction_ = editMenu->addAction(QStringLiteral("&Undo"));
+    RegisterShortcut(undoAction_,
+                     QStringLiteral("edit.undo"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Undo"),
+                     QKeySequence(QKeySequence::Undo));
+    connect(undoAction_, &QAction::triggered, this, &MainWindow::OnUndo);
+
+    redoAction_ = editMenu->addAction(QStringLiteral("&Redo"));
+    RegisterShortcut(redoAction_,
+                     QStringLiteral("edit.redo"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Redo"),
+                     QKeySequence(QKeySequence::Redo));
+    connect(redoAction_, &QAction::triggered, this, &MainWindow::OnRedo);
+
+    editMenu->addSeparator();
+
+    cutAction_ = editMenu->addAction(QStringLiteral("Cu&t"));
+    cutAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(cutAction_,
+                     QStringLiteral("edit.cut"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Cut Selection"),
+                     QKeySequence(QKeySequence::Cut));
+    connect(cutAction_, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->onCopySelectedObjects();
+            view_->onDeleteSelectedObjects();
+        }
+    });
+    view_->addAction(cutAction_);
+
+    copyAction_ = editMenu->addAction(QStringLiteral("&Copy"));
+    copyAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(copyAction_,
+                     QStringLiteral("edit.copy"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Copy Selection"),
+                     QKeySequence(QKeySequence::Copy));
+    connect(copyAction_, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->onCopySelectedObjects();
+        }
+    });
+    view_->addAction(copyAction_);
+
+    deleteAction_ = editMenu->addAction(QStringLiteral("&Delete Selection"));
+    deleteAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(deleteAction_,
+                     QStringLiteral("edit.deleteSelection"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Delete Selection"),
+                     QKeySequence(QKeySequence::Delete));
+    connect(deleteAction_, &QAction::triggered, this, [this] {
+        if (view_) {
+            view_->onDeleteSelectedObjects();
+        }
+    });
+    view_->addAction(deleteAction_);
+
+    clearSelectionAction_ =
+        editMenu->addAction(QStringLiteral("Clear Selection"));
+    clearSelectionAction_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    RegisterShortcut(clearSelectionAction_,
+                     QStringLiteral("edit.clearSelection"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Clear Selection"),
+                     QKeySequence(Qt::Key_Escape));
+    connect(clearSelectionAction_, &QAction::triggered, this, [this] {
+        if (graphScene_->Scene()) {
+            graphScene_->Scene()->clearSelection();
+        }
+    });
+    view_->addAction(clearSelectionAction_);
+
+    editMenu->addSeparator();
+    QAction* preferencesAction =
+        editMenu->addAction(QStringLiteral("&Preferences..."));
+    RegisterShortcut(preferencesAction,
+                     QStringLiteral("edit.preferences"),
+                     QStringLiteral("Edit"),
+                     QStringLiteral("Preferences"),
+                     QKeySequence(QStringLiteral("Ctrl+,")));
+    connect(preferencesAction, &QAction::triggered,
+            this, &MainWindow::OnPreferences);
 
     QMenu* buildMenu = menuBar()->addMenu(QStringLiteral("&Build"));
 
     generateAction_ = buildMenu->addAction(QStringLiteral("&Generate Code"));
+    RegisterShortcut(generateAction_,
+                     QStringLiteral("build.generate"),
+                     QStringLiteral("Build"),
+                     QStringLiteral("Generate Code"),
+                     {});
     connect(generateAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::Generate);
     });
 
     flashAction_ = buildMenu->addAction(QStringLiteral("&Flash"));
+    RegisterShortcut(flashAction_,
+                     QStringLiteral("build.flash"),
+                     QStringLiteral("Build"),
+                     QStringLiteral("Flash"),
+                     {});
     connect(flashAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::Flash);
     });
@@ -499,7 +831,11 @@ void MainWindow::SetupMenu() {
     buildMenu->addSeparator();
 
     generateFlashAction_ = buildMenu->addAction(QStringLiteral("Generate and &Flash"));
-    generateFlashAction_->setShortcut(QKeySequence(Qt::Key_F5));
+    RegisterShortcut(generateFlashAction_,
+                     QStringLiteral("build.generateAndFlash"),
+                     QStringLiteral("Build"),
+                     QStringLiteral("Generate and Flash"),
+                     QKeySequence(Qt::Key_F5));
     connect(generateFlashAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
     });
@@ -508,10 +844,44 @@ void MainWindow::SetupMenu() {
     viewMenu_ = viewMenu;
 
     arrangeAction_ = new QAction(QStringLiteral("&Auto Arrange"), this);
-    arrangeAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
+    RegisterShortcut(arrangeAction_,
+                     QStringLiteral("view.autoArrange"),
+                     QStringLiteral("View"),
+                     QStringLiteral("Auto Arrange"),
+                     QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     connect(arrangeAction_, &QAction::triggered, this, &MainWindow::OnAutoArrange);
 
     RebuildViewMenu();
+}
+
+void MainWindow::RegisterShortcut(QAction* action,
+                                  const QString& id,
+                                  const QString& category,
+                                  const QString& label,
+                                  const QKeySequence& defaultSequence) {
+    if (!action) {
+        return;
+    }
+    action->setShortcut(LoadShortcutPreference(id, defaultSequence));
+    shortcutBindings_.push_back({id, category, label, defaultSequence, action});
+}
+
+void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
+    preferences_ = preferences;
+    if (view_) {
+        view_->SetPanMouseButton(preferences_.panMouseButton);
+    }
+    if (buildLogView_) {
+        buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
+    }
+
+    const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);
+    if (undoHistory_.size() > limit) {
+        undoHistory_.erase(undoHistory_.begin(),
+                           undoHistory_.begin()
+                               + static_cast<std::ptrdiff_t>(undoHistory_.size() - limit));
+    }
+    UpdateHistoryActions();
 }
 
 void MainWindow::RebuildViewMenu() {
@@ -566,20 +936,68 @@ void MainWindow::OnTabChanged(int index) {
     }
 
     RebuildViewMenu();
+    UpdateHistoryActions();
 }
 
 bool MainWindow::DoSave(const std::string& path) {
     graphScene_->SyncPositionsFromScene();
 
+    // Our own write trips the file watcher; suppress the reload banner for
+    // it and re-arm the watch on the (possibly new) path.
+    suppressWatch_ = true;
     const QString error = graphScene_->SaveGraph(path);
     if (!error.isEmpty()) {
+        suppressWatch_ = false;
         ShowToast(QStringLiteral("Failed to save graph: %1").arg(error));
         return false;
     }
 
     currentPath_ = path;
     setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    UpdateGraphWatcher();
+    QTimer::singleShot(500, this, [this] { suppressWatch_ = false; });
     return true;
+}
+
+void MainWindow::UpdateGraphWatcher() {
+    if (!graphWatcher_) {
+        return;
+    }
+    const QStringList watched = graphWatcher_->files();
+    if (!watched.isEmpty()) {
+        graphWatcher_->removePaths(watched);
+    }
+    if (currentPath_.empty()) {
+        return;
+    }
+    const QString path = QString::fromStdString(currentPath_);
+    if (QFileInfo::exists(path)) {
+        graphWatcher_->addPath(path);
+    }
+}
+
+void MainWindow::OnGraphFileChanged(const QString& /*path*/) {
+    // QFileSystemWatcher drops paths that get replaced (atomic saves, git
+    // checkout), so re-arm on every notification.
+    UpdateGraphWatcher();
+    if (suppressWatch_ || reloadBanner_->isVisible()) {
+        return;
+    }
+    reloadDebounce_->start();
+}
+
+void MainWindow::ShowReloadBanner() {
+    if (currentPath_.empty() || suppressWatch_) {
+        return;
+    }
+    const QString name = QFileInfo(QString::fromStdString(currentPath_)).fileName();
+    reloadBannerText_->setText(
+        QStringLiteral("'%1' changed on disk. Load the changes?").arg(name));
+    reloadBanner_->show();
+}
+
+void MainWindow::HideReloadBanner() {
+    reloadBanner_->hide();
 }
 
 bool MainWindow::EnsureGraphSaved() {
@@ -633,7 +1051,9 @@ void MainWindow::SetBuildActionsEnabled(bool enabled) {
 }
 
 void MainWindow::StartBuildCommand(BuildCommand command) {
-    ShowBuildLogs();
+    if (preferences_.automaticallyShowBuildLogs) {
+        ShowBuildLogs();
+    }
 
     if (!buildProcess_ || buildProcess_->state() != QProcess::NotRunning) {
         AppendBuildLog(QStringLiteral("\n[warning] A firmware operation is already running.\n"));
@@ -651,14 +1071,13 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
     const bool shouldFlash = command != BuildCommand::Generate;
 
     if (shouldFlash) {
-        if (!httpApiServer_) {
+        if (!flashBackend_) {
             AppendBuildLog(QStringLiteral("\n[error] Flash service is not available.\n"));
             return;
         }
-        if (!httpApiServer_->isRunning() && !httpApiServer_->start()) {
+        if (!flashBackend_->Status().reachable) {
             AppendBuildLog(QStringLiteral(
-                "\n[error] Could not start the local firmware flash API.\n"));
-            return;
+                "\n[warning] The flash server is not reachable yet; the flash step may fail.\n"));
         }
     }
 
@@ -710,7 +1129,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
               << QStringLiteral("--fw-src-dir")
               << QString::fromStdString(firmwareSourceDir.string())
               << QStringLiteral("--build-type")
-              << QStringLiteral("Release");
+              << preferences_.firmwareBuildType;
 
     if (!shouldBuild) {
         arguments << QStringLiteral("--flash-only");
@@ -719,8 +1138,9 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
     }
     if (shouldFlash) {
         arguments << QStringLiteral("--flash-url")
-                  << QStringLiteral("http://127.0.0.1:%1")
-                         .arg(httpApiServer_->actualPort());
+                  << QStringLiteral("http://%1:%2")
+                         .arg(flashBackend_->Host())
+                         .arg(flashBackend_->HttpPort());
     }
 
     SetBuildActionsEnabled(false);
@@ -846,6 +1266,11 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }
+    StopLocalServer();
+    if (preferences_.rememberWindowGeometry) {
+        QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+        settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
+    }
     QMainWindow::closeEvent(event);
 }
 
@@ -887,12 +1312,135 @@ void MainWindow::OnSaveAs() {
     }
 }
 
+void MainWindow::OnUndo() {
+    if (undoHistory_.empty()) {
+        return;
+    }
+
+    const std::string target = undoHistory_.back();
+    if (!RestoreHistorySnapshot(target)) {
+        return;
+    }
+
+    undoHistory_.pop_back();
+    redoHistory_.push_back(std::move(currentHistorySnapshot_));
+    currentHistorySnapshot_ = target;
+    UpdateHistoryActions();
+}
+
+void MainWindow::OnRedo() {
+    if (redoHistory_.empty()) {
+        return;
+    }
+
+    const std::string target = redoHistory_.back();
+    if (!RestoreHistorySnapshot(target)) {
+        return;
+    }
+
+    redoHistory_.pop_back();
+    undoHistory_.push_back(std::move(currentHistorySnapshot_));
+    currentHistorySnapshot_ = target;
+    UpdateHistoryActions();
+}
+
+void MainWindow::OnPreferences() {
+    PreferencesDialog dialog(preferences_, shortcutBindings_, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const AppPreferences updatedPreferences = dialog.Preferences();
+    const QMap<QString, QKeySequence> shortcuts = dialog.Shortcuts();
+    for (ShortcutBinding& binding : shortcutBindings_) {
+        const auto it = shortcuts.constFind(binding.id);
+        if (it != shortcuts.cend() && binding.action) {
+            binding.action->setShortcut(it.value());
+        }
+    }
+
+    SaveAppPreferences(updatedPreferences);
+    SaveShortcutPreferences(shortcuts);
+    ApplyPreferences(updatedPreferences);
+    statusBar()->showMessage(QStringLiteral("Preferences saved"), 3000);
+}
+
 void MainWindow::OnAutoArrange() {
     graphScene_->AutoArrange();
 }
 
 void MainWindow::OnExit() {
     close();
+}
+
+void MainWindow::ResetHistory() {
+    undoHistory_.clear();
+    redoHistory_.clear();
+    currentHistorySnapshot_ = graphScene_ ? graphScene_->Snapshot() : std::string{};
+    UpdateHistoryActions();
+}
+
+void MainWindow::RecordHistorySnapshot() {
+    if (restoringHistory_ || !graphScene_) {
+        return;
+    }
+
+    std::string snapshot = graphScene_->Snapshot();
+    if (snapshot == currentHistorySnapshot_) {
+        return;
+    }
+
+    if (!currentHistorySnapshot_.empty()) {
+        undoHistory_.push_back(std::move(currentHistorySnapshot_));
+    }
+    currentHistorySnapshot_ = std::move(snapshot);
+    redoHistory_.clear();
+
+    const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);
+    if (undoHistory_.size() > limit) {
+        undoHistory_.erase(undoHistory_.begin(),
+                           undoHistory_.begin()
+                               + static_cast<std::ptrdiff_t>(undoHistory_.size() - limit));
+    }
+    UpdateHistoryActions();
+}
+
+bool MainWindow::RestoreHistorySnapshot(const std::string& snapshot) {
+    if (!graphScene_ || !view_) {
+        return false;
+    }
+
+    restoringHistory_ = true;
+    view_->setScene(nullptr);
+    const QString error = graphScene_->RestoreSnapshot(snapshot);
+    view_->setScene(graphScene_->Scene());
+    StripBrokenSceneActions();
+    palette_->SetNodeTypes(graphScene_->Graph().GetNodeTypes());
+    ConnectModelSignals();
+    restoringHistory_ = false;
+
+    if (!error.isEmpty()) {
+        ShowToast(error);
+        return false;
+    }
+
+    UpdateStatus();
+    return true;
+}
+
+void MainWindow::UpdateHistoryActions() {
+    const bool nodeEditorActive = !appSwitcher_ || appSwitcher_->currentIndex() == 0;
+    if (undoAction_) {
+        undoAction_->setEnabled(nodeEditorActive && !undoHistory_.empty());
+    }
+    if (redoAction_) {
+        redoAction_->setEnabled(nodeEditorActive && !redoHistory_.empty());
+    }
+    for (QAction* action : {cutAction_, copyAction_, deleteAction_, clearSelectionAction_}) {
+        if (action) {
+            action->setEnabled(nodeEditorActive);
+        }
+    }
 }
 
 void MainWindow::ConnectModelSignals() {

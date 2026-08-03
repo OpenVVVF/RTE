@@ -1,0 +1,63 @@
+{
+  "id": "Transforms.Clarke",
+  "displayName": "Clarke Transform",
+  "defaultName": "Clarke",
+  "description": "Transforms three-phase currents into stationary alpha-beta coordinates.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "I_A",
+      "description": "Phase A current.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_B",
+      "description": "Phase B current.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_C",
+      "description": "Phase C current.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "I_Alpha",
+      "description": "Stationary-frame alpha-axis current.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_Beta",
+      "description": "Stationary-frame beta-axis current.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

@@ -63,6 +63,14 @@ bool LoadFolderTemplate(Graph& graph,
         return false;
     }
 
+    const auto schema = CheckSchemaVersion(parsed.value("schemaVersion", 0),
+                                           kTemplateSchemaVersion,
+                                           "node template");
+    if (schema.status != SchemaStatus::kCurrent) {
+        result.warnings.push_back(nodeJsonPath.filename().string() + " (" + dir.filename().string()
+                                  + "): " + schema.warning);
+    }
+
     NodeType nodeType;
     try {
         nodeType = NodeTypeFromJson(parsed.dump());

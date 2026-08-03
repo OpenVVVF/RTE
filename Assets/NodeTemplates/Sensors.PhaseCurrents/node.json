@@ -1,0 +1,77 @@
+{
+  "id": "Sensors.PhaseCurrents",
+  "displayName": "Phase Currents",
+  "defaultName": "PhaseCurrents",
+  "description": "Samples the three inverter phase-current channels from the platform current sensors.",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "I_A",
+      "description": "Measured phase A current in amperes.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_B",
+      "description": "Measured phase B current in amperes.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_C",
+      "description": "Measured phase C current in amperes.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Diudt",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Divdt",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "BurstTimeUs",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "InvertPolarity": {
+      "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

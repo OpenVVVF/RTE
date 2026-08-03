@@ -25,6 +25,7 @@ public:
 private slots:
     void OnStoreChanged();
     void OnSendCommand();
+    void OnSessionCleared();
 
 private:
     RuntimeController* controller_;

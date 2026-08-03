@@ -1,0 +1,52 @@
+{
+  "id": "Logic.Greater",
+  "displayName": "Greater Than",
+  "defaultName": "Greater",
+  "description": "Compares two scalar values and reports whether A is greater than B.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "A",
+      "description": "Left-hand value in the comparison.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "B",
+      "description": "Right-hand value in the comparison.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Out",
+      "description": "True when A is greater than B.",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "B": {
+      "description": "Fallback comparison threshold used when the B input is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

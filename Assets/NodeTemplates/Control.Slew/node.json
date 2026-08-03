@@ -1,0 +1,53 @@
+{
+  "id": "Control.Slew",
+  "displayName": "Slew Rate Limiter",
+  "defaultName": "Slew",
+  "description": "Limits how quickly a signal can rise or fall over time.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "In",
+      "description": "Target value for the limiter to follow.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Out",
+      "description": "Rate-limited output value.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Rate": {
+      "description": "Maximum absolute rate of change in units per second.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Dt": {
+      "description": "Update period in seconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Value": {
+      "description": "Persistent current output state.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

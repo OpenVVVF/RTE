@@ -81,8 +81,21 @@ void InspectorPanel::Rebuild() {
     connect(idEdit_, &QLineEdit::editingFinished, this, &InspectorPanel::ApplyRename);
 
     // Type (read-only).
-    formLayout->addRow(QStringLiteral("Type"),
-                       new QLabel(QString::fromStdString(node->type), form_));
+    auto* typeValue = new QLabel(QString::fromStdString(node->type), form_);
+    formLayout->addRow(QStringLiteral("Type"), typeValue);
+
+    if (nodeType && !nodeType->description.empty()) {
+        auto* description =
+            new QLabel(QString::fromStdString(nodeType->description), form_);
+        description->setWordWrap(true);
+        description->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        description->setStyleSheet(
+            QStringLiteral("QLabel { color: palette(text); "
+                           "background: palette(alternate-base); "
+                           "border-radius: 4px; padding: 7px; }"));
+        formLayout->addRow(description);
+        typeValue->setToolTip(QString::fromStdString(nodeType->description));
+    }
 
     // Domain (combo of existing domains + "(no domain)"; locked types show a
     // disabled row).
@@ -113,6 +126,36 @@ void InspectorPanel::Rebuild() {
     formLayout->addRow(QStringLiteral("Domain"), domainCombo_);
     connect(domainCombo_, &QComboBox::activated, this, &InspectorPanel::ApplyDomain);
 
+    // Exclude from compile: node stays in the graph but is skipped by codegen.
+    excludeCheck_ = new QCheckBox(QStringLiteral("Exclude from compile"), form_);
+    excludeCheck_->setChecked(node->excludeFromCompile);
+    excludeCheck_->setToolTip(QStringLiteral(
+        "The node stays visible in the graph (greyed out) but is skipped by "
+        "the code emitter. Children fed by it receive a zero value."));
+    formLayout->addRow(QStringLiteral("Compile"), excludeCheck_);
+    connect(excludeCheck_, &QCheckBox::toggled, this, &InspectorPanel::ApplyExcluded);
+
+    excludeChildrenCheck_ = new QCheckBox(QStringLiteral("and children"), form_);
+    excludeChildrenCheck_->setChecked(node->excludeFromCompileRecursive);
+    excludeChildrenCheck_->setToolTip(QStringLiteral(
+        "Exclude this node and its whole downstream chain from compilation. "
+        "Children are shown as excluded with this node named as the parent."));
+    formLayout->addRow(QStringLiteral(""), excludeChildrenCheck_);
+    connect(excludeChildrenCheck_, &QCheckBox::toggled, this,
+            &InspectorPanel::ApplyExcludedRecursive);
+
+    // Chain exclusion note: this node is excluded because a recursive-flagged
+    // ancestor excludes it.
+    const std::string excludedBy = scene_->ExclusionParent(nodeId);
+    if (!excludedBy.empty()) {
+        auto* note = new QLabel(
+            QStringLiteral("Excluded by parent '%1'").arg(QString::fromStdString(excludedBy)),
+            form_);
+        note->setWordWrap(true);
+        note->setStyleSheet(QStringLiteral("color: #ffb74d;"));
+        formLayout->addRow(note);
+    }
+
     // Parameters: value editor + wire-as-input toggle per row.
     if (!node->parameters.empty()) {
         auto* header = new QLabel(QStringLiteral("Parameters"), form_);
@@ -123,14 +166,25 @@ void InspectorPanel::Rebuild() {
     }
     for (const auto& [name, value] : node->parameters) {
         auto* edit = new QLineEdit(QString::fromStdString(value), form_);
+        QString parameterToolTip;
         if (nodeType) {
             if (const auto type = nodeType->FindParameterType(name)) {
                 const std::string typeText = NodeAPI::ToString(type->quantity) + "."
                                              + NodeAPI::ToString(type->frame) + "."
                                              + NodeAPI::ToString(type->dtype);
-                edit->setToolTip(QString::fromStdString(typeText));
+                parameterToolTip = QString::fromStdString(typeText);
+            }
+            if (const auto description =
+                    nodeType->FindParameterDescription(name);
+                description && !description->empty()) {
+                parameterToolTip =
+                    QString::fromStdString(*description)
+                    + (parameterToolTip.isEmpty()
+                           ? QString{}
+                           : QStringLiteral("\nType: ") + parameterToolTip);
             }
         }
+        edit->setToolTip(parameterToolTip);
 
         auto* wireInput = new QCheckBox(QStringLiteral("wire"), form_);
         const bool wired = std::find(node->parameterInputs.begin(),
@@ -138,13 +192,18 @@ void InspectorPanel::Rebuild() {
                                      name) != node->parameterInputs.end();
         wireInput->setChecked(wired);
         edit->setEnabled(!wired);
+        wireInput->setToolTip(parameterToolTip);
 
         auto* rowWidget = new QWidget(form_);
         auto* rowLayout = new QHBoxLayout(rowWidget);
         rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->addWidget(edit);
         rowLayout->addWidget(wireInput);
-        formLayout->addRow(QString::fromStdString(name), rowWidget);
+        rowWidget->setToolTip(parameterToolTip);
+        auto* rowLabel =
+            new QLabel(QString::fromStdString(name), form_);
+        rowLabel->setToolTip(parameterToolTip);
+        formLayout->addRow(rowLabel, rowWidget);
 
         paramRows_.push_back({name, edit, wireInput});
         connect(edit, &QLineEdit::editingFinished, this, &InspectorPanel::ApplyParameters);
@@ -178,6 +237,26 @@ void InspectorPanel::ApplyDomain() {
     const std::string domain =
         (text == kNoDomainLabel) ? std::string{} : text.toStdString();
     const QString error = scene_->SetNodeDomain(qtId_, domain);
+    if (!error.isEmpty() && onError) {
+        onError(error);
+    }
+}
+
+void InspectorPanel::ApplyExcluded(bool exclude) {
+    if (!scene_) {
+        return;
+    }
+    const QString error = scene_->SetNodeExcluded(qtId_, exclude);
+    if (!error.isEmpty() && onError) {
+        onError(error);
+    }
+}
+
+void InspectorPanel::ApplyExcludedRecursive(bool exclude) {
+    if (!scene_) {
+        return;
+    }
+    const QString error = scene_->SetNodeExcludedRecursive(qtId_, exclude);
     if (!error.isEmpty() && onError) {
         onError(error);
     }

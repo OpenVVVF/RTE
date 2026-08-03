@@ -1,0 +1,132 @@
+{
+  "id": "Sensors.CanRx",
+  "displayName": "CAN RX",
+  "defaultName": "CanRx",
+  "description": "Reads the latest frame from a configured CAN receive mailbox and exposes its payload.",
+  "maxInstances": 0,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "D0",
+      "description": "Most recently received payload byte 0.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D1",
+      "description": "Most recently received payload byte 1.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D2",
+      "description": "Most recently received payload byte 2.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D3",
+      "description": "Most recently received payload byte 3.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D4",
+      "description": "Most recently received payload byte 4.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D5",
+      "description": "Most recently received payload byte 5.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D6",
+      "description": "Most recently received payload byte 6.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D7",
+      "description": "Most recently received payload byte 7.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Dlc",
+      "description": "Data length of the latest received frame.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Fresh",
+      "description": "True for one execution step when a new frame has arrived.",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Bus": {
+      "description": "CAN controller number: 1 selects bus A/FDCAN1 and 2 selects bus B/FDCAN2.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Id": {
+      "description": "CAN arbitration identifier accepted by the receive mailbox.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "LastSeq": {
+      "description": "Internal sequence counter used to detect newly received frames.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

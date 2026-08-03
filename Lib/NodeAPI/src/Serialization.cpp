@@ -27,6 +27,7 @@ WireType WireTypeFromJson(const json& j) {
 json ToJson(const Port& port) {
     return json::object({
         {"name", port.name},
+        {"description", port.description},
         {"direction", port.direction == PortDirection::Input ? "input" : "output"},
         {"type", ToJson(port.type)},
         {"optional", port.optional},
@@ -40,6 +41,7 @@ Port PortFromJson(const json& j) {
                                                                       : PortDirection::Output,
         .type = WireTypeFromJson(j.at("type")),
         .optional = j.value("optional", false),
+        .description = j.value("description", ""),
     };
 }
 
@@ -62,6 +64,7 @@ json ToJson(const NodeType& nodeType) {
         {"id", nodeType.id},
         {"displayName", nodeType.displayName},
         {"defaultName", nodeType.defaultName},
+        {"description", nodeType.description},
         {"inlineCode", nodeType.inlineCode},
         {"constructorCode", nodeType.constructorCode},
         {"classHeader", nodeType.classHeader},
@@ -84,6 +87,9 @@ json ToJson(const NodeType& nodeType) {
         auto params = json::object();
         for (const auto& [key, type] : nodeType.parameterTypes) {
             params[key] = ToJson(type);
+            if (const auto description = nodeType.FindParameterDescription(key)) {
+                params[key]["description"] = *description;
+            }
         }
         j["parameterTypes"] = params;
     }
@@ -96,6 +102,7 @@ NodeType NodeTypeFromJson(const json& j) {
     nodeType.id = j.at("id").get<std::string>();
     nodeType.displayName = j.value("displayName", "");
     nodeType.defaultName = j.value("defaultName", "");
+    nodeType.description = j.value("description", "");
     nodeType.inlineCode = j.value("inlineCode", "");
     nodeType.constructorCode = j.value("constructorCode", "");
     nodeType.classHeader = j.value("classHeader", "");
@@ -114,6 +121,10 @@ NodeType NodeTypeFromJson(const json& j) {
     if (j.contains("parameterTypes") && j.at("parameterTypes").is_object()) {
         for (const auto& [key, value] : j.at("parameterTypes").items()) {
             nodeType.parameterTypes[key] = WireTypeFromJson(value);
+            const std::string description = value.value("description", "");
+            if (!description.empty()) {
+                nodeType.parameterDescriptions[key] = description;
+            }
         }
     }
 
@@ -137,6 +148,12 @@ json ToJson(const Node& node) {
     if (!node.parameterInputs.empty()) {
         j["parameterInputs"] = node.parameterInputs;
     }
+    if (node.excludeFromCompile) {
+        j["excludeFromCompile"] = true;
+    }
+    if (node.excludeFromCompileRecursive) {
+        j["excludeFromCompileRecursive"] = true;
+    }
     return j;
 }
 
@@ -147,6 +164,8 @@ Node NodeFromJson(const json& j) {
     node.displayName = j.value("displayName", "");
     node.domain = j.value("domain", "");
     node.position = PositionFromJson(j.at("position"));
+    node.excludeFromCompile = j.value("excludeFromCompile", false);
+    node.excludeFromCompileRecursive = j.value("excludeFromCompileRecursive", false);
 
     if (j.contains("parameters") && j.at("parameters").is_object()) {
         for (const auto& [key, value] : j.at("parameters").items()) {
@@ -214,8 +233,39 @@ Bridge BridgeFromJson(const json& j) {
 
 }  // namespace
 
+SchemaCheck CheckSchemaVersion(int fileVersion, int currentVersion, const char* kind) {
+    SchemaCheck check;
+    if (fileVersion <= 0 || fileVersion == currentVersion) {
+        return check;  // legacy (pre-versioning) or current: nothing to say.
+    }
+    if (fileVersion < currentVersion) {
+        check.status = SchemaStatus::kOlder;
+        check.warning = "This " + std::string(kind) + " was saved with schema v"
+                        + std::to_string(fileVersion) + " (current v"
+                        + std::to_string(currentVersion)
+                        + "). It still loads, and will be upgraded the next time it is saved.";
+    } else {
+        check.status = SchemaStatus::kNewer;
+        check.warning = "This " + std::string(kind) + " was saved with a NEWER schema v"
+                        + std::to_string(fileVersion) + " than this build supports (v"
+                        + std::to_string(currentVersion)
+                        + "). Some data may be missing or misread.";
+    }
+    return check;
+}
+
+SchemaCheck CheckGraphSchema(std::string_view jsonText) {
+    try {
+        const json j = json::parse(jsonText);
+        return CheckSchemaVersion(j.value("schemaVersion", 0), kGraphSchemaVersion, "graph");
+    } catch (...) {
+        return SchemaCheck{};
+    }
+}
+
 std::string SaveToJson(const Graph& graph) {
     json j;
+    j["schemaVersion"] = kGraphSchemaVersion;
     j["name"] = graph.GetName();
     j["nodeTypes"] = json::array();
     j["nodes"] = json::array();
@@ -235,7 +285,9 @@ std::string SaveToJson(const Graph& graph) {
         j["bridges"].push_back(ToJson(bridge));
     }
 
-    return j.dump(2);
+    // Canonical output: keys sorted, arrays in graph order, trailing newline,
+    // so repeated saves of an unchanged graph are byte-identical.
+    return j.dump(2) + "\n";
 }
 
 Graph LoadFromJson(std::string_view jsonText) {

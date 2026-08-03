@@ -282,6 +282,14 @@ bool Emitter::Run(const EmitterOptions& options) const {
         logger_.Info("Loaded " + std::to_string(templateResult.typesLoaded) +
                      " template(s) from " + std::to_string(templateResult.filesLoaded) +
                      " folder(s)");
+        for (const auto& warning : templateResult.warnings) {
+            logger_.Warning(warning);
+        }
+    }
+
+    const auto graphSchema = NodeAPI::CheckGraphSchema(jsonText);
+    if (graphSchema.status != NodeAPI::SchemaStatus::kCurrent) {
+        logger_.Warning(graphSchema.warning);
     }
 
     try {
@@ -293,6 +301,45 @@ bool Emitter::Run(const EmitterOptions& options) const {
 
     logger_.Debug("Graph has " + std::to_string(graph.GetNodeTypes().size()) +
                   " node type(s) and " + std::to_string(graph.GetNodes().size()) + " node(s)");
+
+    // Drop excluded nodes (single and recursive-flagged, with the whole
+    // downstream chain of the latter) so they take no part in timing
+    // validation or code generation. Consumers that were wired to an excluded
+    // node are NOT errors: their inputs get recorded as zero-bound and the
+    // generator emits a zero "nothing" value for them.
+    {
+        const auto excluded = graph.ComputeExcludedNodes();
+        if (!excluded.empty()) {
+            std::map<std::string, std::vector<std::string>> zeroInputs;
+            const auto recordZeroBound = [&](const NodeAPI::PortRef& producer,
+                                             const NodeAPI::PortRef& consumer) {
+                if (excluded.count(producer.nodeId) && !excluded.count(consumer.nodeId)) {
+                    zeroInputs[consumer.nodeId].push_back(consumer.portName);
+                }
+            };
+            for (const auto& connection : graph.GetConnections()) {
+                recordZeroBound(connection.from, connection.to);
+            }
+            for (const auto& bridge : graph.GetBridges()) {
+                recordZeroBound(bridge.producer, bridge.consumer);
+            }
+
+            for (const auto& [nodeId, parent] : excluded) {
+                if (nodeId == parent) {
+                    logger_.Info("Excluding node from compile: " + nodeId);
+                } else {
+                    logger_.Info("Excluding node from compile: " + nodeId +
+                                 " (excluded by parent '" + parent + "')");
+                }
+                graph.RemoveNode(nodeId);
+            }
+            for (const auto& [nodeId, ports] : zeroInputs) {
+                logger_.Debug("Zero-binding " + std::to_string(ports.size()) +
+                              " input(s) on '" + nodeId + "' (producer excluded)");
+                graph.SetNodeZeroInputs(nodeId, ports);
+            }
+        }
+    }
 
     // Validate timing.
     logger_.Info("Validating timing domains");

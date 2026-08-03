@@ -1,0 +1,186 @@
+{
+  "id": "Actuators.CanTx",
+  "displayName": "CAN TX",
+  "defaultName": "CanTx",
+  "description": "Transmits up to eight data bytes on a selected CAN bus at a configurable maximum rate.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "D0",
+      "description": "Payload byte 0. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D1",
+      "description": "Payload byte 1. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D2",
+      "description": "Payload byte 2. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D3",
+      "description": "Payload byte 3. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D4",
+      "description": "Payload byte 4. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D5",
+      "description": "Payload byte 5. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D6",
+      "description": "Payload byte 6. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "D7",
+      "description": "Payload byte 7. Values are converted to an unsigned 8-bit integer.",
+      "direction": "input",
+      "optional": true,
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [],
+  "parameterTypes": {
+    "Bus": {
+      "description": "CAN controller number: 1 selects bus A/FDCAN1 and 2 selects bus B/FDCAN2.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Id": {
+      "description": "CAN arbitration identifier to transmit.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Ext": {
+      "description": "Use an extended 29-bit identifier when greater than 0.5; otherwise use a standard identifier.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Dlc": {
+      "description": "Number of payload bytes to transmit, clamped to the range 0 through 8.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Rate": {
+      "description": "Maximum transmission rate in frames per second. Values at or below zero send every step.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "LastMs": {
+      "description": "Internal timestamp of the previous transmission in milliseconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D0": {
+      "description": "Fallback value for payload byte 0 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D1": {
+      "description": "Fallback value for payload byte 1 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D2": {
+      "description": "Fallback value for payload byte 2 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D3": {
+      "description": "Fallback value for payload byte 3 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D4": {
+      "description": "Fallback value for payload byte 4 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D5": {
+      "description": "Fallback value for payload byte 5 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D6": {
+      "description": "Fallback value for payload byte 6 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "D7": {
+      "description": "Fallback value for payload byte 7 when its input port is not wired.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

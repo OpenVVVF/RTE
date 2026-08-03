@@ -19,6 +19,7 @@ struct NodeType {
     std::string id;
     std::string displayName;
     std::string defaultName;  // Default instance name for GUI node creation.
+    std::string description;
     std::vector<Port> inputPorts;
     std::vector<Port> outputPorts;
 
@@ -27,6 +28,7 @@ struct NodeType {
     // when emitting constants or state members. Parameters not listed here are
     // treated as dimensionless floats by default.
     std::map<std::string, WireType> parameterTypes;
+    std::map<std::string, std::string> parameterDescriptions;
 
     // Code pieces carried with the type (codegen-agnostic; the consuming project
     // decides how to interpret them).
@@ -43,6 +45,7 @@ struct NodeType {
     std::optional<Port> FindInputPort(const std::string& name) const;
     std::optional<Port> FindOutputPort(const std::string& name) const;
     std::optional<WireType> FindParameterType(const std::string& name) const;
+    std::optional<std::string> FindParameterDescription(const std::string& name) const;
 
     friend bool operator==(const NodeType& lhs, const NodeType& rhs) = default;
     friend bool operator!=(const NodeType& lhs, const NodeType& rhs) = default;

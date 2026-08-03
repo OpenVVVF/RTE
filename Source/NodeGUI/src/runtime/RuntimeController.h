@@ -32,19 +32,30 @@ enum class Protocol {
 // ~33 ms QTimer on the GUI thread drains the queue into the TelemetryStore and
 // emits storeChanged() once per batch.
 //
-// With simulate=true no serial port is opened; synthetic 100 Hz signals are
+// Legacy mode ALWAYS talks TCP to an RTEServer (spawned locally by the app or
+// remote over IP) — the GUI never opens the UART itself. The ivp mode is the
+// exception for future local-firmware development and still opens a local
+// serial port directly.
+//
+// With simulate=true no connection is opened; synthetic 100 Hz signals are
 // fed through the same path (used for UI verification without hardware).
 class RuntimeController : public QObject {
     Q_OBJECT
 
 public:
-    RuntimeController(QString port,
+    RuntimeController(QString serverHost,
+                      int bridgePort,
+                      QString serialPort,
                       bool simulate,
                       Protocol protocol = Protocol::Legacy,
                       QObject* parent = nullptr);
     ~RuntimeController() override;
 
     void Start();
+
+    // Reconnects the legacy backend to a (possibly different) server. No-op
+    // in simulate mode; while suspended the new address is used on resume.
+    void ConnectTo(const QString& serverHost, int bridgePort);
 
     // Sends a text shell command line. Returns false if the client is not
     // running (e.g. suspended for flashing). Echoes the command into the
@@ -58,7 +69,17 @@ public:
     TelemetryStore& Store() { return store_; }
     const TelemetryStore& Store() const { return store_; }
 
-    QString Port() const { return port_; }
+    // Drains the last queued device batch, then returns the complete runtime
+    // session accumulated since this controller was created.
+    RuntimeSessionSnapshot CaptureSession();
+
+    // Discards both rolling UI data and the full export archive, then starts
+    // a new session at the current time.
+    void ClearSession();
+
+    QString Port() const { return serialPort_; }
+    QString ServerHost() const { return serverHost_; }
+    int BridgePort() const { return bridgePort_; }
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }
 
@@ -69,6 +90,7 @@ public:
 
 signals:
     void storeChanged();
+    void sessionCleared();
 
 private:
     struct F32Item {
@@ -103,10 +125,13 @@ private:
     float NowSec() const;
     bool SendLine(const std::string& line);
 
-    QString port_;
+    QString serverHost_;
+    int bridgePort_ = 4001;
+    QString serialPort_;
     bool simulate_ = false;
     Protocol protocol_;
     bool suspended_ = false;
+    bool started_ = false;
 
     // Only the backend matching protocol_ is started.
     LegacyTelemetryClient legacyClient_;

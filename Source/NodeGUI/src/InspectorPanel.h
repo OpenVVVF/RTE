@@ -50,6 +50,8 @@ private:
     void ApplyParameterInputs();
     void ApplyDomain();
     void ApplyRename();
+    void ApplyExcluded(bool exclude);
+    void ApplyExcludedRecursive(bool exclude);
 
     GraphScene* scene_ = nullptr;
     QtNodes::NodeId qtId_ = QtNodes::InvalidNodeId;
@@ -59,6 +61,8 @@ private:
     QWidget* form_ = nullptr;
     QLineEdit* idEdit_ = nullptr;
     QComboBox* domainCombo_ = nullptr;
+    QCheckBox* excludeCheck_ = nullptr;
+    QCheckBox* excludeChildrenCheck_ = nullptr;
     std::vector<ParamRow> paramRows_;
 };
 

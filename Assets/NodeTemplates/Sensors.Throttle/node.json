@@ -1,0 +1,43 @@
+{
+  "id": "Sensors.Throttle",
+  "displayName": "Throttle",
+  "defaultName": "Throttle",
+  "description": "Reads the redundant throttle channels and their plausibility status.",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "A",
+      "description": "Normalized throttle channel A in the range 0 to 1.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "B",
+      "description": "Normalized throttle channel B in the range 0 to 1.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Valid",
+      "description": "True when both throttle channels pass the plausibility check.",
+      "direction": "output",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

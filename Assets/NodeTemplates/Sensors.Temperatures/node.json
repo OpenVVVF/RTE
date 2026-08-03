@@ -1,0 +1,53 @@
+{
+  "id": "Sensors.Temperatures",
+  "displayName": "Temperatures",
+  "defaultName": "Temps",
+  "description": "Reads the motor and three inverter temperature channels from the application sensors.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "T_Motor",
+      "description": "Motor temperature in degrees Celsius; NaN indicates a disabled or invalid sensor.",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Inv1",
+      "description": "Inverter temperature channel 1 in degrees Celsius; NaN indicates an invalid sensor.",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Inv2",
+      "description": "Inverter temperature channel 2 in degrees Celsius; NaN indicates an invalid sensor.",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Inv3",
+      "description": "Inverter temperature channel 3 in degrees Celsius; NaN indicates an invalid sensor.",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

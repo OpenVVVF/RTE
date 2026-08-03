@@ -1,0 +1,48 @@
+{
+  "id": "Values.Constant",
+  "displayName": "Constant",
+  "defaultName": "Const",
+  "description": "Provides a constant scalar value, optionally replaced by a wired input.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "In",
+      "description": "Optional value that replaces the configured constant when wired.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Out",
+      "description": "Configured constant or the value supplied through In.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Value": {
+      "description": "Constant value emitted when no input overrides it.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "In": {
+      "description": "Fallback storage for the optional In port.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

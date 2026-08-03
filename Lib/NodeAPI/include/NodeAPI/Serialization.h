@@ -7,6 +7,33 @@
 
 namespace NodeAPI {
 
+// Schema version of the graph JSON written by SaveToJson. Bump this whenever
+// the graph file format changes in a way older builds would misread; loaders
+// compare it and warn on mismatch. Files without a version are treated as
+// legacy (pre-versioning) and load silently.
+inline constexpr int kGraphSchemaVersion = 1;
+
+// Outcome of checking a file's schema version against the running build.
+enum class SchemaStatus {
+    kCurrent,  // matches this build (or file is pre-versioning legacy)
+    kOlder,    // file is older than this build; loads, upgraded on next save
+    kNewer,    // file is newer than this build; data may be missing/misread
+};
+
+struct SchemaCheck {
+    SchemaStatus status = SchemaStatus::kCurrent;
+    // Human-readable warning for kOlder/kNewer, empty otherwise.
+    std::string warning;
+};
+
+// Reads just the schema version of a graph JSON document. Never throws:
+// unparseable input is reported as kCurrent (the real parse reports errors).
+SchemaCheck CheckGraphSchema(std::string_view jsonText);
+
+// Shared version-check logic for graph and template files. `kind` is used in
+// the warning text (e.g. "graph", "node template").
+SchemaCheck CheckSchemaVersion(int fileVersion, int currentVersion, const char* kind);
+
 std::string SaveToJson(const Graph& graph);
 Graph LoadFromJson(std::string_view jsonText);
 

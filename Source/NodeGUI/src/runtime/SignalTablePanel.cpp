@@ -2,6 +2,7 @@
 
 #include "RuntimeController.h"
 
+#include <QCheckBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -35,28 +36,17 @@ SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* paren
     signalTable_->setHorizontalHeaderLabels(
         {QStringLiteral("G1"), QStringLiteral("G2"), QStringLiteral("G3"),
          QStringLiteral("Signal"), QStringLiteral("Value")});
-    signalTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    signalTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    signalTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    signalTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-    signalTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    // User-adjustable columns with sensible starting widths; the Value column
+    // soaks up extra width when the dock is resized.
+    signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    signalTable_->horizontalHeader()->setStretchLastSection(true);
+    signalTable_->setColumnWidth(0, 30);
+    signalTable_->setColumnWidth(1, 30);
+    signalTable_->setColumnWidth(2, 30);
+    signalTable_->setColumnWidth(3, 170);
+    signalTable_->setColumnWidth(4, 90);
     signalTable_->verticalHeader()->setVisible(false);
     signalTable_->setSelectionMode(QAbstractItemView::NoSelection);
-    connect(signalTable_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
-        if (rebuildingTable_ || item->column() > 2) {
-            return;
-        }
-        const QString name = signalTable_->item(item->row(), 3)->text();
-        auto& set = graphSignals_[item->column()];
-        if (item->checkState() == Qt::Checked) {
-            if (!set.contains(name)) {
-                set.push_back(name);
-            }
-        } else {
-            set.removeAll(name);
-        }
-        emit graphSignalsChanged(graphSignals_);
-    });
     layout->addWidget(signalTable_, 1);
 
     connect(controller_, &RuntimeController::storeChanged,
@@ -122,11 +112,33 @@ void SignalTablePanel::RebuildSignalTable() {
     signalTable_->setRowCount(static_cast<int>(names.size()));
     for (int row = 0; row < names.size(); ++row) {
         for (int col = 0; col < 3; ++col) {
-            auto* check = new QTableWidgetItem;
-            check->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
-            check->setCheckState(graphSignals_[col].contains(names[row]) ? Qt::Checked
-                                                                         : Qt::Unchecked);
-            signalTable_->setItem(row, col, check);
+            // A real centered QCheckBox: a QTableWidgetItem checkbox would
+            // leave an empty ghost text element next to the box.
+            auto* check = new QCheckBox(signalTable_);
+            check->setChecked(graphSignals_[col].contains(names[row]));
+            auto* cell = new QWidget(signalTable_);
+            auto* cellLayout = new QHBoxLayout(cell);
+            cellLayout->setContentsMargins(0, 0, 0, 0);
+            cellLayout->setAlignment(Qt::AlignCenter);
+            cellLayout->addWidget(check);
+            signalTable_->setCellWidget(row, col, cell);
+
+            connect(check, &QCheckBox::toggled, this,
+                    [this, row, col](bool checked) {
+                        if (rebuildingTable_) {
+                            return;
+                        }
+                        const QString name = signalTable_->item(row, 3)->text();
+                        auto& set = graphSignals_[col];
+                        if (checked) {
+                            if (!set.contains(name)) {
+                                set.push_back(name);
+                            }
+                        } else {
+                            set.removeAll(name);
+                        }
+                        emit graphSignalsChanged(graphSignals_);
+                    });
         }
         auto* nameItem = new QTableWidgetItem(names[row]);
         nameItem->setFlags(Qt::ItemIsEnabled);

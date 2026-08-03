@@ -9,6 +9,7 @@
 #include <NodeAPI/Serialization.h>
 
 #include <QtNodes/Definitions>
+#include <QtNodes/internal/ConnectionGraphicsObject.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QBrush>
@@ -99,6 +100,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
                               const std::string& templatesDir) {
     graph_ = NodeAPI::Graph{};
     nodeIdMap_.clear();
+    loadWarning_.clear();
 
     const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir);
     if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
@@ -120,6 +122,17 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     } catch (const std::exception& e) {
         return QStringLiteral("Failed to parse graph JSON: %1").arg(QString::fromStdString(e.what()));
     }
+
+    // Collect non-fatal schema-version warnings (graph file + templates).
+    QStringList warnings;
+    const auto graphSchema = NodeAPI::CheckGraphSchema(*graphText);
+    if (graphSchema.status != NodeAPI::SchemaStatus::kCurrent) {
+        warnings.push_back(QString::fromStdString(graphSchema.warning));
+    }
+    for (const auto& warning : templatesResult.warnings) {
+        warnings.push_back(QString::fromStdString(warning));
+    }
+    loadWarning_ = warnings.join(QStringLiteral("\n"));
 
     templatesDir_ = templatesDir;
     RebuildScene();
@@ -143,6 +156,7 @@ QString GraphScene::NewGraph() {
 
 QString GraphScene::LoadTemplates(const std::string& templatesDir) {
     graph_ = NodeAPI::Graph{};
+    loadWarning_.clear();
 
     const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir);
     if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
@@ -154,6 +168,12 @@ QString GraphScene::LoadTemplates(const std::string& templatesDir) {
         return QString::fromStdString(message.str());
     }
 
+    QStringList warnings;
+    for (const auto& warning : templatesResult.warnings) {
+        warnings.push_back(QString::fromStdString(warning));
+    }
+    loadWarning_ = warnings.join(QStringLiteral("\n"));
+
     templatesDir_ = templatesDir;
     RebuildScene();
     return QString{};
@@ -163,6 +183,8 @@ void GraphScene::RebuildScene() {
     // The old scene owns the outline/label items; forget them before tearing
     // it down (calling removeItem/delete on them would use dangling pointers).
     domainVisuals_.clear();
+    selectedDomain_.clear();
+    selectedDomainMoved_ = false;
 
     // The event filter is owned solely by sceneEventFilter_ (no QObject
     // parent), so it must be destroyed before the old scene it was installed
@@ -185,12 +207,31 @@ void GraphScene::RebuildScene() {
     CreateBridges();
     CreateDomainOutlines();
 
+    QObject::connect(scene_.get(),
+                     &QGraphicsScene::selectionChanged,
+                     [this] {
+                         if (selectedDomain_.empty()) {
+                             return;
+                         }
+                         const auto visualIt =
+                             domainVisuals_.find(selectedDomain_);
+                         if (visualIt == domainVisuals_.end() ||
+                             !visualIt->second.outline ||
+                             !visualIt->second.outline->isSelected()) {
+                             ClearDomainSelection();
+                         }
+                     });
+
     sceneEventFilter_ = std::make_unique<SceneEventFilter>(*this);
     scene_->installEventFilter(sceneEventFilter_.get());
 
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeMoved,
-                     [this](QtNodes::NodeId) { UpdateDomainOutlines(); });
+                     [this](QtNodes::NodeId) {
+                         UpdateDomainOutlines();
+                         SyncPositionsFromScene();
+                         NotifyChanged();
+                     });
 
     // Keep our id maps and the domain outlines in sync when a node is
     // deleted (the model has already removed it from the graph at this
@@ -218,6 +259,16 @@ void GraphScene::RebuildScene() {
                          }
                          CreateDomainOutlines();
                      });
+
+    // QtNodes' own undo stack only restores its visual model. Record changes
+    // after NodeGraphModel has updated NodeAPI so MainWindow can restore a
+    // complete, serializable graph instead.
+    model_->onGraphChanged = [this] {
+        CreateDomainOutlines();
+        NotifyChanged();
+    };
+
+    RefreshExclusionVisuals();
 }
 
 GraphScene::Adjacency GraphScene::BuildAdjacency() const {
@@ -619,6 +670,7 @@ void GraphScene::AutoArrange() {
         }
         UpdateDomainOutlines();
         SyncPositionsFromScene();
+        NotifyChanged();
         return;
     }
 
@@ -732,6 +784,7 @@ void GraphScene::AutoArrange() {
 
     UpdateDomainOutlines();
     SyncPositionsFromScene();
+    NotifyChanged();
 }
 
 void GraphScene::SyncPositionsFromScene() {
@@ -773,6 +826,8 @@ QColor GraphScene::GetDomainColor(const std::string& domain) const {
 }
 
 void GraphScene::ClearDomainOutlines() {
+    selectedDomain_.clear();
+    selectedDomainMoved_ = false;
     for (auto& [domain, visuals] : domainVisuals_) {
         if (visuals.outline) {
             scene_->removeItem(visuals.outline);
@@ -808,6 +863,8 @@ void GraphScene::CreateDomainOutlines() {
         fillColor.setAlpha(30);
         outline->setBrush(QBrush(fillColor, Qt::SolidPattern));
         outline->setZValue(-100.0);
+        outline->setFlag(QGraphicsItem::ItemIsSelectable, true);
+        outline->setAcceptedMouseButtons(Qt::NoButton);
         scene_->addItem(outline);
 
         auto* label = new QGraphicsTextItem(labelText);
@@ -817,12 +874,14 @@ void GraphScene::CreateDomainOutlines() {
         label->setFont(font);
         label->setDefaultTextColor(color.darker(120));
         label->setZValue(-99.0);
+        label->setAcceptedMouseButtons(Qt::NoButton);
         scene_->addItem(label);
 
         domainVisuals_[domain] = DomainVisuals{outline, label, color};
     }
 
     UpdateDomainOutlines();
+    UpdateDomainSelectionStyle();
 }
 
 void GraphScene::UpdateDomainOutlines() {
@@ -887,6 +946,166 @@ void GraphScene::UpdateDomainOutlines() {
     }
 }
 
+bool GraphScene::PointHitsGraphContent(const QPointF& scenePos) const {
+    if (!scene_) {
+        return false;
+    }
+    for (QGraphicsItem* hitItem : scene_->items(scenePos)) {
+        for (QGraphicsItem* item = hitItem; item; item = item->parentItem()) {
+            if (qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+                return true;
+            }
+            if (qgraphicsitem_cast<QtNodes::ConnectionGraphicsObject*>(item)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void GraphScene::UpdateDomainSelectionStyle() {
+    for (auto& [domain, visuals] : domainVisuals_) {
+        if (!visuals.outline || !visuals.label) {
+            continue;
+        }
+        const bool selected = domain == selectedDomain_;
+        QColor outlineColor = visuals.color;
+        QColor fillColor = visuals.color;
+        if (selected) {
+            outlineColor = outlineColor.lighter(135);
+            fillColor.setAlpha(65);
+        } else {
+            fillColor.setAlpha(30);
+        }
+        visuals.outline->setPen(
+            QPen(outlineColor, selected ? 4.0 : 2.0));
+        visuals.outline->setBrush(
+            QBrush(fillColor, Qt::SolidPattern));
+        visuals.outline->setSelected(selected);
+        visuals.label->setDefaultTextColor(
+            selected ? visuals.color.lighter(140)
+                     : visuals.color.darker(120));
+    }
+}
+
+void GraphScene::ClearDomainSelection() {
+    if (selectedDomain_.empty()) {
+        return;
+    }
+    selectedDomain_.clear();
+    selectedDomainMoved_ = false;
+    UpdateDomainSelectionStyle();
+}
+
+bool GraphScene::SelectDomainAt(const QPointF& scenePos) {
+    if (!scene_ || PointHitsGraphContent(scenePos)) {
+        return false;
+    }
+
+    std::string hitDomain;
+    for (const auto& [domain, visuals] : domainVisuals_) {
+        if (visuals.label &&
+            visuals.label->sceneBoundingRect().contains(scenePos)) {
+            hitDomain = domain;
+            break;
+        }
+    }
+
+    if (hitDomain.empty()) {
+        qreal smallestArea = std::numeric_limits<qreal>::max();
+        for (const auto& [domain, visuals] : domainVisuals_) {
+            if (!visuals.outline ||
+                !visuals.outline->contains(
+                    visuals.outline->mapFromScene(scenePos))) {
+                continue;
+            }
+            const QRectF rect = visuals.outline->sceneBoundingRect();
+            const qreal area = rect.width() * rect.height();
+            if (area < smallestArea) {
+                smallestArea = area;
+                hitDomain = domain;
+            }
+        }
+    }
+
+    if (hitDomain.empty()) {
+        ClearDomainSelection();
+        return false;
+    }
+
+    scene_->clearSelection();
+    selectedDomain_ = std::move(hitDomain);
+    selectedDomainMoved_ = false;
+    UpdateDomainSelectionStyle();
+    return true;
+}
+
+bool GraphScene::BeginSelectedDomainDrag(const QPointF& scenePos) {
+    if (selectedDomain_.empty() || PointHitsGraphContent(scenePos)) {
+        ClearDomainSelection();
+        return false;
+    }
+
+    const auto visualIt = domainVisuals_.find(selectedDomain_);
+    if (visualIt == domainVisuals_.end()) {
+        ClearDomainSelection();
+        return false;
+    }
+    const DomainVisuals& visuals = visualIt->second;
+    const bool hitsOutline =
+        visuals.outline &&
+        visuals.outline->contains(
+            visuals.outline->mapFromScene(scenePos));
+    const bool hitsLabel =
+        visuals.label &&
+        visuals.label->sceneBoundingRect().contains(scenePos);
+    if (!hitsOutline && !hitsLabel) {
+        ClearDomainSelection();
+        return false;
+    }
+
+    selectedDomainMoved_ = false;
+    return true;
+}
+
+void GraphScene::MoveSelectedDomain(const QPointF& delta) {
+    if (selectedDomain_.empty() ||
+        (qFuzzyIsNull(delta.x()) && qFuzzyIsNull(delta.y()))) {
+        return;
+    }
+
+    const auto groups = GroupNodesByDomain();
+    const auto groupIt = groups.find(selectedDomain_);
+    if (groupIt == groups.end()) {
+        return;
+    }
+
+    for (const std::string& nodeId : groupIt->second) {
+        const auto nodeIt = nodeIdMap_.find(nodeId);
+        if (nodeIt == nodeIdMap_.end()) {
+            continue;
+        }
+        if (auto* graphicsObject =
+                scene_->nodeGraphicsObject(nodeIt->second)) {
+            graphicsObject->setPos(graphicsObject->pos() + delta);
+        }
+    }
+
+    selectedDomainMoved_ = true;
+    UpdateDomainOutlines();
+    scene_->update();
+}
+
+void GraphScene::EndSelectedDomainDrag() {
+    if (!selectedDomainMoved_) {
+        return;
+    }
+    selectedDomainMoved_ = false;
+    UpdateDomainOutlines();
+    SyncPositionsFromScene();
+    NotifyChanged();
+}
+
 QString GraphScene::SaveGraph(const std::string& path) const {
     std::ofstream stream(path, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!stream) {
@@ -900,6 +1119,35 @@ QString GraphScene::SaveGraph(const std::string& path) const {
     }
 
     return QString{};
+}
+
+std::string GraphScene::Snapshot() {
+    SyncPositionsFromScene();
+    return NodeAPI::SaveToJson(graph_);
+}
+
+QString GraphScene::RestoreSnapshot(const std::string& json) {
+    try {
+        NodeAPI::Graph restored = NodeAPI::LoadFromJson(json);
+        graph_ = std::move(restored);
+    } catch (const std::exception& e) {
+        return QStringLiteral("Failed to restore graph history: %1")
+            .arg(QString::fromStdString(e.what()));
+    }
+
+    RebuildScene();
+    return QString{};
+}
+
+void GraphScene::SetChangeCallback(std::function<void()> callback) {
+    changeCallback_ = std::move(callback);
+}
+
+void GraphScene::NotifyChanged() {
+    RefreshExclusionVisuals();
+    if (changeCallback_) {
+        changeCallback_();
+    }
 }
 
 void GraphScene::RegisterNodeTypes() {
@@ -951,6 +1199,12 @@ QtNodes::NodeId GraphScene::CreateNodeItem(const NodeAPI::Node& node) {
                         QtNodes::NodeRole::Label,
                         QVariant::fromValue(QString::fromStdString(node.id)));
 
+    // Excluded nodes render greyed out (this also grows the caption, so it
+    // must happen before the size is cached).
+    if (node.excludeFromCompile) {
+        ApplyNodeExcludedVisual(qtId, true);
+    }
+
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
 
     // Optional, parameter-backed ports with existing connections stay visible
@@ -995,6 +1249,7 @@ QString GraphScene::SetNodeParameters(
     }
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     UpdateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1010,6 +1265,7 @@ QString GraphScene::SetNodeParameterInputs(QtNodes::NodeId qtId,
     }
     nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
     UpdateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1036,6 +1292,7 @@ QString GraphScene::SetNodeDomain(QtNodes::NodeId qtId, const std::string& domai
         delegate->SetDomain(domain);
     }
     CreateDomainOutlines();
+    NotifyChanged();
     return QString{};
 }
 
@@ -1098,8 +1355,94 @@ QString GraphScene::RenameNode(QtNodes::NodeId qtId, const std::string& newId) {
     model_->setNodeData(qtId,
                         QtNodes::NodeRole::Label,
                         QVariant::fromValue(QString::fromStdString(newId)));
+    // Re-apply the exclusion marker, which lives in the label.
+    if (renamed.excludeFromCompile) {
+        ApplyNodeExcludedVisual(qtId, true);
+    }
     CreateDomainOutlines();
+    NotifyChanged();
     return QString{};
+}
+
+QString GraphScene::SetNodeExcluded(QtNodes::NodeId qtId, bool exclude) {
+    const std::string nodeId = NodeApiId(qtId);
+    if (nodeId.empty() || !graph_.SetNodeExcludeFromCompile(nodeId, exclude)) {
+        return QStringLiteral("Node not found");
+    }
+
+    NotifyChanged();  // RefreshExclusionVisuals() runs from here
+    return QString{};
+}
+
+QString GraphScene::SetNodeExcludedRecursive(QtNodes::NodeId qtId, bool exclude) {
+    const std::string nodeId = NodeApiId(qtId);
+    if (nodeId.empty() || !graph_.SetNodeExcludeFromCompileRecursive(nodeId, exclude)) {
+        return QStringLiteral("Node not found");
+    }
+
+    NotifyChanged();  // RefreshExclusionVisuals() runs from here
+    return QString{};
+}
+
+std::string GraphScene::ExclusionParent(const std::string& nodeId) const {
+    const auto it = exclusionParents_.find(nodeId);
+    return it != exclusionParents_.end() ? it->second : std::string{};
+}
+
+void GraphScene::RefreshExclusionVisuals() {
+    const auto excluded = graph_.ComputeExcludedNodes();
+    std::set<std::string> newSet;
+    for (const auto& [id, parent] : excluded) {
+        newSet.insert(id);
+    }
+
+    // Apply visual changes only to nodes whose effective state flipped.
+    bool outlinesDirty = false;
+    for (const auto& [apiId, qtId] : nodeIdMap_) {
+        const bool wasExcluded = effectiveExcluded_.count(apiId) > 0;
+        const bool isExcluded = newSet.count(apiId) > 0;
+        if (wasExcluded == isExcluded) {
+            continue;
+        }
+        ApplyNodeExcludedVisual(qtId, isExcluded);
+        nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+        outlinesDirty = true;
+    }
+
+    effectiveExcluded_ = std::move(newSet);
+    exclusionParents_.clear();
+    for (const auto& [id, parent] : excluded) {
+        if (id != parent) {
+            exclusionParents_[id] = parent;
+        }
+    }
+    model_->RefreshExcludedNodes(effectiveExcluded_);
+
+    if (outlinesDirty) {
+        UpdateDomainOutlines();
+    }
+}
+
+void GraphScene::ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude) {
+    if (auto* delegate = model_->delegateModel<NodeInstanceModel>(qtId)) {
+        delegate->SetExcluded(exclude);
+    }
+
+    // The bold top line of the node is the Label role (the node id): mark the
+    // exclusion there rather than in the type caption below it.
+    const std::string nodeId = NodeApiId(qtId);
+    QString label = QString::fromStdString(nodeId);
+    if (exclude) {
+        label += QStringLiteral(" (excluded)");
+    }
+    model_->setNodeData(qtId, QtNodes::NodeRole::Label, QVariant::fromValue(label));
+
+    // Repaint the wires touching the node so they grey out (or restore) too.
+    for (const auto& connectionId : model_->allConnectionIds(qtId)) {
+        if (auto* cgo = scene_->connectionGraphicsObject(connectionId)) {
+            cgo->update();
+        }
+    }
 }
 
 QString GraphScene::AddNodeAt(const std::string& typeId,
@@ -1166,6 +1509,7 @@ QString GraphScene::AddNodeAt(const std::string& typeId,
 
     // The new node may introduce a domain that has no outline yet.
     CreateDomainOutlines();
+    NotifyChanged();
 
     return QString{};
 }

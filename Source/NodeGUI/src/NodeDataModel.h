@@ -51,6 +51,11 @@ public:
 
     QString name() const override;
     QString caption() const override;
+    QString NodeToolTip() const;
+    QString PortToolTip(QtNodes::PortType portType,
+                        QtNodes::PortIndex portIndex) const;
+    QString ParameterToolTip(const std::string& name) const;
+    QString Description() const;
 
     unsigned int nPorts(QtNodes::PortType portType) const override;
     QtNodes::NodeDataType dataType(QtNodes::PortType portType,
@@ -78,6 +83,10 @@ public:
     // Emits requestNodeUpdate() so the scene repaints.
     void SetDomain(std::string domain);
 
+    // Greys the node out (excluded from compile) or restores it. Emits
+    // requestNodeUpdate() so the scene repaints.
+    void SetExcluded(bool exclude);
+
     // Marks parameters as wireable input ports (or back to constants). The
     // synthesized ports are appended after the type's input ports; wired
     // parameters leave the painted parameter panel. Emits portsInserted()/
@@ -102,6 +111,9 @@ public:
                                                    QtNodes::PortIndex portIndex) const override;
 
 private:
+    const NodeAPI::Port* PortAt(QtNodes::PortType portType,
+                                QtNodes::PortIndex portIndex) const;
+
     const NodeAPI::Node node_;
     const NodeAPI::NodeType nodeType_;
 

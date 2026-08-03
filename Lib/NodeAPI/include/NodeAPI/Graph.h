@@ -5,6 +5,7 @@
 #include "NodeAPI/Port.h"
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -63,6 +64,26 @@ public:
     // existing node. Returns false if the node id is not found.
     bool SetNodeParameterInputs(const std::string& nodeId,
                                 std::vector<std::string> parameterInputs);
+
+    // Sets the exclude-from-compile flag of an existing node. Returns false
+    // if the node id is not found.
+    bool SetNodeExcludeFromCompile(const std::string& nodeId, bool exclude);
+
+    // Sets the exclude-from-compile-and-children flag of an existing node.
+    // Returns false if the node id is not found.
+    bool SetNodeExcludeFromCompileRecursive(const std::string& nodeId, bool exclude);
+
+    // Replaces the zero-bound input list of an existing node (used by
+    // emitters after pruning excluded nodes). Returns false if the node id
+    // is not found.
+    bool SetNodeZeroInputs(const std::string& nodeId, std::vector<std::string> zeroInputs);
+
+    // The effective set of excluded nodes: every node flagged with either
+    // exclusion flag, plus every node reachable downstream of a
+    // recursive-flagged node. Maps each excluded node id to the
+    // recursive-flagged ancestor that excludes it, or to itself for directly
+    // flagged nodes (first ancestor wins when several overlap).
+    std::map<std::string, std::string> ComputeExcludedNodes() const;
 
     // Connections.
     bool Connect(Connection connection);

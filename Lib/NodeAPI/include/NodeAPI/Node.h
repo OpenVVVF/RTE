@@ -33,6 +33,21 @@ struct Node {
     // normal input port rather than from its value in `parameters`.
     std::vector<std::string> parameterInputs;
 
+    // When true the node stays in the graph (and is shown by editors) but is
+    // excluded from compilation: code emitters must skip it together with any
+    // connections/bridges that touch it.
+    bool excludeFromCompile = false;
+
+    // When true the node and every node reachable from it through outgoing
+    // connections/bridges (its "children") are excluded from compilation.
+    bool excludeFromCompileRecursive = false;
+
+    // Names of input ports (or parameterInputs) whose producer was excluded
+    // from compilation. Emitters bind these to a zero "nothing" value instead
+    // of erroring on the missing connection. Computed while pruning excluded
+    // nodes; not serialized.
+    std::vector<std::string> zeroInputs;
+
     friend bool operator==(const Node& lhs, const Node& rhs) = default;
     friend bool operator!=(const Node& lhs, const Node& rhs) = default;
 };

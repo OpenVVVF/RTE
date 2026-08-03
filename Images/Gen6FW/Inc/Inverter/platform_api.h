@@ -163,6 +163,14 @@ bool platform_get_encoder_angle(float* angle_deg);
 float platform_get_encoder_angle_latest(void);
 
 /**
+ * @brief Mechanical speed estimate [rpm], signed by direction.
+ *
+ * EMA-filtered in the encoder driver (main-loop diagnose()); near zero at
+ * standstill.
+ */
+float platform_get_motor_rpm(void);
+
+/**
  * @brief Latest DC-link voltage [V].
  */
 float platform_get_dc_link_voltage(void);

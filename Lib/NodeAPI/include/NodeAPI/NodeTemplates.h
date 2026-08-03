@@ -8,12 +8,18 @@
 
 namespace NodeAPI {
 
+// Schema version of the node-template files (node.json). Bump this whenever
+// the template format changes; loaders warn on mismatch. Templates without a
+// version are treated as legacy and load silently.
+inline constexpr int kTemplateSchemaVersion = 1;
+
 // Result of loading node-template JSON files from a directory.
 struct LoadResult {
     bool ok = true;                      // true if at least one type was loaded and no errors.
     std::size_t filesLoaded = 0;         // number of JSON files successfully parsed.
     std::size_t typesLoaded = 0;         // number of NodeType objects added to the graph.
     std::vector<std::string> errors;     // human-readable messages for failed files/insertions.
+    std::vector<std::string> warnings;   // non-fatal issues, e.g. schema version mismatches.
 };
 
 // Load every *.json file in `directory` into `graph` as NodeType entries.
