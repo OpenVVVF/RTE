@@ -33,24 +33,12 @@ public:
     void LoadAutosave();
     void SaveAutosave();
 
-    // Initial values for the connection row (from settings/CLI).
-    void SetConnectionState(bool remote, const QString& host);
-
-    // Text shown next to the Connect button (e.g. "spawning...", "connected").
-    void SetServerStatus(const QString& text);
-
-signals:
-    // User asked to (re)connect: remote=false spawns a local RTEServer,
-    // remote=true connects to the given host.
-    void connectRequested(bool remote, const QString& host);
-
 private slots:
     void OnStoreChanged();
     void OnSavePreset();
     void OnLoadPreset();
     void OnExportSession();
     void OnClearSession();
-    void OnConnectClicked();
 
 private:
     void RefreshRecentCombo();
@@ -59,9 +47,6 @@ private:
 
     QLabel* headerLabel_ = nullptr;
     QLabel* exportStatus_ = nullptr;
-    QComboBox* serverModeCombo_ = nullptr;
-    QLineEdit* serverHostEdit_ = nullptr;
-    QLabel* serverStatusLabel_ = nullptr;
     QLineEdit* presetNameEdit_ = nullptr;
     QComboBox* recentCombo_ = nullptr;
     QLabel* presetStatus_ = nullptr;

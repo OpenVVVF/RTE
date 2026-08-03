@@ -63,33 +63,6 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     headerRow->addWidget(exportButton);
     layout->addLayout(headerRow);
 
-    // Server connection row: Local spawns an RTEServer child process, Remote
-    // connects to one over IP. Everything runtime (telemetry, console, flash)
-    // goes through that one server.
-    auto* serverRow = new QHBoxLayout;
-    serverRow->addWidget(new QLabel(QStringLiteral("Server:"), this));
-    serverModeCombo_ = new QComboBox(this);
-    serverModeCombo_->addItem(QStringLiteral("Local (spawn RTEServer)"));
-    serverModeCombo_->addItem(QStringLiteral("Remote (IP)"));
-    serverRow->addWidget(serverModeCombo_);
-    serverHostEdit_ = new QLineEdit(this);
-    serverHostEdit_->setPlaceholderText(QStringLiteral("192.168.1.x"));
-    serverHostEdit_->setMaximumWidth(220);
-    serverRow->addWidget(serverHostEdit_);
-    auto* connectButton = new QPushButton(QStringLiteral("Connect"), this);
-    connect(connectButton, &QPushButton::clicked, this, &RuntimeTab::OnConnectClicked);
-    serverRow->addWidget(connectButton);
-    serverStatusLabel_ = new QLabel(this);
-    serverRow->addWidget(serverStatusLabel_);
-    serverRow->addStretch(1);
-    layout->addLayout(serverRow);
-
-    auto updateHostEnabled = [this] {
-        serverHostEdit_->setEnabled(serverModeCombo_->currentIndex() == 1);
-    };
-    connect(serverModeCombo_, &QComboBox::activated, this, updateHostEnabled);
-    updateHostEnabled();
-
     // Graph-layout presets.
     auto* presetRow = new QHBoxLayout;
     presetNameEdit_ = new QLineEdit(this);
@@ -138,16 +111,11 @@ void RuntimeTab::OnStoreChanged() {
     const double bandwidthPct =
         static_cast<double>(stats.rxBytesPerSec) * 10.0 / 460800.0 * 100.0;
 
-    const QString endpoint = controller_->GetProtocol() == Protocol::Inverter
-                                 ? controller_->Port()
-                                 : QStringLiteral("%1:%2")
-                                       .arg(controller_->ServerHost())
-                                       .arg(controller_->BridgePort());
     headerLabel_->setText(
-        QStringLiteral("Server: %1 | RX: %2 Hz | Bandwidth: %3% | Seq: %4 | "
+        QStringLiteral("Port: %1 | RX: %2 Hz | Bandwidth: %3% | Seq: %4 | "
                        "Good: %5 | Bad: %6 | Reject: crc %7 / hdr %8 / len %9 / "
                        "parse %10 / unknown_id %11")
-            .arg(endpoint)
+            .arg(controller_->Port())
             .arg(stats.rxHz, 0, 'f', 1)
             .arg(bandwidthPct, 0, 'f', 1)
             .arg(stats.lastSeq)
@@ -190,7 +158,8 @@ void RuntimeTab::OnSavePreset() {
     recentCombo_->setCurrentText(name);
 }
 
-void RuntimeTab::OnLoadPreset() {    const QString name = recentCombo_->currentText();
+void RuntimeTab::OnLoadPreset() {
+    const QString name = recentCombo_->currentText();
     if (name.isEmpty()) {
         presetStatus_->setText(QStringLiteral("no preset selected"));
         return;
@@ -302,26 +271,6 @@ void RuntimeTab::SaveAutosave() {
         settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);
     }
     settings.endGroup();
-}
-
-void RuntimeTab::SetConnectionState(bool remote, const QString& host) {
-    serverModeCombo_->setCurrentIndex(remote ? 1 : 0);
-    serverHostEdit_->setEnabled(remote);
-    serverHostEdit_->setText(host);
-}
-
-void RuntimeTab::SetServerStatus(const QString& text) {
-    serverStatusLabel_->setText(text);
-}
-
-void RuntimeTab::OnConnectClicked() {
-    const bool remote = serverModeCombo_->currentIndex() == 1;
-    const QString host = remote ? serverHostEdit_->text().trimmed() : QString();
-    if (remote && host.isEmpty()) {
-        serverStatusLabel_->setText(QStringLiteral("enter an IP or hostname"));
-        return;
-    }
-    emit connectRequested(remote, host);
 }
 
 }  // namespace NodeGUI::runtime

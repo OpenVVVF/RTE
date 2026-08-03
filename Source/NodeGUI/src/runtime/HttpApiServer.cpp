@@ -179,14 +179,7 @@ bool HttpApiServer::start(const std::string& port) {
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    {
-        std::lock_guard lock(config_mtx_);
-        if (inet_pton(AF_INET, bind_address_.c_str(), &addr.sin_addr) != 1) {
-            // Unparseable address: fall back to loopback rather than expose
-            // the API unintentionally.
-            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        }
-    }
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = htons((uint16_t)p);
 
     if (bind(fd, (sockaddr*)&addr, sizeof(addr)) != 0) {
@@ -248,11 +241,6 @@ void HttpApiServer::setCommandHandler(std::function<bool(const std::string&)> ha
 void HttpApiServer::setAppName(const std::string& name) {
     std::lock_guard lock(config_mtx_);
     app_name_ = name;
-}
-
-void HttpApiServer::setBindAddress(const std::string& address) {
-    std::lock_guard lock(config_mtx_);
-    bind_address_ = address;
 }
 
 void HttpApiServer::threadMain() {
@@ -333,8 +321,7 @@ void HttpApiServer::threadMain() {
             std::string resp = std::string("{\"state\":\"")
                 + FirmwareUpdater::stateString(st.state)
                 + "\",\"busy\":" + (st.busy ? "true" : "false")
-                + ",\"last_error\":\"" + jsonEscape(st.last_error) + "\""
-                + ",\"progress\":" + std::to_string(st.progress);
+                + ",\"last_error\":\"" + jsonEscape(st.last_error) + "\"";
             // Include the tail of the updater log for remote debugging.
             const size_t kLogTail = 30;
             size_t start = st.log.size() > kLogTail ? st.log.size() - kLogTail : 0;
@@ -548,11 +535,10 @@ void HttpApiServer::threadMain() {
         }
 
         // Queue flash job using the device port registered with the updater.
-        // POST /flash?auto_gpio=0 flashes in manual (no GPIO) mode.
         FlashJob job;
         job.firmware_path = tmp_path;
         job.port = updater_.currentPort();
-        job.auto_gpio = query["auto_gpio"] != "0";
+        job.auto_gpio = true;  // default for HTTP; could be exposed later
         job.delete_after_flash = true;
 
         if (job.port.empty()) {

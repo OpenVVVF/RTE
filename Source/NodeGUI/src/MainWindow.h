@@ -4,7 +4,8 @@
 #include "GraphView.h"
 #include "PreferencesDialog.h"
 
-#include "runtime/RemoteFlashBackend.h"
+#include "runtime/FirmwareUpdater.h"
+#include "runtime/HttpApiServer.h"
 #include "runtime/RuntimeController.h"
 
 #include <QByteArray>
@@ -43,20 +44,17 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
-    ~MainWindow() override;
 
     // Open a graph file at startup.
     bool OpenGraph(const std::string& path);
 
     GraphScene* Scene() const { return graphScene_.get(); }
 
-    // Adds the top-level Runtime and Firmware Update tabs, then connects to
-    // the RTEServer (spawns a local one unless connectHost names a remote
-    // server or the settings have one saved).
+    // Adds the top-level Runtime and Firmware Update tabs, then starts the
+    // telemetry client and HTTP API server.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
-                      runtime::Protocol protocol = runtime::Protocol::Legacy,
-                      const QString& connectHost = QString());
+                      runtime::Protocol protocol = runtime::Protocol::Legacy);
 
 private slots:
     void OnOpen();
@@ -173,19 +171,10 @@ private:
     QByteArray screenStates_[3];
     int previousTab_ = 0;
     std::unique_ptr<runtime::RuntimeController> runtimeController_;
-    std::unique_ptr<runtime::RemoteFlashBackend> flashBackend_;
+    std::unique_ptr<runtime::FirmwareUpdater> firmwareUpdater_;
+    std::unique_ptr<runtime::HttpApiServer> httpApiServer_;
     QPointer<runtime::RuntimeTab> runtimeTab_;
     QPointer<runtime::FlashPanel> firmwareUpdateTab_;
-
-    // Local RTEServer child process (nullptr in remote mode). The GUI never
-    // touches the UART itself: the spawned or remote server owns it.
-    QProcess* serverProcess_ = nullptr;
-    QString serialPort_;
-    QString remoteHost_;
-    void ConnectToServer(bool remote, const QString& host);
-    bool SpawnLocalServer();
-    void StopLocalServer();
-    QString FindServerExecutable() const;
 
     // Disk-change watch on the currently opened graph (see ShowReloadBanner).
     QFileSystemWatcher* graphWatcher_ = nullptr;

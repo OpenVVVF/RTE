@@ -39,8 +39,7 @@ public:
     LegacyTelemetryClient(const LegacyTelemetryClient&) = delete;
     LegacyTelemetryClient& operator=(const LegacyTelemetryClient&) = delete;
 
-    bool start(const std::string& port);            // spawns reader thread (serial)
-    bool startTcp(const std::string& host, int port); // spawns reader thread (serial-over-TCP)
+    bool start(const std::string& port);            // spawns reader thread
     void stop();                                    // joins thread, closes port
     void suspend();                                 // close port, idle reader (for flashing)
     void resume();                                  // clear suspend, reader reconnects
@@ -54,55 +53,25 @@ public:
     std::function<void(const Stats&)> onStats;      // ~1 Hz
 
 private:
-    // Byte-stream transport interface (open/read/write/close). The numeric
-    // open() argument is the baud rate for serial and the TCP port for TCP.
-    class ByteStream {
-    public:
-        virtual ~ByteStream() = default;
-        virtual bool open(const std::string& target, int arg) = 0;
-        virtual void close() = 0;
-        virtual bool isOpen() const = 0;
-        virtual int read(uint8_t* buf, int cap) = 0;
-        virtual bool write(const uint8_t* data, int n) = 0;
-        virtual bool drain() = 0;
-    };
-
     // POSIX serial port (termios), same configuration as the original SerialPort.
-    class SerialPort : public ByteStream {
+    class SerialPort {
     public:
         SerialPort() = default;
-        ~SerialPort() override;
+        ~SerialPort();
 
-        bool open(const std::string& port, int baud = 460800) override;
-        void close() override;
-        bool isOpen() const override;
-        int read(uint8_t* buf, int cap) override;
-        bool write(const uint8_t* data, int n) override;
-        bool drain() override;
+        bool open(const std::string& port, int baud = 460800);
+        void close();
+        bool isOpen() const;
+
+        int  read(uint8_t* buf, int cap);
+        bool write(const uint8_t* data, int n);
+        bool drain();
 
     private:
         int h_ = -1; // INVALID_SERIAL
     };
 
-    // TCP client stream to a serial bridge (e.g. RTEServer). Bytes are the
-    // raw UART bytes, so the parser path is identical to serial.
-    class TcpStream : public ByteStream {
-    public:
-        TcpStream() = default;
-        ~TcpStream() override;
-
-        bool open(const std::string& host, int port) override;
-        void close() override;
-        bool isOpen() const override;
-        int read(uint8_t* buf, int cap) override;
-        bool write(const uint8_t* data, int n) override;
-        bool drain() override;
-
-    private:
-        int fd_ = -1;
-    };
-
-    void threadMain(const std::string& target, int arg, ByteStream& stream);
+    void threadMain(const std::string& port);
 
     // Ingest helpers (reader thread only; the original appended "Locked" because
     // they ran under mtx_ protecting the snapshot state -- there is no shared
@@ -137,7 +106,6 @@ private:
 
     std::mutex serial_mtx_;
     SerialPort serial_;
-    TcpStream tcp_;
 };
 
 } // namespace NodeGUI::runtime

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FlashBackend.h"
+#include "FirmwareUpdater.h"
 
 #include <QWidget>
 
@@ -14,33 +14,40 @@ class QTimer;
 
 namespace NodeGUI::runtime {
 
+class HttpApiServer;
 class RuntimeController;
 
-// Firmware Update tab: firmware path + Flash button + Auto-GPIO toggle, the
-// updater state/log and flash progress. All flashing goes through the
-// RTEServer's HTTP API via FlashBackend (spawned-local or remote server).
+// Top-level Firmware Update tab: firmware path + Flash button + Auto-GPIO
+// toggle, HTTP server controls, and the updater state/log. Polls the Qt-free
+// FirmwareUpdater on a timer.
 class FlashPanel : public QWidget {
     Q_OBJECT
 
 public:
-    FlashPanel(FlashBackend* backend,
+    FlashPanel(FirmwareUpdater* updater,
                RuntimeController* controller,
+               HttpApiServer* httpServer,
                QWidget* parent = nullptr);
 
 private slots:
     void OnFlashClicked();
     void OnBrowse();
+    void OnHttpToggle();
     void PollStatus();
 
 private:
-    FlashBackend* backend_;
+    FirmwareUpdater* updater_;
     RuntimeController* controller_;
+    HttpApiServer* httpServer_;
 
-    QLabel* serverLabel_ = nullptr;
+    QLabel* portLabel_ = nullptr;
     QLineEdit* pathEdit_ = nullptr;
     QPushButton* flashButton_ = nullptr;
     QCheckBox* autoGpioCheck_ = nullptr;
     QLabel* manualHint_ = nullptr;
+    QLineEdit* httpPortEdit_ = nullptr;
+    QPushButton* httpButton_ = nullptr;
+    QLabel* httpStatus_ = nullptr;
     QLabel* stateLabel_ = nullptr;
     QProgressBar* progressBar_ = nullptr;
     QLabel* errorLabel_ = nullptr;

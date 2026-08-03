@@ -10,12 +10,10 @@ namespace {
 
 void PrintUsage(const char* exe) {
     std::cerr << "usage: " << exe
-              << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--connect <host>] [--simulate]\n"
-              << "  --serial <port>      inverter serial port for the local RTEServer\n"
-              << "                       (default /dev/ttyACM0)\n"
+              << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--simulate]\n"
+              << "  --serial <port>      telemetry serial port (default /dev/ttyACM0)\n"
               << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
               << "                       or 'ivp' (new InverterProtocol stack)\n"
-              << "  --connect <host>     connect to a remote RTEServer instead of spawning one\n"
               << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n";
 }
 
@@ -33,7 +31,6 @@ int main(int argc, char* argv[]) {
     QSurfaceFormat::setDefaultFormat(format);
 
     QString serialPort = QStringLiteral("/dev/ttyACM0");
-    QString connectHost;
     bool simulate = false;
     auto protocol = NodeGUI::runtime::Protocol::Legacy;
     std::string graphPath;
@@ -46,12 +43,6 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             serialPort = QString::fromStdString(argv[i]);
-        } else if (arg == "--connect") {
-            if (++i >= argc) {
-                PrintUsage(argv[0]);
-                return 1;
-            }
-            connectHost = QString::fromStdString(argv[i]);
         } else if (arg == "--protocol") {
             if (++i >= argc) {
                 PrintUsage(argv[0]);
@@ -81,7 +72,7 @@ int main(int argc, char* argv[]) {
     }
 
     NodeGUI::MainWindow window;
-    window.SetupRuntime(serialPort, simulate, protocol, connectHost);
+    window.SetupRuntime(serialPort, simulate, protocol);
     window.showNormal();
 
     if (!graphPath.empty()) {
