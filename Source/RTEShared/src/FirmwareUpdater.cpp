@@ -357,14 +357,10 @@ bool FirmwareUpdater::findGpioHelper(std::string& out_helper) const {
 #endif
     if (!exe_dir.empty()) {
         candidates.push_back(exe_dir / "tools" / "mcp2221a_gpio.py");
-        candidates.push_back(exe_dir / "Tools" / "mcp2221a_gpio.py");
         candidates.push_back(exe_dir.parent_path() / "tools" / "mcp2221a_gpio.py");
-        candidates.push_back(exe_dir.parent_path() / "Tools" / "mcp2221a_gpio.py");
     }
     candidates.push_back(fs::current_path(ec) / "tools" / "mcp2221a_gpio.py");
-    candidates.push_back(fs::current_path(ec) / "Tools" / "mcp2221a_gpio.py");
     candidates.push_back("tools/mcp2221a_gpio.py");
-    candidates.push_back("Tools/mcp2221a_gpio.py");
 
     for (const auto& p : candidates) {
         if (fs::is_regular_file(p, ec)) {

@@ -10,9 +10,7 @@
 
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <fcntl.h>
 #include <netdb.h>
-#include <poll.h>
 #include <sys/socket.h>
 
 namespace NodeGUI::runtime {
@@ -49,27 +47,7 @@ HttpResult httpRequest(const std::string& host,
     for (addrinfo* ai = addresses; ai; ai = ai->ai_next) {
         fd = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (fd < 0) continue;
-
-        // Non-blocking connect with timeout: connect() to an unreachable
-        // remote host blocks for minutes by default.
-        const int flags = fcntl(fd, F_GETFL, 0);
-        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-        int rc = ::connect(fd, ai->ai_addr, ai->ai_addrlen);
-        if (rc != 0 && errno == EINPROGRESS) {
-            pollfd pfd{fd, POLLOUT, 0};
-            const int timeoutMs = 1000;
-            if (::poll(&pfd, 1, timeoutMs) == 1 && (pfd.revents & POLLOUT)) {
-                int err = 0;
-                socklen_t len = sizeof(err);
-                ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
-                rc = (err == 0) ? 0 : -1;
-            } else {
-                rc = -1;
-            }
-        }
-        fcntl(fd, F_SETFL, flags);
-
-        if (rc == 0) break;
+        if (::connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) break;
         ::close(fd);
         fd = -1;
     }
@@ -273,25 +251,20 @@ void RemoteFlashBackend::PollLoop() {
         const HttpResult result =
             httpRequest(host.toStdString(), port, "GET", "/flash/status", {}, {}, 3000);
 
-        // IMPORTANT: keep the lock scope tight. Holding mtx_ across the
-        // inter-poll sleep starves FlashPanel::PollStatus on the GUI thread,
-        // which freezes the whole application.
-        {
-            std::lock_guard lk(mtx_);
-            if (result.code == 200) {
-                status_.state = jsonString(result.body, "state");
-                status_.busy = jsonBool(result.body, "busy");
-                status_.lastError = jsonString(result.body, "last_error");
-                status_.progress = jsonInt(result.body, "progress", -1);
-                status_.log = jsonStringArray(result.body, "log");
-                status_.reachable = true;
-            } else {
-                status_.reachable = false;
-                status_.busy = false;
-                status_.state = "Unreachable";
-            }
-            queueError_.clear();
+        std::lock_guard lk(mtx_);
+        if (result.code == 200) {
+            status_.state = jsonString(result.body, "state");
+            status_.busy = jsonBool(result.body, "busy");
+            status_.lastError = jsonString(result.body, "last_error");
+            status_.progress = jsonInt(result.body, "progress", -1);
+            status_.log = jsonStringArray(result.body, "log");
+            status_.reachable = true;
+        } else {
+            status_.reachable = false;
+            status_.busy = false;
+            status_.state = "Unreachable";
         }
+        queueError_.clear();
 
         for (int i = 0; i < 5 && run_.load(); ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
