@@ -254,7 +254,9 @@ std::string SaveToJson(const Graph& graph) {
         j["bridges"].push_back(ToJson(bridge));
     }
 
-    return j.dump(2);
+    // Canonical output: keys sorted, arrays in graph order, trailing newline,
+    // so repeated saves of an unchanged graph are byte-identical.
+    return j.dump(2) + "\n";
 }
 
 Graph LoadFromJson(std::string_view jsonText) {
