@@ -191,6 +191,81 @@ TEST(Serialization, ExcludeFromCompileRoundTrip) {
               SaveToJson(graph).find("excludeFromCompile"));
 }
 
+TEST(Graph, ComputeExcludedNodes) {
+    // Chain: a -> b -> c, plus standalone d (single exclusion) and e (clean).
+    NodeType passThrough{
+        .id = "test.passthrough",
+        .displayName = "Pass",
+        .inputPorts = {Port{.name = "in",
+                            .direction = PortDirection::Input,
+                            .type = WireType{.quantity = Quantity::Dimensionless,
+                                             .frame = Frame::Scalar,
+                                             .dtype = DType::F32}}},
+        .outputPorts = {Port{.name = "out",
+                             .direction = PortDirection::Output,
+                             .type = WireType{.quantity = Quantity::Dimensionless,
+                                              .frame = Frame::Scalar,
+                                              .dtype = DType::F32}}},
+    };
+
+    Graph graph;
+    graph.AddNodeType(passThrough);
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "a", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "b", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "c", .type = "display.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "d", .type = "display.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "e", .type = "display.value", .domain = "app_loop"});
+    graph.Connect(Connection{.id = "c1",
+                             .from = PortRef{.nodeId = "a", .portName = "out"},
+                             .to = PortRef{.nodeId = "b", .portName = "in"}});
+    graph.Connect(Connection{.id = "c2",
+                             .from = PortRef{.nodeId = "b", .portName = "out"},
+                             .to = PortRef{.nodeId = "c", .portName = "in"}});
+    graph.Connect(Connection{.id = "c3",
+                             .from = PortRef{.nodeId = "a", .portName = "out"},
+                             .to = PortRef{.nodeId = "e", .portName = "in"}});
+
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("a", true));
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompile("d", true));
+
+    const auto excluded = graph.ComputeExcludedNodes();
+
+    // The recursive flag pulls in the whole downstream chain (a, b, c, e).
+    EXPECT_EQ(excluded.at("a"), "a");
+    EXPECT_EQ(excluded.at("b"), "a");
+    EXPECT_EQ(excluded.at("c"), "a");
+    EXPECT_EQ(excluded.at("e"), "a");
+    // Directly flagged nodes map to themselves.
+    EXPECT_EQ(excluded.at("d"), "d");
+    EXPECT_EQ(excluded.size(), 5u);
+
+    // Clearing the flag releases the chain.
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("a", false));
+    const auto after = graph.ComputeExcludedNodes();
+    EXPECT_EQ(after.size(), 1u);
+    EXPECT_EQ(after.count("d"), 1u);
+
+    EXPECT_FALSE(graph.SetNodeExcludeFromCompileRecursive("missing", true));
+}
+
+TEST(Serialization, RecursiveExclusionRoundTrip) {
+    Graph graph = MakeDemoGraph();
+    ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("source", true));
+
+    Graph loaded;
+    LoadIntoGraph(loaded, SaveToJson(graph));
+
+    const auto node = loaded.FindNode("source");
+    ASSERT_TRUE(node.has_value());
+    EXPECT_TRUE(node->excludeFromCompileRecursive);
+    EXPECT_FALSE(loaded.FindNode("sink")->excludeFromCompileRecursive);
+
+    // zeroInputs is an emitter-computed artifact and must not be serialized.
+    ASSERT_TRUE(graph.SetNodeZeroInputs("sink", {"in"}));
+    EXPECT_EQ(SaveToJson(graph).find("zeroInputs"), std::string::npos);
+}
+
 TEST(Graph, SetNodeDomain) {
     Graph graph = MakeDemoGraph();
 

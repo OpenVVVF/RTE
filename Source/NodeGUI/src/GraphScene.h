@@ -13,6 +13,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -105,12 +106,25 @@ public:
     // rendering to match. Returns an empty string on success.
     QString SetNodeExcluded(QtNodes::NodeId qtId, bool exclude);
 
+    // Sets a node's exclude-from-compile-and-children flag: the node and its
+    // whole downstream chain are excluded. Returns an empty string on success.
+    QString SetNodeExcludedRecursive(QtNodes::NodeId qtId, bool exclude);
+
+    // If the node is excluded because a recursive-flagged ancestor excludes
+    // it, returns that ancestor's id; empty string otherwise.
+    std::string ExclusionParent(const std::string& nodeId) const;
+
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
 
 private:
     // Applies the greyed (excluded) or normal style to a node.
     void ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude);
+
+    // Recomputes the effective exclusion set (direct flags + downstream
+    // chains), refreshes node visuals for nodes whose state changed, and
+    // updates the model's painter cache.
+    void RefreshExclusionVisuals();
 
 private:
     struct Adjacency {
@@ -192,6 +206,10 @@ public:
     // Cached node geometry sizes so domain-outline updates don't re-query the
     // full geometry system on every mouse-move event.
     std::unordered_map<QtNodes::NodeId, QSize> nodeSizeCache_;
+
+    // Effective exclusion state from the last RefreshExclusionVisuals() pass.
+    std::set<std::string> effectiveExcluded_;
+    std::map<std::string, std::string> exclusionParents_;
 
     // Event filter that keeps domain outlines synced while dragging nodes.
     std::unique_ptr<QObject> sceneEventFilter_;

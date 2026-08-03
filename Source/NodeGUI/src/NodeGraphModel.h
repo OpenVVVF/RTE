@@ -12,6 +12,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -52,6 +53,11 @@ public:
 
     // Returns true when the node itself is excluded from compile.
     bool IsNodeExcluded(QtNodes::NodeId const nodeId) const;
+
+    // Replaces the cached set of effectively excluded NodeAPI node ids
+    // (direct flags plus downstream chains). Called by GraphScene whenever
+    // the graph changes; the painters read the cache on every paint.
+    void RefreshExcludedNodes(std::set<std::string> excludedNodeIds);
 
     // Retrieve the reason for the last rejected connection attempt and clear it.
     // Returns an empty string if nothing was rejected since the last clear.
@@ -95,6 +101,8 @@ private:
     mutable std::unordered_map<QtNodes::ConnectionId, GraphConnection> connectionMap_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;
+    // Effective exclusion set (NodeAPI node ids), refreshed by GraphScene.
+    std::set<std::string> excludedNodeIds_;
 };
 
 }  // namespace NodeGUI

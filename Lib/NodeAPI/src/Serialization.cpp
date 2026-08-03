@@ -151,6 +151,9 @@ json ToJson(const Node& node) {
     if (node.excludeFromCompile) {
         j["excludeFromCompile"] = true;
     }
+    if (node.excludeFromCompileRecursive) {
+        j["excludeFromCompileRecursive"] = true;
+    }
     return j;
 }
 
@@ -162,6 +165,7 @@ Node NodeFromJson(const json& j) {
     node.domain = j.value("domain", "");
     node.position = PositionFromJson(j.at("position"));
     node.excludeFromCompile = j.value("excludeFromCompile", false);
+    node.excludeFromCompileRecursive = j.value("excludeFromCompileRecursive", false);
 
     if (j.contains("parameters") && j.at("parameters").is_object()) {
         for (const auto& [key, value] : j.at("parameters").items()) {

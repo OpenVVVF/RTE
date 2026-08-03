@@ -248,6 +248,8 @@ void GraphScene::RebuildScene() {
         CreateDomainOutlines();
         NotifyChanged();
     };
+
+    RefreshExclusionVisuals();
 }
 
 GraphScene::Adjacency GraphScene::BuildAdjacency() const {
@@ -1123,6 +1125,7 @@ void GraphScene::SetChangeCallback(std::function<void()> callback) {
 }
 
 void GraphScene::NotifyChanged() {
+    RefreshExclusionVisuals();
     if (changeCallback_) {
         changeCallback_();
     }
@@ -1348,15 +1351,57 @@ QString GraphScene::SetNodeExcluded(QtNodes::NodeId qtId, bool exclude) {
         return QStringLiteral("Node not found");
     }
 
-    ApplyNodeExcludedVisual(qtId, exclude);
-
-    // The caption gains/loses an "(excluded)" line, which changes the node's
-    // size; refresh the cached geometry and refit the domain outlines.
-    nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
-    UpdateDomainOutlines();
-
-    NotifyChanged();
+    NotifyChanged();  // RefreshExclusionVisuals() runs from here
     return QString{};
+}
+
+QString GraphScene::SetNodeExcludedRecursive(QtNodes::NodeId qtId, bool exclude) {
+    const std::string nodeId = NodeApiId(qtId);
+    if (nodeId.empty() || !graph_.SetNodeExcludeFromCompileRecursive(nodeId, exclude)) {
+        return QStringLiteral("Node not found");
+    }
+
+    NotifyChanged();  // RefreshExclusionVisuals() runs from here
+    return QString{};
+}
+
+std::string GraphScene::ExclusionParent(const std::string& nodeId) const {
+    const auto it = exclusionParents_.find(nodeId);
+    return it != exclusionParents_.end() ? it->second : std::string{};
+}
+
+void GraphScene::RefreshExclusionVisuals() {
+    const auto excluded = graph_.ComputeExcludedNodes();
+    std::set<std::string> newSet;
+    for (const auto& [id, parent] : excluded) {
+        newSet.insert(id);
+    }
+
+    // Apply visual changes only to nodes whose effective state flipped.
+    bool outlinesDirty = false;
+    for (const auto& [apiId, qtId] : nodeIdMap_) {
+        const bool wasExcluded = effectiveExcluded_.count(apiId) > 0;
+        const bool isExcluded = newSet.count(apiId) > 0;
+        if (wasExcluded == isExcluded) {
+            continue;
+        }
+        ApplyNodeExcludedVisual(qtId, isExcluded);
+        nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
+        outlinesDirty = true;
+    }
+
+    effectiveExcluded_ = std::move(newSet);
+    exclusionParents_.clear();
+    for (const auto& [id, parent] : excluded) {
+        if (id != parent) {
+            exclusionParents_[id] = parent;
+        }
+    }
+    model_->RefreshExcludedNodes(effectiveExcluded_);
+
+    if (outlinesDirty) {
+        UpdateDomainOutlines();
+    }
 }
 
 void GraphScene::ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude) {

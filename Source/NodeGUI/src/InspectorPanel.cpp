@@ -131,9 +131,30 @@ void InspectorPanel::Rebuild() {
     excludeCheck_->setChecked(node->excludeFromCompile);
     excludeCheck_->setToolTip(QStringLiteral(
         "The node stays visible in the graph (greyed out) but is skipped by "
-        "the code emitter together with its connections."));
+        "the code emitter. Children fed by it receive a zero value."));
     formLayout->addRow(QStringLiteral("Compile"), excludeCheck_);
     connect(excludeCheck_, &QCheckBox::toggled, this, &InspectorPanel::ApplyExcluded);
+
+    excludeChildrenCheck_ = new QCheckBox(QStringLiteral("and children"), form_);
+    excludeChildrenCheck_->setChecked(node->excludeFromCompileRecursive);
+    excludeChildrenCheck_->setToolTip(QStringLiteral(
+        "Exclude this node and its whole downstream chain from compilation. "
+        "Children are shown as excluded with this node named as the parent."));
+    formLayout->addRow(QStringLiteral(""), excludeChildrenCheck_);
+    connect(excludeChildrenCheck_, &QCheckBox::toggled, this,
+            &InspectorPanel::ApplyExcludedRecursive);
+
+    // Chain exclusion note: this node is excluded because a recursive-flagged
+    // ancestor excludes it.
+    const std::string excludedBy = scene_->ExclusionParent(nodeId);
+    if (!excludedBy.empty()) {
+        auto* note = new QLabel(
+            QStringLiteral("Excluded by parent '%1'").arg(QString::fromStdString(excludedBy)),
+            form_);
+        note->setWordWrap(true);
+        note->setStyleSheet(QStringLiteral("color: #ffb74d;"));
+        formLayout->addRow(note);
+    }
 
     // Parameters: value editor + wire-as-input toggle per row.
     if (!node->parameters.empty()) {
@@ -226,6 +247,16 @@ void InspectorPanel::ApplyExcluded(bool exclude) {
         return;
     }
     const QString error = scene_->SetNodeExcluded(qtId_, exclude);
+    if (!error.isEmpty() && onError) {
+        onError(error);
+    }
+}
+
+void InspectorPanel::ApplyExcludedRecursive(bool exclude) {
+    if (!scene_) {
+        return;
+    }
+    const QString error = scene_->SetNodeExcludedRecursive(qtId_, exclude);
     if (!error.isEmpty() && onError) {
         onError(error);
     }

@@ -361,6 +361,15 @@ bool IsParameterInput(const NodeAPI::Node& node, const std::string& key) {
     return false;
 }
 
+// True when the input was zero-bound by the emitter because its producer was
+// excluded from compilation.
+bool IsZeroInput(const NodeAPI::Node& node, const std::string& key) {
+    for (const auto& name : node.zeroInputs) {
+        if (name == key) return true;
+    }
+    return false;
+}
+
 std::optional<std::string> ExtractClassName(const std::string& classHeader) {
     // Very simple parser: find "class <Name>" or "class <Namespace::Name>".
     std::regex re(R"(\bclass\s+([A-Za-z_][A-Za-z0-9_:]*)\s*[:\{])");
@@ -622,6 +631,13 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& port : nodeType->inputPorts) {
                 auto src = FindSourceExpression(graph_, node->id, port.name);
                 if (!src) {
+                    if (IsZeroInput(*node, port.name)) {
+                        /* Producer was excluded from compile: bind the zero
+                         * "nothing" value of the port's type. */
+                        source << "        const " << WireTypeToCpp(port.type) << " "
+                               << port.name << " = " << WireTypeToCpp(port.type) << "{};\n";
+                        continue;
+                    }
                     if (port.optional) {
                         /* Optional unconnected input: bind a const ref to the
                          * parameter with the same name, if it exists. */
@@ -652,12 +668,21 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             // Parameters flagged as parameterInputs bind from connections too.
             for (const auto& key : node->parameterInputs) {
                 auto src = FindSourceExpression(graph_, node->id, key);
+                auto paramType = nodeType->FindParameterType(key);
                 if (!src) {
+                    if (IsZeroInput(*node, key)) {
+                        /* Producer was excluded from compile: zero value. */
+                        source << "        const "
+                               << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                               << " " << key << " = "
+                               << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
+                               << "{};\n";
+                        continue;
+                    }
                     error = "parameterInput '" + key + "' of node '" + node->id +
                             "' is not connected";
                     return false;
                 }
-                auto paramType = nodeType->FindParameterType(key);
                 source << "        const "
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
                        << " " << key << " = " << *src

@@ -439,11 +439,11 @@ bool NodeGraphModel::IsExcluded(QtNodes::ConnectionId const connectionId) const 
 
 bool NodeGraphModel::IsNodeExcluded(QtNodes::NodeId const nodeId) const {
     const std::string apiId = ProducerNodeId(nodeId);
-    if (apiId.empty()) {
-        return false;
-    }
-    const auto node = graph_.FindNode(apiId);
-    return node && node->excludeFromCompile;
+    return !apiId.empty() && excludedNodeIds_.count(apiId) > 0;
+}
+
+void NodeGraphModel::RefreshExcludedNodes(std::set<std::string> excludedNodeIds) {
+    excludedNodeIds_ = std::move(excludedNodeIds);
 }
 
 }  // namespace NodeGUI
