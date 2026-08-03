@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 #include <termios.h>
 
@@ -201,7 +202,26 @@ bool LegacyTelemetryClient::TcpStream::open(const std::string& host, int port) {
     for (addrinfo* ai = result; ai; ai = ai->ai_next) {
         fd = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (fd < 0) continue;
-        if (::connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) break;
+
+        // Non-blocking connect with a 500 ms timeout: a plain connect() to an
+        // unreachable host blocks for minutes and stalls the reader thread.
+        const int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        int rc = ::connect(fd, ai->ai_addr, ai->ai_addrlen);
+        if (rc != 0 && errno == EINPROGRESS) {
+            pollfd pfd{fd, POLLOUT, 0};
+            if (::poll(&pfd, 1, 500) == 1 && (pfd.revents & POLLOUT)) {
+                int err = 0;
+                socklen_t len = sizeof(err);
+                ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
+                rc = (err == 0) ? 0 : -1;
+            } else {
+                rc = -1;
+            }
+        }
+        fcntl(fd, F_SETFL, flags);
+
+        if (rc == 0) break;
         ::close(fd);
         fd = -1;
     }
