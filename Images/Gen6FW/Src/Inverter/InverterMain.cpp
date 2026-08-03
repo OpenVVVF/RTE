@@ -27,6 +27,7 @@
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
+#include "Inverter/platform_api.h"
 #include "Inverter/RteParams.h"
 
 #include "main.h"
@@ -193,12 +194,16 @@ static void loop()
         s_last_hz_ms = now_ms;
     }
 
+    /* Set the domain time step for generated code that needs it. */
+    platform_set_current_domain_dt(0.01f);
+
     /* RTE codegen: application-domain step (throttle, temperature, CAN command
      * dispatch, state machines, etc.).  Runs at main-loop cadence. */
     // RTE_EMIT: app_loop step
 
     /* Voltage-sense domain step (MAX22530 phase + DC-link voltages). */
     ++Inverter::LoopStats::vsense;
+    platform_set_current_domain_dt(0.01f);
     // RTE_EMIT: vsense step
 
     /* TIME_DOMAIN: HOUSEKEEPING_1HZ

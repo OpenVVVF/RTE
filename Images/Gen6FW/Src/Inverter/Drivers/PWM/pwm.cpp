@@ -11,6 +11,7 @@
 #include "tim.h"
 #include "Inverter/AppState.h"
 #include "Inverter/LoopStats.h"
+#include "Inverter/platform_api.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
 #include <stdbool.h>
@@ -267,6 +268,75 @@ float PWM_GetUpdateFrequency(void)
     return pwm_update_freq_hz;
 }
 
+void PWM_GetCurrentDuties(float* duty_u, float* duty_v, float* duty_w)
+{
+    const uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
+    if (arr == 0U) {
+        *duty_u = 0.0f;
+        *duty_v = 0.0f;
+        *duty_w = 0.0f;
+        return;
+    }
+    *duty_u = 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_1) / (float)arr;
+    *duty_v = 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_2) / (float)arr;
+    *duty_w = 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_3) / (float)arr;
+}
+
+bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
+                             uint32_t arr, uint32_t min_gap_ticks,
+                             uint32_t* out_ccr4, uint32_t* out_gap_ticks)
+{
+    /* Clamp duties to [0, 100] and convert to CCR ticks. */
+    if (duty_u < 0.0f) duty_u = 0.0f; else if (duty_u > 100.0f) duty_u = 100.0f;
+    if (duty_v < 0.0f) duty_v = 0.0f; else if (duty_v > 100.0f) duty_v = 100.0f;
+    if (duty_w < 0.0f) duty_w = 0.0f; else if (duty_w > 100.0f) duty_w = 100.0f;
+
+    const uint32_t ccr_u = (uint32_t)((duty_u * (float)arr) / 100.0f);
+    const uint32_t ccr_v = (uint32_t)((duty_v * (float)arr) / 100.0f);
+    const uint32_t ccr_w = (uint32_t)((duty_w * (float)arr) / 100.0f);
+
+    /* For center-aligned PWM mode 1 with low-side current shunts:
+     *   - All bottom switches are ON (all phases low) when CNT > max(CCRx)
+     *   - All bottom switches are OFF (all phases high) when CNT < min(CCRx)
+     * The quiet windows for three-shunt sampling are:
+     *   - All-low:  max_ccr .. ARR  (up) + ARR .. max_ccr (down)
+     *   - All-high: 0 .. min_ccr    (up) + min_ccr .. 0    (down)
+     * Choose the larger of the two windows. */
+    uint32_t min_ccr = ccr_u;
+    if (ccr_v < min_ccr) min_ccr = ccr_v;
+    if (ccr_w < min_ccr) min_ccr = ccr_w;
+
+    uint32_t max_ccr = ccr_u;
+    if (ccr_v > max_ccr) max_ccr = ccr_v;
+    if (ccr_w > max_ccr) max_ccr = ccr_w;
+
+    const uint32_t gap_all_high = 2U * min_ccr;
+    const uint32_t gap_all_low  = 2U * (arr - max_ccr);
+
+    uint32_t best_gap = 0;
+    uint32_t best_mid = 0;
+    if (gap_all_low >= gap_all_high) {
+        /* Sample in the middle of the all-low window.  The window spans
+         * max_ccr..ARR on up-count and ARR..max_ccr on down-count, so the
+         * midpoint is near the top of the triangle. */
+        best_gap = gap_all_low;
+        best_mid = (max_ccr + arr) / 2U;
+    } else {
+        /* Sample in the middle of the all-high window, near the bottom. */
+        best_gap = gap_all_high;
+        best_mid = min_ccr / 2U;
+    }
+
+    if (best_gap < min_gap_ticks) {
+        *out_gap_ticks = best_gap;
+        return false;
+    }
+
+    *out_ccr4 = best_mid;
+    *out_gap_ticks = best_gap;
+    return true;
+}
+
 /* TIME_DOMAIN: OPEN_LOOP_MODULATION_START
  *   Enables the SPWM angle ramp inside HAL_TIM_PeriodElapsedCallback.
  * CODEGEN: This is one example modulation.  Codegen may generate equivalent
@@ -322,6 +392,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance != TIM1) return;
     ++Inverter::LoopStats::tim_isr;
+
+    /* Set the domain time step for generated code that needs it. */
+    platform_set_current_domain_dt(1.0f / pwm_update_freq_hz);
 
     /* RTE codegen: PWM-synchronous control + modulation step.
      * Generated code reads sensors, runs the selected control law, and writes

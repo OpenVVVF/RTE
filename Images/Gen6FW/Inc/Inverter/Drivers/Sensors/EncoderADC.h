@@ -278,9 +278,10 @@ private:
 
     /* Mechanical speed estimation (main loop, time-based window).
      * m_sample_hz is measured from the actual trigger rate in diagnose(). */
-    static constexpr float    RPM_ALPHA     = 0.005f;
-    static constexpr uint32_t RPM_WINDOW_MS = 40U;  /* long enough to average
-        away per-sample angle noise (EMI) that a 1-sample delta amplifies. */
+    static constexpr float    RPM_ALPHA     = 0.02f;
+    static constexpr uint32_t RPM_WINDOW_MS = 20U;  /* 10-50 ms window: fast
+        enough to track speed changes, slow enough to average encoder
+        nonlinearity ripple at mechanical frequency. */
     float m_sample_hz    = 10000.0f;
     float m_rpm_prev_angle = 0.0f;
     float m_rpm_filt_angle = 0.0f;

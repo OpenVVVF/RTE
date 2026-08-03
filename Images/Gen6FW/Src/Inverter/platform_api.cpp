@@ -1,18 +1,22 @@
 #include "platform_api.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Sensors/SampleScheduler.h"
 #include "Inverter/Drivers/CAN/CanBus.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CurrentObserver.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
 #include "adc.h"
+#include "tim.h"
 
 /* --------------------------------------------------------------------------
  * PWM / gate-driver outputs
@@ -35,6 +39,94 @@ bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a) {
         return false;
     }
     return Inverter::phaseCurrentADC().latest(*iu_a, *iv_a, *iw_a);
+}
+
+static bool s_use_observer = false;
+
+void platform_set_use_observer(bool enabled) {
+    s_use_observer = enabled;
+}
+
+bool platform_get_use_observer(void) {
+    return s_use_observer;
+}
+
+void platform_get_observer_currents(float* iu_a, float* iv_a, float* iw_a) {
+    if (iu_a == nullptr || iv_a == nullptr || iw_a == nullptr) {
+        return;
+    }
+    Inverter::currentObserver().getPhaseCurrents(*iu_a, *iv_a, *iw_a);
+}
+
+void platform_observer_predict(float valpha_v, float vbeta_v,
+                               float theta_elec_rad, float dt_s) {
+    Inverter::currentObserver().predict(valpha_v, vbeta_v,
+                                        theta_elec_rad, dt_s);
+}
+
+void platform_observer_set_motor_params(float r_ohm, float l_henry,
+                                        float flux_linkage_wb,
+                                        float pole_pairs) {
+    Inverter::currentObserver().setMotorParameters(r_ohm, l_henry,
+                                                   flux_linkage_wb, pole_pairs);
+}
+
+void platform_observer_init_from_calibration(void) {
+    const auto& cal = Inverter::MotorCalibration::instance();
+    Inverter::currentObserver().setMotorParameters(
+        cal.r_phase_avg,
+        cal.ld_henry,
+        cal.flux_linkage_wb,
+        cal.pole_count * 0.5f);
+    Inverter::currentObserver().reset();
+}
+
+bool platform_adc_get_burst_sample(float* iu0_a, float* iv0_a,
+                                   float* iu1_a, float* iv1_a,
+                                   uint32_t* time_us) {
+    if (iu0_a == nullptr || iv0_a == nullptr || iu1_a == nullptr || iv1_a == nullptr) {
+        return false;
+    }
+    Inverter::PhaseCurrentADC::BurstSample burst;
+    if (!Inverter::phaseCurrentADC().latestBurst(burst)) {
+        return false;
+    }
+    *iu0_a = burst.point[0].iu_a;
+    *iv0_a = burst.point[0].iv_a;
+    *iu1_a = burst.point[1].iu_a;
+    *iv1_a = burst.point[1].iv_a;
+    if (time_us != nullptr) {
+        *time_us = burst.point[0].time_us;
+    }
+    return true;
+}
+
+void platform_observer_correct(float iu_meas_a, float iv_meas_a,
+                               float diudt_a_per_s, float divdt_a_per_s,
+                               uint32_t t_us) {
+    Inverter::currentObserver().correct(iu_meas_a, iv_meas_a,
+                                        diudt_a_per_s, divdt_a_per_s, t_us);
+}
+
+uint32_t platform_schedule_adaptive_sample(float duty_u, float duty_v,
+                                           float duty_w, uint32_t arr) {
+    /* 6 us at 275 MHz timer clock: deadtime + switching settling + ADC burst. */
+    const uint32_t min_gap_ticks = 1650U;
+    uint32_t ccr4 = 10U;
+    uint32_t gap_ticks = 0U;
+
+    if (PWM_FindSafeSamplePoint(duty_u, duty_v, duty_w, arr,
+                                min_gap_ticks, &ccr4, &gap_ticks)) {
+        Inverter::sampleScheduler().scheduleNextSample(ccr4, arr);
+        return gap_ticks;
+    }
+
+    Inverter::sampleScheduler().scheduleFallback();
+    return 0U;
+}
+
+uint32_t platform_pwm_get_arr(void) {
+    return __HAL_TIM_GET_AUTORELOAD(&htim1);
 }
 
 uint32_t platform_adc_get_injected_u_sig(void) {
@@ -76,6 +168,25 @@ float platform_get_encoder_angle_latest(void) {
 
 float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
+}
+
+float platform_get_rpm_mech(void) {
+    return Inverter::encoderADC().rpmMech();
+}
+
+float platform_get_rpm_elec(void) {
+    /* Electrical RPM = mechanical RPM * pole pairs.  Use the calibrated pole
+     * count; default to 5 pairs (10-pole motor) if not calibrated. */
+    const float pole_pairs = Inverter::MotorCalibration::instance().pole_count * 0.5f;
+    return Inverter::encoderADC().rpmMech() * pole_pairs;
+}
+
+uint32_t platform_get_encoder_raw_sin(void) {
+    return Inverter::encoderADC().lastRawSin();
+}
+
+uint32_t platform_get_encoder_raw_cos(void) {
+    return Inverter::encoderADC().lastRawCos();
 }
 
 float platform_get_dc_link_current(void) {
@@ -305,4 +416,14 @@ uint32_t platform_micros(void) {
         return DWT->CYCCNT / (SystemCoreClock / 1000000U);
     }
     return HAL_GetTick() * 1000U;
+}
+
+static float s_current_domain_dt = 0.0f;
+
+void platform_set_current_domain_dt(float dt_s) {
+    s_current_domain_dt = dt_s;
+}
+
+float platform_get_current_domain_dt(void) {
+    return s_current_domain_dt;
 }

@@ -84,6 +84,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Control/FocControlManager.cpp
     Src/Inverter/Control/FocController.cpp
     Src/Inverter/Control/VectorPIController.cpp
+    Src/Inverter/Control/VoltageVectorSchedule.cpp
+    Src/Inverter/Control/CurrentObserver.cpp
+    Src/Inverter/Control/MotorParameterEstimator.cpp
     Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
     Src/Inverter/Calibration/CalKvStore.cpp
     Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
@@ -118,6 +121,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Sensors/MAX22530.cpp
     Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp
     Src/Inverter/Drivers/Sensors/SpikeRecorder.cpp
+    Src/Inverter/Drivers/Sensors/SampleScheduler.cpp
     Src/Inverter/Drivers/CAN/CanBus.cpp
     Src/Inverter/Drivers/CAN/CanProtocolTransport.cpp
     Src/Inverter/Drivers/CAN/CanSession.cpp
