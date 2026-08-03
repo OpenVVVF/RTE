@@ -30,10 +30,6 @@ add_executable(NodeGUI
     src/PortStyle.h
     src/FrameRateMonitor.cpp
     src/FrameRateMonitor.h
-    src/runtime/TelemetryStore.cpp
-    src/runtime/TelemetryStore.h
-    src/runtime/LegacyTelemetryClient.cpp
-    src/runtime/LegacyTelemetryClient.h
     src/runtime/RuntimeController.cpp
     src/runtime/RuntimeController.h
     src/runtime/RuntimeSessionExporter.cpp
@@ -46,12 +42,11 @@ add_executable(NodeGUI
     src/runtime/ConsolePanel.h
     src/runtime/TelemetryPanel.cpp
     src/runtime/TelemetryPanel.h
-    src/runtime/FirmwareUpdater.cpp
-    src/runtime/FirmwareUpdater.h
     src/runtime/FlashPanel.cpp
     src/runtime/FlashPanel.h
-    src/runtime/HttpApiServer.cpp
-    src/runtime/HttpApiServer.h
+    src/runtime/FlashBackend.h
+    src/runtime/RemoteFlashBackend.cpp
+    src/runtime/RemoteFlashBackend.h
     src/runtime/RuntimeTab.cpp
     src/runtime/RuntimeTab.h
 )
@@ -77,7 +72,6 @@ target_compile_definitions(NodeGUI
     PRIVATE
         RTE_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
         RTE_NODE_TEMPLATES_DIR="${CMAKE_SOURCE_DIR}/Assets/NodeTemplates"
-        RTE_TOOLS_DIR="${CMAKE_SOURCE_DIR}/Tools"
 )
 
 if(NODEGUI_ENABLE_FPS_OVERLAY)
@@ -95,6 +89,7 @@ target_link_libraries(NodeGUI
     PRIVATE
         NodeAPI
         InverterProtocol
+        RTEShared
         QtNodes::QtNodes
         Qt6::Core
         Qt6::Gui

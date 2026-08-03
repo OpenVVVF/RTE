@@ -122,6 +122,14 @@ int SerialPort::read(uint8_t* buf, int cap) {
 #endif
 }
 
+int SerialPort::nativeHandle() const {
+#ifdef _WIN32
+    return -1;  /* poll(2) is POSIX-only; not needed on Windows. */
+#else
+    return impl_->fd;
+#endif
+}
+
 bool SerialPort::write(const uint8_t* data, int n) {
     if (!isOpen() || !data || n <= 0) return false;
 #ifdef _WIN32

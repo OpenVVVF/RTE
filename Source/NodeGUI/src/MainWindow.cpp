@@ -401,35 +401,32 @@ MainWindow::MainWindow(QWidget* parent)
 
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
-                              runtime::Protocol protocol) {
-    runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
-    firmwareUpdater_ = std::make_unique<runtime::FirmwareUpdater>();
-    httpApiServer_ = std::make_unique<runtime::HttpApiServer>(*firmwareUpdater_,
-                                                              runtimeController_->Store());
+                              runtime::Protocol protocol,
+                              const QString& connectHost) {
+    serialPort_ = serialPort;
+    {
+        QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+        remoteHost_ = connectHost.isEmpty()
+                          ? settings.value(QStringLiteral("runtime/serverHost")).toString()
+                          : connectHost;
+    }
 
-    firmwareUpdater_->setSuspendCallback([this](bool suspend) {
-        if (suspend) {
-            runtimeController_->SuspendForFlash();
-        } else {
-            runtimeController_->ResumeAfterFlash();
-        }
-    });
-    firmwareUpdater_->setCurrentPort(serialPort.toStdString());
-
-    httpApiServer_->setDevicePort(serialPort.toStdString());
-    httpApiServer_->setCommandHandler(
-        [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
+    runtimeController_ = std::make_unique<runtime::RuntimeController>(
+        QStringLiteral("127.0.0.1"), 4001, serialPort, simulate, protocol);
+    flashBackend_ = std::make_unique<runtime::RemoteFlashBackend>(
+        QStringLiteral("127.0.0.1"), 18080);
 
     runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(), this);
     screens_->addWidget(runtimeTab_);
     appSwitcher_->addTab(QStringLiteral("Runtime"));
     runtimeTab_->LoadAutosave();
+    runtimeTab_->SetConnectionState(!remoteHost_.isEmpty(), remoteHost_);
+    connect(runtimeTab_, &runtime::RuntimeTab::connectRequested,
+            this, &MainWindow::ConnectToServer);
 
-    firmwareUpdateTab_ = new runtime::FlashPanel(firmwareUpdater_.get(),
-                                                  runtimeController_.get(),
-                                                  httpApiServer_.get(),
-                                                  this);
+    firmwareUpdateTab_ = new runtime::FlashPanel(flashBackend_.get(),
+                                                 runtimeController_.get(),
+                                                 this);
     screens_->addWidget(firmwareUpdateTab_);
     appSwitcher_->addTab(QStringLiteral("Firmware Update"));
 
@@ -478,10 +475,96 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     editorConsoleDock_->hide();
 
     runtimeController_->Start();
-    httpApiServer_->start();
+
+    // Connect to the RTEServer: a saved/CLI remote host wins, otherwise we
+    // spawn a local one on the serial port.
+    ConnectToServer(!remoteHost_.isEmpty(), remoteHost_);
 
     // The View menu gains the new docks' toggle actions.
     RebuildViewMenu();
+}
+
+void MainWindow::ConnectToServer(bool remote, const QString& host) {
+    StopLocalServer();
+
+    QString target = host;
+    if (!remote) {
+        target = QStringLiteral("127.0.0.1");
+        if (!runtimeController_->IsSimulating() && !SpawnLocalServer()) {
+            ShowToast(QStringLiteral("Failed to start the local RTEServer process"));
+            if (runtimeTab_) {
+                runtimeTab_->SetServerStatus(QStringLiteral("failed to start"));
+            }
+        }
+    }
+
+    remoteHost_ = remote ? host : QString();
+    runtimeController_->ConnectTo(target, 4001);
+    flashBackend_->SetServer(target, 18080);
+    if (runtimeTab_) {
+        runtimeTab_->SetServerStatus(remote ? QStringLiteral("remote: %1").arg(target)
+                                            : QStringLiteral("local server"));
+        runtimeTab_->SetConnectionState(remote, host);
+    }
+
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    settings.setValue(QStringLiteral("runtime/serverHost"), remoteHost_);
+}
+
+QString MainWindow::FindServerExecutable() const {
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        appDir + QStringLiteral("/RTEServer"),
+#ifdef RTE_PROJECT_ROOT
+        QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/build/Source/RTEServer/RTEServer"),
+#endif
+    };
+    for (const QString& candidate : candidates) {
+        if (QFileInfo(candidate).isExecutable()) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+bool MainWindow::SpawnLocalServer() {
+    const QString exe = FindServerExecutable();
+    if (exe.isEmpty()) {
+        return false;
+    }
+    StopLocalServer();
+    serverProcess_ = new QProcess(this);
+    connect(serverProcess_,
+            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this,
+            [this](int, QProcess::ExitStatus) {
+                if (runtimeTab_) {
+                    runtimeTab_->SetServerStatus(QStringLiteral("local server stopped"));
+                }
+            });
+    QStringList args;
+    args << QStringLiteral("--serial") << serialPort_
+         << QStringLiteral("--bind") << QStringLiteral("127.0.0.1");
+    serverProcess_->start(exe, args);
+    return serverProcess_->waitForStarted(3000);
+}
+
+void MainWindow::StopLocalServer() {
+    if (!serverProcess_) {
+        return;
+    }
+    auto* process = serverProcess_;
+    serverProcess_ = nullptr;
+    process->terminate();
+    if (!process->waitForFinished(2000)) {
+        process->kill();
+        process->waitForFinished(1000);
+    }
+    process->deleteLater();
+}
+
+MainWindow::~MainWindow() {
+    StopLocalServer();
 }
 
 bool MainWindow::OpenGraph(const std::string& path) {
@@ -988,14 +1071,13 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
     const bool shouldFlash = command != BuildCommand::Generate;
 
     if (shouldFlash) {
-        if (!httpApiServer_) {
+        if (!flashBackend_) {
             AppendBuildLog(QStringLiteral("\n[error] Flash service is not available.\n"));
             return;
         }
-        if (!httpApiServer_->isRunning() && !httpApiServer_->start()) {
+        if (!flashBackend_->Status().reachable) {
             AppendBuildLog(QStringLiteral(
-                "\n[error] Could not start the local firmware flash API.\n"));
-            return;
+                "\n[warning] The flash server is not reachable yet; the flash step may fail.\n"));
         }
     }
 
@@ -1056,8 +1138,9 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
     }
     if (shouldFlash) {
         arguments << QStringLiteral("--flash-url")
-                  << QStringLiteral("http://127.0.0.1:%1")
-                         .arg(httpApiServer_->actualPort());
+                  << QStringLiteral("http://%1:%2")
+                         .arg(flashBackend_->Host())
+                         .arg(flashBackend_->HttpPort());
     }
 
     SetBuildActionsEnabled(false);
@@ -1183,6 +1266,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }
+    StopLocalServer();
     if (preferences_.rememberWindowGeometry) {
         QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
         settings.setValue(QStringLiteral("window/geometry"), saveGeometry());

@@ -33,12 +33,16 @@ constexpr SimWave kSimWaves[] = {
 
 }  // namespace
 
-RuntimeController::RuntimeController(QString port,
+RuntimeController::RuntimeController(QString serverHost,
+                                     int bridgePort,
+                                     QString serialPort,
                                      bool simulate,
                                      Protocol protocol,
                                      QObject* parent)
     : QObject(parent)
-    , port_(std::move(port))
+    , serverHost_(std::move(serverHost))
+    , bridgePort_(bridgePort)
+    , serialPort_(std::move(serialPort))
     , simulate_(simulate)
     , protocol_(protocol)
     , startTime_(std::chrono::steady_clock::now()) {
@@ -88,21 +92,37 @@ RuntimeController::~RuntimeController() {
 }
 
 void RuntimeController::Start() {
+    started_ = true;
     if (simulate_) {
         simTimer_ = new QTimer(this);
         simTimer_->setInterval(10);  // 100 Hz
         connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
         simTimer_->start();
     } else if (protocol_ == Protocol::Legacy) {
-        legacyClient_.start(port_.toStdString());
+        legacyClient_.startTcp(serverHost_.toStdString(), bridgePort_);
     } else {
-        ivpClient_.start(port_.toStdString());
+        ivpClient_.start(serialPort_.toStdString());
     }
 
     drainTimer_ = new QTimer(this);
     drainTimer_->setInterval(33);  // ~30 Hz GUI updates
     connect(drainTimer_, &QTimer::timeout, this, &RuntimeController::DrainQueue);
     drainTimer_->start();
+}
+
+void RuntimeController::ConnectTo(const QString& serverHost, int bridgePort) {
+    if (simulate_) {
+        return;
+    }
+    serverHost_ = serverHost;
+    bridgePort_ = bridgePort;
+    if (protocol_ != Protocol::Legacy) {
+        return;
+    }
+    legacyClient_.stop();
+    if (started_ && !suspended_) {
+        legacyClient_.startTcp(serverHost_.toStdString(), bridgePort_);
+    }
 }
 
 bool RuntimeController::SendLine(const std::string& line) {
@@ -168,7 +188,7 @@ void RuntimeController::ResumeAfterFlash() {
         if (protocol_ == Protocol::Legacy) {
             legacyClient_.resume();
         } else {
-            ivpClient_.start(port_.toStdString());
+            ivpClient_.start(serialPort_.toStdString());
         }
     }
     suspended_ = false;
