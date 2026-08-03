@@ -8,6 +8,7 @@ class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
+class QProgressBar;
 class QPushButton;
 class QTimer;
 
@@ -48,6 +49,7 @@ private:
     QPushButton* httpButton_ = nullptr;
     QLabel* httpStatus_ = nullptr;
     QLabel* stateLabel_ = nullptr;
+    QProgressBar* progressBar_ = nullptr;
     QLabel* errorLabel_ = nullptr;
     QPlainTextEdit* logView_ = nullptr;
     QTimer* pollTimer_ = nullptr;

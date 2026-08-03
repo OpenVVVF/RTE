@@ -24,6 +24,7 @@
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <sstream>
@@ -42,9 +43,39 @@ constexpr size_t LOG_CAP = 200;
 constexpr uint32_t FLASH_BAUDRATE = 230400;
 constexpr const char* FLASH_ADDR = "0x08000000";
 
-// Split a chunk of command output into lines ('\n'-separated, trailing '\r'
-// stripped), invoking f for each non-empty line. A partial line at the end of
-// a chunk is delivered as-is, matching the old client's logStderr behavior.
+// Strip ANSI escape sequences (ESC [ ... final-byte) and non-printable
+// characters from CLI output so the log stays readable. STM32_Programmer_CLI
+// colors parts of its output even when piped.
+std::string sanitizeLine(const std::string& raw) {
+    std::string out;
+    out.reserve(raw.size());
+    for (size_t i = 0; i < raw.size();) {
+        const unsigned char c = static_cast<unsigned char>(raw[i]);
+        if (c == 0x1b && i + 1 < raw.size() && raw[i + 1] == '[') {
+            i += 2;
+            while (i < raw.size()) {
+                const unsigned char f = static_cast<unsigned char>(raw[i]);
+                ++i;
+                if (f >= 0x40 && f <= 0x7e) break;  // CSI final byte
+            }
+            continue;
+        }
+        if (c >= 0x20 || c == '\t') out.push_back(static_cast<char>(c));
+        ++i;
+    }
+    return out;
+}
+
+// The CLI redraws progress in place using carriage returns: only the LAST
+// '\r'-separated segment of a line carries current information.
+std::string lastCarriageSegment(const std::string& line) {
+    const size_t pos = line.find_last_of('\r');
+    return pos == std::string::npos ? line : line.substr(pos + 1);
+}
+
+// Split a chunk of command output into lines, invoking f for each usable
+// line: '\n'-separated, carriage-return redraws collapsed to their last
+// segment, ANSI escapes and control characters stripped.
 template <typename F>
 void forEachOutputLine(const char* buf, F&& f) {
     std::string s(buf ? buf : "");
@@ -52,11 +83,21 @@ void forEachOutputLine(const char* buf, F&& f) {
     while (start < s.size()) {
         size_t end = s.find('\n', start);
         if (end == std::string::npos) end = s.size();
-        std::string line = s.substr(start, end - start);
-        if (!line.empty() && line.back() == '\r') line.pop_back();
+        std::string line = sanitizeLine(lastCarriageSegment(s.substr(start, end - start)));
         if (!line.empty()) f(line);
         start = end + 1;
     }
+}
+
+// Last "NN%" in a line, or -1 when there is none. The CLI prints its download
+// progress as percentages (sometimes several on one line; the last is newest).
+int parsePercent(const std::string& line) {
+    const size_t pct = line.find_last_of('%');
+    if (pct == std::string::npos || pct == 0) return -1;
+    size_t begin = pct;
+    while (begin > 0 && std::isdigit(static_cast<unsigned char>(line[begin - 1]))) --begin;
+    if (begin == pct) return -1;
+    return std::atoi(line.substr(begin, pct - begin).c_str());
 }
 
 // popen-based command runner: streams the command's output chunk by chunk to
@@ -170,6 +211,10 @@ bool FirmwareUpdater::queueFlash(const FlashJob& job, bool allow_queue) {
             return true;
         }
         queue_.push_back(job);
+        // Mark busy NOW, not when the worker picks the job up: previously a
+        // second queueFlash in that window raced in another job and the
+        // firmware got flashed twice.
+        busy_ = true;
         cv_.notify_all();
     }
     return true;
@@ -182,6 +227,7 @@ FlashStatus FirmwareUpdater::status() const {
     s.busy = busy_;
     s.last_error = last_error_;
     s.log = log_;
+    s.progress = progress_;
     return s;
 }
 
@@ -218,8 +264,31 @@ void FirmwareUpdater::setState(FlashState s) {
     {
         std::lock_guard<std::mutex> lk(mtx_);
         state_ = s;
+        // Keep the progress bar meaningful per phase: determinate while the
+        // CLI flashes/verifies, indeterminate otherwise, full when done.
+        switch (s) {
+            case FlashState::Flashing:
+            case FlashState::Verifying:
+                if (progress_ < 0) progress_ = 0;
+                break;
+            case FlashState::Done:
+                progress_ = 100;
+                break;
+            case FlashState::Idle:
+            case FlashState::Failed:
+                progress_ = -1;
+                break;
+            default:
+                progress_ = -1;
+                break;
+        }
     }
     logLine(std::string("[state] ") + stateString(s));
+}
+
+void FirmwareUpdater::setProgress(int percent) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    progress_ = std::clamp(percent, 0, 100);
 }
 
 void FirmwareUpdater::logLine(const std::string& line) {
@@ -229,7 +298,15 @@ void FirmwareUpdater::logLine(const std::string& line) {
 }
 
 void FirmwareUpdater::logStderr(const char* buf) {
-    forEachOutputLine(buf, [this](const std::string& line) { logLine(line); });
+    forEachOutputLine(buf, [this](const std::string& line) {
+        // Progress bars / percentage updates carry no letters — they are
+        // reported through the progress field instead of flooding the log.
+        const bool hasLetter =
+            std::any_of(line.begin(), line.end(), [](unsigned char c) { return std::isalpha(c); });
+        if (hasLetter) {
+            logLine(line);
+        }
+    });
 }
 
 bool FirmwareUpdater::findCli(std::string& out_cli) const {
@@ -449,6 +526,9 @@ void FirmwareUpdater::runJob(const FlashJob& job) {
         [&](const char* chunk) {
             logStderr(chunk);
             forEachOutputLine(chunk, [&](const std::string& line) {
+                if (const int pct = parsePercent(line); pct >= 0) {
+                    setProgress(pct);
+                }
                 std::string lower;
                 lower.reserve(line.size());
                 for (char c : line)

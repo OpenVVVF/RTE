@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -89,6 +90,13 @@ FlashPanel::FlashPanel(FirmwareUpdater* updater,
 
     stateLabel_ = new QLabel(this);
     layout->addWidget(stateLabel_);
+
+    progressBar_ = new QProgressBar(this);
+    progressBar_->setRange(0, 100);
+    progressBar_->setTextVisible(true);
+    progressBar_->hide();  // shown while a flash job runs
+    layout->addWidget(progressBar_);
+
     errorLabel_ = new QLabel(this);
     errorLabel_->setStyleSheet(QStringLiteral("color: #ef5350;"));
     errorLabel_->setWordWrap(true);
@@ -162,6 +170,27 @@ void FlashPanel::PollStatus() {
                                    QString::fromStdString(status.last_error)));
 
     flashButton_->setEnabled(!status.busy);
+
+    // Progress bar: determinate once the CLI reports percentages (flash /
+    // verify phases), busy-bounce during drains and GPIO waits, hidden when
+    // idle.
+    if (status.busy) {
+        progressBar_->show();
+        if (status.progress >= 0) {
+            progressBar_->setRange(0, 100);
+            progressBar_->setValue(status.progress);
+        } else {
+            progressBar_->setRange(0, 0);  // indeterminate
+        }
+    } else {
+        if (status.state == FlashState::Done) {
+            progressBar_->setRange(0, 100);
+            progressBar_->setValue(100);
+        } else {
+            progressBar_->hide();
+            progressBar_->setValue(0);
+        }
+    }
 
     if (status.log.size() < shownLogLines_) {
         shownLogLines_ = 0;

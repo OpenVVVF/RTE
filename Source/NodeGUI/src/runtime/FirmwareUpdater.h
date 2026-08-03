@@ -27,6 +27,9 @@ struct FlashStatus {
     bool busy = false;
     std::string last_error;
     std::vector<std::string> log;
+    // Flash progress 0..100, or -1 when indeterminate (idle, drains, GPIO
+    // waits) / nothing has run yet.
+    int progress = -1;
 };
 
 struct FlashJob {
@@ -76,6 +79,7 @@ private:
     bool findGpioHelper(std::string& out_helper) const;
 
     void setState(FlashState s);
+    void setProgress(int percent);
     void logLine(const std::string& line);
     void logStderr(const char* buf);
 
@@ -92,6 +96,7 @@ private:
     std::string current_port_;
     std::function<void(bool)> suspend_cb_;
     bool busy_ = false;
+    int progress_ = -1;
 
     std::atomic<bool> run_{true};
     std::thread thread_;
