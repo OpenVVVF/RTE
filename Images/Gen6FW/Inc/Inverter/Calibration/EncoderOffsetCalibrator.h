@@ -159,6 +159,13 @@ private:
     float    m_rotate_start_field = 0.0f;
     bool     m_offset_acquisition_active = false;
 
+    /* Locked-region reference for encoder cycles/rev measurement.
+     * Acquisition starts after the rotor has been pulled into lock; measuring
+     * cycles/rev across the whole rotation includes the initial slip segment
+     * and gives nonsense (e.g. 0.789 for a 1.00 cycle/rev encoder). */
+    float    m_acquire_start_encoder_elec_deg = 0.0f;
+    float    m_acquire_start_field_mech_deg = 0.0f;
+
     /* Encoder/field direction detection.
      * +1: encoder and field rotate in the same direction.
      * -1: encoder and field rotate in opposite directions.

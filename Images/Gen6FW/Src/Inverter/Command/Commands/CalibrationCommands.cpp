@@ -368,11 +368,14 @@ static EncOffsetCommand  sEncOffsetCmd;
 class CalCommand : public CommandInterface {
 public:
     CalCommand()
-      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path>",
-            {ArgSpec{"path", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING}}) {}
+      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path> [--no-save]",
+            {ArgSpec{"path", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"flags", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         const char* path = args[0].s_val;
+        const char* flags = args[1].present ? args[1].s_val : "";
+        const bool save_results = !stringsEqual(flags, "--no-save");
         using S = AutoCalibrationCoordinator::State;
 
         if (stringsEqual(path, "list")) {
@@ -383,20 +386,20 @@ public:
             autoCalibrationCoordinator().stop();
             Telemetry::printf("[CAL] stop requested");
         } else if (stringsEqual(path, "all")) {
-            startRun(S::POLE, S::FLUX, path);
+            startRun(S::POLE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.Poles")) {
-            startRun(S::POLE, S::POLE, path);
+            startRun(S::POLE, S::POLE, path, save_results);
         } else if (stringsEqual(path, "Motor.Encoder") ||
                    stringsEqual(path, "Motor.Encoder.SinCos")) {
-            startRun(S::OFFSET, S::OFFSET, path);
+            startRun(S::OFFSET, S::OFFSET, path, save_results);
         } else if (stringsEqual(path, "Motor.Resistance")) {
-            startRun(S::SETTLE, S::RESISTANCE, path);
+            startRun(S::SETTLE, S::RESISTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM")) {
-            startRun(S::INDUCTANCE, S::FLUX, path);
+            startRun(S::INDUCTANCE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.Inductance")) {
-            startRun(S::INDUCTANCE, S::INDUCTANCE, path);
+            startRun(S::INDUCTANCE, S::INDUCTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.FluxLinkage")) {
-            startRun(S::FLUX, S::FLUX, path);
+            startRun(S::FLUX, S::FLUX, path, save_results);
         } else {
             Telemetry::printf("[CAL] unknown routine '%s' (try 'cal list')", path);
         }
@@ -405,10 +408,15 @@ public:
 private:
     void startRun(AutoCalibrationCoordinator::State first,
                   AutoCalibrationCoordinator::State last,
-                  const char* name) const {
+                  const char* name,
+                  bool save_results = true) const {
         Inverter::CalKvStore::ensureBaseInfo();
-        if (autoCalibrationCoordinator().startSlice(first, last)) {
-            Telemetry::printf("[CAL] %s: started", name);
+        if (autoCalibrationCoordinator().startSlice(first, last, save_results)) {
+            if (save_results) {
+                Telemetry::printf("[CAL] %s: started", name);
+            } else {
+                Telemetry::printf("[CAL] %s: started (--no-save)", name);
+            }
         }
     }
 

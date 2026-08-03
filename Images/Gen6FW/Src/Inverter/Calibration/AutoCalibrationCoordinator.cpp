@@ -113,7 +113,7 @@ bool AutoCalibrationCoordinator::start() {
     return startSlice(State::POLE, State::FLUX);
 }
 
-bool AutoCalibrationCoordinator::startSlice(State first, State last) {
+bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_results) {
     if (isActive()) {
         Telemetry::printf("[CAL] AUTO: already running");
         return false;
@@ -145,6 +145,7 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
     m_r_avg = 0.0f;
     m_slice_last = last;
     m_full_run = (first == State::POLE && last == State::FLUX);
+    m_save_results = save_results;
 
     /* Clear any gate-driver fault latch left over from a previous run/stop;
      * the open-loop startup refuses to proceed while it is set. */
@@ -247,21 +248,35 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last) {
 }
 
 void AutoCalibrationCoordinator::finish() {
+    if (!m_save_results) {
+        Telemetry::printf("[CAL] AUTO: --no-save: results kept in RAM only");
+        encoderADC().learnBounds(false);
+        enterState(State::DONE);
+        return;
+    }
+
     /* Persist the freshly measured profile so FOC can run after a reboot
      * without re-running calibration.  Legacy store for the base-image FOC,
      * RTE KV store for graph config nodes. */
-    if (MotorConfigStore::saveFromRuntime()) {
-        Telemetry::printf("[CAL] AUTO: motor config saved to FRAM");
-    }
+    bool saved_ok = MotorConfigStore::saveFromRuntime();
+
     /* Persist the learned sin/cos envelope so the decoder uses the correct
      * bounds from the next boot instead of full-scale fallback caps. */
     CalKvStore::saveEncoderBounds(encoderADC().sinMin(), encoderADC().sinMax(),
                                   encoderADC().cosMin(), encoderADC().cosMax());
 
     if (CalKvStore::flush()) {
-        Telemetry::printf("[CAL] AUTO: calibration results saved to RTE KV store");
+        if (saved_ok) {
+            Telemetry::printf("[CAL] AUTO: calibration results saved");
+        } else {
+            Telemetry::printf("[CAL] AUTO: WARNING: RTE KV store flushed but motor config FRAM write failed");
+        }
     } else {
-        Telemetry::printf("[CAL] AUTO: WARNING: RTE KV store flush failed");
+        if (saved_ok) {
+            Telemetry::printf("[CAL] AUTO: WARNING: motor config saved to FRAM but RTE KV store flush failed");
+        } else {
+            Telemetry::printf("[CAL] AUTO: ERROR: calibration results NOT saved (FRAM write and KV flush both failed)");
+        }
     }
 
     encoderADC().learnBounds(false);
