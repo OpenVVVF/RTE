@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
+
 #include <cstdint>
 
 namespace Inverter {
@@ -36,6 +38,12 @@ void saveEncoderBounds(uint16_t sinMin, uint16_t sinMax,
 
 /** Restore saved bounds into the decoder.  Returns false if not stored. */
 bool loadEncoderBounds();
+
+/** Persist a fitted sin/cos ellipse correction. */
+void saveEncoderFit(const EncoderADC::SinCosFit& fit);
+
+/** Restore a saved sin/cos ellipse correction into the decoder. */
+bool loadEncoderFit();
 
 /** Populate the RAM MotorCalibration struct from KV store values (angle
  * offset/sign, poles, resistance) so legacy-FOC-driven code uses the real
