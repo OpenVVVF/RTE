@@ -1,0 +1,219 @@
+{
+  "id": "Control.SpeedAdrcMpcCurrent",
+  "displayName": "Speed ADRC + MPC Current",
+  "defaultName": "SpeedAdrcMpc",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "description": "Cascaded Gen6 controller: outer LADRC on mechanical speed (rpm) and inner Mode-3 deadbeat/MPC current to SVPWM. Always cascaded (Spd_Ref → ADRC → Iq* → MPC). For FOC-like Iq-in-amps tests use Control.AdrcMpcc / hybrid_adrc_mpcc_demo. Does not add a CascadeVar (DTCM).",
+  "inputPorts": [
+    {
+      "name": "I_D",
+      "direction": "input",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Measured d-axis current (A)."
+    },
+    {
+      "name": "I_Q",
+      "direction": "input",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Measured q-axis current (A)."
+    },
+    {
+      "name": "I_D_Ref",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "d-axis current reference (A)."
+    },
+    {
+      "name": "I_Q_Ref",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "q-axis current reference (A). Used when CascadeMode=0."
+    },
+    {
+      "name": "Spd_Ref",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Mechanical speed reference (rpm)."
+    },
+    {
+      "name": "Theta_E",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Electrical rotor angle (rad)."
+    },
+    {
+      "name": "Omega_E",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Electrical speed hint (rad/s); node also unwraps Theta_E."
+    },
+    {
+      "name": "V_Dc",
+      "direction": "input",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "DC-link voltage (V)."
+    },
+    {
+      "name": "Enable",
+      "direction": "input",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Controller enable."
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "S_A",
+      "direction": "output",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Unused FCS placeholder."
+    },
+    {
+      "name": "S_B",
+      "direction": "output",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Unused FCS placeholder."
+    },
+    {
+      "name": "S_C",
+      "direction": "output",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Unused FCS placeholder."
+    },
+    {
+      "name": "State_Index",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "0=current mode, 1=cascade mode (telemetry)."
+    },
+    {
+      "name": "Pred_I_D",
+      "direction": "output",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Predicted d-axis current."
+    },
+    {
+      "name": "Pred_I_Q",
+      "direction": "output",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Predicted q-axis current."
+    },
+    {
+      "name": "Cost",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Tracking cost."
+    },
+    {
+      "name": "V_Alpha",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "Voltage reference alpha (to SVPWM)."
+    },
+    {
+      "name": "V_Beta",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "Voltage reference beta (to SVPWM)."
+    },
+    {
+      "name": "V_D",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "d-axis voltage command."
+    },
+    {
+      "name": "V_Q",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "q-axis voltage command."
+    },
+    {
+      "name": "Iq_Cmd",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Iq command after speed ADRC (or I_Q_Ref in current mode)."
+    },
+    {
+      "name": "Rpm_Meas",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Measured mechanical speed (rpm)."
+    }
+  ],
+  "parameterTypes": {
+    "Ts": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Control sample period (s)."
+    },
+    "Ld": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "d-axis inductance (H)."
+    },
+    "Lq": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "q-axis inductance (H)."
+    },
+    "Rs": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Stator resistance (ohm)."
+    },
+    "PsiF": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "PM flux linkage (Wb). Gen6 ~0.07."
+    },
+    "DbScale": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Inner deadbeat / MPC scale (0–1)."
+    },
+    "I_Base": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Current normalization base (A)."
+    },
+    "I_Max": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Hard current clamp (A)."
+    },
+    "SpdOmegaC": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed LADRC controller bandwidth ωc (rad/s)."
+    },
+    "SpdOmegaO": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed LADRC observer bandwidth ωo (rad/s)."
+    },
+    "SpdB0": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed plant gain b0 (rpm/s per amp). Tune on hardware."
+    },
+    "PolePairs": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Rotor pole pairs (Gen6 = 5)."
+    }
+  }
+}
