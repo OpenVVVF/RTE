@@ -165,7 +165,7 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Deadbeat tracking scale (0–0.5). Gen6 bring-up default ~0.20."
+      "description": "Deadbeat tracking scale (0–0.5). Gen6 spin default ~0.70 (Mode-3)."
     },
     "I_Base": {
       "quantity": "dimensionless",
@@ -177,7 +177,7 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Soft current limit (A). Bring-up default 15 A."
+      "description": "Soft current limit (A). Soft limit default 25 A."
     },
     "Rs": {
       "quantity": "dimensionless",

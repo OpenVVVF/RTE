@@ -1,16 +1,13 @@
 /* Hybrid ADRC + predictive current control for Gen6 PMSM.
  *
- * Spin-oriented law (matches working MPCC Mode 3 voltage path):
- *   v_dq = R i + w cross/PM terms + db*(L/Ts)(i* - i) - k_eso*L*f_hat
- * ESO estimates residual disturbance only; f_hat is clamped and lightly applied.
+ * Based on the Mode-3 law that actually spins Gen6 (deadbeat + Ki), with a
+ * mild residual ESO (ADRC) correction:
+ *   predict i_p from prior v
+ *   v = R i_p + w terms + (L/Ts)*db*(i*-i_p) + Ki*int(err) - k_eso*L*f_hat
  *
- * Hardware hardening:
- *   - current LPF ~400 Hz
- *   - soft enable ramp
- *   - hold if Vdc < 40 V
- *   - hard current foldback for clean phase current
- *   - voltage limit prefers Vq (torque)
- *   - abs(Id_ref) and abs(Iq_ref) clamped to I_Max
+ * Session notes:
+ *   HybridADRCMPC-1: pure ADRC deadbeat -> huge current, rare spin
+ *   HybridADRCMPC-2: low DbScale, no Ki -> clean current, no spin (duty~50%)
  */
 
 static float hy_u_alpha_prev = 0.0f;
@@ -24,6 +21,8 @@ static float hy_z2_d = 0.0f;
 static float hy_z1_q = 0.0f;
 static float hy_z2_q = 0.0f;
 static float hy_eso_init = 0.0f;
+static float hy_id_int = 0.0f;
+static float hy_iq_int = 0.0f;
 
 const float ts = Ts;
 float ld = Ld;
@@ -37,14 +36,16 @@ if (!(psi_f > 0.0f) || !(psi_f < 1.0f)) psi_f = 0.01f;
 
 float wo = OmegaO;
 float db_scale = DbScale;
-if (!(wo > 0.0f)) wo = 1200.0f;
+if (!(wo > 0.0f)) wo = 1500.0f;
 if (wo > 4000.0f) wo = 4000.0f;
-if (!(db_scale > 0.05f)) db_scale = 0.20f;
-if (db_scale > 0.50f) db_scale = 0.50f;
+/* Gen6 L/Ts ~ 0.35-0.8 V/A; Mode-3 used db~0.70 to spin. */
+if (!(db_scale > 0.10f)) db_scale = 0.70f;
+if (db_scale > 1.0f) db_scale = 1.0f;
 
 const float i_base = (I_Base > 0.0f) ? I_Base : 20.0f;
-float i_max = (I_Max > 0.0f) ? I_Max : 15.0f;
-if (i_max > 25.0f) i_max = 25.0f;
+float i_max = (I_Max > 0.0f) ? I_Max : 25.0f;
+if (i_max < 5.0f) i_max = 5.0f;
+if (i_max > 40.0f) i_max = 40.0f;
 
 const float vdc = V_Dc.in(au::volts);
 const float id_raw = I_D.in(au::amperes);
@@ -53,7 +54,7 @@ float id_ref = I_D_Ref;
 float iq_ref = I_Q_Ref;
 const float theta_e = Theta_E;
 float omega_e = Omega_E;
-if (!(omega_e == omega_e)) omega_e = 0.0f; /* NaN guard */
+if (!(omega_e == omega_e)) omega_e = 0.0f;
 if (fabsf(omega_e) > 2000.0f) omega_e = (omega_e > 0.0f) ? 2000.0f : -2000.0f;
 
 const bool enable = Enable;
@@ -97,19 +98,20 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     hy_eso_init = 0.0f;
     hy_z2_d = 0.0f;
     hy_z2_q = 0.0f;
+    hy_id_int = 0.0f;
+    hy_iq_int = 0.0f;
 } else {
     const float cos_t = cosf(theta_e);
     const float sin_t = sinf(theta_e);
     const float b0_d = 1.0f / ld;
     const float b0_q = 1.0f / lq;
 
-    /* Current LPF (~400 Hz) for cleaner phase/dq feedback. */
     if (hy_i_filt_init < 0.5f) {
         hy_id_f = id_raw;
         hy_iq_f = iq_raw;
         hy_i_filt_init = 1.0f;
     } else {
-        const float fc = 400.0f;
+        const float fc = 500.0f;
         const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc * ts));
         hy_id_f += alpha * (id_raw - hy_id_f);
         hy_iq_f += alpha * (iq_raw - hy_iq_f);
@@ -117,11 +119,14 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     const float id = hy_id_f;
     const float iq = hy_iq_f;
 
-    /* Previous applied dq voltage for ESO input. */
     const float vd_prev = hy_u_alpha_prev * cos_t + hy_u_beta_prev * sin_t;
     const float vq_prev = -hy_u_alpha_prev * sin_t + hy_u_beta_prev * cos_t;
 
-    /* ESO update on residual plant (after removing known model terms). */
+    /* One-step delay compensation (Mode 3). */
+    const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);
+    const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);
+
+    /* Residual ESO (ADRC) on model mismatch only. */
     if (hy_eso_init < 0.5f) {
         hy_z1_d = id;
         hy_z2_d = 0.0f;
@@ -141,62 +146,62 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         hy_z2_d += ts * (-beta2 * ed);
         hy_z1_q += ts * (hy_z2_q + b0_q * vq_res - beta1 * eq);
         hy_z2_q += ts * (-beta2 * eq);
-        /* Clamp disturbance (di/dt). Prevents voltage blow-up. */
-        const float fmax = 5.0e4f;
+        const float fmax = 2.0e4f;
         if (hy_z2_d > fmax) hy_z2_d = fmax;
         if (hy_z2_d < -fmax) hy_z2_d = -fmax;
         if (hy_z2_q > fmax) hy_z2_q = fmax;
         if (hy_z2_q < -fmax) hy_z2_q = -fmax;
     }
 
-    /* Soft enable ramp (0.5 s) for clean start. */
-    const float ramp_s = 0.50f;
+    /* Short soft-start — do not starve voltage for long. */
+    const float ramp_s = 0.08f;
     hy_enable_s += ts;
     if (hy_enable_s > ramp_s) hy_enable_s = ramp_s;
-    float ramp = hy_enable_s / ramp_s;
+    float v_scale = hy_enable_s / ramp_s;
 
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
-    float fb_scale = ramp;
-
-    /* Progressive current foldback — keeps phase current clean. */
-    const float i_warn = 0.70f * i_max;
-    if (i_meas > i_warn) {
-        cost += 1.0e5f;
-        float denom = i_max - i_warn;
-        if (!(denom > 1.0e-3f)) denom = 1.0e-3f;
-        const float over = (i_meas - i_warn) / denom;
-        float shrink = 1.0f - 0.85f * over;
-        if (shrink < 0.05f) shrink = 0.05f;
-        fb_scale *= shrink;
-    }
+    /* Soft |i| limit — scale voltage, never force exact V=0 / duty=50%. */
     if (i_meas > i_max) {
         cost += 1.0e6f;
-        fb_scale *= 0.05f;
+        if (i_meas > 1.0e-3f) {
+            v_scale *= i_max / i_meas;
+        }
+        if (v_scale < 0.15f) v_scale = 0.15f;
     }
 
-    /* Mode-3 style model + mild deadbeat + light ESO residual cancel. */
-    const float k_eso = 0.20f;
-    float vd_ref = rs * id - omega_e * lq * iq
-                 + db_scale * (ld / ts) * (id_ref - id)
+    const float kp_d = (ld / ts) * db_scale;
+    const float kp_q = (lq / ts) * db_scale;
+    const float ki = 10.0f; /* match foc_demo / Mode-3 */
+
+    const float id_err = id_ref - id_p;
+    const float iq_err = iq_ref - iq_p;
+
+    const float i_lim_v = (vdc / sqrt3) * 0.95f;
+    hy_id_int += ki * id_err * ts;
+    hy_iq_int += ki * iq_err * ts;
+    if (hy_id_int > i_lim_v) hy_id_int = i_lim_v;
+    if (hy_id_int < -i_lim_v) hy_id_int = -i_lim_v;
+    if (hy_iq_int > i_lim_v) hy_iq_int = i_lim_v;
+    if (hy_iq_int < -i_lim_v) hy_iq_int = -i_lim_v;
+
+    const float k_eso = 0.15f;
+    float vd_ref = rs * id_p - omega_e * lq * iq_p + kp_d * id_err + hy_id_int
                  - k_eso * ld * hy_z2_d;
-    float vq_ref = rs * iq + omega_e * ld * id + omega_e * psi_f
-                 + db_scale * (lq / ts) * (iq_ref - iq)
-                 - k_eso * lq * hy_z2_q;
-    vd_ref *= fb_scale;
-    vq_ref *= fb_scale;
+    float vq_ref = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f + kp_q * iq_err
+                 + hy_iq_int - k_eso * lq * hy_z2_q;
+
+    vd_ref *= v_scale;
+    vq_ref *= v_scale;
 
     const float v_max = (vdc / sqrt3) * 0.95f;
     const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;
     if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {
-        if (fabsf(vq_ref) >= v_max) {
-            vq_ref = (vq_ref >= 0.0f) ? v_max : -v_max;
-            vd_ref = 0.0f;
-        } else {
-            const float vd_lim = sqrtf(v_max * v_max - vq_ref * vq_ref);
-            if (vd_ref > vd_lim) vd_ref = vd_lim;
-            if (vd_ref < -vd_lim) vd_ref = -vd_lim;
-        }
+        const float scale = v_max / sqrtf(v_mag_sq);
+        vd_ref *= scale;
+        vq_ref *= scale;
+        hy_id_int *= 0.95f;
+        hy_iq_int *= 0.95f;
     }
 
     const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;
@@ -218,15 +223,12 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         }
     }
 
-    const float pred_id = id + ts * ((vd_ref - rs * id + omega_e * lq * iq) / ld);
-    const float pred_iq = iq + ts * ((vq_ref - rs * iq - omega_e * ld * id - omega_e * psi_f) / lq);
-
     S_A = static_cast<float>(switch_bits[best_idx][0]);
     S_B = static_cast<float>(switch_bits[best_idx][1]);
     S_C = static_cast<float>(switch_bits[best_idx][2]);
     State_Index = static_cast<float>(best_idx);
-    Pred_I_D = rte::Amperes(pred_id);
-    Pred_I_Q = rte::Amperes(pred_iq);
+    Pred_I_D = rte::Amperes(id_p);
+    Pred_I_Q = rte::Amperes(iq_p);
     Cost = cost;
     V_Alpha = rte::Volts(valpha_ref);
     V_Beta = rte::Volts(vbeta_ref);

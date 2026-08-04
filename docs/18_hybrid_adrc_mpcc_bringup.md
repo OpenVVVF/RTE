@@ -40,16 +40,16 @@ Do **not** leave placeholder Ld/Lq if you have FRAM cal values.
 2. Encoder Sign/Offset match working `foc_demo`.
 3. `IdVar = 0`, `IqVar = 0`, enable off → duties ~50%.
 4. Enable with iq = 0; watch quiet bias.
-5. Ramp `IqVar` slowly: **0.5 → 1 → 2 A** (short pulses if free shaft). Phase current should stay near the command, not tens of amps.
+5. Ramp `IqVar` slowly: **1 → 2 → 3 A**. Expect duties to leave ~50% and shaft to turn. If current is huge again, check encoder Sign vs FOC.
 6. Watch `cg_id` / `cg_iq`, duties, `hz_tim_isr`, overcurrent.
 
 ## Tuning
 
 | Param | Default | Notes |
 |-------|---------|--------|
-| `OmegaO` | 1200 | ESO bandwidth (keep moderate for clean current) |
-| `DbScale` | 0.20 | Mild deadbeat (raise slowly only after clean spin) |
-| `I_Max` | 15 | Soft limit / foldback threshold |
+| `OmegaO` | 1500 | Mild residual ESO bandwidth |
+| `DbScale` | 0.70 | Mode-3 deadbeat scale (needed for Gen6 low-L) |
+| `I_Max` | 25 | Soft current scale-back (keeps some voltage) |
 | `Ts` | 0.0002 | Match `tim_isr` 5 kHz |
 
 ## Comparison procedure
