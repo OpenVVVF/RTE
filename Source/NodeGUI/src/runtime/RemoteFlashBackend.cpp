@@ -3,6 +3,8 @@
 #include <QFile>
 #include <QString>
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -128,57 +130,45 @@ HttpResult httpRequest(const std::string& host,
     return result;
 }
 
-// --- Naive JSON field extractors (the server writes these shapes itself). ---
+bool decodeFlashStatus(const std::string& body, FlashBackendStatus& status) {
+    const nlohmann::json json = nlohmann::json::parse(body, nullptr, false);
+    if (json.is_discarded() || !json.is_object()) return false;
 
-std::string jsonString(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\":\"";
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) return {};
-    pos += needle.size();
-    std::string out;
-    bool escape = false;
-    for (; pos < json.size(); ++pos) {
-        const char c = json[pos];
-        if (escape) {
-            out.push_back(c == 'n' ? '\n' : c);
-            escape = false;
-        } else if (c == '\\') {
-            escape = true;
-        } else if (c == '"') {
-            break;
-        } else {
-            out.push_back(c);
-        }
+    const auto state = json.find("state");
+    const auto busy = json.find("busy");
+    const auto lastError = json.find("last_error");
+    const auto progress = json.find("progress");
+    const auto log = json.find("log");
+
+    if (state == json.end() || !state->is_string()
+        || busy == json.end() || !busy->is_boolean()
+        || lastError == json.end() || !lastError->is_string()
+        || progress == json.end() || !progress->is_number_integer()
+        || log == json.end() || !log->is_array()) {
+        return false;
     }
-    return out;
-}
 
-bool jsonBool(const std::string& json, const std::string& key) {
-    return json.find("\"" + key + "\":true") != std::string::npos;
-}
-
-int jsonInt(const std::string& json, const std::string& key, int dflt) {
-    const std::string needle = "\"" + key + "\":";
-    const size_t pos = json.find(needle);
-    if (pos == std::string::npos) return dflt;
-    return std::atoi(json.c_str() + pos + needle.size());
-}
-
-std::vector<std::string> jsonStringArray(const std::string& json, const std::string& key) {
-    std::vector<std::string> out;
-    const size_t begin = json.find("\"" + key + "\":[");
-    if (begin == std::string::npos) return out;
-    const size_t end = json.find(']', begin);
-    if (end == std::string::npos) return out;
-    const std::string body = json.substr(begin, end - begin);
-    size_t pos = 0;
-    while ((pos = body.find('"', pos)) != std::string::npos) {
-        const size_t close = body.find('"', pos + 1);
-        if (close == std::string::npos) break;
-        out.push_back(body.substr(pos + 1, close - pos - 1));
-        pos = close + 1;
+    FlashBackendStatus decoded;
+    decoded.state = state->get<std::string>();
+    decoded.busy = busy->get<bool>();
+    decoded.lastError = lastError->get<std::string>();
+    decoded.progress = progress->get<int>();
+    decoded.reachable = true;
+    decoded.log.reserve(log->size());
+    for (const auto& line : *log) {
+        if (line.is_string()) decoded.log.push_back(line.get<std::string>());
     }
-    return out;
+    status = std::move(decoded);
+    return true;
+}
+
+std::string decodeError(const std::string& body) {
+    const nlohmann::json json = nlohmann::json::parse(body, nullptr, false);
+    if (json.is_discarded() || !json.is_object()) return {};
+    const auto error = json.find("error");
+    return error != json.end() && error->is_string()
+               ? error->get<std::string>()
+               : std::string{};
 }
 
 }  // namespace
@@ -240,7 +230,7 @@ bool RemoteFlashBackend::QueueFlash(const std::string& firmwarePath, bool autoGp
         queueError_ = result.code < 0
                           ? "flash server unreachable"
                           : "flash rejected (HTTP " + std::to_string(result.code) + "): "
-                                + jsonString(result.body, "error");
+                                + decodeError(result.body);
         status_.lastError = queueError_;
         return false;
     }
@@ -273,18 +263,17 @@ void RemoteFlashBackend::PollLoop() {
         const HttpResult result =
             httpRequest(host.toStdString(), port, "GET", "/flash/status", {}, {}, 3000);
 
+        FlashBackendStatus decoded;
+        const bool validStatus = result.code == 200
+                                 && decodeFlashStatus(result.body, decoded);
+
         // IMPORTANT: keep the lock scope tight. Holding mtx_ across the
         // inter-poll sleep starves FlashPanel::PollStatus on the GUI thread,
         // which freezes the whole application.
         {
             std::lock_guard lk(mtx_);
-            if (result.code == 200) {
-                status_.state = jsonString(result.body, "state");
-                status_.busy = jsonBool(result.body, "busy");
-                status_.lastError = jsonString(result.body, "last_error");
-                status_.progress = jsonInt(result.body, "progress", -1);
-                status_.log = jsonStringArray(result.body, "log");
-                status_.reachable = true;
+            if (validStatus) {
+                status_ = std::move(decoded);
             } else {
                 status_.reachable = false;
                 status_.busy = false;

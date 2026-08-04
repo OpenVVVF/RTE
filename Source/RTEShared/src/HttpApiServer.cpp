@@ -335,12 +335,9 @@ void HttpApiServer::threadMain() {
                 + "\",\"busy\":" + (st.busy ? "true" : "false")
                 + ",\"last_error\":\"" + jsonEscape(st.last_error) + "\""
                 + ",\"progress\":" + std::to_string(st.progress);
-            // Include the tail of the updater log for remote debugging.
-            const size_t kLogTail = 30;
-            size_t start = st.log.size() > kLogTail ? st.log.size() - kLogTail : 0;
             resp += ",\"log\":[";
-            for (size_t i = start; i < st.log.size(); ++i) {
-                resp += (i == start ? "\"" : ",\"") + jsonEscape(st.log[i]) + "\"";
+            for (size_t i = 0; i < st.log.size(); ++i) {
+                resp += (i == 0 ? "\"" : ",\"") + jsonEscape(st.log[i]) + "\"";
             }
             resp += "]}";
             sendResponse(client, 200, resp);

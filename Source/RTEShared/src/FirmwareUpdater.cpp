@@ -39,7 +39,6 @@ namespace fs = std::filesystem;
 namespace NodeGUI::runtime {
 namespace {
 
-constexpr size_t LOG_CAP = 200;
 constexpr uint32_t FLASH_BAUDRATE = 230400;
 constexpr const char* FLASH_ADDR = "0x08000000";
 
@@ -105,7 +104,9 @@ int parsePercent(const std::string& line) {
 bool runCommandStreaming(const std::string& cmd, const std::string& desc,
                          const std::function<void(const char*)>& on_chunk,
                          std::string& out_error) {
-    FILE* f = popen(cmd.c_str(), "r");
+    // STM32_Programmer_CLI uses both output streams. Merge stderr into the
+    // pipe so remote clients receive diagnostics as well as normal output.
+    FILE* f = popen((cmd + " 2>&1").c_str(), "r");
     if (!f) {
         out_error = desc + ": failed to run command";
         return false;
@@ -294,7 +295,6 @@ void FirmwareUpdater::setProgress(int percent) {
 void FirmwareUpdater::logLine(const std::string& line) {
     std::lock_guard<std::mutex> lk(mtx_);
     log_.push_back(line);
-    while (log_.size() > LOG_CAP) log_.erase(log_.begin());
 }
 
 void FirmwareUpdater::logStderr(const char* buf) {

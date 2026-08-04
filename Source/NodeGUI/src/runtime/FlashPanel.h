@@ -4,6 +4,9 @@
 
 #include <QWidget>
 
+#include <string>
+#include <vector>
+
 class QCheckBox;
 class QLabel;
 class QLineEdit;
@@ -47,7 +50,7 @@ private:
     QPlainTextEdit* logView_ = nullptr;
     QTimer* pollTimer_ = nullptr;
 
-    std::size_t shownLogLines_ = 0;
+    std::vector<std::string> shownLog_;
 };
 
 }  // namespace NodeGUI::runtime

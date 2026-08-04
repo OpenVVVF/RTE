@@ -79,7 +79,6 @@ FlashPanel::FlashPanel(FlashBackend* backend,
 
     logView_ = new QPlainTextEdit(this);
     logView_->setReadOnly(true);
-    logView_->setMaximumBlockCount(200);
     layout->addWidget(logView_, 1);
 
     pollTimer_ = new QTimer(this);
@@ -99,7 +98,7 @@ void FlashPanel::OnFlashClicked() {
     if (!backend_->QueueFlash(path.toStdString(), autoGpioCheck_->isChecked())) {
         // The concrete reason surfaces through Status() on the next poll.
     }
-    shownLogLines_ = 0;
+    shownLog_.clear();
     logView_->clear();
 }
 
@@ -163,14 +162,20 @@ void FlashPanel::PollStatus() {
         }
     }
 
-    if (status.log.size() < shownLogLines_) {
-        shownLogLines_ = 0;
-        logView_->clear();
+    std::size_t commonLines = 0;
+    while (commonLines < shownLog_.size()
+           && commonLines < status.log.size()
+           && shownLog_[commonLines] == status.log[commonLines]) {
+        ++commonLines;
     }
-    for (std::size_t i = shownLogLines_; i < status.log.size(); ++i) {
+    if (commonLines < shownLog_.size()) {
+        logView_->clear();
+        commonLines = 0;
+    }
+    for (std::size_t i = commonLines; i < status.log.size(); ++i) {
         logView_->appendPlainText(QString::fromStdString(status.log[i]));
     }
-    shownLogLines_ = status.log.size();
+    shownLog_ = status.log;
 }
 
 }  // namespace NodeGUI::runtime
