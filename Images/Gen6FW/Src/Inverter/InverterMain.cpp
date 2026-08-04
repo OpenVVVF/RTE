@@ -6,6 +6,7 @@
 #include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/EncoderOffsetCalibrator.h"
+#include "Inverter/Calibration/EncoderLinearityCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Calibration/InductanceCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
@@ -25,6 +26,7 @@
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
+#include "Inverter/Drivers/Storage/MotorConfigStore.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/platform_api.h"
@@ -85,9 +87,24 @@ static void init()
         OnTime_Init(&g_fram);
         Inverter::RteParamStore::init(&g_fram);
 
+        /* Bind the legacy motor-config record store (removed by 529a73f and
+         * never restored, which broke every FRAM save with "failed to write
+         * motor config").  Runs BEFORE the KV restores below so the KV store
+         * wins on overlapping fields; the legacy record additionally restores
+         * PI gains, Ld/Lq/flux and encoder bounds that the KV path does not. */
+        Inverter::MotorConfigStore::init(&g_fram);
+
+        /* The fit state lives in a NOLOAD AXISRAM section; zero it before any
+         * encoder sample can be processed or a saved fit is loaded. */
+        Inverter::encoderADC().initializeFitState();
+
         /* Restore learned encoder envelope bounds (written by calibration) so
          * the angle decoder is correct from boot without re-running cal. */
         Inverter::CalKvStore::loadEncoderBounds();
+
+        /* Restore a previously fitted sin/cos ellipse correction if one exists.
+         * This takes precedence over bounds normalization for angle decoding. */
+        Inverter::CalKvStore::loadEncoderFit();
 
         /* Populate the runtime motor calibration from the KV store so no
          * code path ever falls back to the debug-default angle/sign. */
@@ -242,6 +259,7 @@ static void loop()
     Inverter::autoCalibrationCoordinator().update();
     Inverter::poleCalibrator().update();
     Inverter::encoderOffsetCalibrator().update();
+    Inverter::encoderLinearityCalibrator().update();
     Inverter::resistanceCalibrator().update();
     Inverter::inductanceCalibrator().update();
     Inverter::fluxLinkageCalibrator().update();

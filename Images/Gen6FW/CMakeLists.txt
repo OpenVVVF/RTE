@@ -90,6 +90,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
     Src/Inverter/Calibration/CalKvStore.cpp
     Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
+    Src/Inverter/Calibration/EncoderLinearityCalibrator.cpp
     Src/Inverter/Calibration/EncoderOffsetCalibrator.cpp
     Src/Inverter/Calibration/FluxLinkageCalibrator.cpp
     Src/Inverter/Calibration/InductanceCalibrator.cpp
@@ -98,6 +99,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Calibration/ResistanceCalibrator.cpp
     Src/Inverter/Calibration/Common/BreakawayFinder.cpp
     Src/Inverter/Calibration/Common/CalibrationHardware.cpp
+    Src/Inverter/Calibration/Common/CalScratchBuffer.cpp
     Src/Inverter/Calibration/Common/CurrentLimitedRamp.cpp
     Src/Inverter/Calibration/Common/EncoderTracker.cpp
     Src/Inverter/Drivers/Storage/RteParamStore.cpp

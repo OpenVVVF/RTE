@@ -265,6 +265,9 @@ void AutoCalibrationCoordinator::finish() {
     CalKvStore::saveEncoderBounds(encoderADC().sinMin(), encoderADC().sinMax(),
                                   encoderADC().cosMin(), encoderADC().cosMax());
 
+    /* Persist the Layer 1 ellipse fit computed during offset calibration. */
+    CalKvStore::saveEncoderFit(encoderOffsetCalibrator().lastSinCosFit());
+
     if (CalKvStore::flush()) {
         if (saved_ok) {
             Telemetry::printf("[CAL] AUTO: calibration results saved");

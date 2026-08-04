@@ -4,6 +4,7 @@
 #include "Inverter/Calibration/Common/EncoderTracker.h"
 #include "Inverter/Calibration/Common/CurrentLimitedRamp.h"
 #include "Inverter/Calibration/Common/BreakawayFinder.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
 
 #include <cstdint>
 
@@ -108,6 +109,14 @@ public:
      */
     int detectedSign() const { return (m_warmup_sign != 0) ? m_warmup_sign : m_sign; }
 
+    /**
+     * @brief Layer 1 sin/cos ellipse fit computed during the last successful run.
+     *
+     * Only meaningful after DONE; check fit.valid.  Persisted by the caller via
+     * CalKvStore::saveEncoderFit().
+     */
+    const EncoderADC::SinCosFit& lastSinCosFit() const { return m_fit; }
+
     static EncoderOffsetCalibrator& instance();
 
     enum class State {
@@ -187,6 +196,7 @@ private:
     float    m_last_offset = 0.0f;
     float    m_average_offset = 0.0f;
     float    m_measured_encoder_cycles_per_rev = 0.0f;
+    EncoderADC::SinCosFit m_fit;
 };
 
 EncoderOffsetCalibrator& encoderOffsetCalibrator();

@@ -87,6 +87,7 @@ bool EncoderOffsetCalibrator::start(float pole_count, float encoder_cycles_per_r
 
     encoderADC().resetBounds();
     encoderADC().learnBounds(true);
+    encoderADC().stopFitCapture();
     m_tracker.reset();
     m_hw.begin();
 
@@ -167,6 +168,7 @@ void EncoderOffsetCalibrator::stop() {
         PWM_StopSPWM();
         restoreHardware();
         encoderADC().learnBounds(false);
+        encoderADC().stopFitCapture();
         m_state = State::IDLE;
         Telemetry::printf("[CAL] ENC: stopped by user");
     }
@@ -180,6 +182,7 @@ void EncoderOffsetCalibrator::fail(const char* reason_fmt, ...) {
 
     restoreHardware();
     encoderADC().learnBounds(false);
+    encoderADC().stopFitCapture();
     m_state = State::FAIL;
 }
 
@@ -486,6 +489,10 @@ void EncoderOffsetCalibrator::update() {
                      * be measured only over verified-locked motion. */
                     m_acquire_start_encoder_elec_deg = m_tracker.unwrappedDegrees();
                     m_acquire_start_field_mech_deg = field_mech;
+                    /* Start collecting raw sin/cos for the Layer 1 ellipse fit.
+                     * Capture runs at the full encoder sample rate in the DMA
+                     * ISR for the rest of the locked rotation. */
+                    encoderADC().startFitCapture();
                     Telemetry::printf("[CAL] ENC DBG: acquisition started");
                 }
             } else {
@@ -527,6 +534,35 @@ void EncoderOffsetCalibrator::update() {
 
                 restoreHardware();
                 encoderADC().learnBounds(false);
+
+                /* Compute and apply the Layer 1 ellipse fit from the captured
+                 * raw sin/cos samples.  The fit is independent of the offset
+                 * average (a physical constant), so applying it after offset
+                 * acquisition is safe. */
+                EncoderADC::SinCosFit fit;
+                if (encoderADC().computeFit(fit)) {
+                    encoderADC().applyFit(fit);
+                    m_fit = fit;
+                    const float phi_deg = std::fabs(fit.phase_err) * RAD_TO_DEG;
+                    const float amp_mismatch_pct =
+                        100.0f * std::fabs(fit.amp_sin - fit.amp_cos) /
+                        (0.5f * (fit.amp_sin + fit.amp_cos));
+                    Telemetry::printf("[CAL] ENC: fit: Cs=%.1f Cc=%.1f As=%.1f Ac=%.1f phi=%.3f deg samples=%lu",
+                                      static_cast<double>(fit.center_sin),
+                                      static_cast<double>(fit.center_cos),
+                                      static_cast<double>(fit.amp_sin),
+                                      static_cast<double>(fit.amp_cos),
+                                      static_cast<double>(phi_deg),
+                                      static_cast<unsigned long>(fit.sample_count));
+                    if (phi_deg > 3.0f || amp_mismatch_pct > 10.0f) {
+                        Telemetry::printf("[CAL] ENC: fit WARNING: phi=%.2f deg gain_mismatch=%.1f%% (check wiring/mounting)",
+                                          static_cast<double>(phi_deg),
+                                          static_cast<double>(amp_mismatch_pct));
+                    }
+                } else {
+                    Telemetry::printf("[CAL] ENC: fit not computed (insufficient data)");
+                }
+
                 Telemetry::printf("[CAL] ENC: DONE: avg=%.3f deg samples=%d revs=%.1f",
                                   static_cast<double>(m_average_offset),
                                   m_sample_count,

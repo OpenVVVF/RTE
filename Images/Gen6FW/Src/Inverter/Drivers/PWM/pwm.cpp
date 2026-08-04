@@ -12,6 +12,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/LoopStats.h"
 #include "Inverter/platform_api.h"
+#include "Inverter/Control/ControlSupervisor.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
 #include <stdbool.h>
@@ -399,8 +400,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     /* RTE codegen: PWM-synchronous control + modulation step.
      * Generated code reads sensors, runs the selected control law, and writes
      * PWM duties.  The example FOC/SPWM code below is reference only; it is
-     * superseded once the graph contains nodes assigned to the tim_isr domain. */
-    // RTE_EMIT: tim_isr step
+     * superseded once the graph contains nodes assigned to the tim_isr domain.
+     *
+     * The generated step is gated on the supervisor actually running graph
+     * control: this ISR is shared with the base-image users (open-loop SPWM
+     * calibrators, FocControlManager), and an ungated graph FOC writes duties
+     * every tick and fights whichever of them owns the stage — the failure
+     * mode that silently broke the FOC-based calibrators (inductance, flux). */
+    if (Inverter::ControlSupervisor::instance().isRunning()) {
+        // RTE_EMIT: tim_isr step
+    }
 
     if (foc_active) {
         FocControlManager_OnPwmPeriod();
