@@ -5,24 +5,28 @@
  *   predict i_p from prior v
  *   v = R i_p + w terms + (L/Ts)*db*(i*-i_p) + Ki*int(err) - k_eso*L*f_hat
  *
- * Session notes:
- *   HybridADRCMPC-1: pure ADRC deadbeat -> huge current, rare spin
- *   HybridADRCMPC-2: low DbScale, no Ki -> clean current, no spin (duty~50%)
+ * Persistent state lives in AXISRAM (.dma_buffers), not DTCMRAM — the
+ * generated tim_isr statics otherwise overflow DTCM (seen +8 B with Ki).
  */
 
-static float hy_u_alpha_prev = 0.0f;
-static float hy_u_beta_prev = 0.0f;
-static float hy_enable_s = 0.0f;
-static float hy_id_f = 0.0f;
-static float hy_iq_f = 0.0f;
-static float hy_i_filt_init = 0.0f;
-static float hy_z1_d = 0.0f;
-static float hy_z2_d = 0.0f;
-static float hy_z1_q = 0.0f;
-static float hy_z2_q = 0.0f;
-static float hy_eso_init = 0.0f;
-static float hy_id_int = 0.0f;
-static float hy_iq_int = 0.0f;
+struct HyAdrcMpccState {
+    float u_alpha_prev;
+    float u_beta_prev;
+    float enable_s;
+    float id_f;
+    float iq_f;
+    float z1_d;
+    float z2_d;
+    float z1_q;
+    float z2_q;
+    float id_int;
+    float iq_int;
+    uint8_t filt_init;
+    uint8_t eso_init;
+    uint8_t _pad[2];
+};
+
+static HyAdrcMpccState hy __attribute__((section(".dma_buffers"), aligned(4)));
 
 const float ts = Ts;
 float ld = Ld;
@@ -87,52 +91,52 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     V_Beta = rte::Volts(0.0f);
     V_D = rte::Volts(0.0f);
     V_Q = rte::Volts(0.0f);
-    Fhat_D = hy_z2_d;
-    Fhat_Q = hy_z2_q;
-    hy_u_alpha_prev = 0.0f;
-    hy_u_beta_prev = 0.0f;
-    hy_enable_s = 0.0f;
-    hy_id_f = id_raw;
-    hy_iq_f = iq_raw;
-    hy_i_filt_init = 0.0f;
-    hy_eso_init = 0.0f;
-    hy_z2_d = 0.0f;
-    hy_z2_q = 0.0f;
-    hy_id_int = 0.0f;
-    hy_iq_int = 0.0f;
+    Fhat_D = hy.z2_d;
+    Fhat_Q = hy.z2_q;
+    hy.u_alpha_prev = 0.0f;
+    hy.u_beta_prev = 0.0f;
+    hy.enable_s = 0.0f;
+    hy.id_f = id_raw;
+    hy.iq_f = iq_raw;
+    hy.filt_init = 0;
+    hy.eso_init = 0;
+    hy.z2_d = 0.0f;
+    hy.z2_q = 0.0f;
+    hy.id_int = 0.0f;
+    hy.iq_int = 0.0f;
 } else {
     const float cos_t = cosf(theta_e);
     const float sin_t = sinf(theta_e);
     const float b0_d = 1.0f / ld;
     const float b0_q = 1.0f / lq;
 
-    if (hy_i_filt_init < 0.5f) {
-        hy_id_f = id_raw;
-        hy_iq_f = iq_raw;
-        hy_i_filt_init = 1.0f;
+    if (hy.filt_init == 0) {
+        hy.id_f = id_raw;
+        hy.iq_f = iq_raw;
+        hy.filt_init = 1;
     } else {
         const float fc = 500.0f;
         const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc * ts));
-        hy_id_f += alpha * (id_raw - hy_id_f);
-        hy_iq_f += alpha * (iq_raw - hy_iq_f);
+        hy.id_f += alpha * (id_raw - hy.id_f);
+        hy.iq_f += alpha * (iq_raw - hy.iq_f);
     }
-    const float id = hy_id_f;
-    const float iq = hy_iq_f;
+    const float id = hy.id_f;
+    const float iq = hy.iq_f;
 
-    const float vd_prev = hy_u_alpha_prev * cos_t + hy_u_beta_prev * sin_t;
-    const float vq_prev = -hy_u_alpha_prev * sin_t + hy_u_beta_prev * cos_t;
+    const float vd_prev = hy.u_alpha_prev * cos_t + hy.u_beta_prev * sin_t;
+    const float vq_prev = -hy.u_alpha_prev * sin_t + hy.u_beta_prev * cos_t;
 
     /* One-step delay compensation (Mode 3). */
     const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);
     const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);
 
     /* Residual ESO (ADRC) on model mismatch only. */
-    if (hy_eso_init < 0.5f) {
-        hy_z1_d = id;
-        hy_z2_d = 0.0f;
-        hy_z1_q = iq;
-        hy_z2_q = 0.0f;
-        hy_eso_init = 1.0f;
+    if (hy.eso_init == 0) {
+        hy.z1_d = id;
+        hy.z2_d = 0.0f;
+        hy.z1_q = iq;
+        hy.z2_q = 0.0f;
+        hy.eso_init = 1;
     } else {
         const float vd_model = rs * id - omega_e * lq * iq;
         const float vq_model = rs * iq + omega_e * ld * id + omega_e * psi_f;
@@ -140,24 +144,24 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         const float vq_res = vq_prev - vq_model;
         const float beta1 = 2.0f * wo;
         const float beta2 = wo * wo;
-        const float ed = hy_z1_d - id;
-        const float eq = hy_z1_q - iq;
-        hy_z1_d += ts * (hy_z2_d + b0_d * vd_res - beta1 * ed);
-        hy_z2_d += ts * (-beta2 * ed);
-        hy_z1_q += ts * (hy_z2_q + b0_q * vq_res - beta1 * eq);
-        hy_z2_q += ts * (-beta2 * eq);
+        const float ed = hy.z1_d - id;
+        const float eq = hy.z1_q - iq;
+        hy.z1_d += ts * (hy.z2_d + b0_d * vd_res - beta1 * ed);
+        hy.z2_d += ts * (-beta2 * ed);
+        hy.z1_q += ts * (hy.z2_q + b0_q * vq_res - beta1 * eq);
+        hy.z2_q += ts * (-beta2 * eq);
         const float fmax = 2.0e4f;
-        if (hy_z2_d > fmax) hy_z2_d = fmax;
-        if (hy_z2_d < -fmax) hy_z2_d = -fmax;
-        if (hy_z2_q > fmax) hy_z2_q = fmax;
-        if (hy_z2_q < -fmax) hy_z2_q = -fmax;
+        if (hy.z2_d > fmax) hy.z2_d = fmax;
+        if (hy.z2_d < -fmax) hy.z2_d = -fmax;
+        if (hy.z2_q > fmax) hy.z2_q = fmax;
+        if (hy.z2_q < -fmax) hy.z2_q = -fmax;
     }
 
     /* Short soft-start — do not starve voltage for long. */
     const float ramp_s = 0.08f;
-    hy_enable_s += ts;
-    if (hy_enable_s > ramp_s) hy_enable_s = ramp_s;
-    float v_scale = hy_enable_s / ramp_s;
+    hy.enable_s += ts;
+    if (hy.enable_s > ramp_s) hy.enable_s = ramp_s;
+    float v_scale = hy.enable_s / ramp_s;
 
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
@@ -178,18 +182,18 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     const float iq_err = iq_ref - iq_p;
 
     const float i_lim_v = (vdc / sqrt3) * 0.95f;
-    hy_id_int += ki * id_err * ts;
-    hy_iq_int += ki * iq_err * ts;
-    if (hy_id_int > i_lim_v) hy_id_int = i_lim_v;
-    if (hy_id_int < -i_lim_v) hy_id_int = -i_lim_v;
-    if (hy_iq_int > i_lim_v) hy_iq_int = i_lim_v;
-    if (hy_iq_int < -i_lim_v) hy_iq_int = -i_lim_v;
+    hy.id_int += ki * id_err * ts;
+    hy.iq_int += ki * iq_err * ts;
+    if (hy.id_int > i_lim_v) hy.id_int = i_lim_v;
+    if (hy.id_int < -i_lim_v) hy.id_int = -i_lim_v;
+    if (hy.iq_int > i_lim_v) hy.iq_int = i_lim_v;
+    if (hy.iq_int < -i_lim_v) hy.iq_int = -i_lim_v;
 
     const float k_eso = 0.15f;
-    float vd_ref = rs * id_p - omega_e * lq * iq_p + kp_d * id_err + hy_id_int
-                 - k_eso * ld * hy_z2_d;
+    float vd_ref = rs * id_p - omega_e * lq * iq_p + kp_d * id_err + hy.id_int
+                 - k_eso * ld * hy.z2_d;
     float vq_ref = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f + kp_q * iq_err
-                 + hy_iq_int - k_eso * lq * hy_z2_q;
+                 + hy.iq_int - k_eso * lq * hy.z2_q;
 
     vd_ref *= v_scale;
     vq_ref *= v_scale;
@@ -200,8 +204,8 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         const float scale = v_max / sqrtf(v_mag_sq);
         vd_ref *= scale;
         vq_ref *= scale;
-        hy_id_int *= 0.95f;
-        hy_iq_int *= 0.95f;
+        hy.id_int *= 0.95f;
+        hy.iq_int *= 0.95f;
     }
 
     const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;
@@ -234,9 +238,9 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     V_Beta = rte::Volts(vbeta_ref);
     V_D = rte::Volts(vd_ref);
     V_Q = rte::Volts(vq_ref);
-    Fhat_D = hy_z2_d;
-    Fhat_Q = hy_z2_q;
+    Fhat_D = hy.z2_d;
+    Fhat_Q = hy.z2_q;
 
-    hy_u_alpha_prev = valpha_ref;
-    hy_u_beta_prev = vbeta_ref;
+    hy.u_alpha_prev = valpha_ref;
+    hy.u_beta_prev = vbeta_ref;
 }
