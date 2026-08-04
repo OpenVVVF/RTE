@@ -61,6 +61,30 @@ void PWM_StopUpdateInterrupt(void);
 float PWM_GetFrequency(void);
 float PWM_GetUpdateFrequency(void);
 
+/**
+ * @brief Read the current duty cycles from TIM1 [0, 100].
+ */
+void PWM_GetCurrentDuties(float* duty_u, float* duty_v, float* duty_w);
+
+/**
+ * @brief Find the quietest sample point in the current PWM period.
+ *
+ * Given the three phase duties, compute the switching instants and return the
+ * TIM1 counter value (CCR4) at the middle of the largest gap between them.
+ *
+ * @param duty_u  Phase U duty [0, 100].
+ * @param duty_v  Phase V duty [0, 100].
+ * @param duty_w  Phase W duty [0, 100].
+ * @param arr     TIM1 auto-reload value.
+ * @param min_gap_ticks  Minimum quiet gap required (deadtime + settling).
+ * @param[out] out_ccr4  Recommended CCR4 value (TIM1 counter tick).
+ * @param[out] out_gap_ticks  Size of the largest gap found, in timer ticks.
+ * @return true if a gap >= min_gap_ticks was found.
+ */
+bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
+                             uint32_t arr, uint32_t min_gap_ticks,
+                             uint32_t* out_ccr4, uint32_t* out_gap_ticks);
+
 void PWM_StartSPWM(float fundamental_freq_hz, float modulation_index);
 void PWM_StopSPWM(void);
 void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index);

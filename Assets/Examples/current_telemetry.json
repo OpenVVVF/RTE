@@ -15,6 +15,7 @@
       "outputPorts": [
         {
           "name": "Theta",
+          "description": "Mechanical rotor angle in radians.",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -24,6 +25,7 @@
         },
         {
           "name": "Omega",
+          "description": "Mechanical motor speed in revolutions per minute.",
           "direction": "output",
           "type": {
             "quantity": "dimensionless",
@@ -41,13 +43,14 @@
       "displayName": "Phase Currents",
       "domain": "",
       "id": "Sensors.PhaseCurrents",
-      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    /* Keep raw sensor polarity available for general telemetry, while FOC\n     * graphs enable inversion for this hardware's current-sensor wiring. */\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
       "outputPorts": [
         {
           "name": "I_A",
+          "description": "Measured phase A current in amperes.",
           "direction": "output",
           "type": {
             "quantity": "current",
@@ -57,6 +60,7 @@
         },
         {
           "name": "I_B",
+          "description": "Measured phase B current in amperes.",
           "direction": "output",
           "type": {
             "quantity": "current",
@@ -66,9 +70,37 @@
         },
         {
           "name": "I_C",
+          "description": "Measured phase C current in amperes.",
           "direction": "output",
           "type": {
             "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Diudt",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "Divdt",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "BurstTimeUs",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
             "frame": "scalar",
             "dtype": "f32"
           }

@@ -10,11 +10,15 @@
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Control/VoltageVectorSchedule.h"
+#include "Inverter/Control/CurrentObserver.h"
+#include "Inverter/Control/MotorParameterEstimator.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
+#include "Inverter/Drivers/Sensors/SampleScheduler.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -183,6 +187,20 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
                                m_motor.pole_pairs / m_motor.encoder_cycles_per_rev;
     m_motor.encoder_offset_rad += adj_elec_rad;
     m_controller.SetMotorParameters(m_motor);
+
+    /* Initialize the current observer with the same motor parameters. */
+    currentObserver().setMotorParameters(
+        MotorCalibration::instance().r_phase_avg,
+        m_motor.ld_henry,
+        m_motor.flux_linkage_wb,
+        m_motor.pole_pairs);
+    currentObserver().reset();
+
+    /* Seed the RLS estimator with the calibration-derived values. */
+    motorParameterEstimator().init(
+        MotorCalibration::instance().r_phase_avg,
+        m_motor.ld_henry,
+        0.99f);
 
     // Resolve control-loop period for the controller.
     float f_update = PWM_GetUpdateFrequency();
@@ -444,28 +462,39 @@ void FocControlManager::onPwmPeriod() {
         return;
     }
 
-    /* Atomically consume the latest synchronous current sample.  If no new
-     * sample is available the ADC trigger may have been lost; count misses and
-     * shut down before the controller runs open-loop. */
     float iu = 0.0f;
     float iv = 0.0f;
     float iw = 0.0f;
-    if (!phaseCurrentADC().sample(iu, iv, iw)) {
-        if (++m_missed_current_samples >= MAX_MISSED_CURRENT_SAMPLES) {
-            FaultManager::instance().raise(FaultSource::AdcError,
-                                           FaultReason::AdcHalError);
-            requestSafeStopFromIsr();
-        }
-        return;
-    }
-    m_missed_current_samples = 0;
 
-    /* The phase-current sensors on this hardware are wired with inverted
-     * polarity relative to the FOC convention.  Negate all three phase
-     * currents so the Clarke/Park transforms see the correct sign. */
-    iu = -iu;
-    iv = -iv;
-    iw = -iw;
+    if (m_use_observer) {
+        /* Observer-based current feedback: the ADC ISR continuously corrects
+         * the observer with micro-bursts; here we only consume the predicted
+         * state.  The polarity inversion is applied to the measured currents
+         * before they reach the observer, so observer output already follows
+         * the FOC convention. */
+        currentObserver().getPhaseCurrents(iu, iv, iw);
+        m_missed_current_samples = 0;
+    } else {
+        /* Atomically consume the latest synchronous current sample.  If no
+         * new sample is available the ADC trigger may have been lost; count
+         * misses and shut down before the controller runs open-loop. */
+        if (!phaseCurrentADC().sample(iu, iv, iw)) {
+            if (++m_missed_current_samples >= MAX_MISSED_CURRENT_SAMPLES) {
+                FaultManager::instance().raise(FaultSource::AdcError,
+                                               FaultReason::AdcHalError);
+                requestSafeStopFromIsr();
+            }
+            return;
+        }
+        m_missed_current_samples = 0;
+
+        /* The phase-current sensors on this hardware are wired with inverted
+         * polarity relative to the FOC convention.  Negate all three phase
+         * currents so the Clarke/Park transforms see the correct sign. */
+        iu = -iu;
+        iv = -iv;
+        iw = -iw;
+    }
 
     /* Snapshot raw phase currents for telemetry. */
     m_last_iu_a = iu;
@@ -542,6 +571,46 @@ void FocControlManager::onPwmPeriod() {
 
     PWM_SetVoltageVector(out.valpha_v, out.vbeta_v, vdc);
 
+    /* Run the observer prediction for the next PWM period using the voltage
+     * vector we just commanded. */
+    currentObserver().predict(out.valpha_v, out.vbeta_v,
+                              out.electrical_angle_rad, m_dt_s);
+
+    /* Push the applied voltage vector so the current observer can predict
+     * the next step and the sampler knows which vector it captured. */
+    {
+        VoltageVector vv;
+        vv.valpha_v = out.valpha_v;
+        vv.vbeta_v = out.vbeta_v;
+        vv.start_us = DWT->CYCCNT / (SystemCoreClock / 1000000U);
+        vv.duration_us = static_cast<uint32_t>(m_dt_s * 1.0e6f);
+        vv.is_zero_vector = false;
+        (void)voltageVectorSchedule().push(vv);
+    }
+
+    /* Adaptive current-sample trigger: choose the quietest point in the next
+     * PWM period and ask the sample scheduler to place the trigger there.
+     * The minimum gap is deadtime + switching settling + ADC burst time.
+     * At 275 MHz timer clock this is roughly 6 us. */
+    {
+        float duty_u = 0.0f, duty_v = 0.0f, duty_w = 0.0f;
+        PWM_GetCurrentDuties(&duty_u, &duty_v, &duty_w);
+        const uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
+        /* 6 us at 275 MHz timer clock. */
+        const uint32_t min_gap_ticks = 1650U;
+        uint32_t ccr4 = 10U;
+        uint32_t gap_ticks = 0U;
+        if (PWM_FindSafeSamplePoint(duty_u, duty_v, duty_w, arr,
+                                    min_gap_ticks, &ccr4, &gap_ticks)) {
+            sampleScheduler().scheduleNextSample(ccr4, arr);
+        } else {
+            /* No clean window: leave the trigger near the bottom (legacy
+             * behavior) and let the observer coast. */
+            sampleScheduler().scheduleFallback();
+        }
+        m_last_sample_gap_ticks = gap_ticks;
+    }
+
     if (m_sample_cb != nullptr) {
         m_sample_cb(m_controller.Id_A, m_controller.Iq_A,
                     m_controller.Vd_V, m_controller.Vq_V, m_sample_cb_ctx);
@@ -574,6 +643,19 @@ void FocControlManager::logTelemetry() {
     Telemetry::log("foc_iv", m_last_iv_a);
     Telemetry::log("foc_iw", m_last_iw_a);
     Telemetry::log("foc_missed", static_cast<float>(m_missed_current_samples));
+
+    /* Observer and estimator telemetry. */
+    Telemetry::log("foc_use_observer", m_use_observer ? 1.0f : 0.0f);
+    Telemetry::log("obs_conf", currentObserver().confidence());
+    Telemetry::log("obs_ia", currentObserver().iAlpha());
+    Telemetry::log("obs_ib", currentObserver().iBeta());
+    Telemetry::log("obs_ea", currentObserver().eAlpha());
+    Telemetry::log("obs_eb", currentObserver().eBeta());
+    Telemetry::log("est_r", motorParameterEstimator().estimatedR());
+    Telemetry::log("est_l", motorParameterEstimator().estimatedL());
+    Telemetry::log("est_conv", motorParameterEstimator().converged() ? 1.0f : 0.0f);
+    Telemetry::log("est_updates", static_cast<float>(motorParameterEstimator().updateCount()));
+    Telemetry::log("sample_gap_ticks", static_cast<float>(m_last_sample_gap_ticks));
 
     /* Duty-cycle readback: proves whether the SVPWM CCR writes actually reach
      * the timer in FOC mode (vs. frozen duties driving a fixed-axis field). */

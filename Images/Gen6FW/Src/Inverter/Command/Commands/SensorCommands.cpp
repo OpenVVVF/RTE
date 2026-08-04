@@ -5,6 +5,7 @@
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/MAX22530.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/platform_api.h"
 
 using Inverter::PhaseCurrentADC;
 using Inverter::DcLinkVoltageSensor;
@@ -189,6 +190,32 @@ public:
     }
 };
 
+class ObsCommand : public CommandInterface {
+public:
+    ObsCommand()
+      : CommandInterface("obs", "Toggle observer-based current output in generated graphs (0/1)",
+            ArgSpec{"enabled", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool enabled = (args[0].f_val != 0.0f);
+        platform_set_use_observer(enabled);
+        Telemetry::printf("[SHELL] observer output %s", enabled ? "ENABLED" : "DISABLED");
+    }
+};
+
+class FixedRefCommand : public CommandInterface {
+public:
+    FixedRefCommand()
+      : CommandInterface("fixedref", "Use fixed mid-scale reference instead of sampled ref (0/1)",
+            ArgSpec{"enabled", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool enabled = (args[0].f_val != 0.0f);
+        phaseCurrentADC().setUseFixedReference(enabled);
+        Telemetry::printf("[SHELL] fixed reference %s", enabled ? "ENABLED" : "DISABLED");
+    }
+};
+
 static OcSetCommand             sOcSetCmd;
 static DclZeroCommand           sDclZeroCmd;
 static DclRawCommand            sDclRawCmd;
@@ -200,6 +227,8 @@ static MaxCfgThresholdsCommand  sMaxCfgThresholdsCmd;
 static MaxCfgFilterClearCommand sMaxCfgFilterClearCmd;
 static MaxCfgRawCommand         sMaxCfgRawCmd;
 static MaxCfgFilteredCommand    sMaxCfgFilteredCmd;
+static ObsCommand               sObsCmd;
+static FixedRefCommand          sFixedRefCmd;
 
 #include "Inverter/Command/CommandManager.h"
 
@@ -215,4 +244,6 @@ void registerSensorCommands(CommandManager& mgr) {
     mgr.registerCommand(&sMaxCfgFilterClearCmd);
     mgr.registerCommand(&sMaxCfgRawCmd);
     mgr.registerCommand(&sMaxCfgFilteredCmd);
+    mgr.registerCommand(&sObsCmd);
+    mgr.registerCommand(&sFixedRefCmd);
 }

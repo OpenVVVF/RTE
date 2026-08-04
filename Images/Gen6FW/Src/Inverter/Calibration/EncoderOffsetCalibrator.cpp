@@ -87,6 +87,7 @@ bool EncoderOffsetCalibrator::start(float pole_count, float encoder_cycles_per_r
 
     encoderADC().resetBounds();
     encoderADC().learnBounds(true);
+    encoderADC().stopFitCapture();
     m_tracker.reset();
     m_hw.begin();
 
@@ -136,6 +137,8 @@ void EncoderOffsetCalibrator::enterState(State state) {
             m_rotate_start_encoder = 0.0f;
             m_rotate_start_field = fieldMechanicalAngle();
             m_offset_acquisition_active = false;
+            m_acquire_start_encoder_elec_deg = 0.0f;
+            m_acquire_start_field_mech_deg = 0.0f;
             m_sign = 0;
             m_first_encoder_mech = 0.0f;
             m_first_field_mech = 0.0f;
@@ -165,6 +168,7 @@ void EncoderOffsetCalibrator::stop() {
         PWM_StopSPWM();
         restoreHardware();
         encoderADC().learnBounds(false);
+        encoderADC().stopFitCapture();
         m_state = State::IDLE;
         Telemetry::printf("[CAL] ENC: stopped by user");
     }
@@ -178,6 +182,7 @@ void EncoderOffsetCalibrator::fail(const char* reason_fmt, ...) {
 
     restoreHardware();
     encoderADC().learnBounds(false);
+    encoderADC().stopFitCapture();
     m_state = State::FAIL;
 }
 
@@ -318,13 +323,16 @@ void EncoderOffsetCalibrator::update() {
             const float moved_enc = std::fabs(enc_mech - m_warmup_enc_start);
             const float moved_field = std::fabs(fieldMechanicalAngle() - m_warmup_fld_start);
 
+            const float warmup_lock_ratio =
+                (moved_field > 5.0f) ? (std::fabs(moved_enc) / moved_field) : 0.0f;
             if ((now_ms - m_last_dbg_ms) >= 500U) {
                 m_last_dbg_ms = now_ms;
-                Telemetry::printf("[CAL] ENC DBG: warmup: enc_mech=%.3f mod=%.3f enc_moved=%.1f fld_moved=%.1f ms=%lu",
+                Telemetry::printf("[CAL] ENC DBG: warmup: enc_mech=%.3f mod=%.3f enc_moved=%.1f fld_moved=%.1f lock=%.2f ms=%lu",
                                   static_cast<double>(enc_mech),
                                   static_cast<double>(m_ramp.applied()),
                                   static_cast<double>(moved_enc),
                                   static_cast<double>(moved_field),
+                                  static_cast<double>(warmup_lock_ratio),
                                   static_cast<unsigned long>(now_ms - m_state_start_ms));
             }
 
@@ -373,6 +381,17 @@ void EncoderOffsetCalibrator::update() {
 
             if (status == BreakawayFinder::Status::RUNNING) {
                 PWM_SetSPWMParams(OFFSET_ROTATION_FREQUENCY_HZ, mod);
+
+                /* Floating/disconnected encoder inputs often produce smooth
+                 * phantom rotation while the rotor is stationary.  If we see
+                 * significant encoder movement before the applied voltage is
+                 * high enough to cause real motion, abort with a clear message
+                 * instead of ramping to max_mod and timing out. */
+                if (m_breakaway.phantomMotionDetected()) {
+                    PWM_StopSPWM();
+                    fail("[CAL] ENC: FAIL: encoder shows motion with no applied voltage (floating inputs?)");
+                    return;
+                }
             } else if (status == BreakawayFinder::Status::TIMEOUT) {
                 PWM_StopSPWM();
                 fail("[CAL] ENC: FAIL: rotor did not move during voltage ramp");
@@ -443,10 +462,37 @@ void EncoderOffsetCalibrator::update() {
                     }
                 }
 
+                /* Slip monitor: when locked, encoder tracks field movement 1:1
+                 * (both are rotor mechanical degrees).  Persistent low ratio
+                 * means the stator field is spinning without pulling the rotor
+                 * along — usually too little torque for the load/inertia. */
+                const float rotate_lock_ratio =
+                    (moved_field > 5.0f) ? (std::fabs(encoder_mech) / moved_field) : 0.0f;
+                if (moved_field > 90.0f && rotate_lock_ratio < 0.5f && m_sign == 0) {
+                    Telemetry::printf("[CAL] ENC DBG: slip detected (lock_ratio=%.2f, enc=%.1f fld=%.1f)",
+                                      static_cast<double>(rotate_lock_ratio),
+                                      static_cast<double>(encoder_mech),
+                                      static_cast<double>(moved_field));
+                }
+                if (moved_field > 450.0f && !m_offset_acquisition_active) {
+                    PWM_StopSPWM();
+                    fail("[CAL] ENC: FAIL: rotor did not lock after %.1f deg field rotation (insufficient torque?)",
+                         static_cast<double>(moved_field));
+                    return;
+                }
+
                 if (ramp_done && moved_field >= OFFSET_ACQUIRE_START_DEG && m_sign != 0) {
                     m_offset_acquisition_active = true;
                     m_last_encoder_mech = encoder_mech;
                     m_last_field_mech = field_mech;
+                    /* Record the start of the locked region so cycles/rev can
+                     * be measured only over verified-locked motion. */
+                    m_acquire_start_encoder_elec_deg = m_tracker.unwrappedDegrees();
+                    m_acquire_start_field_mech_deg = field_mech;
+                    /* Start collecting raw sin/cos for the Layer 1 ellipse fit.
+                     * Capture runs at the full encoder sample rate in the DMA
+                     * ISR for the rest of the locked rotation. */
+                    encoderADC().startFitCapture();
                     Telemetry::printf("[CAL] ENC DBG: acquisition started");
                 }
             } else {
@@ -468,16 +514,55 @@ void EncoderOffsetCalibrator::update() {
                                m_mech_deg_per_motor_elec_cycle);
                 m_average_offset = avg_offset;
 
-                /* Measure the true encoder cycles per mechanical revolution from
-                 * the raw unwrapped encoder angle over the known 3-rev rotation.
-                 * This avoids the zero-crossing counting errors that can happen
-                 * during the rough pole-cal rotation. */
-                const float raw_unwrapped_deg = m_tracker.unwrappedDegrees();
-                m_measured_encoder_cycles_per_rev =
-                    std::fabs(raw_unwrapped_deg) / (360.0f * OFFSET_ROTATE_REVS);
+                /* Measure encoder cycles per mechanical revolution only over the
+                 * locked-rotor region (acquisition start → rotation end).  The
+                 * initial slip segment would otherwise corrupt the result. */
+                const float locked_encoder_elec_deg =
+                    m_tracker.unwrappedDegrees() - m_acquire_start_encoder_elec_deg;
+                const float locked_field_mech_deg =
+                    field_mech - m_acquire_start_field_mech_deg;
+                if (std::fabs(locked_field_mech_deg) > 30.0f) {
+                    m_measured_encoder_cycles_per_rev =
+                        std::fabs(locked_encoder_elec_deg) /
+                        std::fabs(locked_field_mech_deg);
+                } else {
+                    /* Not enough locked motion to improve on the pole-cal
+                     * estimate; leave the measured value at 0 so the caller
+                     * can fall back. */
+                    m_measured_encoder_cycles_per_rev = 0.0f;
+                }
 
                 restoreHardware();
                 encoderADC().learnBounds(false);
+
+                /* Compute and apply the Layer 1 ellipse fit from the captured
+                 * raw sin/cos samples.  The fit is independent of the offset
+                 * average (a physical constant), so applying it after offset
+                 * acquisition is safe. */
+                EncoderADC::SinCosFit fit;
+                if (encoderADC().computeFit(fit)) {
+                    encoderADC().applyFit(fit);
+                    m_fit = fit;
+                    const float phi_deg = std::fabs(fit.phase_err) * RAD_TO_DEG;
+                    const float amp_mismatch_pct =
+                        100.0f * std::fabs(fit.amp_sin - fit.amp_cos) /
+                        (0.5f * (fit.amp_sin + fit.amp_cos));
+                    Telemetry::printf("[CAL] ENC: fit: Cs=%.1f Cc=%.1f As=%.1f Ac=%.1f phi=%.3f deg samples=%lu",
+                                      static_cast<double>(fit.center_sin),
+                                      static_cast<double>(fit.center_cos),
+                                      static_cast<double>(fit.amp_sin),
+                                      static_cast<double>(fit.amp_cos),
+                                      static_cast<double>(phi_deg),
+                                      static_cast<unsigned long>(fit.sample_count));
+                    if (phi_deg > 3.0f || amp_mismatch_pct > 10.0f) {
+                        Telemetry::printf("[CAL] ENC: fit WARNING: phi=%.2f deg gain_mismatch=%.1f%% (check wiring/mounting)",
+                                          static_cast<double>(phi_deg),
+                                          static_cast<double>(amp_mismatch_pct));
+                    }
+                } else {
+                    Telemetry::printf("[CAL] ENC: fit not computed (insufficient data)");
+                }
+
                 Telemetry::printf("[CAL] ENC: DONE: avg=%.3f deg samples=%d revs=%.1f",
                                   static_cast<double>(m_average_offset),
                                   m_sample_count,

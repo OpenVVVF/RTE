@@ -38,6 +38,18 @@ public:
 
     float breakawayMod() const { return m_breakaway_mod; }
 
+    /**
+     * @brief True if the encoder moved significantly while modulation was too
+     * low to produce real motion.
+     *
+     * This is a strong indicator of floating/disconnected sin/cos inputs
+     * picking up interference.  Callers can abort calibration early instead of
+     * ramping all the way to max_mod and timing out.
+     */
+    bool phantomMotionDetected(float threshold_cycles = 0.05f) const {
+        return m_max_phantom_cycles >= threshold_cycles;
+    }
+
 private:
     float m_step = 0.0f;
     uint32_t m_period_ms = 0;
@@ -53,6 +65,14 @@ private:
     float m_last_cycles = 0.0f;
     float m_start_cycles = 0.0f;
     bool  m_have_start_cycles = false;
+
+    /* Movement reported while modulation is below this threshold is treated as
+     * sensor noise / floating-input phantom motion.  The reference is reset
+     * when the ramp first crosses into the trusted region so any accumulated
+     * garbage before real voltage is applied does not count. */
+    float m_min_trusted_mod = 0.0f;
+    bool  m_in_trusted_region = false;
+    float m_max_phantom_cycles = 0.0f;
 };
 
 } // namespace Inverter

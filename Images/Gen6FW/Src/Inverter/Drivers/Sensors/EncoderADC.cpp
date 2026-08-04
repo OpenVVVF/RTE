@@ -17,6 +17,11 @@ static TIM_HandleTypeDef htim2_enc;
 /* DMA buffer must live in AXI SRAM, not DTCMRAM. */
 static uint16_t s_enc_dma_buffer[2] __attribute__((section(".dma_buffers")));
 
+/* Layer 1 fit state lives in AXI SRAM for the same reason: it is large-ish
+ * and only touched by the encoder ISR/calibration path. */
+EncoderADC::FitAccumulator EncoderADC::s_fit_acc __attribute__((section(".dma_buffers")));
+EncoderADC::SinCosFit EncoderADC::s_fit __attribute__((section(".dma_buffers")));
+
 EncoderADC& encoderADC() {
     return s_instance;
 }
@@ -137,6 +142,10 @@ bool EncoderADC::init() {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
+    /* NOLOAD-section state must be zeroed explicitly; the C runtime does not
+     * do it for us. */
+    initializeFitState();
+
     if (!configureAdcChannels()) return false;
     if (!initTimer()) return false;
     if (!initDma()) return false;
@@ -176,7 +185,9 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     if (ccos > COS_MAX_CAP) ccos = COS_MAX_CAP;
 
     /* Expand the learned bounds from the observed signal.  They start empty
-     * and bracket the true signal range after roughly one revolution. */
+     * and bracket the true signal range after roughly one revolution.  When a
+     * fitted correction is active these bounds are no longer used for angle
+     * decoding, but they are still needed for signal-quality diagnostics. */
     if (csin < m_obs_sin_min) m_obs_sin_min = csin;
     if (csin > m_obs_sin_max) m_obs_sin_max = csin;
     if (ccos < m_obs_cos_min) m_obs_cos_min = ccos;
@@ -205,7 +216,21 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     m_learned_active = learned_valid;
 
     float angle_deg = 0.0f;
-    if ((sin_max > sin_min) && (cos_max > cos_min)) {
+
+    if (s_fit.valid) {
+        /* Layer 1 ellipse-fit correction: de-skew center, amplitude, and
+         * quadrature phase before atan2.  The model is:
+         *   sin_raw = Cs + As * sin(theta)
+         *   cos_raw = Cc + Ac * cos(theta + phi)
+         * so the corrected cos is (c_norm + s_norm * sin(phi)) / cos(phi). */
+        const float s = (static_cast<float>(csin) - s_fit.center_sin) / s_fit.amp_sin;
+        float c = (static_cast<float>(ccos) - s_fit.center_cos) / s_fit.amp_cos;
+        c = (c + s * s_fit.phase_err_sin) / s_fit.phase_err_cos;
+        angle_deg = atan2f(s, c) * (180.0f / static_cast<float>(M_PI));
+        if (angle_deg < 0.0f) {
+            angle_deg += 360.0f;
+        }
+    } else if ((sin_max > sin_min) && (cos_max > cos_min)) {
         float sin_norm = (static_cast<float>(csin - sin_min) /
                           static_cast<float>(sin_max - sin_min)) * 2.0f - 1.0f;
         float cos_norm = (static_cast<float>(ccos - cos_min) /
@@ -283,6 +308,12 @@ void EncoderADC::onDmaComplete() {
     m_last_sample_cycles = DWT->CYCCNT;
     ++m_isr_count;
 
+    /* Layer 1 ellipse-fit capture: accumulate every raw sample at the full
+     * encoder rate while a calibration routine requests it. */
+    if (m_fit_capture) {
+        s_fit_acc.add(raw_sin, raw_cos);
+    }
+
     /* Angle-linearity trace: decimated ring for the `enc_trace` command. */
     if (++m_trace_decim >= TRACE_DECIM) {
         m_trace_decim = 0;
@@ -359,6 +390,133 @@ void EncoderADC::resetBounds() {
     m_mag_ema_init = false;
     m_amp_low_count = 0;
     m_rail_count = 0;
+    __enable_irq();
+}
+
+void EncoderADC::startFitCapture() {
+    __disable_irq();
+    m_fit_capture = false;
+    s_fit_acc.reset();
+    m_fit_capture = true;
+    __enable_irq();
+}
+
+void EncoderADC::stopFitCapture() {
+    __disable_irq();
+    m_fit_capture = false;
+    __enable_irq();
+}
+
+bool EncoderADC::computeFit(SinCosFit& out) {
+    __disable_irq();
+    m_fit_capture = false;
+    FitAccumulator acc = s_fit_acc;
+    s_fit_acc.reset();
+    __enable_irq();
+
+    out = SinCosFit();
+
+    if (acc.count < FIT_MIN_SAMPLES) {
+        return false;
+    }
+    if ((acc.max_sin < acc.min_sin + FIT_MIN_SPAN) ||
+        (acc.max_cos < acc.min_cos + FIT_MIN_SPAN)) {
+        return false;
+    }
+
+    /* Center and amplitude come from the observed peak-to-peak span.  This is
+     * far more robust to non-uniform angular coverage (slip, cogging, speed
+     * ripple) than the moment mean/variance, which is biased when the rotor
+     * does not complete an integer number of electrical cycles with perfectly
+     * uniform velocity. */
+    const float span_sin = static_cast<float>(acc.max_sin - acc.min_sin);
+    const float span_cos = static_cast<float>(acc.max_cos - acc.min_cos);
+    if ((span_sin < FIT_MIN_SPAN) || (span_cos < FIT_MIN_SPAN)) {
+        return false;
+    }
+
+    const float center_sin = static_cast<float>(acc.min_sin) + span_sin * 0.5f;
+    const float center_cos = static_cast<float>(acc.min_cos) + span_cos * 0.5f;
+    const float amp_sin    = span_sin * 0.5f;
+    const float amp_cos    = span_cos * 0.5f;
+    if ((amp_sin < FIT_MIN_AMP) || (amp_cos < FIT_MIN_AMP)) {
+        return false;
+    }
+
+    const double n = static_cast<double>(acc.count);
+    const double mean_sin = acc.sum_sin / n;
+    const double mean_cos = acc.sum_cos / n;
+    const double var_sin = acc.sum_sin2 / n - mean_sin * mean_sin;
+    const double var_cos = acc.sum_cos2 / n - mean_cos * mean_cos;
+    const double cov_sincos = acc.sum_sincos / n - mean_sin * mean_cos;
+
+    /* Cross-check: the moment-derived amplitude should match the peak-to-peak
+     * half-span within tolerance.  A big mismatch means coverage was poor or
+     * the signal is not sinusoidal enough for this model. */
+    const float moment_amp_sin = static_cast<float>(std::sqrt(2.0 * var_sin));
+    const float moment_amp_cos = static_cast<float>(std::sqrt(2.0 * var_cos));
+    if ((moment_amp_sin < FIT_MIN_AMP) || (moment_amp_cos < FIT_MIN_AMP)) {
+        return false;
+    }
+    const float amp_mismatch_sin = std::fabs(moment_amp_sin - amp_sin) / amp_sin;
+    const float amp_mismatch_cos = std::fabs(moment_amp_cos - amp_cos) / amp_cos;
+    if ((amp_mismatch_sin > 0.10f) || (amp_mismatch_cos > 0.10f)) {
+        return false;
+    }
+
+    /* Heydemann quadrature estimator: with u = sin(theta) and
+     * v = cos(theta + phi), <u*v> = -0.5 * sin(phi).  Use the span-derived
+     * center/amplitude for normalization so the estimate is coverage-robust. */
+    const float sin_phi = static_cast<float>(
+        -2.0 * cov_sincos / (static_cast<double>(amp_sin) * static_cast<double>(amp_cos)));
+
+    float clamped_sin_phi = sin_phi;
+    if (clamped_sin_phi > FIT_MAX_SIN_PHASE) clamped_sin_phi = FIT_MAX_SIN_PHASE;
+    if (clamped_sin_phi < -FIT_MAX_SIN_PHASE) clamped_sin_phi = -FIT_MAX_SIN_PHASE;
+    const float phi = asinf(clamped_sin_phi);
+
+    /* A quadrature phase error beyond a few degrees means the sensor wiring
+     * or mounting is wrong, not a calibration problem.  Reject rather than
+     * bake a pathological fit into the decoder. */
+    if (std::fabs(phi) > (FIT_MAX_PHASE_DEG * static_cast<float>(M_PI) / 180.0f)) {
+        return false;
+    }
+
+    out.center_sin = center_sin;
+    out.center_cos = center_cos;
+    out.amp_sin    = amp_sin;
+    out.amp_cos    = amp_cos;
+    out.phase_err  = phi;
+    out.phase_err_sin = clamped_sin_phi;
+    out.phase_err_cos = cosf(phi);
+    out.sample_count = static_cast<uint32_t>(acc.count);
+    out.valid = true;
+    return true;
+}
+
+void EncoderADC::applyFit(const SinCosFit& fit) {
+    __disable_irq();
+    s_fit = fit;
+    __enable_irq();
+}
+
+void EncoderADC::clearFit() {
+    __disable_irq();
+    s_fit = SinCosFit();
+    __enable_irq();
+}
+
+EncoderADC::SinCosFit EncoderADC::currentFit() const {
+    __disable_irq();
+    SinCosFit fit = s_fit;
+    __enable_irq();
+    return fit;
+}
+
+void EncoderADC::initializeFitState() {
+    __disable_irq();
+    s_fit_acc.reset();
+    s_fit = SinCosFit();
     __enable_irq();
 }
 
@@ -447,6 +605,22 @@ void EncoderADC::diagnose() {
             }
         } else {
             m_rail_count = 0;
+        }
+
+        /* A fitted correction assumes the sensor geometry is stable.  If the
+         * signal amplitude collapses or sticks at a rail repeatedly, the
+         * geometry has changed (sensor failing, disconnected, swapped) — drop
+         * back to bounds normalization rather than drive with a stale fit. */
+        if (s_fit.valid) {
+            const bool signal_bad = (m_mag_ema < AMP_COLLAPSE_THRESHOLD) || at_rail;
+            if (signal_bad) {
+                if (++m_fit_fault_count >= FIT_FAULT_COUNT) {
+                    Telemetry::printf("[ENC] fit invalidated: repeated signal-quality fault");
+                    clearFit();
+                }
+            } else if (m_fit_fault_count > 0) {
+                --m_fit_fault_count;
+            }
         }
     }
 

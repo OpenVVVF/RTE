@@ -20,6 +20,12 @@ constexpr const char* KEY_ENC_COS_MIN    = "Motor.Encoder.SinCos.CosMin";
 constexpr const char* KEY_ENC_COS_MAX    = "Motor.Encoder.SinCos.CosMax";
 constexpr const char* KEY_ENC_OFFSETRAD  = "Motor.Encoder.SinCos.OffsetDeg";
 constexpr const char* KEY_ENC_SIGN       = "Motor.Encoder.SinCos.Sign";
+constexpr const char* KEY_ENC_FIT_CS     = "Motor.Encoder.SinCos.Fit.Cs";
+constexpr const char* KEY_ENC_FIT_CC     = "Motor.Encoder.SinCos.Fit.Cc";
+constexpr const char* KEY_ENC_FIT_AS     = "Motor.Encoder.SinCos.Fit.As";
+constexpr const char* KEY_ENC_FIT_AC     = "Motor.Encoder.SinCos.Fit.Ac";
+constexpr const char* KEY_ENC_FIT_PHI    = "Motor.Encoder.SinCos.Fit.Phi";
+constexpr const char* KEY_ENC_FIT_VALID  = "Motor.Encoder.SinCos.Fit.Valid";
 constexpr const char* KEY_RES_UV         = "Motor.Resistance.Uv";
 constexpr const char* KEY_RES_UW         = "Motor.Resistance.Uw";
 constexpr const char* KEY_RES_VW         = "Motor.Resistance.Vw";
@@ -110,6 +116,38 @@ bool loadEncoderBounds() {
                                   static_cast<uint16_t>(sMax),
                                   static_cast<uint16_t>(cMin),
                                   static_cast<uint16_t>(cMax));
+    return true;
+}
+
+void saveEncoderFit(const EncoderADC::SinCosFit& fit) {
+    if (!RteParamStore::isReady()) return;
+    if (!fit.valid) return;  /* Keep any previously saved fit; don't erase it. */
+    setIfValid(KEY_ENC_FIT_VALID, 1.0f);
+    setIfValid(KEY_ENC_FIT_CS,  fit.center_sin);
+    setIfValid(KEY_ENC_FIT_CC,  fit.center_cos);
+    setIfValid(KEY_ENC_FIT_AS,  fit.amp_sin);
+    setIfValid(KEY_ENC_FIT_AC,  fit.amp_cos);
+    setIfValid(KEY_ENC_FIT_PHI, fit.phase_err);
+}
+
+bool loadEncoderFit() {
+    if (!RteParamStore::isReady()) return false;
+    float valid_f = 0.0f;
+    if (!RteParamStore::get(KEY_ENC_FIT_VALID, &valid_f) || valid_f < 0.5f) {
+        return false;
+    }
+    EncoderADC::SinCosFit fit;
+    fit.valid = true;
+    if (!RteParamStore::get(KEY_ENC_FIT_CS,  &fit.center_sin) ||
+        !RteParamStore::get(KEY_ENC_FIT_CC,  &fit.center_cos) ||
+        !RteParamStore::get(KEY_ENC_FIT_AS,  &fit.amp_sin) ||
+        !RteParamStore::get(KEY_ENC_FIT_AC,  &fit.amp_cos) ||
+        !RteParamStore::get(KEY_ENC_FIT_PHI, &fit.phase_err)) {
+        return false;
+    }
+    fit.phase_err_sin = sinf(fit.phase_err);
+    fit.phase_err_cos = cosf(fit.phase_err);
+    encoderADC().applyFit(fit);
     return true;
 }
 

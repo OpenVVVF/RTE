@@ -95,6 +95,16 @@ public:
     bool isInitialized() const { return m_initialized; }
 
     /**
+     * @brief Enable/disable observer-based current feedback.
+     *
+     * When enabled, the FOC ISR consumes the CurrentObserver's predicted and
+     * micro-burst-corrected currents instead of raw ADC samples.  Useful for
+     * validating the observer before making it the default path.
+     */
+    void setUseObserver(bool use_observer) { m_use_observer = use_observer; }
+    bool useObserver() const { return m_use_observer; }
+
+    /**
      * @brief Current setpoints after limiting.
      */
     const FocSetpoints& setpoints() const { return m_setpoints; }
@@ -181,6 +191,9 @@ private:
     volatile bool m_starting = false;
     volatile bool m_stop_requested_from_isr = false;
 
+    /* Observer-based current feedback switch. */
+    bool m_use_observer = false;
+
     float m_dt_s = 0.0f;
 
     StartupState m_startup_state = StartupState::IDLE;
@@ -194,6 +207,9 @@ private:
     float m_last_iu_a = 0.0f;
     float m_last_iv_a = 0.0f;
     float m_last_iw_a = 0.0f;
+
+    /* Diagnostics for adaptive current-sample trigger placement. */
+    uint32_t m_last_sample_gap_ticks = 0;
 
     SampleCallback m_sample_cb = nullptr;
     void* m_sample_cb_ctx = nullptr;
