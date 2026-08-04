@@ -5,10 +5,6 @@
 #include <QObject>
 #include <QString>
 
-#include <map>
-#include <string>
-#include <vector>
-
 namespace NodeGUI::runtime {
 
 // Reads/writes FRAM-backed RteParamStore keys using the firmware's existing
@@ -30,10 +26,6 @@ public:
     bool LoadFromFile(const QString& path, bool clearFirst, QString& error);
 
 private:
-    bool SendCommandAndCollect(const QString& line,
-                               std::vector<std::string>& responseLines,
-                               QString& error);
-
     RuntimeController* controller_;
 };
 
