@@ -10,6 +10,7 @@ class QPushButton;
 namespace NodeGUI::runtime {
 
 class ConsolePanel;
+class FramKeysManager;
 class RuntimeController;
 class SignalTablePanel;
 class TelemetryPanel;
@@ -33,6 +34,10 @@ public:
     void LoadAutosave();
     void SaveAutosave();
 
+public slots:
+    void OnSaveFramKeys();
+    void OnLoadFramKeys();
+
 private slots:
     void OnStoreChanged();
     void OnSavePreset();
@@ -44,6 +49,7 @@ private:
     void RefreshRecentCombo();
 
     RuntimeController* controller_;
+    FramKeysManager* framKeysManager_ = nullptr;
 
     QLabel* headerLabel_ = nullptr;
     QLabel* exportStatus_ = nullptr;
