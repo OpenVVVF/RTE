@@ -3252,7 +3252,7 @@
         "Ts": "0.0002",
         "OmegaO": "1500.0",
         "DbScale": "0.55",
-        "SpdMode": "1.0",
+        "SpdMode": "0.0",
         "SpdKp": "0.03",
         "SpdKi": "0.08",
         "PolePairs": "5.0"
@@ -3698,8 +3698,8 @@
       "id": "IqVar",
       "parameters": {
         "In": "0.0",
-        "Set": "400.0",
-        "Stored": "400.0"
+        "Set": "0.0",
+        "Stored": "0.0"
       },
       "position": {
         "x": 150.0,
@@ -3755,7 +3755,7 @@
       "id": "SlewIq",
       "parameters": {
         "Dt": "0.0002",
-        "Rate": "120.0",
+        "Rate": "50.0",
         "Value": "0.0"
       },
       "position": {
@@ -4189,7 +4189,7 @@
       "id": "CfgIqSlew",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "120.0",
+        "DefaultValue": "50.0",
         "Key": "Ctrl.Iq.SlewAps"
       },
       "position": {
