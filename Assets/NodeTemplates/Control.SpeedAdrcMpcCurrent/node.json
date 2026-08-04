@@ -35,7 +35,13 @@
       "name": "Spd_Ref",
       "direction": "input",
       "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
-      "description": "Mechanical speed reference (rpm). Used when CascadeMode=1."
+      "description": "Mechanical speed reference (rpm). Used when Cascade_Mode=1."
+    },
+    {
+      "name": "Cascade_Mode",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "0=current-only (I_Q_Ref in A). 1=speed ADRC + MPC current (Spd_Ref in rpm). Wire a Values.Var so it shows in the GUI."
     },
     {
       "name": "Theta_E",
@@ -190,12 +196,6 @@
       "frame": "scalar",
       "dtype": "f32",
       "description": "Hard current clamp (A)."
-    },
-    "CascadeMode": {
-      "quantity": "dimensionless",
-      "frame": "scalar",
-      "dtype": "f32",
-      "description": "0=current-only (I_Q_Ref in A). 1=speed ADRC + MPC current (Spd_Ref in rpm)."
     },
     "SpdOmegaC": {
       "quantity": "dimensionless",

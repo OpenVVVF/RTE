@@ -87,7 +87,7 @@ if (!(wc > 0.0f)) wc = 40.0f;
 if (!(wo > 0.0f)) wo = 120.0f;
 if (!(b0_spd > 1.0e-4f)) b0_spd = 80.0f; /* rpm/s per amp — tune on hardware */
 
-const bool cascade = (CascadeMode > 0.5f);
+const bool cascade = (Cascade_Mode > 0.5f);
 const float vdc = V_Dc.in(au::volts);
 const float id_raw = I_D.in(au::amperes);
 const float iq_raw = I_Q.in(au::amperes);
@@ -127,15 +127,6 @@ float iq_ref = iq_ref_in;
 if (cascade) {
     if (spd_ref > 700.0f) spd_ref = 700.0f;
     if (spd_ref < -700.0f) spd_ref = -700.0f;
-    /* Slew rpm setpoint in AXISRAM (~120 rpm/s) — avoids a DTCM Slew node. */
-    {
-        const float dmax = 120.0f * ts;
-        float d = spd_ref - st.spd_cmd;
-        if (d > dmax) d = dmax;
-        if (d < -dmax) d = -dmax;
-        st.spd_cmd += d;
-        spd_ref = st.spd_cmd;
-    }
 
     float iq_lim = 0.50f * i_max;
     if (iq_lim < 4.0f) iq_lim = 4.0f;
@@ -154,6 +145,16 @@ if (cascade) {
         st.u_iq_prev = 0.0f;
         st.spd_cmd = rpm_meas;
         st.spd_init = 1;
+    }
+
+    /* Slew rpm setpoint in AXISRAM (~120 rpm/s) — avoids a DTCM Slew node. */
+    {
+        const float dmax = 120.0f * ts;
+        float d = spd_ref - st.spd_cmd;
+        if (d > dmax) d = dmax;
+        if (d < -dmax) d = -dmax;
+        st.spd_cmd += d;
+        spd_ref = st.spd_cmd;
     }
 
     const float beta1 = 2.0f * wo;

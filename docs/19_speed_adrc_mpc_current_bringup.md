@@ -38,7 +38,7 @@ cmake -B build -G Ninja && cmake --build build -j8
 
 ## FOC-like current-only check
 
-Set `CascadeMode = 0`, ramp `IqVar` 1→3→5 A (same idea as FOC / old hybrid current test).
+Set `CascadeVar = 0`, ramp `IqVar` 1→3→5 A (same idea as FOC / old hybrid current test).
 
 ## DTCM note
 
