@@ -8,6 +8,7 @@
  *   1 = cascaded: Spd_Ref in rpm → speed ADRC → Iq*, then MPC current
  *
  * State in AXISRAM (.dma_buffers, NOLOAD) — magic-clear before use.
+ * Do NOT add extra Control.Slew nodes for rpm (each Slew burns ~16 B DTCM).
  */
 
 struct SpdAdrcMpcState {
@@ -25,13 +26,14 @@ struct SpdAdrcMpcState {
     float z1;
     float z2;
     float u_iq_prev;
+    float spd_cmd; /* internal rpm slew (keeps DTCM free of SlewSpd) */
     uint8_t filt_init;
     uint8_t omega_init;
     uint8_t spd_init;
     uint8_t _pad;
 };
 
-static constexpr uint32_t kSamMagic = 0x53414D31u; /* SAM1 */
+static constexpr uint32_t kSamMagic = 0x53414D32u; /* SAM2 */
 
 static SpdAdrcMpcState st __attribute__((section(".dma_buffers"), aligned(4)));
 
@@ -48,6 +50,7 @@ if (st.magic != kSamMagic) {
     st.z1 = 0.0f;
     st.z2 = 0.0f;
     st.u_iq_prev = 0.0f;
+    st.spd_cmd = 0.0f;
     st.filt_init = 0;
     st.omega_init = 0;
     st.spd_init = 0;
@@ -124,6 +127,15 @@ float iq_ref = iq_ref_in;
 if (cascade) {
     if (spd_ref > 700.0f) spd_ref = 700.0f;
     if (spd_ref < -700.0f) spd_ref = -700.0f;
+    /* Slew rpm setpoint in AXISRAM (~120 rpm/s) — avoids a DTCM Slew node. */
+    {
+        const float dmax = 120.0f * ts;
+        float d = spd_ref - st.spd_cmd;
+        if (d > dmax) d = dmax;
+        if (d < -dmax) d = -dmax;
+        st.spd_cmd += d;
+        spd_ref = st.spd_cmd;
+    }
 
     float iq_lim = 0.50f * i_max;
     if (iq_lim < 4.0f) iq_lim = 4.0f;
@@ -140,6 +152,7 @@ if (cascade) {
         st.z1 = rpm_meas;
         st.z2 = 0.0f;
         st.u_iq_prev = 0.0f;
+        st.spd_cmd = rpm_meas;
         st.spd_init = 1;
     }
 
@@ -163,6 +176,7 @@ if (cascade) {
     st.z1 = 0.0f;
     st.z2 = 0.0f;
     st.u_iq_prev = 0.0f;
+    st.spd_cmd = 0.0f;
 }
 
 if (id_ref > i_max) id_ref = i_max;
@@ -206,6 +220,7 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     st.z1 = 0.0f;
     st.z2 = 0.0f;
     st.u_iq_prev = 0.0f;
+    st.spd_cmd = 0.0f;
 } else {
     const float cos_t = cosf(theta_e);
     const float sin_t = sinf(theta_e);

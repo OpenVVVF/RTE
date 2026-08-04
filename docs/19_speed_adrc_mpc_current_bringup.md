@@ -40,6 +40,10 @@ cmake -B build -G Ninja && cmake --build build -j8
 
 Set `CascadeMode = 0`, ramp `IqVar` 1→3→5 A (same idea as FOC / old hybrid current test).
 
+## DTCM note
+
+Do not add a graph `Control.Slew` on `Spd_Ref` — that overflowed DTCM by ~16 B. Rpm slew is inside the controller (AXISRAM).
+
 ## Tuning
 
 | Param | Default | Role |
