@@ -165,7 +165,7 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Deadbeat tracking scale (0–1). Gen6 default ~0.40."
+      "description": "Deadbeat tracking scale (0–0.5). Gen6 bring-up default ~0.20."
     },
     "I_Base": {
       "quantity": "dimensionless",
@@ -177,19 +177,19 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Soft current limit (A)."
+      "description": "Soft current limit (A). Bring-up default 15 A."
     },
     "Rs": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Unused by hybrid (kept for graph KV compatibility)."
+      "description": "Stator resistance (ohm) for model feedforward."
     },
     "PsiF": {
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Unused by hybrid (kept for graph KV compatibility)."
+      "description": "PM flux linkage (Wb) for back-EMF feedforward."
     }
   }
 }

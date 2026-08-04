@@ -40,16 +40,16 @@ Do **not** leave placeholder Ld/Lq if you have FRAM cal values.
 2. Encoder Sign/Offset match working `foc_demo`.
 3. `IdVar = 0`, `IqVar = 0`, enable off → duties ~50%.
 4. Enable with iq = 0; watch quiet bias.
-5. Ramp `IqVar` slowly: **1 → 2 → 3 A** (short pulses if free shaft).
+5. Ramp `IqVar` slowly: **0.5 → 1 → 2 A** (short pulses if free shaft). Phase current should stay near the command, not tens of amps.
 6. Watch `cg_id` / `cg_iq`, duties, `hz_tim_isr`, overcurrent.
 
 ## Tuning
 
 | Param | Default | Notes |
 |-------|---------|--------|
-| `OmegaO` | 2000 | ESO bandwidth; raise for faster disturbance reject (more hiss) |
-| `DbScale` | 0.40 | Deadbeat aggressiveness (same ballpark as MPCC Mode 3) |
-| `I_Max` | 40 | Soft limit |
+| `OmegaO` | 1200 | ESO bandwidth (keep moderate for clean current) |
+| `DbScale` | 0.20 | Mild deadbeat (raise slowly only after clean spin) |
+| `I_Max` | 15 | Soft limit / foldback threshold |
 | `Ts` | 0.0002 | Match `tim_isr` 5 kHz |
 
 ## Comparison procedure
