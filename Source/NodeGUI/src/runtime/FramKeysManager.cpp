@@ -1,20 +1,21 @@
 #include "FramKeysManager.h"
 
 #include <QCoreApplication>
-#include <QDateTime>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QMessageBox>
 #include <QThread>
-
-#include <QDebug>
 
 #include <regex>
 
 namespace NodeGUI::runtime {
 
 namespace {
+
+// Matches the `config list` header line:
+//   [SHELL] stored config keys (N):
+const std::regex kListHeaderRegex(
+    R"(^\s*\[SHELL\]\s+stored config keys\s*\(\s*\d+\s*\)\s*:\s*$)");
 
 // Matches lines produced by `config list`:
 //   [SHELL]   Some.Key = 1.2340
@@ -28,6 +29,8 @@ constexpr int kQuietTimeoutMs = 250;
 constexpr int kMaxWaitMs = 3000;
 // Poll interval while waiting.
 constexpr int kPollIntervalMs = 25;
+// How many times to retry `config list` if the device does not respond.
+constexpr int kListRetries = 3;
 
 }  // namespace
 
@@ -41,31 +44,48 @@ bool FramKeysManager::SaveToFile(const QString& path, QString& error) {
         return false;
     }
 
-    std::vector<std::string> lines;
-    if (!SendCommandAndCollect(QStringLiteral("config list"), lines, error)) {
-        return false;
-    }
-
-    QJsonObject obj;
-    for (const auto& line : lines) {
-        std::smatch match;
-        if (!std::regex_match(line, match, kKeyValueRegex)) {
-            continue;
+    for (int attempt = 0; attempt < kListRetries; ++attempt) {
+        std::vector<std::string> lines;
+        if (!SendCommandAndCollect(QStringLiteral("config list"), lines, error)) {
+            return false;
         }
-        const std::string key = match[1].str();
-        const double value = std::stod(match[2].str());
-        obj[QString::fromStdString(key)] = value;
+
+        bool gotHeader = false;
+        QJsonObject obj;
+        for (const auto& line : lines) {
+            if (std::regex_match(line, kListHeaderRegex)) {
+                gotHeader = true;
+                continue;
+            }
+            std::smatch match;
+            if (std::regex_match(line, match, kKeyValueRegex)) {
+                const std::string key = match[1].str();
+                const double value = std::stod(match[2].str());
+                obj[QString::fromStdString(key)] = value;
+            }
+        }
+
+        if (gotHeader) {
+            QJsonDocument doc(obj);
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                error = QStringLiteral("Cannot write %1: %2")
+                            .arg(path, file.errorString());
+                return false;
+            }
+            file.write(doc.toJson(QJsonDocument::Indented));
+            return true;
+        }
+
+        if (attempt + 1 < kListRetries) {
+            QThread::msleep(100);
+        }
     }
 
-    QJsonDocument doc(obj);
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        error = QStringLiteral("Cannot write %1: %2")
-                    .arg(path, file.errorString());
-        return false;
-    }
-    file.write(doc.toJson(QJsonDocument::Indented));
-    return true;
+    error = QStringLiteral(
+        "Device did not return a valid config list after %1 attempts. "
+        "Check that the device console is responding.").arg(kListRetries);
+    return false;
 }
 
 bool FramKeysManager::LoadFromFile(const QString& path,
@@ -166,27 +186,25 @@ bool FramKeysManager::SendCommandAndCollect(const QString& line,
 
     int elapsedMs = 0;
     int quietMs = 0;
-    uint64_t seen = before;
+    uint64_t maxSeen = before;
 
     while (elapsedMs < kMaxWaitMs) {
         QThread::msleep(kPollIntervalMs);
         elapsedMs += kPollIntervalMs;
 
         const auto snap = controller_->Store().Snapshot();
-        const uint64_t latest = snap.console.empty() ? before : snap.console.back().seq;
-
         bool gotNew = false;
         for (const auto& item : snap.console) {
-            if (item.seq > before) {
+            if (item.seq > maxSeen) {
                 responseLines.push_back(item.text);
+                maxSeen = item.seq;
                 gotNew = true;
             }
         }
 
         if (gotNew) {
-            seen = latest;
             quietMs = 0;
-        } else if (seen > before) {
+        } else if (maxSeen > before) {
             quietMs += kPollIntervalMs;
             if (quietMs >= kQuietTimeoutMs) {
                 return true;
