@@ -50,6 +50,8 @@ add_executable(NodeGUI
     src/runtime/FirmwareUpdater.h
     src/runtime/FlashPanel.cpp
     src/runtime/FlashPanel.h
+    src/runtime/FramKeysManager.cpp
+    src/runtime/FramKeysManager.h
     src/runtime/HttpApiServer.cpp
     src/runtime/HttpApiServer.h
     src/runtime/RuntimeTab.cpp

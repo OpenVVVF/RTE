@@ -1,6 +1,7 @@
 #include "RuntimeTab.h"
 
 #include "ConsolePanel.h"
+#include "FramKeysManager.h"
 #include "RuntimeController.h"
 #include "RuntimeSessionExporter.h"
 #include "SignalTablePanel.h"
@@ -34,6 +35,8 @@ QSettings MakeSettings() {
 RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     : QWidget(parent)
     , controller_(controller) {
+    framKeysManager_ = new FramKeysManager(controller_, this);
+
     auto* layout = new QVBoxLayout(this);
 
     // Link status header (same fields as the old app's header line), plus a
@@ -61,6 +64,24 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
             this,
             &RuntimeTab::OnExportSession);
     headerRow->addWidget(exportButton);
+    auto* saveFramButton =
+        new QPushButton(QStringLiteral("Save FRAM Keys\u2026"), this);
+    saveFramButton->setToolTip(
+        QStringLiteral("Read FRAM config keys from the device and save them to a JSON file"));
+    connect(saveFramButton,
+            &QPushButton::clicked,
+            this,
+            &RuntimeTab::OnSaveFramKeys);
+    headerRow->addWidget(saveFramButton);
+    auto* loadFramButton =
+        new QPushButton(QStringLiteral("Load FRAM Keys\u2026"), this);
+    loadFramButton->setToolTip(
+        QStringLiteral("Restore FRAM config keys on the device from a JSON file"));
+    connect(loadFramButton,
+            &QPushButton::clicked,
+            this,
+            &RuntimeTab::OnLoadFramKeys);
+    headerRow->addWidget(loadFramButton);
     layout->addLayout(headerRow);
 
     // Graph-layout presets.
@@ -271,6 +292,59 @@ void RuntimeTab::SaveAutosave() {
         settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);
     }
     settings.endGroup();
+}
+
+void RuntimeTab::OnSaveFramKeys() {
+    const QString path = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Save FRAM Keys"),
+        QDir::home().filePath(QStringLiteral("fram-keys.json")),
+        QStringLiteral("JSON (*.json);;All Files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QString error;
+    if (!framKeysManager_->SaveToFile(path, error)) {
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Save FRAM Keys"),
+            QStringLiteral("Could not save FRAM keys:\n%1").arg(error));
+        return;
+    }
+    exportStatus_->setText(QStringLiteral("saved FRAM keys to %1")
+                               .arg(QFileInfo(path).fileName()));
+}
+
+void RuntimeTab::OnLoadFramKeys() {
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("Load FRAM Keys"),
+        QDir::homePath(),
+        QStringLiteral("JSON (*.json);;All Files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const bool clearFirst =
+        QMessageBox::question(
+            this,
+            QStringLiteral("Load FRAM Keys"),
+            QStringLiteral("Delete all existing FRAM keys before loading?\n\n"
+                           "Choose No to merge the file with existing keys."),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No) == QMessageBox::Yes;
+
+    QString error;
+    const bool ok = framKeysManager_->LoadFromFile(path, clearFirst, error);
+    if (!ok) {
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Load FRAM Keys"),
+            QStringLiteral("Could not load FRAM keys:\n%1").arg(error));
+        return;
+    }
+    exportStatus_->setText(error);
 }
 
 }  // namespace NodeGUI::runtime
