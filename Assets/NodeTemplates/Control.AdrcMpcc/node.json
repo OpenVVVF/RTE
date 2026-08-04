@@ -165,7 +165,7 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Deadbeat tracking scale (0–0.5). Gen6 spin default ~0.70 (Mode-3)."
+      "description": "Deadbeat tracking scale (0–1). Gen6 @55 V demo default ~0.55."
     },
     "I_Base": {
       "quantity": "dimensionless",
@@ -177,7 +177,7 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "Soft current limit (A). Soft limit default 25 A."
+      "description": "Hard current clamp (A). Demo default 15 A."
     },
     "Rs": {
       "quantity": "dimensionless",
@@ -189,7 +189,31 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32",
-      "description": "PM flux linkage (Wb) for back-EMF feedforward."
+      "description": "PM flux linkage (Wb). Gen6 ~0.07; values <0.02 are rejected as placeholders."
+    },
+    "SpdMode": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "0=current mode (I_Q_Ref in A). 1=speed mode (I_Q_Ref = mechanical rpm setpoint)."
+    },
+    "SpdKp": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed-loop Kp (A per rpm error)."
+    },
+    "SpdKi": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed-loop Ki (A per rpm·s)."
+    },
+    "PolePairs": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Rotor pole pairs (Gen6 = 5)."
     }
   }
 }
