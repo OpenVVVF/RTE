@@ -23,20 +23,23 @@ const std::regex kKeyValueRegex(
     R"(^\s*(?:\[SHELL\]\s+)?(\S+)\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$)");
 
 // How long to wait after the console stops growing before reading it.
-constexpr int kQuietTimeoutMs = 250;
-// Hard ceiling for a single command response.
-constexpr int kMaxWaitMs = 3000;
+constexpr int kQuietTimeoutMs = 500;
+// Hard ceiling for a single command response.  `config list` on a busy device
+// can take several seconds to produce output, so be generous.
+constexpr int kMaxWaitMs = 10000;
 // Poll interval while waiting.
 constexpr int kPollIntervalMs = 25;
 // How many times to retry `config list` if the device does not respond.
 constexpr int kListRetries = 3;
 
-// Wait until no new console lines have arrived for kQuietTimeoutMs, or until
-// kMaxWaitMs has elapsed.  Returns false only if waiting was aborted early.
+// Wait until the console has grown and then stayed quiet for kQuietTimeoutMs,
+// or until kMaxWaitMs has elapsed.  The first growth is waited for up to
+// kMaxWaitMs, so a slow first response does not cause a premature timeout.
 bool WaitForConsoleQuiet(RuntimeController* controller) {
     int elapsedMs = 0;
     int stableMs = 0;
     std::size_t lastSize = 0;
+    bool everGrew = false;
 
     while (elapsedMs < kMaxWaitMs) {
         QThread::msleep(kPollIntervalMs);
@@ -45,12 +48,16 @@ bool WaitForConsoleQuiet(RuntimeController* controller) {
         const auto snap = controller->Store().Snapshot();
         if (snap.console.size() == lastSize) {
             stableMs += kPollIntervalMs;
-            if (stableMs >= kQuietTimeoutMs) {
+            // Only declare quiet once we have seen at least one new line during
+            // this wait.  This prevents returning immediately when the device
+            // simply has not started responding yet.
+            if (everGrew && stableMs >= kQuietTimeoutMs) {
                 return true;
             }
         } else {
             stableMs = 0;
             lastSize = snap.console.size();
+            everGrew = true;
         }
     }
     return true;
