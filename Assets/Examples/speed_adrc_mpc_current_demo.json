@@ -3923,9 +3923,17 @@
         }
       ],
       "domain": "tim_isr",
-      "maxInstances": 1,
-      "isEntryPoint": false,
-      "displayName": "Speed ADRC + MPC Current"
+      "displayName": "Speed ADRC + MPC Current",
+      "position": {
+        "x": 1602.09,
+        "y": 1704.34
+      },
+      "parameterInputs": [
+        "Rs",
+        "Ld",
+        "Lq",
+        "PsiF"
+      ]
     },
     {
       "displayName": "",
