@@ -3,12 +3,12 @@
  *   Outer: LADRC on mechanical speed (rpm) → Iq*
  *   Inner: Mode-3 deadbeat / predictive current → Vαβ → SVPWM
  *
- * CascadeMode:
- *   0 = current-only (FOC-like): I_Q_Ref in amperes, speed ADRC bypassed
- *   1 = cascaded: Spd_Ref in rpm → speed ADRC → Iq*, then MPC current
+ * Always cascaded: Spd_Ref [rpm] → LADRC → Iq* → Mode-3 MPC current → SVPWM.
+ * (No CascadeVar / Cascade_Mode input — a Values.Var costs ~16 B DTCM.)
+ * For FOC-like Iq-in-amps tests use Control.AdrcMpcc.
  *
  * State in AXISRAM (.dma_buffers, NOLOAD) — magic-clear before use.
- * Do NOT add extra Control.Slew nodes for rpm (each Slew burns ~16 B DTCM).
+ * Do NOT add extra Control.Slew or Values.Var nodes for mode select.
  */
 
 struct SpdAdrcMpcState {
@@ -87,7 +87,7 @@ if (!(wc > 0.0f)) wc = 40.0f;
 if (!(wo > 0.0f)) wo = 120.0f;
 if (!(b0_spd > 1.0e-4f)) b0_spd = 80.0f; /* rpm/s per amp — tune on hardware */
 
-const bool cascade = (Cascade_Mode > 0.5f);
+const bool cascade = true; /* this node is always speed-ADRC + MPC current */
 const float vdc = V_Dc.in(au::volts);
 const float id_raw = I_D.in(au::amperes);
 const float iq_raw = I_Q.in(au::amperes);

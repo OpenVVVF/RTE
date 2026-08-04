@@ -3,15 +3,13 @@
 **New** branch / demo — does **not** modify `Control.AdrcMpcc` or `hybrid_adrc_mpcc_demo.json`.
 
 ```
-Spd_Ref [rpm]  →  LADRC (speed)  →  Iq*
-Id_Ref [A]     →                     ↘
-I_Q_Ref [A]    →  (CascadeMode=0 only) →  Mode-3 deadbeat / MPC current  →  Vαβ → SVPWM
+SpdVar [rpm]  →  LADRC (speed)  →  Iq*  →  Mode-3 deadbeat / MPC current  →  Vαβ → SVPWM
+IdVar [A]     →  (usually 0)
 ```
 
-| Mode | `CascadeMode` | How to command |
-|------|---------------|----------------|
-| Current-only (FOC-like) | **0** | `IqVar` in **amps** |
-| Cascaded (this design) | **1** (demo default) | `SpdVar` in **rpm**; current loop still runs |
+This controller is **always cascaded** (no `CascadeVar`). A mode `Values.Var` overflowed DTCM by ~16 B.
+
+For FOC-like **Iq in amps** tests, use `hybrid_adrc_mpcc_demo.json` / `Control.AdrcMpcc`.
 
 ## Flash
 
@@ -28,37 +26,19 @@ cmake -B build -G Ninja && cmake --build build -j8
   --clean
 ```
 
-## Recommended first run (cascade)
+## Test knobs
 
-1. Bus **~55 V**
-2. Encoder Sign/Offset same as FOC
-3. `CascadeMode = 1`, `IdVar = 0`, `SpdVar = 400` (rpm)
-4. Enable → expect rpm → ~400, phase currents modest, `sam_iq_cmd_a` / `sam_rpm` in telem
-5. Optional: 400 → 500 rpm. Stay ≤ ~600 at 55 V
+| Knob | Value | Notes |
+|------|--------|------|
+| **SpdVar** | **300** then 400 | rpm (own GUI position, not on top of IqVar) |
+| **IdVar** | **0** | |
+| **IqVar** | **0** | unused in this demo |
+| Enable | on | |
+| Vdc | ~55 V | stay ≤ ~600 rpm |
 
-## FOC-like current-only check
+Telem: `sam_rpm`, `sam_iq_cmd_a`, phase currents, `hz_tim_isr`.
 
-Set `CascadeVar = 0`, ramp `IqVar` 1→3→5 A (same idea as FOC / old hybrid current test).
+## DTCM rules
 
-## DTCM note
-
-Do not add a graph `Control.Slew` on `Spd_Ref` — that overflowed DTCM by ~16 B. Rpm slew is inside the controller (AXISRAM).
-
-## Tuning
-
-| Param | Default | Role |
-|-------|---------|------|
-| `SpdOmegaC` | 40 | Speed ADRC ωc |
-| `SpdOmegaO` | 120 | Speed ADRC ωo |
-| `SpdB0` | 80 | rpm/s per amp (tune) |
-| `DbScale` | 0.55 | Inner MPC deadbeat |
-| `I_Max` | 15 | Hard current clamp |
-| `PsiF` | 0.07 | Inner bemf model |
-
-## vs previous hybrid
-
-| | `hybrid_adrc_mpcc_demo` | This demo |
-|--|-------------------------|-----------|
-| Node | `Control.AdrcMpcc` | `Control.SpeedAdrcMpcCurrent` |
-| “Hybrid” meaning | ESO+deadbeat in **one** current law | **ADRC speed** + **MPC current** cascade |
-| Untouched | — | Previous hybrid files left as-is |
+- Controller state → AXISRAM (`.dma_buffers`)
+- **Do not** add `Control.Slew` on Spd_Ref or a `CascadeVar` — each costs ~16 B DTCM

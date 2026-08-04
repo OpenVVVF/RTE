@@ -5,7 +5,7 @@
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "tim_isr",
-  "description": "Cascaded Gen6 controller: outer LADRC on mechanical speed (rpm) and inner Mode-3 deadbeat/MPC current to SVPWM. Separate from Control.AdrcMpcc. CascadeMode 0 = FOC-like Iq in amps; 1 = Spd_Ref in rpm → ADRC → Iq* → MPC.",
+  "description": "Cascaded Gen6 controller: outer LADRC on mechanical speed (rpm) and inner Mode-3 deadbeat/MPC current to SVPWM. Always cascaded (Spd_Ref → ADRC → Iq* → MPC). For FOC-like Iq-in-amps tests use Control.AdrcMpcc / hybrid_adrc_mpcc_demo. Does not add a CascadeVar (DTCM).",
   "inputPorts": [
     {
       "name": "I_D",
@@ -35,13 +35,7 @@
       "name": "Spd_Ref",
       "direction": "input",
       "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
-      "description": "Mechanical speed reference (rpm). Used when Cascade_Mode=1."
-    },
-    {
-      "name": "Cascade_Mode",
-      "direction": "input",
-      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
-      "description": "0=current-only (I_Q_Ref in A). 1=speed ADRC + MPC current (Spd_Ref in rpm). Wire a Values.Var so it shows in the GUI."
+      "description": "Mechanical speed reference (rpm)."
     },
     {
       "name": "Theta_E",
