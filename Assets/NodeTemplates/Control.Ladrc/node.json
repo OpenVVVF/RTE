@@ -1,0 +1,99 @@
+{
+  "id": "Control.Ladrc",
+  "displayName": "LADRC (1st-order)",
+  "defaultName": "Ladrc",
+  "description": "Linear Active Disturbance Rejection Controller for a first-order plant (PMSM dq current). Drop-in alternative to Control.Pi: Setpoint/Measurement → voltage Output. Uses a 2-state linear ESO + PD-like feedback. Does not modify FOC/MPCC nodes.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "Setpoint",
+      "description": "Desired current (A) or process setpoint.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Measurement",
+      "description": "Measured current (A) or process value.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Output",
+      "description": "Control effort (volts for current-loop use).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Dt": {
+      "description": "Controller step period in seconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "B0": {
+      "description": "Plant gain estimate b0. For dq current use ≈ 1/L (e.g. Ld or Lq).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OmegaC": {
+      "description": "Controller bandwidth ωc [rad/s]. kp = ωc.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OmegaO": {
+      "description": "Observer bandwidth ωo [rad/s]. Typically 3–10× ωc.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Z1": {
+      "description": "Persistent ESO state: estimated output.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Z2": {
+      "description": "Persistent ESO state: estimated total disturbance.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "UPrev": {
+      "description": "Persistent previous control effort for the ESO input.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OutputMax": {
+      "description": "Upper output clamp (also limited by Vdc/√3·0.95).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OutputMin": {
+      "description": "Lower output clamp (also limited by −Vdc/√3·0.95).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}
