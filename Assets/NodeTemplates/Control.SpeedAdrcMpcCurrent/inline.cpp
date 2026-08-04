@@ -4,7 +4,7 @@
  *   Inner: Mode-3 deadbeat / predictive current → Vαβ → SVPWM
  *
  * Always cascaded: Spd_Ref [rpm] → LADRC → Iq* → Mode-3 MPC current → SVPWM.
- * (No CascadeVar / Cascade_Mode input — a Values.Var costs ~16 B DTCM.)
+ * (No CascadeVar input — a Values.Var costs ~16 B DTCM.)
  * For FOC-like Iq-in-amps tests use Control.AdrcMpcc.
  *
  * State in AXISRAM (.dma_buffers, NOLOAD) — magic-clear before use.
