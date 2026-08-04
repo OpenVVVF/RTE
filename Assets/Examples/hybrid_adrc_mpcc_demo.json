@@ -1,0 +1,4203 @@
+{
+  "bridges": [
+    {
+      "consumer": {
+        "nodeId": "Clarke",
+        "portName": "I_A"
+      },
+      "id": "i_a_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_A"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "current"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "Clarke",
+        "portName": "I_B"
+      },
+      "id": "i_b_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_B"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "current"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "Clarke",
+        "portName": "I_C"
+      },
+      "id": "i_c_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_C"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "current"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "LogU",
+        "portName": "Value"
+      },
+      "id": "i_a_app_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_A"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "LogV",
+        "portName": "Value"
+      },
+      "id": "i_b_app_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_B"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "LogW",
+        "portName": "Value"
+      },
+      "id": "i_c_app_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_C"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": {
+        "nodeId": "Clarke",
+        "portName": "I_Alpha"
+      },
+      "id": "c_clarke_alpha",
+      "to": {
+        "nodeId": "Park",
+        "portName": "I_Alpha"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Clarke",
+        "portName": "I_Beta"
+      },
+      "id": "c_clarke_beta",
+      "to": {
+        "nodeId": "Park",
+        "portName": "I_Beta"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Encoder",
+        "portName": "Theta"
+      },
+      "id": "c_enc_theta",
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "ThetaMech"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgEncSign",
+        "portName": "Value"
+      },
+      "id": "c_cfg_enc_sign",
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "EncoderSign"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgEncOffset",
+        "portName": "Value"
+      },
+      "id": "c_cfg_enc_offset",
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "OffsetDeg"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgPoles",
+        "portName": "Value"
+      },
+      "id": "c_cfg_poles",
+      "to": {
+        "nodeId": "ElecAngle",
+        "portName": "Poles"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ElecAngle",
+        "portName": "ThetaElec"
+      },
+      "id": "c_elec_theta",
+      "to": {
+        "nodeId": "Park",
+        "portName": "Theta"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ElecAngle",
+        "portName": "ThetaElec"
+      },
+      "id": "c_elec_to_deriv",
+      "to": {
+        "nodeId": "OmegaDeriv",
+        "portName": "In"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c_id",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "I_D"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c_iq",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "I_Q"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "OmegaDeriv",
+        "portName": "Out"
+      },
+      "id": "c_omega",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Omega_E"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "V_Dc"
+      },
+      "id": "c_vdc",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "V_Dc"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "IdVar",
+        "portName": "Value"
+      },
+      "id": "c_id_ref",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "I_D_Ref"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "IqGate",
+        "portName": "Out"
+      },
+      "id": "c_iqgate_mpcc",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "I_Q_Ref"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ThrottleEnable",
+        "portName": "Value"
+      },
+      "id": "c_throttle_enable",
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Sel"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "IqVar",
+        "portName": "Value"
+      },
+      "id": "c_iq_var",
+      "to": {
+        "nodeId": "SlewIq",
+        "portName": "In"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "SlewIq",
+        "portName": "Out"
+      },
+      "id": "c_slew_iq",
+      "to": {
+        "nodeId": "IqGate",
+        "portName": "Val"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ThrottleEnable",
+        "portName": "Value"
+      },
+      "id": "c_enable_mpcc",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Enable"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "S_A"
+      },
+      "id": "c_sa",
+      "to": {
+        "nodeId": "SwitchToDuty",
+        "portName": "S_A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "S_B"
+      },
+      "id": "c_sb",
+      "to": {
+        "nodeId": "SwitchToDuty",
+        "portName": "S_B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "S_C"
+      },
+      "id": "c_sc",
+      "to": {
+        "nodeId": "SwitchToDuty",
+        "portName": "S_C"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_A"
+      },
+      "id": "c_duty_a",
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "Duty_A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_B"
+      },
+      "id": "c_duty_b",
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "Duty_B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_C"
+      },
+      "id": "c_duty_c",
+      "to": {
+        "nodeId": "PwmOut",
+        "portName": "Duty_C"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c_log_id",
+      "to": {
+        "nodeId": "LogId",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c_log_iq",
+      "to": {
+        "nodeId": "LogIq",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Pred_I_D"
+      },
+      "id": "c_log_pred_id",
+      "to": {
+        "nodeId": "LogPredId",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Pred_I_Q"
+      },
+      "id": "c_log_pred_iq",
+      "to": {
+        "nodeId": "LogPredIq",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Cost"
+      },
+      "id": "c_log_cost",
+      "to": {
+        "nodeId": "LogCost",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "State_Index"
+      },
+      "id": "c_log_state",
+      "to": {
+        "nodeId": "LogState",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_A"
+      },
+      "id": "c_log_du",
+      "to": {
+        "nodeId": "LogDu",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_B"
+      },
+      "id": "c_log_dv",
+      "to": {
+        "nodeId": "LogDv",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Svpwm",
+        "portName": "Duty_C"
+      },
+      "id": "c_log_dw",
+      "to": {
+        "nodeId": "LogDw",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ElecAngle",
+        "portName": "ThetaElec"
+      },
+      "id": "c_log_theta_e",
+      "to": {
+        "nodeId": "LogThetaE",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "OmegaDeriv",
+        "portName": "Out"
+      },
+      "id": "c_log_omega_e",
+      "to": {
+        "nodeId": "LogOmegaE",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "EncoderApp",
+        "portName": "Theta"
+      },
+      "id": "c_log_theta",
+      "to": {
+        "nodeId": "LogTheta",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "VdcApp",
+        "portName": "V_Dc"
+      },
+      "id": "c_log_vdc",
+      "to": {
+        "nodeId": "LogVdc",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Motor"
+      },
+      "id": "c_t_motor",
+      "to": {
+        "nodeId": "LogT_Motor",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv1"
+      },
+      "id": "c_t_inv1",
+      "to": {
+        "nodeId": "LogT_Inv1",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv2"
+      },
+      "id": "c_t_inv2",
+      "to": {
+        "nodeId": "LogT_Inv2",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Temps",
+        "portName": "T_Inv3"
+      },
+      "id": "c_t_inv3",
+      "to": {
+        "nodeId": "LogT_Inv3",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Throttle",
+        "portName": "A"
+      },
+      "id": "c_thr_a",
+      "to": {
+        "nodeId": "LogThrA",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Throttle",
+        "portName": "B"
+      },
+      "id": "c_thr_b",
+      "to": {
+        "nodeId": "LogThrB",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Din1",
+        "portName": "Out"
+      },
+      "id": "c_din1_led",
+      "to": {
+        "nodeId": "LedGreen",
+        "portName": "In"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "ElecAngle",
+        "portName": "ThetaElec"
+      },
+      "id": "c_theta_e",
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Theta_E"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "V_Alpha"
+      },
+      "id": "c_svpwm_valpha",
+      "to": {
+        "nodeId": "Svpwm",
+        "portName": "V_Alpha"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AdrcMpcc",
+        "portName": "V_Beta"
+      },
+      "id": "c_svpwm_vbeta",
+      "to": {
+        "nodeId": "Svpwm",
+        "portName": "V_Beta"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "VdcSense",
+        "portName": "V_Dc"
+      },
+      "id": "c_svpwm_vdc",
+      "to": {
+        "nodeId": "Svpwm",
+        "portName": "V_Dc"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgRs",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Rs"
+      },
+      "id": "c_cfg_rs_mpcc"
+    },
+    {
+      "from": {
+        "nodeId": "CfgLd",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Ld"
+      },
+      "id": "c_cfg_ld_mpcc"
+    },
+    {
+      "from": {
+        "nodeId": "CfgLq",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "Lq"
+      },
+      "id": "c_cfg_lq_mpcc"
+    },
+    {
+      "from": {
+        "nodeId": "CfgPsi",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "AdrcMpcc",
+        "portName": "PsiF"
+      },
+      "id": "c_cfg_psi_mpcc"
+    },
+    {
+      "id": "c_logthetamech",
+      "from": {
+        "nodeId": "Encoder",
+        "portName": "Theta"
+      },
+      "to": {
+        "nodeId": "LogThetaMech",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_logld",
+      "from": {
+        "nodeId": "CfgLd",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "LogLd",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_loglq",
+      "from": {
+        "nodeId": "CfgLq",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "LogLq",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_logencsign",
+      "from": {
+        "nodeId": "CfgEncSign",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "LogEncSign",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_cfg_iq_slew",
+      "from": {
+        "nodeId": "CfgIqSlew",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "SlewIq",
+        "portName": "Rate"
+      }
+    }
+  ],
+  "name": "hybrid_adrc_mpcc_demo",
+  "nodeTypes": [
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Const",
+      "description": "Provides a constant scalar value, optionally replaced by a wired input.",
+      "displayName": "Constant",
+      "domain": "",
+      "id": "Values.Constant",
+      "inlineCode": "/* Compile-time constant (or wired value via optional In). */\nOut = Value;\n",
+      "inputPorts": [
+        {
+          "description": "Optional value that replaces the configured constant when wired.",
+          "direction": "input",
+          "name": "In",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Configured constant or the value supplied through In.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "In": {
+          "description": "Fallback storage for the optional In port.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Value": {
+          "description": "Constant value emitted when no input overrides it.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Log",
+      "description": "Publishes a scalar value to runtime telemetry under a configurable key.",
+      "displayName": "Telemetry Log",
+      "domain": "",
+      "id": "Debug.TelemetryLog",
+      "inlineCode": "platform_telemetry_log_f32(Key, Value);\n",
+      "inputPorts": [
+        {
+          "description": "Scalar value to publish.",
+          "direction": "input",
+          "name": "Value",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Key": {
+          "description": "Telemetry channel name used when publishing the value.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "PwmOut",
+      "description": "Applies three phase-duty commands to the platform PWM peripheral.",
+      "displayName": "PWM Out",
+      "domain": "tim_isr",
+      "id": "Actuators.PwmOut",
+      "inlineCode": "platform_pwm_set(Duty_A, Duty_B, Duty_C);\n",
+      "inputPorts": [
+        {
+          "description": "Phase A PWM duty command in percent.",
+          "direction": "input",
+          "name": "Duty_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase B PWM duty command in percent.",
+          "direction": "input",
+          "name": "Duty_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase C PWM duty command in percent.",
+          "direction": "input",
+          "name": "Duty_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": []
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "CanRx",
+      "description": "Reads the latest frame from a configured CAN receive mailbox and exposes its payload.",
+      "displayName": "CAN RX",
+      "domain": "",
+      "id": "Sensors.CanRx",
+      "inlineCode": "/* CAN receive mailbox for Id on Bus (1=A/FDCAN1, 2=B/FDCAN2).\n * Fresh is true for one step when a new frame arrived; Dlc/bytes hold the\n * latest payload otherwise. */\nuint8_t buf[8] = {};\nuint32_t seq = 0;\nconst int dlc = platform_can_rx(static_cast<uint8_t>(Bus),\n                                static_cast<uint32_t>(Id), buf, &seq);\nFresh = (seq != LastSeq);\nLastSeq = static_cast<float>(seq);\nif (dlc > 0) {\n    Dlc = static_cast<float>(dlc);\n    D0 = buf[0]; D1 = buf[1]; D2 = buf[2]; D3 = buf[3];\n    D4 = buf[4]; D5 = buf[5]; D6 = buf[6]; D7 = buf[7];\n} else {\n    Dlc = 0.0f;\n}\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Most recently received payload byte 0.",
+          "direction": "output",
+          "name": "D0",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 1.",
+          "direction": "output",
+          "name": "D1",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 2.",
+          "direction": "output",
+          "name": "D2",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 3.",
+          "direction": "output",
+          "name": "D3",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 4.",
+          "direction": "output",
+          "name": "D4",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 5.",
+          "direction": "output",
+          "name": "D5",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 6.",
+          "direction": "output",
+          "name": "D6",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Most recently received payload byte 7.",
+          "direction": "output",
+          "name": "D7",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Data length of the latest received frame.",
+          "direction": "output",
+          "name": "Dlc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "True for one execution step when a new frame has arrived.",
+          "direction": "output",
+          "name": "Fresh",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Bus": {
+          "description": "CAN controller number: 1 selects bus A/FDCAN1 and 2 selects bus B/FDCAN2.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Id": {
+          "description": "CAN arbitration identifier accepted by the receive mailbox.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "LastSeq": {
+          "description": "Internal sequence counter used to detect newly received frames.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "PhaseVoltages",
+      "description": "Reads the filtered three-phase and DC-link voltage sensor channels.",
+      "displayName": "Phase Voltages",
+      "domain": "",
+      "id": "Sensors.PhaseVoltages",
+      "inlineCode": "/* All voltage sense channels from the MAX22530 isolated ADC, filtered. */\nV_U  = rte::Volts(platform_phase_voltage_u());\nV_V  = rte::Volts(platform_phase_voltage_v());\nV_W  = rte::Volts(platform_phase_voltage_w());\nV_Dc = rte::Volts(platform_get_dc_link_voltage());\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Measured phase U voltage in volts.",
+          "direction": "output",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured phase V voltage in volts.",
+          "direction": "output",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured phase W voltage in volts.",
+          "direction": "output",
+          "name": "V_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured DC-link voltage in volts.",
+          "direction": "output",
+          "name": "V_Dc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "InvPark",
+      "description": "Rotates d-q voltage commands into stationary alpha-beta coordinates.",
+      "displayName": "Inverse Park Transform",
+      "domain": "",
+      "id": "Transforms.InversePark",
+      "inlineCode": "const float cos_theta = cosf(Theta);\nconst float sin_theta = sinf(Theta);\nV_Alpha = V_D * cos_theta - V_Q * sin_theta;\nV_Beta = V_D * sin_theta + V_Q * cos_theta;\n",
+      "inputPorts": [
+        {
+          "description": "Rotating-frame direct-axis voltage.",
+          "direction": "input",
+          "name": "V_D",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Rotating-frame quadrature-axis voltage.",
+          "direction": "input",
+          "name": "V_Q",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Electrical rotation angle in radians.",
+          "direction": "input",
+          "name": "Theta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Stationary-frame alpha-axis voltage.",
+          "direction": "output",
+          "name": "V_Alpha",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Stationary-frame beta-axis voltage.",
+          "direction": "output",
+          "name": "V_Beta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Din",
+      "description": "Reads a boolean level from one of the platform user digital inputs.",
+      "displayName": "Digital In",
+      "domain": "",
+      "id": "Sensors.DigitalIn",
+      "inlineCode": "/* User digital input. Pin 1..8 -> USER_DIN_1..8 (see platform_api.h). */\nOut = platform_digital_read(static_cast<uint8_t>(Pin));\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Current logic level of the selected digital input.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Pin": {
+          "description": "User digital input selector in the range 1 through 8.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Dout",
+      "description": "Writes a boolean signal to a user digital output or onboard status LED.",
+      "displayName": "Digital Out",
+      "domain": "",
+      "id": "Actuators.DigitalOut",
+      "inlineCode": "/* User digital output. Pin 1..4 -> USER_DOUT_1..4, 5 -> green LED,\n * 6 -> orange LED (see platform_api.h). */\nplatform_digital_write(static_cast<uint8_t>(Pin), In);\n",
+      "inputPorts": [
+        {
+          "description": "Logic level to write to the selected output.",
+          "direction": "input",
+          "name": "In",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Pin": {
+          "description": "Output selector: 1-4 are user digital outputs, 5 is the green LED, and 6 is the orange LED.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "ForcedAngle",
+      "description": "Generates a continuously advancing electrical angle for open-loop control.",
+      "displayName": "Forced Angle",
+      "domain": "",
+      "id": "Transforms.ForcedAngle",
+      "inlineCode": "Angle += RateRadPerS * Dt;\nif (Angle >= 6.28318530718f) Angle -= 6.28318530718f;\nThetaElec = Angle;\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Generated electrical angle wrapped to one revolution.",
+          "direction": "output",
+          "name": "ThetaElec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Angle": {
+          "description": "Persistent generated angle state in radians.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Dt": {
+          "description": "Update period in seconds.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "RateRadPerS": {
+          "description": "Electrical angular velocity in radians per second.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Pi",
+      "description": "Proportional-integral controller with output clamping and back-calculation anti-windup.",
+      "displayName": "PI Controller",
+      "domain": "",
+      "id": "Control.Pi",
+      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
+      "inputPorts": [
+        {
+          "description": "Desired target value.",
+          "direction": "input",
+          "name": "Setpoint",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Measured process value subtracted from the setpoint.",
+          "direction": "input",
+          "name": "Measurement",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Clamped PI control effort.",
+          "direction": "output",
+          "name": "Output",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "AwGain": {
+          "description": "Back-calculation anti-windup gain. Zero disables anti-windup.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Dt": {
+          "description": "Controller step period in seconds.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Integral": {
+          "description": "Persistent accumulated-error state.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ki": {
+          "description": "Integral gain applied to the accumulated error.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Kp": {
+          "description": "Proportional gain applied to the current error.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "OutputMax": {
+          "description": "Upper output clamp, additionally limited by the measured DC-link voltage.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "OutputMin": {
+          "description": "Lower output clamp, additionally limited by the measured DC-link voltage.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Throttle",
+      "description": "Reads the redundant throttle channels and their plausibility status.",
+      "displayName": "Throttle",
+      "domain": "",
+      "id": "Sensors.Throttle",
+      "inlineCode": "/* Dual throttle channels, normalized [0..1] by the base-image driver\n * (KV calibration Hw.ThrA/B.MinV/MaxV).  Both read 0 and Valid is false\n * while the channels disagree beyond the plausibility tolerance. */\nA = platform_get_throttle_a();\nB = platform_get_throttle_b();\nValid = platform_get_throttle_valid();\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Normalized throttle channel A in the range 0 to 1.",
+          "direction": "output",
+          "name": "A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Normalized throttle channel B in the range 0 to 1.",
+          "direction": "output",
+          "name": "B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "True when both throttle channels pass the plausibility check.",
+          "direction": "output",
+          "name": "Valid",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Temps",
+      "description": "Reads the motor and three inverter temperature channels from the application sensors.",
+      "displayName": "Temperatures",
+      "domain": "",
+      "id": "Sensors.Temperatures",
+      "inlineCode": "/* Motor + board temperatures from the base-image ApplicationSensors driver.\n * NAN while a channel is disabled or out of range (open/short). */\nT_Motor = rte::Celsius(platform_get_motor_temperature());\nT_Inv1  = rte::Celsius(platform_get_inverter_temperature(0));\nT_Inv2  = rte::Celsius(platform_get_inverter_temperature(1));\nT_Inv3  = rte::Celsius(platform_get_inverter_temperature(2));\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Motor temperature in degrees Celsius; NaN indicates a disabled or invalid sensor.",
+          "direction": "output",
+          "name": "T_Motor",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        },
+        {
+          "description": "Inverter temperature channel 1 in degrees Celsius; NaN indicates an invalid sensor.",
+          "direction": "output",
+          "name": "T_Inv1",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        },
+        {
+          "description": "Inverter temperature channel 2 in degrees Celsius; NaN indicates an invalid sensor.",
+          "direction": "output",
+          "name": "T_Inv2",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        },
+        {
+          "description": "Inverter temperature channel 3 in degrees Celsius; NaN indicates an invalid sensor.",
+          "direction": "output",
+          "name": "T_Inv3",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Greater",
+      "description": "Compares two scalar values and reports whether A is greater than B.",
+      "displayName": "Greater Than",
+      "domain": "",
+      "id": "Logic.Greater",
+      "inlineCode": "Out = (A > B);\n",
+      "inputPorts": [
+        {
+          "description": "Left-hand value in the comparison.",
+          "direction": "input",
+          "name": "A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Right-hand value in the comparison.",
+          "direction": "input",
+          "name": "B",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "True when A is greater than B.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "B": {
+          "description": "Fallback comparison threshold used when the B input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "VdcSense",
+      "description": "Reads the inverter DC-link voltage from the platform sensor interface.",
+      "displayName": "DC Link Voltage",
+      "domain": "",
+      "id": "Sensors.DcLinkVoltage",
+      "inlineCode": "V_Dc = rte::Volts(platform_get_dc_link_voltage());\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Measured DC-link voltage in volts.",
+          "direction": "output",
+          "name": "V_Dc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "SwitchToDuty",
+      "description": "Converts inverter switch states (0/1) to PWM duty cycles (0%/100%).",
+      "displayName": "Switch States to Duty",
+      "domain": "tim_isr",
+      "id": "Transforms.SwitchToDuty",
+      "inlineCode": "Duty_A = S_A * 100.0f;\nDuty_B = S_B * 100.0f;\nDuty_C = S_C * 100.0f;\n",
+      "inputPorts": [
+        {
+          "description": "Phase A high-side switch state (1 = on).",
+          "direction": "input",
+          "name": "S_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        },
+        {
+          "description": "Phase B high-side switch state (1 = on).",
+          "direction": "input",
+          "name": "S_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        },
+        {
+          "description": "Phase C high-side switch state (1 = on).",
+          "direction": "input",
+          "name": "S_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Phase A PWM duty cycle (0-100%).",
+          "direction": "output",
+          "name": "Duty_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase B PWM duty cycle (0-100%).",
+          "direction": "output",
+          "name": "Duty_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase C PWM duty cycle (0-100%).",
+          "direction": "output",
+          "name": "Duty_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Deriv",
+      "description": "Estimates a signal derivative with an optional first-order low-pass filter.",
+      "displayName": "Derivative",
+      "domain": "",
+      "id": "Transforms.Derivative",
+      "inlineCode": "/* Filtered derivative: Out ~= d(In)/dt, low-passed at Fc [Hz] to keep\n * sampling noise out of the estimate (Fc <= 0 disables filtering).\n * Prev/OutState are persistent state (leave at graph defaults).\n *\n * Unwrap > 0.5: treat In as an angle in radians and wrap (In-Prev) into\n * (-pi, pi] before dividing by Dt. Required for Theta_E \u2192 \u03c9_e; without it\n * every 2\u03c0 wrap injects a ~\u00b12\u03c0/Dt spike (HybridADRCMPC-4 current spikes).\n */\nfloat d_in = In - Prev;\nif (Unwrap > 0.5f) {\n    const float pi = 3.14159265359f;\n    const float two_pi = 6.28318530718f;\n    d_in = fmodf(d_in + pi, two_pi);\n    if (d_in < 0.0f) d_in += two_pi;\n    d_in -= pi;\n}\nconst float raw = d_in / Dt;\nPrev = In;\nif (Fc > 0.0f) {\n    const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * Fc * Dt));\n    OutState += alpha * (raw - OutState);\n} else {\n    OutState = raw;\n}\nOut = OutState;\n",
+      "inputPorts": [
+        {
+          "description": "Signal whose time derivative is estimated.",
+          "direction": "input",
+          "name": "In",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Filtered derivative estimate.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Dt": {
+          "description": "Sample period in seconds.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Fc": {
+          "description": "Low-pass cutoff frequency in hertz. Values at or below zero disable filtering.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Prev": {
+          "description": "Persistent previous input sample used by the finite difference.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "OutState": {
+          "description": "Persistent filtered derivative state.",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        },
+        "Unwrap": {
+          "description": "If >0.5, wrap (In-Prev) into (-pi, pi] before differentiating (use for electrical/mechanical angle).",
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Encoder",
+      "description": "Reads the latest mechanical rotor angle and motor speed from the encoder driver.",
+      "displayName": "Encoder",
+      "domain": "",
+      "id": "Sensors.Encoder",
+      "inlineCode": "/* Mechanical angle [rad] and speed [rpm] from the base-image encoder driver. */\nTheta = platform_get_encoder_angle_latest() * 0.01745329251f;  // deg -> rad\nOmega = platform_get_motor_rpm();\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Mechanical rotor angle in radians.",
+          "direction": "output",
+          "name": "Theta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Mechanical motor speed in revolutions per minute.",
+          "direction": "output",
+          "name": "Omega",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Svpwm",
+      "description": "Converts an alpha-beta voltage vector into centered three-phase PWM duty commands.",
+      "displayName": "Space Vector PWM",
+      "domain": "",
+      "id": "Transforms.Svpwm",
+      "inlineCode": "/* Clamp the alpha/beta voltage vector to the linear SVM limit.\n * The maximum line-to-neutral voltage magnitude for linear modulation is\n * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation\n * boundary. */\nconst float sqrt3 = 1.7320508075688772f;\nconst float v_max_linear = (V_Dc.in(au::volts) / sqrt3) * 0.95f;\nfloat valpha = V_Alpha.in(au::volts);\nfloat vbeta  = V_Beta.in(au::volts);\nconst float v_albe_sq = valpha * valpha + vbeta * vbeta;\nif (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n    const float scale = v_max_linear / sqrtf(v_albe_sq);\n    valpha *= scale;\n    vbeta  *= scale;\n}\n\n/* Inverse Clarke: alpha/beta -> A/B/C. */\nconst float v_a = valpha / V_Dc.in(au::volts);\nconst float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);\nconst float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\n/* Convert to percent duty and clamp.  Linear SVM stays roughly in\n * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\nfloat duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\nfloat duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\nfloat duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\nif (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\nif (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\nif (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\nDuty_A = duty_a_pct;\nDuty_B = duty_b_pct;\nDuty_C = duty_c_pct;\n",
+      "inputPorts": [
+        {
+          "description": "Requested stationary-frame alpha-axis voltage.",
+          "direction": "input",
+          "name": "V_Alpha",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Requested stationary-frame beta-axis voltage.",
+          "direction": "input",
+          "name": "V_Beta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured DC-link voltage used for normalization and modulation limiting.",
+          "direction": "input",
+          "name": "V_Dc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Phase A PWM duty command in percent.",
+          "direction": "output",
+          "name": "Duty_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase B PWM duty command in percent.",
+          "direction": "output",
+          "name": "Duty_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase C PWM duty command in percent.",
+          "direction": "output",
+          "name": "Duty_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Var",
+      "description": "Stores a scalar value and updates it when the Set input is true.",
+      "displayName": "Var",
+      "domain": "",
+      "id": "Values.Var",
+      "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n",
+      "inputPorts": [
+        {
+          "description": "New scalar value to store when Set is true.",
+          "direction": "input",
+          "name": "In",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Write enable. When true, copies In into the stored value.",
+          "direction": "input",
+          "name": "Set",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Current stored scalar value.",
+          "direction": "output",
+          "name": "Value",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "In": {
+          "description": "Fallback new value when the In input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Set": {
+          "description": "Fallback write-enable value when the Set input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "boolean"
+        },
+        "Stored": {
+          "description": "Persistent scalar storage state.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Mpcc",
+      "description": "Finite-control-set model-predictive current control for a three-phase PMSM.",
+      "displayName": "FCS-MPCC (Three-Phase PMSM)",
+      "domain": "tim_isr",
+      "id": "Control.Mpcc",
+      "inlineCode": "/* Predictive current control for three-phase PMSM (Zhang et al., IEEE TIA 2017).\n * Mode: 0=Conventional FCS (full vector / period) \u2014 NOT for Gen6 low-L\n *       1=Delay-compensated FCS\n *       2=Back-EMF path (same predictor hook as 1 for now)\n *       3=Deadbeat voltage \u2192 SVPWM  \u2190 use this on Gen6 to spin\n *\n * Mode 3 matches the FOC voltage path (V\u03b1\u03b2 \u2192 Transforms.Svpwm \u2192 PwmOut) but\n * replaces PI with a one-step predictive / deadbeat voltage law:\n *   v_dq = R i + \u03c9 cross terms + (L/Ts)(i* - i_pred)\n * Tuned for smooth mid-bus Gen6 spin (\u224850\u2013100 V): milder deadbeat,\n * current LPF (noise tolerance), longer soft-start. abs(Id_ref) and abs(Iq_ref) limited by\n * I_Max only. Holds if Vdc < 40 V. Under voltage limit, prefer Iq (torque).\n */\n\nstatic float mpcc_prev_sa = 0.0f;\nstatic float mpcc_prev_sb = 0.0f;\nstatic float mpcc_prev_sc = 0.0f;\nstatic float mpcc_u_alpha_prev = 0.0f;\nstatic float mpcc_u_beta_prev = 0.0f;\nstatic float mpcc_id_int = 0.0f;\nstatic float mpcc_iq_int = 0.0f;\nstatic float mpcc_enable_s = 0.0f;\nstatic float mpcc_id_f = 0.0f;\nstatic float mpcc_iq_f = 0.0f;\nstatic float mpcc_i_filt_init = 0.0f;\n\nconst float ts = Ts;\nfloat rs = Rs;\nfloat ld = Ld;\nfloat lq = Lq;\nfloat psi_f = PsiF;\nif (!(rs > 0.0f)) rs = 0.1f;\nif (!(ld > 1.0e-7f)) ld = 0.0001f;\nif (!(lq > 1.0e-7f)) lq = 0.0002f;\nif (!(psi_f >= 0.0f)) psi_f = 0.01f;\n/* Allow calibrated Gen6 flux (~0.07 Wb); old 0.05 clamp starved back-EMF FF. */\nif (psi_f > 0.15f) psi_f = 0.15f;\n\nconst float i_base = (I_Base > 0.0f) ? I_Base : 10.0f;\nconst float i_max = (I_Max > 0.0f) ? I_Max : 30.0f;\nconst float vdc = V_Dc.in(au::volts);\nconst float id_raw = I_D.in(au::amperes);\nconst float iq_raw = I_Q.in(au::amperes);\nfloat id_ref = I_D_Ref;\nfloat iq_ref = I_Q_Ref;\nconst float theta_e = Theta_E;\nfloat omega_e = Omega_E;\n/* Cover FOC-class speeds: 2000 rpm @ 10 poles => \u03c9e\u22481047 rad/s. */\nconst float w_max = 3000.0f;\nif (omega_e > w_max) omega_e = w_max;\nif (omega_e < -w_max) omega_e = -w_max;\n\nconst bool enable = Enable;\nconst int mode_i = (Mode >= 3.0f) ? 3 : ((Mode >= 2.0f) ? 2 : ((Mode >= 1.0f) ? 1 : 0));\n\nconst float two_thirds = 2.0f / 3.0f;\nconst float inv_sqrt3 = 0.57735026919f;\nconst float sqrt3 = 1.73205080757f;\nconst int switch_bits[8][3] = {\n    {0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},\n    {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}\n};\n\n/* Clamp |Id*| and |Iq*| to I_Max \u2014 no hidden Vdc-based ceiling. */\nif (id_ref > i_max) id_ref = i_max;\nif (id_ref < -i_max) id_ref = -i_max;\nif (iq_ref > i_max) iq_ref = i_max;\nif (iq_ref < -i_max) iq_ref = -i_max;\n\nconst float cost_track = ((id_ref - id_raw) / i_base) * ((id_ref - id_raw) / i_base)\n                       + ((iq_ref - iq_raw) / i_base) * ((iq_ref - iq_raw) / i_base);\n\n/* Hold output unless enabled with a usable DC bus (smooth-spin guard). */\nconst bool bus_ok = (vdc >= 40.0f);\nif (!enable || !(ts > 0.0f) || !bus_ok) {\n    S_A = 0.0f;\n    S_B = 0.0f;\n    S_C = 0.0f;\n    State_Index = 0.0f;\n    Pred_I_D = rte::Amperes(id_raw);\n    Pred_I_Q = rte::Amperes(iq_raw);\n    Cost = cost_track;\n    V_Alpha = rte::Volts(0.0f);\n    V_Beta = rte::Volts(0.0f);\n    V_D = rte::Volts(0.0f);\n    V_Q = rte::Volts(0.0f);\n    mpcc_prev_sa = 0.0f;\n    mpcc_prev_sb = 0.0f;\n    mpcc_prev_sc = 0.0f;\n    mpcc_u_alpha_prev = 0.0f;\n    mpcc_u_beta_prev = 0.0f;\n    mpcc_id_int = 0.0f;\n    mpcc_iq_int = 0.0f;\n    mpcc_enable_s = 0.0f;\n    mpcc_id_f = id_raw;\n    mpcc_iq_f = iq_raw;\n    mpcc_i_filt_init = 0.0f;\n} else if (mode_i == 3) {\n    /* -------- Deadbeat predictive voltage \u2192 SVPWM (Gen6 spin path) -------- */\n    const float cos_t = cosf(theta_e);\n    const float sin_t = sinf(theta_e);\n\n    /* LPF measured currents before deadbeat (~500 Hz). Reduces hiss from\n     * ADC/quantization noise on low-L Gen6 without killing torque response. */\n    if (mpcc_i_filt_init < 0.5f) {\n        mpcc_id_f = id_raw;\n        mpcc_iq_f = iq_raw;\n        mpcc_i_filt_init = 1.0f;\n    } else {\n        const float fc = 500.0f;\n        const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc * ts));\n        mpcc_id_f += alpha * (id_raw - mpcc_id_f);\n        mpcc_iq_f += alpha * (iq_raw - mpcc_iq_f);\n    }\n    const float id = mpcc_id_f;\n    const float iq = mpcc_iq_f;\n\n    /* Delay compensation: predict i(k+1) under the voltage applied last step. */\n    const float vd_prev = mpcc_u_alpha_prev * cos_t + mpcc_u_beta_prev * sin_t;\n    const float vq_prev = -mpcc_u_alpha_prev * sin_t + mpcc_u_beta_prev * cos_t;\n    const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);\n    const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);\n\n    /* Longer soft-start so enable does not dump full deadbeat voltage. */\n    const float ramp_s = 0.25f;\n    mpcc_enable_s += ts;\n    if (mpcc_enable_s > ramp_s) mpcc_enable_s = ramp_s;\n    const float ramp = mpcc_enable_s / ramp_s;\n\n    /* Soft |i| limit \u2014 scale only the feedback/integral terms, keep FF. */\n    const float i_meas = sqrtf(id * id + iq * iq);\n    float cost = cost_track;\n    float fb_scale = ramp;\n    if (i_meas > i_max) {\n        cost += 1.0e6f;\n        if (i_meas > 1.0e-3f) {\n            fb_scale *= i_max / i_meas;\n        }\n    }\n\n    /* Mild deadbeat with filtered currents (less hiss than raw 0.70). */\n    const float db_scale = 0.40f;\n    const float kp_d = (ld / ts) * db_scale;\n    const float kp_q = (lq / ts) * db_scale;\n    /* Weak integral \u2014 deadbeat already provides most of the action. */\n    const float ki = 3.0f;\n\n    const float id_err = id_ref - id_p;\n    const float iq_err = iq_ref - iq_p;\n\n    const float v_max = (vdc / sqrt3) * 0.95f;\n    const float i_lim_v = v_max * 0.5f; /* keep integral from eating the voltage budget */\n\n    /* Feedforward (plant inversion) \u2014 not scaled by overcurrent shrink. */\n    const float vd_ff = rs * id_p - omega_e * lq * iq_p;\n    const float vq_ff = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f;\n\n    float vd_fb = kp_d * id_err + mpcc_id_int;\n    float vq_fb = kp_q * iq_err + mpcc_iq_int;\n    vd_fb *= fb_scale;\n    vq_fb *= fb_scale;\n\n    float vd_ref = vd_ff * ramp + vd_fb;\n    float vq_ref = vq_ff * ramp + vq_fb;\n\n    /* Voltage limit: keep as much Vq (torque) as possible, shed Vd first.\n     * Matches FOC field-weakening behaviour at low Vdc. */\n    const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;\n    const bool sat = (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f);\n    if (sat) {\n        if (fabsf(vq_ref) >= v_max) {\n            vq_ref = (vq_ref >= 0.0f) ? v_max : -v_max;\n            vd_ref = 0.0f;\n        } else {\n            const float vd_lim = sqrtf(v_max * v_max - vq_ref * vq_ref);\n            if (vd_ref > vd_lim) vd_ref = vd_lim;\n            if (vd_ref < -vd_lim) vd_ref = -vd_lim;\n        }\n        /* Freeze / bleed integrators under saturation (anti-windup). */\n        mpcc_id_int *= 0.90f;\n        mpcc_iq_int *= 0.90f;\n    } else {\n        mpcc_id_int += ki * id_err * ts;\n        mpcc_iq_int += ki * iq_err * ts;\n        if (mpcc_id_int > i_lim_v) mpcc_id_int = i_lim_v;\n        if (mpcc_id_int < -i_lim_v) mpcc_id_int = -i_lim_v;\n        if (mpcc_iq_int > i_lim_v) mpcc_iq_int = i_lim_v;\n        if (mpcc_iq_int < -i_lim_v) mpcc_iq_int = -i_lim_v;\n    }\n\n    /* Inverse Park \u2014 same convention as Transforms.InversePark. */\n    const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;\n    const float vbeta_ref = vd_ref * sin_t + vq_ref * cos_t;\n\n    /* Sector index for telemetry only (PWM comes from SVPWM on V\u03b1\u03b2). */\n    int best_idx = 1;\n    float best_dist = 1.0e30f;\n    for (int idx = 1; idx <= 6; ++idx) {\n        const float sa = static_cast<float>(switch_bits[idx][0]);\n        const float sb = static_cast<float>(switch_bits[idx][1]);\n        const float sc = static_cast<float>(switch_bits[idx][2]);\n        const float ua = two_thirds * vdc * (sa - 0.5f * (sb + sc));\n        const float ub = vdc * inv_sqrt3 * (sb - sc);\n        const float dist = (ua - valpha_ref) * (ua - valpha_ref)\n                         + (ub - vbeta_ref) * (ub - vbeta_ref);\n        if (dist < best_dist) {\n            best_dist = dist;\n            best_idx = idx;\n        }\n    }\n\n    const float pred_id = id_p + (ts / ld) * (vd_ref - rs * id_p + omega_e * lq * iq_p);\n    const float pred_iq = iq_p + (ts / lq) * (vq_ref - rs * iq_p - omega_e * ld * id_p - omega_e * psi_f);\n\n    S_A = static_cast<float>(switch_bits[best_idx][0]);\n    S_B = static_cast<float>(switch_bits[best_idx][1]);\n    S_C = static_cast<float>(switch_bits[best_idx][2]);\n    State_Index = static_cast<float>(best_idx);\n    Pred_I_D = rte::Amperes(pred_id);\n    Pred_I_Q = rte::Amperes(pred_iq);\n    Cost = cost;\n    V_Alpha = rte::Volts(valpha_ref);\n    V_Beta = rte::Volts(vbeta_ref);\n    V_D = rte::Volts(vd_ref);\n    V_Q = rte::Volts(vq_ref);\n\n    mpcc_prev_sa = S_A;\n    mpcc_prev_sb = S_B;\n    mpcc_prev_sc = S_C;\n    mpcc_u_alpha_prev = valpha_ref;\n    mpcc_u_beta_prev = vbeta_ref;\n} else {\n    /* -------- Classic FCS enumeration (Modes 0\u20132) -------- */\n    const float id = id_raw;\n    const float iq = iq_raw;\n    float id_base = id;\n    float iq_base = iq;\n    if (mode_i >= 1) {\n        /* Proper dq delay compensation using last applied \u03b1\u03b2 voltage. */\n        const float cos_t = cosf(theta_e);\n        const float sin_t = sinf(theta_e);\n        const float vd_prev = mpcc_u_alpha_prev * cos_t + mpcc_u_beta_prev * sin_t;\n        const float vq_prev = -mpcc_u_alpha_prev * sin_t + mpcc_u_beta_prev * cos_t;\n        id_base = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);\n        iq_base = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);\n    }\n\n    float best_cost = 1.0e30f;\n    int best_idx = 0;\n    float best_pred_id = id;\n    float best_pred_iq = iq;\n    float best_valpha = 0.0f;\n    float best_vbeta = 0.0f;\n\n    for (int idx = 0; idx < 8; ++idx) {\n        const float sa = static_cast<float>(switch_bits[idx][0]);\n        const float sb = static_cast<float>(switch_bits[idx][1]);\n        const float sc = static_cast<float>(switch_bits[idx][2]);\n        const float valpha = two_thirds * vdc * (sa - 0.5f * (sb + sc));\n        const float vbeta = vdc * inv_sqrt3 * (sb - sc);\n\n        const float cos_t = cosf(theta_e);\n        const float sin_t = sinf(theta_e);\n        const float vd = valpha * cos_t + vbeta * sin_t;\n        const float vq = -valpha * sin_t + vbeta * cos_t;\n\n        const float pred_id = id_base + (ts / ld) * (vd - rs * id_base + omega_e * lq * iq_base);\n        const float pred_iq = iq_base + (ts / lq) * (vq - rs * iq_base - omega_e * ld * id_base - omega_e * psi_f);\n\n        float cost = ((id_ref - pred_id) / i_base) * ((id_ref - pred_id) / i_base)\n                   + ((iq_ref - pred_iq) / i_base) * ((iq_ref - pred_iq) / i_base);\n        const float imag = sqrtf(pred_id * pred_id + pred_iq * pred_iq);\n        if (imag > i_max) cost += 1.0e6f;\n\n        const int trans = ((sa != mpcc_prev_sa) ? 1 : 0)\n                        + ((sb != mpcc_prev_sb) ? 1 : 0)\n                        + ((sc != mpcc_prev_sc) ? 1 : 0);\n        const int best_trans =\n            ((switch_bits[best_idx][0] != static_cast<int>(mpcc_prev_sa)) ? 1 : 0)\n          + ((switch_bits[best_idx][1] != static_cast<int>(mpcc_prev_sb)) ? 1 : 0)\n          + ((switch_bits[best_idx][2] != static_cast<int>(mpcc_prev_sc)) ? 1 : 0);\n\n        if (cost < best_cost - 1.0e-9f\n            || (fabsf(cost - best_cost) <= 1.0e-9f\n                && (trans < best_trans || (trans == best_trans && idx < best_idx)))) {\n            best_cost = cost;\n            best_idx = idx;\n            best_pred_id = pred_id;\n            best_pred_iq = pred_iq;\n            best_valpha = valpha;\n            best_vbeta = vbeta;\n        }\n    }\n\n    S_A = static_cast<float>(switch_bits[best_idx][0]);\n    S_B = static_cast<float>(switch_bits[best_idx][1]);\n    S_C = static_cast<float>(switch_bits[best_idx][2]);\n    State_Index = static_cast<float>(best_idx);\n    Pred_I_D = rte::Amperes(best_pred_id);\n    Pred_I_Q = rte::Amperes(best_pred_iq);\n    Cost = best_cost;\n    V_Alpha = rte::Volts(best_valpha);\n    V_Beta = rte::Volts(best_vbeta);\n    const float cos_t = cosf(theta_e);\n    const float sin_t = sinf(theta_e);\n    V_D = rte::Volts(best_valpha * cos_t + best_vbeta * sin_t);\n    V_Q = rte::Volts(-best_valpha * sin_t + best_vbeta * cos_t);\n\n    mpcc_prev_sa = S_A;\n    mpcc_prev_sb = S_B;\n    mpcc_prev_sc = S_C;\n    mpcc_u_alpha_prev = best_valpha;\n    mpcc_u_beta_prev = best_vbeta;\n}\n",
+      "inputPorts": [
+        {
+          "name": "I_D",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Measured d-axis current in amperes."
+        },
+        {
+          "name": "I_Q",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Measured q-axis current in amperes."
+        },
+        {
+          "name": "I_D_Ref",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "I_D_Ref (amperes as dimensionless, same as Values.Var / FOC setpoints)."
+        },
+        {
+          "name": "I_Q_Ref",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "I_Q_Ref (amperes as dimensionless, same as Values.Var / FOC setpoints)."
+        },
+        {
+          "name": "Theta_E",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Electrical rotor angle in radians."
+        },
+        {
+          "name": "Omega_E",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Electrical rotor speed in radians per second."
+        },
+        {
+          "name": "V_Dc",
+          "direction": "input",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "DC-link voltage in volts."
+        },
+        {
+          "name": "Enable",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Controller enable (1 = run, 0 = hold previous switch states)."
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "name": "S_A",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Phase A high-side switch state."
+        },
+        {
+          "name": "S_B",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Phase B high-side switch state."
+        },
+        {
+          "name": "S_C",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Phase C high-side switch state."
+        },
+        {
+          "name": "State_Index",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Selected switching-state index (0-7)."
+        },
+        {
+          "name": "Pred_I_D",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Predicted d-axis current for the selected state."
+        },
+        {
+          "name": "Pred_I_Q",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Predicted q-axis current for the selected state."
+        },
+        {
+          "name": "Cost",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Cost of the selected switching state."
+        },
+        {
+          "name": "V_Alpha",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, alpha component."
+        },
+        {
+          "name": "V_Beta",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, beta component."
+        },
+        {
+          "name": "V_D",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, d component."
+        },
+        {
+          "name": "V_Q",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Selected voltage vector, q component."
+        }
+      ],
+      "parameterTypes": {
+        "Ts": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Control sample period in seconds."
+        },
+        "Rs": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Stator phase resistance in ohms."
+        },
+        "Ld": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "d-axis inductance in henrys."
+        },
+        "Lq": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "q-axis inductance in henrys."
+        },
+        "PsiF": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Permanent-magnet flux linkage in webers."
+        },
+        "I_Base": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Current normalization base in amperes."
+        },
+        "I_Max": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Soft current limit in amperes."
+        },
+        "Mode": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "MPCC mode: 0=one-step, 1=delay-compensated, 2=back-EMF-compensated, 3=optimal-duty-cycle."
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Gate",
+      "description": "Passes a value when enabled and outputs zero when disabled.",
+      "displayName": "Gate",
+      "domain": "",
+      "id": "Logic.Gate",
+      "inlineCode": "/* Pass Val when Sel is true, else 0. */\nOut = Sel ? Val : 0.0f;\n",
+      "inputPorts": [
+        {
+          "description": "Enable signal. True passes Val; false selects zero.",
+          "direction": "input",
+          "name": "Sel",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        },
+        {
+          "description": "Value passed through while Sel is true.",
+          "direction": "input",
+          "name": "Val",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Val when selected, otherwise zero.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Var",
+      "description": "Stores a boolean value and updates it when the Set input is true.",
+      "displayName": "Var (Bool)",
+      "domain": "",
+      "id": "Values.VarBool",
+      "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n",
+      "inputPorts": [
+        {
+          "description": "New boolean value to store when Set is true.",
+          "direction": "input",
+          "name": "In",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        },
+        {
+          "description": "Write enable. When true, copies In into the stored value.",
+          "direction": "input",
+          "name": "Set",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Current stored boolean value.",
+          "direction": "output",
+          "name": "Value",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "In": {
+          "description": "Fallback new boolean value when the In input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "boolean"
+        },
+        "Set": {
+          "description": "Fallback write-enable value when the Set input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "boolean"
+        },
+        "Stored": {
+          "description": "Persistent boolean storage state.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "boolean"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Slew",
+      "description": "Limits how quickly a signal can rise or fall over time.",
+      "displayName": "Slew Rate Limiter",
+      "domain": "",
+      "id": "Control.Slew",
+      "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In;\nconst float step = Rate * Dt;\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
+      "inputPorts": [
+        {
+          "description": "Target value for the limiter to follow.",
+          "direction": "input",
+          "name": "In",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Rate-limited output value.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Dt": {
+          "description": "Update period in seconds.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rate": {
+          "description": "Maximum absolute rate of change in units per second.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Value": {
+          "description": "Persistent current output state.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "ElecAngle",
+      "description": "Converts mechanical rotor angle to wrapped electrical angle using pole count, direction, and offset.",
+      "displayName": "Electrical Angle",
+      "domain": "",
+      "id": "Transforms.ElecAngle",
+      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(ThetaMech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset (elec deg) + sign * encoder_angle * (Poles / 2).\n * Matches the base-image FocController convention.\n *\n * Guard bad FRAM/config values that freeze \u03b8e at 0:\n *  - Poles<=0  \u2192 fall back to 10\n *  - |Sign|<0.5 \u2192 fall back to +1 (Sign=0 nulls the encoder term) */\nconstexpr float DEG_TO_RAD = 0.01745329251f;\nfloat poles = Poles;\nif (!(poles > 0.5f)) poles = 10.0f;\nfloat sign = EncoderSign;\nif (fabsf(sign) < 0.5f) sign = 1.0f;\nfloat offset_deg = OffsetDeg;\nfloat elec = offset_deg * DEG_TO_RAD + sign * theta * poles * 0.5f;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\nThetaElec = elec;\n",
+      "inputPorts": [
+        {
+          "description": "Mechanical rotor angle in radians.",
+          "direction": "input",
+          "name": "ThetaMech",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical-angle calibration offset in degrees.",
+          "direction": "input",
+          "name": "OffsetDeg",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Encoder direction multiplier, normally 1 or -1.",
+          "direction": "input",
+          "name": "EncoderSign",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Motor pole count used to convert mechanical to electrical angle.",
+          "direction": "input",
+          "name": "Poles",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Electrical rotor angle wrapped to the range 0 through 2\u03c0 radians.",
+          "direction": "output",
+          "name": "ThetaElec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "EncoderSign": {
+          "description": "Fallback encoder direction multiplier when the input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "OffsetDeg": {
+          "description": "Fallback electrical-angle calibration offset in degrees when the input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Fallback motor pole count when the input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "id": "Sensors.PhaseCurrents",
+      "displayName": "Phase Currents",
+      "defaultName": "PhaseCurrents",
+      "description": "Samples the three inverter phase-current channels from the platform current sensors.",
+      "maxInstances": 1,
+      "isEntryPoint": true,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "I_A",
+          "description": "Measured phase A current in amperes.",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "I_B",
+          "description": "Measured phase B current in amperes.",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        },
+        {
+          "name": "I_C",
+          "description": "Measured phase C current in amperes.",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "InvertPolarity": {
+          "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+          "quantity": "boolean",
+          "frame": "scalar",
+          "dtype": "f32"
+        }
+      },
+      "inlineCode": "float iu_f = 0.0f;\nfloat iv_f = 0.0f;\nfloat iw_f = 0.0f;\nif (platform_get_phase_currents(&iu_f, &iv_f, &iw_f)) {\n    /* Keep raw sensor polarity available for general telemetry, while FOC\n     * graphs enable inversion for this hardware's current-sensor wiring. */\n    const float polarity = InvertPolarity ? -1.0f : 1.0f;\n    I_A = rte::Amperes(polarity * iu_f);\n    I_B = rte::Amperes(polarity * iv_f);\n    I_C = rte::Amperes(polarity * iw_f);\n}\n",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "SinCos",
+      "description": "Computes the sine and cosine of an input angle.",
+      "displayName": "Sin/Cos",
+      "domain": "",
+      "id": "Transforms.SinCos",
+      "inlineCode": "SinTheta = sinf(Theta);\nCosTheta = cosf(Theta);\n",
+      "inputPorts": [
+        {
+          "description": "Input angle in radians.",
+          "direction": "input",
+          "name": "Theta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Sine of the input angle.",
+          "direction": "output",
+          "name": "SinTheta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Cosine of the input angle.",
+          "direction": "output",
+          "name": "CosTheta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Park",
+      "description": "Rotates stationary alpha-beta currents into rotor-aligned d-q coordinates.",
+      "displayName": "Park Transform",
+      "domain": "",
+      "id": "Transforms.Park",
+      "inlineCode": "const float cos_theta = cosf(Theta);\nconst float sin_theta = sinf(Theta);\nI_D = I_Alpha * cos_theta + I_Beta * sin_theta;\nI_Q = -I_Alpha * sin_theta + I_Beta * cos_theta;\n",
+      "inputPorts": [
+        {
+          "description": "Stationary-frame alpha-axis current.",
+          "direction": "input",
+          "name": "I_Alpha",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Stationary-frame beta-axis current.",
+          "direction": "input",
+          "name": "I_Beta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Electrical rotation angle in radians.",
+          "direction": "input",
+          "name": "Theta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Rotating-frame direct-axis current.",
+          "direction": "output",
+          "name": "I_D",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Rotating-frame quadrature-axis current.",
+          "direction": "output",
+          "name": "I_Q",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "LogI",
+      "description": "Publishes three phase-current signals to the standard current telemetry channels.",
+      "displayName": "Telemetry Current Sink",
+      "domain": "",
+      "id": "Debug.TelemetryCurrentSink",
+      "inlineCode": "platform_telemetry_log_f32(\"cg_iu_a\", I_A.in(au::amperes));\nplatform_telemetry_log_f32(\"cg_iv_a\", I_B.in(au::amperes));\nplatform_telemetry_log_f32(\"cg_iw_a\", I_C.in(au::amperes));\n",
+      "inputPorts": [
+        {
+          "description": "Phase A current to publish in amperes.",
+          "direction": "input",
+          "name": "I_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase B current to publish in amperes.",
+          "direction": "input",
+          "name": "I_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase C current to publish in amperes.",
+          "direction": "input",
+          "name": "I_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": []
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Clarke",
+      "description": "Transforms three-phase currents into stationary alpha-beta coordinates.",
+      "displayName": "Clarke Transform",
+      "domain": "",
+      "id": "Transforms.Clarke",
+      "inlineCode": "I_Alpha = I_A;\nI_Beta = (I_B - I_C) * 0.57735026919f;\n",
+      "inputPorts": [
+        {
+          "description": "Phase A current.",
+          "direction": "input",
+          "name": "I_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase B current.",
+          "direction": "input",
+          "name": "I_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase C current.",
+          "direction": "input",
+          "name": "I_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Stationary-frame alpha-axis current.",
+          "direction": "output",
+          "name": "I_Alpha",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Stationary-frame beta-axis current.",
+          "direction": "output",
+          "name": "I_Beta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Less",
+      "description": "Compares two scalar values and reports whether A is less than B.",
+      "displayName": "Less Than",
+      "domain": "",
+      "id": "Logic.Less",
+      "inlineCode": "Out = (A < B);\n",
+      "inputPorts": [
+        {
+          "description": "Left-hand value in the comparison.",
+          "direction": "input",
+          "name": "A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Right-hand value in the comparison.",
+          "direction": "input",
+          "name": "B",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "True when A is less than B.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "B": {
+          "description": "Fallback comparison threshold used when the B input is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "InvClarke",
+      "description": "Transforms stationary alpha-beta voltages into three-phase voltage commands.",
+      "displayName": "Inverse Clarke Transform",
+      "domain": "",
+      "id": "Transforms.InverseClarke",
+      "inlineCode": "V_A = V_Alpha;\nV_B = -0.5f * V_Alpha + 0.86602540378f * V_Beta;\nV_C = -0.5f * V_Alpha - 0.86602540378f * V_Beta;\n",
+      "inputPorts": [
+        {
+          "description": "Stationary-frame alpha-axis voltage.",
+          "direction": "input",
+          "name": "V_Alpha",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Stationary-frame beta-axis voltage.",
+          "direction": "input",
+          "name": "V_Beta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Reconstructed phase A voltage.",
+          "direction": "output",
+          "name": "V_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Reconstructed phase B voltage.",
+          "direction": "output",
+          "name": "V_B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Reconstructed phase C voltage.",
+          "direction": "output",
+          "name": "V_C",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n",
+      "defaultName": "Cfg",
+      "description": "Exposes a named configuration value, using a default when no stored value is available.",
+      "displayName": "Config Value",
+      "domain": "",
+      "id": "Values.Config",
+      "inlineCode": "Value = Cached;\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Cached configuration value supplied to the graph.",
+          "direction": "output",
+          "name": "Value",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Cached": {
+          "description": "Persistent cached configuration value exposed by the output.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "DefaultValue": {
+          "description": "Value used when the configuration key has not been stored.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Key": {
+          "description": "Name used to look up the value in platform configuration storage.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "CanTx",
+      "description": "Transmits up to eight data bytes on a selected CAN bus at a configurable maximum rate.",
+      "displayName": "CAN TX",
+      "domain": "",
+      "id": "Actuators.CanTx",
+      "inlineCode": "/* CAN transmit, rate-limited by wall clock: sends when 1000/Rate ms have\n * elapsed since the previous send (Rate <= 0 sends every step).\n * D0..D7 = payload bytes (unconnected = 0), Dlc = how many of the 8 to\n * send, Ext: 0 std / 1 ext. */\nconst uint32_t period_ms = (Rate > 0.0f) ? static_cast<uint32_t>(1000.0f / Rate) : 0U;\nconst uint32_t now_ms = platform_millis();\nif (period_ms == 0U || (now_ms - static_cast<uint32_t>(LastMs)) >= period_ms) {\n    LastMs = static_cast<float>(now_ms);\n    const uint8_t b[8] = {\n        static_cast<uint8_t>(D0), static_cast<uint8_t>(D1),\n        static_cast<uint8_t>(D2), static_cast<uint8_t>(D3),\n        static_cast<uint8_t>(D4), static_cast<uint8_t>(D5),\n        static_cast<uint8_t>(D6), static_cast<uint8_t>(D7),\n    };\n    uint8_t n = static_cast<uint8_t>(Dlc);\n    if (n > 8) n = 8;\n    platform_can_send(static_cast<uint8_t>(Bus), static_cast<uint32_t>(Id),\n                      Ext > 0.5f, b, n);\n}\n",
+      "inputPorts": [
+        {
+          "description": "Payload byte 0. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D0",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 1. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D1",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 2. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D2",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 3. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D3",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 4. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D4",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 5. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D5",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 6. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D6",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Payload byte 7. Values are converted to an unsigned 8-bit integer.",
+          "direction": "input",
+          "name": "D7",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Bus": {
+          "description": "CAN controller number: 1 selects bus A/FDCAN1 and 2 selects bus B/FDCAN2.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D0": {
+          "description": "Fallback value for payload byte 0 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D1": {
+          "description": "Fallback value for payload byte 1 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D2": {
+          "description": "Fallback value for payload byte 2 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D3": {
+          "description": "Fallback value for payload byte 3 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D4": {
+          "description": "Fallback value for payload byte 4 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D5": {
+          "description": "Fallback value for payload byte 5 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D6": {
+          "description": "Fallback value for payload byte 6 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "D7": {
+          "description": "Fallback value for payload byte 7 when its input port is not wired.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Dlc": {
+          "description": "Number of payload bytes to transmit, clamped to the range 0 through 8.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ext": {
+          "description": "Use an extended 29-bit identifier when greater than 0.5; otherwise use a standard identifier.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Id": {
+          "description": "CAN arbitration identifier to transmit.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "LastMs": {
+          "description": "Internal timestamp of the previous transmission in milliseconds.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rate": {
+          "description": "Maximum transmission rate in frames per second. Values at or below zero send every step.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Mux",
+      "description": "Selects one of two scalar inputs using a boolean control signal.",
+      "displayName": "Mux",
+      "domain": "",
+      "id": "Logic.Mux",
+      "inlineCode": "Out = Sel ? A : B;\n",
+      "inputPorts": [
+        {
+          "description": "Selection signal. True selects A; false selects B.",
+          "direction": "input",
+          "name": "Sel",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        },
+        {
+          "description": "Value selected when Sel is true.",
+          "direction": "input",
+          "name": "A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Value selected when Sel is false.",
+          "direction": "input",
+          "name": "B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Currently selected input value.",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "displayName": "",
+      "domain": "adc_isr",
+      "id": "Currents",
+      "parameters": {
+        "InvertPolarity": "1.0"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 80.0
+      },
+      "type": "Sensors.PhaseCurrents"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "Encoder",
+      "parameters": {},
+      "position": {
+        "x": 150.0,
+        "y": 3022.0
+      },
+      "type": "Sensors.Encoder"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "VdcSense",
+      "parameters": {},
+      "position": {
+        "x": 1224.8309759999993,
+        "y": 2316.270592000001
+      },
+      "type": "Sensors.DcLinkVoltage"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "Clarke",
+      "parameters": {},
+      "position": {
+        "x": 527.17632,
+        "y": 1434.1062400000003
+      },
+      "type": "Transforms.Clarke"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "Park",
+      "parameters": {},
+      "position": {
+        "x": 858.8387200000002,
+        "y": 1442.8153599999998
+      },
+      "type": "Transforms.Park"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "ElecAngle",
+      "parameters": {
+        "EncoderSign": "1.0",
+        "OffsetDeg": "6.445",
+        "Poles": "10.0"
+      },
+      "position": {
+        "x": 543.3503999999999,
+        "y": 2122.18016
+      },
+      "type": "Transforms.ElecAngle",
+      "inlineCode": "/* Wrap the mechanical encoder angle to [0, 2*pi). */\nconst float two_pi = 6.28318530718f;\nfloat theta = fmodf(ThetaMech, two_pi);\nif (theta < 0.0f) theta += two_pi;\n\n/* Electrical angle = offset (elec deg) + sign * encoder_angle * (Poles / 2).\n * Matches the base-image FocController convention (CyclesRev=1).\n *\n * Guard bad FRAM/config values that freeze \u03b8e at 0:\n *  - Poles<=0  \u2192 fall back to 10\n *  - |Sign|<0.5 \u2192 fall back to +1 (Sign=0 nulls the encoder term).\n *    Do NOT coerce a valid Sign=-1. */\nconstexpr float DEG_TO_RAD = 0.01745329251f;\nfloat poles = Poles;\nif (!(poles > 0.5f)) poles = 10.0f;\nfloat sign = EncoderSign;\nif (fabsf(sign) < 0.5f) sign = 1.0f;\nelse sign = (sign >= 0.0f) ? 1.0f : -1.0f;\nfloat offset_deg = OffsetDeg;\nfloat elec = offset_deg * DEG_TO_RAD + sign * theta * poles * 0.5f;\n\n/* Wrap the electrical angle to [0, 2*pi). */\nelec = fmodf(elec, two_pi);\nif (elec < 0.0f) elec += two_pi;\n\nThetaElec = elec;\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "OmegaDeriv",
+      "parameters": {
+        "Dt": "0.0002",
+        "Fc": "200.0",
+        "OutState": "0.0",
+        "Prev": "0.0",
+        "Unwrap": "1.0"
+      },
+      "position": {
+        "x": 826.4905599999997,
+        "y": 2189.2524799999997
+      },
+      "type": "Transforms.Derivative"
+    },
+    {
+      "displayName": "Hybrid ADRC+MPCC (Gen6)",
+      "domain": "tim_isr",
+      "id": "AdrcMpcc",
+      "parameters": {
+        "I_Base": "20.0",
+        "I_Max": "15.0",
+        "Ld": "0.00007",
+        "Lq": "0.00012",
+        "PsiF": "0.07",
+        "Rs": "0.05",
+        "Ts": "0.0002",
+        "OmegaO": "1500.0",
+        "DbScale": "0.55",
+        "SpdMode": "0.0",
+        "SpdKp": "0.03",
+        "SpdKi": "0.08",
+        "PolePairs": "5.0"
+      },
+      "position": {
+        "x": 1602.0899840000004,
+        "y": 1704.3377919999998
+      },
+      "type": "Control.AdrcMpcc",
+      "parameterInputs": [
+        "Rs",
+        "Ld",
+        "Lq",
+        "PsiF"
+      ],
+      "inlineCode": "/* Hybrid ADRC + predictive current control for Gen6 PMSM (55 V demo).\n *\n * Mode-3 deadbeat + Ki \u2192 SVPWM, mild residual ESO.\n * Optional outer speed loop: SpdMode>0.5 \u21d2 I_Q_Ref is mechanical rpm setpoint.\n *\n * Tuned for clean no-load spin under a ~55 V bus (voltage ceiling ~650\u2013750 rpm\n * with \u03c8\u22480.07). Soft field-weakening + Iq-priority under modulation limit\n * reduce the sync-loss blowups seen in HybridADRCMPC-5/6.\n *\n * AXISRAM (.dma_buffers) is NOLOAD \u2014 magic-clear before use.\n */\n\nstruct HyAdrcMpccState {\n    uint32_t magic;\n    float u_alpha_prev;\n    float u_beta_prev;\n    float enable_s;\n    float id_f;\n    float iq_f;\n    float z1_d;\n    float z2_d;\n    float z1_q;\n    float z2_q;\n    float id_int;\n    float iq_int;\n    float theta_prev;\n    float omega_f;\n    float spd_int;\n    float iq_cmd_f;\n    uint8_t filt_init;\n    uint8_t eso_init;\n    uint8_t omega_init;\n    uint8_t _pad;\n};\n\nstatic constexpr uint32_t kHyMagic = 0x48594135u; /* HYA5 */\n\nstatic HyAdrcMpccState hy __attribute__((section(\".dma_buffers\"), aligned(4)));\n\nif (hy.magic != kHyMagic) {\n    hy.u_alpha_prev = 0.0f;\n    hy.u_beta_prev = 0.0f;\n    hy.enable_s = 0.0f;\n    hy.id_f = 0.0f;\n    hy.iq_f = 0.0f;\n    hy.z1_d = 0.0f;\n    hy.z2_d = 0.0f;\n    hy.z1_q = 0.0f;\n    hy.z2_q = 0.0f;\n    hy.id_int = 0.0f;\n    hy.iq_int = 0.0f;\n    hy.theta_prev = 0.0f;\n    hy.omega_f = 0.0f;\n    hy.spd_int = 0.0f;\n    hy.iq_cmd_f = 0.0f;\n    hy.filt_init = 0;\n    hy.eso_init = 0;\n    hy.omega_init = 0;\n    hy._pad = 0;\n    hy.magic = kHyMagic;\n}\n\nconst float ts = Ts;\nfloat ld = Ld;\nfloat lq = Lq;\nfloat rs = Rs;\nfloat psi_f = PsiF;\nif (!(ld > 1.0e-7f)) ld = 70.0e-6f;\nif (!(lq > 1.0e-7f)) lq = 120.0e-6f;\nif (!(rs > 0.0f) || !(rs < 10.0f)) rs = 0.05f;\n/* Gen6 no-load ceiling @55 V matches \u03c8\u22480.07 better than the old 0.01 placeholder. */\nif (!(psi_f > 0.0f) || !(psi_f < 1.0f)) psi_f = 0.07f;\nif (psi_f < 0.02f) psi_f = 0.07f; /* reject leftover 0.01 graph defaults */\n\nfloat wo = OmegaO;\nfloat db_scale = DbScale;\nif (!(wo > 0.0f)) wo = 1500.0f;\nif (wo > 4000.0f) wo = 4000.0f;\nif (!(db_scale > 0.10f)) db_scale = 0.55f;\nif (db_scale > 1.0f) db_scale = 1.0f;\n\nconst float i_base = (I_Base > 0.0f) ? I_Base : 20.0f;\nfloat i_max = (I_Max > 0.0f) ? I_Max : 15.0f;\nif (i_max < 5.0f) i_max = 5.0f;\nif (i_max > 40.0f) i_max = 40.0f;\n\nfloat pole_pairs = PolePairs;\nif (!(pole_pairs > 0.5f) || !(pole_pairs < 40.0f)) pole_pairs = 5.0f;\n\nfloat spd_kp = SpdKp;\nfloat spd_ki = SpdKi;\nif (!(spd_kp > 0.0f)) spd_kp = 0.03f;\nif (!(spd_ki >= 0.0f)) spd_ki = 0.08f;\nconst bool spd_mode = (SpdMode > 0.5f);\n\nconst float vdc = V_Dc.in(au::volts);\nconst float id_raw = I_D.in(au::amperes);\nconst float iq_raw = I_Q.in(au::amperes);\nfloat id_ref = I_D_Ref;\nfloat iq_ref_in = I_Q_Ref;\nconst float theta_e = Theta_E;\nconst float pi = 3.14159265359f;\nconst float two_pi = 6.28318530718f;\nconst float sqrt3 = 1.73205080757f;\n\n/* Local unwrapped \u03c9e (also used by speed loop). */\nfloat omega_e = Omega_E;\nif (!(omega_e == omega_e)) omega_e = 0.0f;\nif (hy.omega_init == 0) {\n    hy.theta_prev = theta_e;\n    hy.omega_f = 0.0f;\n    hy.omega_init = 1;\n} else if (ts > 0.0f) {\n    float dth = theta_e - hy.theta_prev;\n    dth = fmodf(dth + pi, two_pi);\n    if (dth < 0.0f) dth += two_pi;\n    dth -= pi;\n    const float w_raw = dth / ts;\n    const float fc_w = 150.0f;\n    const float a_w = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc_w * ts));\n    hy.omega_f += a_w * (w_raw - hy.omega_f);\n    omega_e = hy.omega_f;\n}\nhy.theta_prev = theta_e;\nif (fabsf(omega_e) > 900.0f) omega_e = (omega_e > 0.0f) ? 900.0f : -900.0f;\n\nconst float rpm_meas = omega_e / pole_pairs * 60.0f / two_pi;\nconst float v_max = (vdc / sqrt3) * 0.95f;\n/* Available headroom vs bemf \u2014 used to ease gains near the 55 V ceiling. */\nfloat bemf = fabsf(omega_e) * psi_f;\nfloat headroom = v_max - bemf;\nif (headroom < 0.0f) headroom = 0.0f;\nfloat db_eff = db_scale;\nif (v_max > 1.0f) {\n    const float util = bemf / v_max;\n    if (util > 0.75f) {\n        float ease = 1.0f - 0.55f * ((util - 0.75f) / 0.25f);\n        if (ease < 0.45f) ease = 0.45f;\n        if (ease > 1.0f) ease = 1.0f;\n        db_eff *= ease;\n    }\n}\n\nfloat iq_ref = iq_ref_in;\nfloat id_ref_cmd = id_ref;\nif (spd_mode) {\n    /* I_Q_Ref interpreted as mechanical rpm setpoint. */\n    float rpm_ref = iq_ref_in;\n    if (rpm_ref > 700.0f) rpm_ref = 700.0f;   /* stay under ~55 V no-load ceiling */\n    if (rpm_ref < -700.0f) rpm_ref = -700.0f;\n    const float rpm_err = rpm_ref - rpm_meas;\n    float iq_lim = 0.45f * i_max;\n    if (iq_lim < 4.0f) iq_lim = 4.0f;\n    if (iq_lim > 12.0f) iq_lim = 12.0f;\n    /* Shrink torque authority as bemf eats the bus (prevents sync-loss blowups). */\n    if (v_max > 1.0f) {\n        float util = bemf / v_max;\n        if (util > 0.80f) {\n            float shrink = 1.0f - 0.70f * ((util - 0.80f) / 0.20f);\n            if (shrink < 0.25f) shrink = 0.25f;\n            iq_lim *= shrink;\n        }\n    }\n    hy.spd_int += spd_ki * rpm_err * ts;\n    if (hy.spd_int > iq_lim) hy.spd_int = iq_lim;\n    if (hy.spd_int < -iq_lim) hy.spd_int = -iq_lim;\n    iq_ref = spd_kp * rpm_err + hy.spd_int;\n    if (iq_ref > iq_lim) iq_ref = iq_lim;\n    if (iq_ref < -iq_lim) iq_ref = -iq_lim;\n    /* Soft-start Iq command. */\n    const float di_max = 40.0f * ts; /* 40 A/s */\n    float di = iq_ref - hy.iq_cmd_f;\n    if (di > di_max) di = di_max;\n    if (di < -di_max) di = -di_max;\n    hy.iq_cmd_f += di;\n    iq_ref = hy.iq_cmd_f;\n} else {\n    hy.spd_int = 0.0f;\n    hy.iq_cmd_f = iq_ref;\n}\n\n/* Mild field weakening when voltage-limited (Id negative). */\nif (v_max > 1.0f && bemf > 0.82f * v_max) {\n    float fw = (bemf / v_max - 0.82f) / 0.18f;\n    if (fw > 1.0f) fw = 1.0f;\n    if (fw < 0.0f) fw = 0.0f;\n    const float id_fw = -fw * 0.35f * i_max;\n    if (id_ref_cmd > id_fw) id_ref_cmd = id_fw;\n}\nid_ref = id_ref_cmd;\n\nif (id_ref > i_max) id_ref = i_max;\nif (id_ref < -i_max) id_ref = -i_max;\nif (iq_ref > i_max) iq_ref = i_max;\nif (iq_ref < -i_max) iq_ref = -i_max;\n\nconst float cost_track = ((id_ref - id_raw) / i_base) * ((id_ref - id_raw) / i_base)\n                       + ((iq_ref - iq_raw) / i_base) * ((iq_ref - iq_raw) / i_base);\n\nconst bool enable = Enable;\nconst bool bus_ok = (vdc >= 40.0f);\nif (!enable || !(ts > 0.0f) || !bus_ok) {\n    S_A = 0.0f;\n    S_B = 0.0f;\n    S_C = 0.0f;\n    State_Index = 0.0f;\n    Pred_I_D = rte::Amperes(id_raw);\n    Pred_I_Q = rte::Amperes(iq_raw);\n    Cost = cost_track;\n    V_Alpha = rte::Volts(0.0f);\n    V_Beta = rte::Volts(0.0f);\n    V_D = rte::Volts(0.0f);\n    V_Q = rte::Volts(0.0f);\n    Fhat_D = hy.z2_d;\n    Fhat_Q = hy.z2_q;\n    hy.u_alpha_prev = 0.0f;\n    hy.u_beta_prev = 0.0f;\n    hy.enable_s = 0.0f;\n    hy.id_f = id_raw;\n    hy.iq_f = iq_raw;\n    hy.filt_init = 0;\n    hy.eso_init = 0;\n    hy.omega_init = 0;\n    hy.omega_f = 0.0f;\n    hy.spd_int = 0.0f;\n    hy.iq_cmd_f = 0.0f;\n    hy.z1_d = 0.0f;\n    hy.z2_d = 0.0f;\n    hy.z1_q = 0.0f;\n    hy.z2_q = 0.0f;\n    hy.id_int = 0.0f;\n    hy.iq_int = 0.0f;\n} else {\n    const float cos_t = cosf(theta_e);\n    const float sin_t = sinf(theta_e);\n    const float b0_d = 1.0f / ld;\n    const float b0_q = 1.0f / lq;\n\n    if (hy.filt_init == 0) {\n        hy.id_f = id_raw;\n        hy.iq_f = iq_raw;\n        hy.filt_init = 1;\n    } else {\n        const float fc = 400.0f;\n        const float alpha = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc * ts));\n        hy.id_f += alpha * (id_raw - hy.id_f);\n        hy.iq_f += alpha * (iq_raw - hy.iq_f);\n    }\n    const float id = hy.id_f;\n    const float iq = hy.iq_f;\n\n    const float vd_prev = hy.u_alpha_prev * cos_t + hy.u_beta_prev * sin_t;\n    const float vq_prev = -hy.u_alpha_prev * sin_t + hy.u_beta_prev * cos_t;\n\n    const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);\n    const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);\n\n    if (hy.eso_init == 0) {\n        hy.z1_d = id;\n        hy.z2_d = 0.0f;\n        hy.z1_q = iq;\n        hy.z2_q = 0.0f;\n        hy.eso_init = 1;\n    } else {\n        const float vd_model = rs * id - omega_e * lq * iq;\n        const float vq_model = rs * iq + omega_e * ld * id + omega_e * psi_f;\n        const float vd_res = vd_prev - vd_model;\n        const float vq_res = vq_prev - vq_model;\n        const float beta1 = 2.0f * wo;\n        const float beta2 = wo * wo;\n        const float ed = hy.z1_d - id;\n        const float eq = hy.z1_q - iq;\n        hy.z1_d += ts * (hy.z2_d + b0_d * vd_res - beta1 * ed);\n        hy.z2_d += ts * (-beta2 * ed);\n        hy.z1_q += ts * (hy.z2_q + b0_q * vq_res - beta1 * eq);\n        hy.z2_q += ts * (-beta2 * eq);\n        const float fmax = 1.0e4f;\n        if (hy.z2_d > fmax) hy.z2_d = fmax;\n        if (hy.z2_d < -fmax) hy.z2_d = -fmax;\n        if (hy.z2_q > fmax) hy.z2_q = fmax;\n        if (hy.z2_q < -fmax) hy.z2_q = -fmax;\n    }\n\n    const float ramp_s = 0.12f;\n    hy.enable_s += ts;\n    if (hy.enable_s > ramp_s) hy.enable_s = ramp_s;\n    float v_scale = hy.enable_s / ramp_s;\n\n    const float i_meas = sqrtf(id * id + iq * iq);\n    float cost = cost_track;\n    if (i_meas > i_max) {\n        cost += 1.0e6f;\n        v_scale = 0.0f;\n        hy.id_int = 0.0f;\n        hy.iq_int = 0.0f;\n        hy.spd_int = 0.0f;\n        hy.z2_d = 0.0f;\n        hy.z2_q = 0.0f;\n        hy.u_alpha_prev = 0.0f;\n        hy.u_beta_prev = 0.0f;\n    }\n\n    const float kp_d = (ld / ts) * db_eff;\n    const float kp_q = (lq / ts) * db_eff;\n    const float ki = 8.0f;\n\n    const float id_err = id_ref - id_p;\n    const float iq_err = iq_ref - iq_p;\n\n    const float i_lim_v = v_max;\n    if (v_scale > 0.0f) {\n        hy.id_int += ki * id_err * ts;\n        hy.iq_int += ki * iq_err * ts;\n    }\n    if (hy.id_int > i_lim_v) hy.id_int = i_lim_v;\n    if (hy.id_int < -i_lim_v) hy.id_int = -i_lim_v;\n    if (hy.iq_int > i_lim_v) hy.iq_int = i_lim_v;\n    if (hy.iq_int < -i_lim_v) hy.iq_int = -i_lim_v;\n\n    const float k_eso = 0.10f;\n    float vd_ref = rs * id_p - omega_e * lq * iq_p + kp_d * id_err + hy.id_int\n                 - k_eso * ld * hy.z2_d;\n    float vq_ref = rs * iq_p + omega_e * ld * id_p + omega_e * psi_f + kp_q * iq_err\n                 + hy.iq_int - k_eso * lq * hy.z2_q;\n\n    vd_ref *= v_scale;\n    vq_ref *= v_scale;\n\n    /* Voltage limit with Iq priority (keep torque axis when saturated). */\n    const float v_mag_sq = vd_ref * vd_ref + vq_ref * vq_ref;\n    if (v_mag_sq > v_max * v_max && v_mag_sq > 1.0e-12f) {\n        const float vq_lim = v_max;\n        if (fabsf(vq_ref) > vq_lim) {\n            vq_ref = (vq_ref > 0.0f) ? vq_lim : -vq_lim;\n        }\n        const float vd_lim_sq = v_max * v_max - vq_ref * vq_ref;\n        const float vd_lim = (vd_lim_sq > 0.0f) ? sqrtf(vd_lim_sq) : 0.0f;\n        if (vd_ref > vd_lim) vd_ref = vd_lim;\n        if (vd_ref < -vd_lim) vd_ref = -vd_lim;\n        hy.id_int *= 0.90f;\n        hy.iq_int *= 0.90f;\n        if (spd_mode) hy.spd_int *= 0.98f;\n    }\n\n    const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;\n    const float vbeta_ref = vd_ref * sin_t + vq_ref * cos_t;\n\n    S_A = 0.0f;\n    S_B = 0.0f;\n    S_C = 0.0f;\n    State_Index = spd_mode ? 1.0f : 3.0f;\n    Pred_I_D = rte::Amperes(id_p);\n    Pred_I_Q = rte::Amperes(iq_p);\n    Cost = cost;\n    V_Alpha = rte::Volts(valpha_ref);\n    V_Beta = rte::Volts(vbeta_ref);\n    V_D = rte::Volts(vd_ref);\n    V_Q = rte::Volts(vq_ref);\n    Fhat_D = hy.z2_d;\n    Fhat_Q = hy.z2_q;\n\n    hy.u_alpha_prev = valpha_ref;\n    hy.u_beta_prev = vbeta_ref;\n}\n",
+      "name": "AdrcMpcc",
+      "defaultName": "AdrcMpcc",
+      "description": "ESO-assisted predictive current control for Gen6: ADRC observers estimate dq disturbance; mild deadbeat voltage feeds the same SVPWM path as FOC/MPCC Mode 3. Drop-in replacement for Control.Mpcc in mpcc_demo wiring.",
+      "inputPorts": [
+        {
+          "name": "I_D",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Measured d-axis current in amperes."
+        },
+        {
+          "name": "I_Q",
+          "direction": "input",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Measured q-axis current in amperes."
+        },
+        {
+          "name": "I_D_Ref",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "d-axis current reference (A)."
+        },
+        {
+          "name": "I_Q_Ref",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "q-axis current reference (A)."
+        },
+        {
+          "name": "Theta_E",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Electrical rotor angle (rad)."
+        },
+        {
+          "name": "Omega_E",
+          "direction": "input",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Electrical rotor speed (rad/s). Used for telemetry; ESO absorbs model terms."
+        },
+        {
+          "name": "V_Dc",
+          "direction": "input",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "DC-link voltage (V)."
+        },
+        {
+          "name": "Enable",
+          "direction": "input",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Controller enable."
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "S_A",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Nearest active-vector A (telemetry / optional SwitchingToDuty)."
+        },
+        {
+          "name": "S_B",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Nearest active-vector B."
+        },
+        {
+          "name": "S_C",
+          "direction": "output",
+          "type": {
+            "quantity": "boolean",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Nearest active-vector C."
+        },
+        {
+          "name": "State_Index",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Nearest active-vector index 1..6."
+        },
+        {
+          "name": "Pred_I_D",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Predicted d-axis current."
+        },
+        {
+          "name": "Pred_I_Q",
+          "direction": "output",
+          "type": {
+            "quantity": "current",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Predicted q-axis current."
+        },
+        {
+          "name": "Cost",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Normalized tracking cost."
+        },
+        {
+          "name": "V_Alpha",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Voltage reference alpha (to SVPWM)."
+        },
+        {
+          "name": "V_Beta",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "Voltage reference beta (to SVPWM)."
+        },
+        {
+          "name": "V_D",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "d-axis voltage command."
+        },
+        {
+          "name": "V_Q",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "q-axis voltage command."
+        },
+        {
+          "name": "Fhat_D",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "ESO disturbance estimate d-axis (di/dt units)."
+        },
+        {
+          "name": "Fhat_Q",
+          "direction": "output",
+          "type": {
+            "quantity": "dimensionless",
+            "frame": "scalar",
+            "dtype": "f32"
+          },
+          "description": "ESO disturbance estimate q-axis (di/dt units)."
+        }
+      ],
+      "parameterTypes": {
+        "Ts": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Control sample period (s)."
+        },
+        "Ld": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "d-axis inductance (H); sets b0_d = 1/Ld."
+        },
+        "Lq": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "q-axis inductance (H); sets b0_q = 1/Lq."
+        },
+        "OmegaO": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "ESO bandwidth \u03c9o (rad/s). Typical 1500\u20133000."
+        },
+        "DbScale": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Deadbeat tracking scale (0\u20131). Gen6 default ~0.40."
+        },
+        "I_Base": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Current normalization base (A)."
+        },
+        "I_Max": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Soft current limit (A)."
+        },
+        "Rs": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Unused by hybrid (kept for graph KV compatibility)."
+        },
+        "PsiF": {
+          "quantity": "dimensionless",
+          "frame": "scalar",
+          "dtype": "f32",
+          "description": "Unused by hybrid (kept for graph KV compatibility)."
+        }
+      }
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "SwitchToDuty",
+      "parameters": {},
+      "position": {
+        "x": 2003.420223999999,
+        "y": 1481.2775679999993
+      },
+      "type": "Transforms.SwitchToDuty"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "PwmOut",
+      "parameters": {},
+      "position": {
+        "x": 2628.625408000001,
+        "y": 1712.4121599999994
+      },
+      "type": "Actuators.PwmOut"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgEncSign",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "1.0",
+        "Key": "Motor.Encoder.SinCos.Sign"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 2644.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgEncOffset",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "6.445",
+        "Key": "Motor.Encoder.SinCos.OffsetDeg"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 2455.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgPoles",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "10.0",
+        "Key": "Motor.Poles"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 2833.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgRs",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.05",
+        "Key": "Motor.Resistance.Avg"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 2077.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgLd",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.00007",
+        "Key": "Motor.PMSM.Inductance.Ld"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 1510.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgLq",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.00012",
+        "Key": "Motor.PMSM.Inductance.Lq"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 1699.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgPsi",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.07",
+        "Key": "Motor.PMSM.FluxLinkage.Wb"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 1888.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "IdVar",
+      "parameters": {
+        "In": "0.0",
+        "Set": "0.0",
+        "Stored": "0.0"
+      },
+      "position": {
+        "x": 1122.7200000000007,
+        "y": 1693.5596800000005
+      },
+      "type": "Values.Var"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "IqVar",
+      "parameters": {
+        "In": "0.0",
+        "Set": "0.0",
+        "Stored": "0.0"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 3175.0
+      },
+      "type": "Values.Var"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgEnable",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "1.0",
+        "Key": "Ctrl.ThrottleEnable"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 2266.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "ThrottleEnable",
+      "parameters": {
+        "In": "0.0",
+        "Set": "0.0",
+        "Stored": "1.0"
+      },
+      "position": {
+        "x": 870.0361600000001,
+        "y": 1836.56672
+      },
+      "type": "Values.VarBool"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "IqGate",
+      "parameters": {},
+      "position": {
+        "x": 1122.3398400000005,
+        "y": 1863.3865599999997
+      },
+      "type": "Logic.Gate"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "SlewIq",
+      "parameters": {
+        "Dt": "0.0002",
+        "Rate": "50.0",
+        "Value": "0.0"
+      },
+      "position": {
+        "x": 906.1474559999997,
+        "y": 2408.3075840000006
+      },
+      "type": "Control.Slew"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogId",
+      "parameters": {
+        "Key": "mpcc_id_a"
+      },
+      "position": {
+        "x": 1247.2800000000002,
+        "y": 1395.88
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogIq",
+      "parameters": {
+        "Key": "mpcc_iq_a"
+      },
+      "position": {
+        "x": 1310.2080000000003,
+        "y": 1523.0300800000002
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogPredId",
+      "parameters": {
+        "Key": "mpcc_pred_id_a"
+      },
+      "position": {
+        "x": 2010.1870719999995,
+        "y": 1866.0328959999993
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogPredIq",
+      "parameters": {
+        "Key": "mpcc_pred_iq_a"
+      },
+      "position": {
+        "x": 2029.5959680000005,
+        "y": 1990.6520320000004
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogCost",
+      "parameters": {
+        "Key": "mpcc_cost"
+      },
+      "position": {
+        "x": 1981.820224000001,
+        "y": 2135.5636480000016
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogState",
+      "parameters": {
+        "Key": "mpcc_state"
+      },
+      "position": {
+        "x": 2047.5118719999984,
+        "y": 1689.7684480000003
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogDu",
+      "parameters": {
+        "Key": "mpcc_du"
+      },
+      "position": {
+        "x": 2623.8975999999993,
+        "y": 1423.4064640000004
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogDv",
+      "parameters": {
+        "Key": "mpcc_dv"
+      },
+      "position": {
+        "x": 2647.785472,
+        "y": 1567.4344959999996
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogDw",
+      "parameters": {
+        "Key": "mpcc_dw"
+      },
+      "position": {
+        "x": 2605.9816960000003,
+        "y": 1911.523456
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogThetaE",
+      "parameters": {
+        "Key": "mpcc_theta_e"
+      },
+      "position": {
+        "x": 795.1377279999999,
+        "y": 2046.219776
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogOmegaE",
+      "parameters": {
+        "Key": "mpcc_omega_e"
+      },
+      "position": {
+        "x": 1184.2990080000002,
+        "y": 2159.551296
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "EncoderApp",
+      "parameters": {},
+      "position": {
+        "x": 522.0,
+        "y": 680.0
+      },
+      "type": "Sensors.Encoder"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "VdcApp",
+      "parameters": {},
+      "position": {
+        "x": 522.0,
+        "y": 1223.0
+      },
+      "type": "Sensors.DcLinkVoltage"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Temps",
+      "parameters": {},
+      "position": {
+        "x": 522.0,
+        "y": 833.0
+      },
+      "type": "Sensors.Temperatures"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Throttle",
+      "parameters": {},
+      "position": {
+        "x": 522.0,
+        "y": 1042.0
+      },
+      "type": "Sensors.Throttle"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "Din1",
+      "parameters": {
+        "Pin": "1.0"
+      },
+      "position": {
+        "x": 522.0,
+        "y": 530.0
+      },
+      "type": "Sensors.DigitalIn"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LedGreen",
+      "parameters": {
+        "Pin": "5.0"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 80.0
+      },
+      "type": "Actuators.DigitalOut"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogTheta",
+      "parameters": {
+        "Key": "cg_theta_rad"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 230.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogU",
+      "parameters": {
+        "Key": "cg_iu_a"
+      },
+      "position": {
+        "x": 522.0,
+        "y": 80.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogV",
+      "parameters": {
+        "Key": "cg_iv_a"
+      },
+      "position": {
+        "x": 522.0,
+        "y": 230.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogW",
+      "parameters": {
+        "Key": "cg_iw_a"
+      },
+      "position": {
+        "x": 522.0,
+        "y": 380.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogVdc",
+      "parameters": {
+        "Key": "cg_vdc_v"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 1280.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Motor",
+      "parameters": {
+        "Key": "temp_motor_c"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 830.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Inv1",
+      "parameters": {
+        "Key": "temp_inv1_c"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 380.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Inv2",
+      "parameters": {
+        "Key": "temp_inv2_c"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 530.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogT_Inv3",
+      "parameters": {
+        "Key": "temp_inv3_c"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 680.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogThrA",
+      "parameters": {
+        "Key": "thr_a_norm"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 980.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogThrB",
+      "parameters": {
+        "Key": "thr_b_norm"
+      },
+      "position": {
+        "x": 856.0,
+        "y": 1130.0
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "Svpwm",
+      "parameters": {},
+      "position": {
+        "x": 1904.1846399999995,
+        "y": 2280.5490559999994
+      },
+      "type": "Transforms.Svpwm"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogThetaMech",
+      "parameters": {
+        "Key": "mpcc_theta_mech"
+      },
+      "position": {
+        "x": 400,
+        "y": 2600
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogLd",
+      "parameters": {
+        "Key": "mpcc_ld_h"
+      },
+      "position": {
+        "x": 400,
+        "y": 1520
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogLq",
+      "parameters": {
+        "Key": "mpcc_lq_h"
+      },
+      "position": {
+        "x": 400,
+        "y": 1710
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "LogEncSign",
+      "parameters": {
+        "Key": "mpcc_enc_sign"
+      },
+      "position": {
+        "x": 400,
+        "y": 2650
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "CfgIqSlew",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "50.0",
+        "Key": "Ctrl.Iq.SlewAps"
+      },
+      "position": {
+        "x": 150.0,
+        "y": 2266.0
+      },
+      "type": "Values.Config",
+      "constructorCode": "Cached = platform_config_load(Key, DefaultValue);\n\n/* Repair zero/invalid motor physics keys from graph defaults.\n * Encoder Sign: keep FRAM if |Sign|>=0.5; otherwise use DefaultValue.\n * Do NOT force polarity \u2014 match whatever FOC already spins with. */\nconst bool is_motor_key =\n    (Key != nullptr) &&\n    (strstr(Key, \"Inductance\") != nullptr ||\n     strstr(Key, \"Resistance\") != nullptr ||\n     strstr(Key, \"FluxLinkage\") != nullptr ||\n     strstr(Key, \"Motor.Poles\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.Sign\") != nullptr ||\n     strstr(Key, \"Encoder.SinCos.OffsetDeg\") != nullptr);\n\nif (is_motor_key) {\n    const bool is_sign = (Key != nullptr) &&\n                         (strstr(Key, \"Encoder.SinCos.Sign\") != nullptr);\n    if (is_sign) {\n        if (fabsf(Cached) < 0.5f) {\n            Cached = (DefaultValue < 0.0f) ? -1.0f : 1.0f;\n            platform_config_set(Key, Cached);\n        } else {\n            Cached = (Cached >= 0.0f) ? 1.0f : -1.0f;\n        }\n    } else if (DefaultValue > 1.0e-8f && !(Cached > 0.0f)) {\n        Cached = DefaultValue;\n        platform_config_set(Key, Cached);\n    }\n}\n"
+    }
+  ]
+}

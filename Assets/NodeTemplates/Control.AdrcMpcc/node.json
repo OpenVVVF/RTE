@@ -1,0 +1,219 @@
+{
+  "id": "Control.AdrcMpcc",
+  "displayName": "Hybrid ADRC+MPCC (Gen6)",
+  "defaultName": "AdrcMpcc",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "description": "ESO-assisted predictive current control for Gen6: ADRC observers estimate dq disturbance; mild deadbeat voltage feeds the same SVPWM path as FOC/MPCC Mode 3. Drop-in replacement for Control.Mpcc in mpcc_demo wiring.",
+  "inputPorts": [
+    {
+      "name": "I_D",
+      "direction": "input",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Measured d-axis current in amperes."
+    },
+    {
+      "name": "I_Q",
+      "direction": "input",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Measured q-axis current in amperes."
+    },
+    {
+      "name": "I_D_Ref",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "d-axis current reference (A)."
+    },
+    {
+      "name": "I_Q_Ref",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "q-axis current reference (A)."
+    },
+    {
+      "name": "Theta_E",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Electrical rotor angle (rad)."
+    },
+    {
+      "name": "Omega_E",
+      "direction": "input",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Electrical rotor speed (rad/s). Used for telemetry; ESO absorbs model terms."
+    },
+    {
+      "name": "V_Dc",
+      "direction": "input",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "DC-link voltage (V)."
+    },
+    {
+      "name": "Enable",
+      "direction": "input",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Controller enable."
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "S_A",
+      "direction": "output",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Nearest active-vector A (telemetry / optional SwitchingToDuty)."
+    },
+    {
+      "name": "S_B",
+      "direction": "output",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Nearest active-vector B."
+    },
+    {
+      "name": "S_C",
+      "direction": "output",
+      "type": { "quantity": "boolean", "frame": "scalar", "dtype": "f32" },
+      "description": "Nearest active-vector C."
+    },
+    {
+      "name": "State_Index",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Nearest active-vector index 1..6."
+    },
+    {
+      "name": "Pred_I_D",
+      "direction": "output",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Predicted d-axis current."
+    },
+    {
+      "name": "Pred_I_Q",
+      "direction": "output",
+      "type": { "quantity": "current", "frame": "scalar", "dtype": "f32" },
+      "description": "Predicted q-axis current."
+    },
+    {
+      "name": "Cost",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "Normalized tracking cost."
+    },
+    {
+      "name": "V_Alpha",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "Voltage reference alpha (to SVPWM)."
+    },
+    {
+      "name": "V_Beta",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "Voltage reference beta (to SVPWM)."
+    },
+    {
+      "name": "V_D",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "d-axis voltage command."
+    },
+    {
+      "name": "V_Q",
+      "direction": "output",
+      "type": { "quantity": "voltage", "frame": "scalar", "dtype": "f32" },
+      "description": "q-axis voltage command."
+    },
+    {
+      "name": "Fhat_D",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "ESO disturbance estimate d-axis (di/dt units)."
+    },
+    {
+      "name": "Fhat_Q",
+      "direction": "output",
+      "type": { "quantity": "dimensionless", "frame": "scalar", "dtype": "f32" },
+      "description": "ESO disturbance estimate q-axis (di/dt units)."
+    }
+  ],
+  "parameterTypes": {
+    "Ts": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Control sample period (s)."
+    },
+    "Ld": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "d-axis inductance (H); sets b0_d = 1/Ld."
+    },
+    "Lq": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "q-axis inductance (H); sets b0_q = 1/Lq."
+    },
+    "OmegaO": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "ESO bandwidth ωo (rad/s). Typical 1500–3000."
+    },
+    "DbScale": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Deadbeat tracking scale (0–1). Gen6 @55 V demo default ~0.55."
+    },
+    "I_Base": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Current normalization base (A)."
+    },
+    "I_Max": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Hard current clamp (A). Demo default 15 A."
+    },
+    "Rs": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Stator resistance (ohm) for model feedforward."
+    },
+    "PsiF": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "PM flux linkage (Wb). Gen6 ~0.07; values <0.02 are rejected as placeholders."
+    },
+    "SpdMode": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "0=current mode (I_Q_Ref in A). 1=speed mode (I_Q_Ref = mechanical rpm setpoint)."
+    },
+    "SpdKp": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed-loop Kp (A per rpm error)."
+    },
+    "SpdKi": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Speed-loop Ki (A per rpm·s)."
+    },
+    "PolePairs": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32",
+      "description": "Rotor pole pairs (Gen6 = 5)."
+    }
+  }
+}
