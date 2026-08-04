@@ -9,7 +9,7 @@
  *   - soft enable ramp
  *   - hold if Vdc < 40 V
  *   - voltage limit prefers Vq (torque)
- *   - |Id*/Iq*| clamped to I_Max
+ *   - abs(Id_ref) and abs(Iq_ref) clamped to I_Max
  */
 
 static float hy_u_alpha_prev = 0.0f;
