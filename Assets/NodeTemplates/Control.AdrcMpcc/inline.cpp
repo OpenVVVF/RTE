@@ -1,11 +1,13 @@
 /* Hybrid ADRC + predictive current control for Gen6 PMSM.
  *
- * Based on the Mode-3 law that actually spins Gen6 (deadbeat + Ki), with a
- * mild residual ESO (ADRC) correction.
+ * Mode-3 deadbeat + Ki voltage → SVPWM (same PWM path as FOC), with a mild
+ * residual ESO (ADRC) correction.
  *
  * State is in AXISRAM (.dma_buffers) to avoid DTCM overflow. That section is
- * NOLOAD (not zeroed at boot) — validate magic and clear before use, or
- * garbage integrators command huge voltage (HybridADRCMPC-3 spikes).
+ * NOLOAD (not zeroed at boot) — validate magic and clear before use.
+ *
+ * HybridADRCMPC-4: spikes lined up with Theta_E 2π wraps because OmegaDeriv
+ * did not unwrap. Prefer Unwrap=1 on OmegaDeriv; also recompute/slew ω here.
  */
 
 struct HyAdrcMpccState {
@@ -21,12 +23,15 @@ struct HyAdrcMpccState {
     float z2_q;
     float id_int;
     float iq_int;
+    float theta_prev;
+    float omega_f;
     uint8_t filt_init;
     uint8_t eso_init;
-    uint8_t _pad[2];
+    uint8_t omega_init;
+    uint8_t _pad;
 };
 
-static constexpr uint32_t kHyMagic = 0x48594133u; /* HYA3 */
+static constexpr uint32_t kHyMagic = 0x48594134u; /* HYA4 */
 
 static HyAdrcMpccState hy __attribute__((section(".dma_buffers"), aligned(4)));
 
@@ -42,10 +47,12 @@ if (hy.magic != kHyMagic) {
     hy.z2_q = 0.0f;
     hy.id_int = 0.0f;
     hy.iq_int = 0.0f;
+    hy.theta_prev = 0.0f;
+    hy.omega_f = 0.0f;
     hy.filt_init = 0;
     hy.eso_init = 0;
-    hy._pad[0] = 0;
-    hy._pad[1] = 0;
+    hy.omega_init = 0;
+    hy._pad = 0;
     hy.magic = kHyMagic;
 }
 
@@ -77,18 +84,33 @@ const float iq_raw = I_Q.in(au::amperes);
 float id_ref = I_D_Ref;
 float iq_ref = I_Q_Ref;
 const float theta_e = Theta_E;
+const float pi = 3.14159265359f;
+const float two_pi = 6.28318530718f;
+
+/* Prefer local unwrapped dθ/dt; fall back to external Omega_E if needed. */
 float omega_e = Omega_E;
 if (!(omega_e == omega_e)) omega_e = 0.0f;
-if (fabsf(omega_e) > 2000.0f) omega_e = (omega_e > 0.0f) ? 2000.0f : -2000.0f;
+if (hy.omega_init == 0) {
+    hy.theta_prev = theta_e;
+    hy.omega_f = 0.0f;
+    hy.omega_init = 1;
+} else if (ts > 0.0f) {
+    float dth = theta_e - hy.theta_prev;
+    dth = fmodf(dth + pi, two_pi);
+    if (dth < 0.0f) dth += two_pi;
+    dth -= pi;
+    const float w_raw = dth / ts;
+    const float fc_w = 200.0f;
+    const float a_w = 1.0f / (1.0f + 1.0f / (6.28318530718f * fc_w * ts));
+    hy.omega_f += a_w * (w_raw - hy.omega_f);
+    omega_e = hy.omega_f;
+}
+hy.theta_prev = theta_e;
+/* ~1500 rpm mech @ 5 pole-pairs ≈ 785 rad/s elec; keep headroom. */
+if (fabsf(omega_e) > 1200.0f) omega_e = (omega_e > 0.0f) ? 1200.0f : -1200.0f;
 
 const bool enable = Enable;
 const float sqrt3 = 1.73205080757f;
-const float inv_sqrt3 = 0.57735026919f;
-const float two_thirds = 2.0f / 3.0f;
-const int switch_bits[8][3] = {
-    {0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
-    {0, 1, 1}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}
-};
 
 if (id_ref > i_max) id_ref = i_max;
 if (id_ref < -i_max) id_ref = -i_max;
@@ -120,6 +142,8 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     hy.iq_f = iq_raw;
     hy.filt_init = 0;
     hy.eso_init = 0;
+    hy.omega_init = 0;
+    hy.omega_f = 0.0f;
     hy.z1_d = 0.0f;
     hy.z2_d = 0.0f;
     hy.z1_q = 0.0f;
@@ -184,12 +208,17 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
 
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
+    /* Hard overcurrent: zero voltage and clear integrators (no 0.15 floor —
+     * that still drove hundreds of amps in session 4 after wrap glitches). */
     if (i_meas > i_max) {
         cost += 1.0e6f;
-        if (i_meas > 1.0e-3f) {
-            v_scale *= i_max / i_meas;
-        }
-        if (v_scale < 0.15f) v_scale = 0.15f;
+        v_scale = 0.0f;
+        hy.id_int = 0.0f;
+        hy.iq_int = 0.0f;
+        hy.z2_d = 0.0f;
+        hy.z2_q = 0.0f;
+        hy.u_alpha_prev = 0.0f;
+        hy.u_beta_prev = 0.0f;
     }
 
     const float kp_d = (ld / ts) * db_scale;
@@ -200,8 +229,10 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     const float iq_err = iq_ref - iq_p;
 
     const float i_lim_v = (vdc / sqrt3) * 0.95f;
-    hy.id_int += ki * id_err * ts;
-    hy.iq_int += ki * iq_err * ts;
+    if (v_scale > 0.0f) {
+        hy.id_int += ki * id_err * ts;
+        hy.iq_int += ki * iq_err * ts;
+    }
     if (hy.id_int > i_lim_v) hy.id_int = i_lim_v;
     if (hy.id_int < -i_lim_v) hy.id_int = -i_lim_v;
     if (hy.iq_int > i_lim_v) hy.iq_int = i_lim_v;
@@ -229,26 +260,11 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     const float valpha_ref = vd_ref * cos_t - vq_ref * sin_t;
     const float vbeta_ref = vd_ref * sin_t + vq_ref * cos_t;
 
-    int best_idx = 1;
-    float best_dist = 1.0e30f;
-    for (int idx = 1; idx <= 6; ++idx) {
-        const float sa = static_cast<float>(switch_bits[idx][0]);
-        const float sb = static_cast<float>(switch_bits[idx][1]);
-        const float sc = static_cast<float>(switch_bits[idx][2]);
-        const float ua = two_thirds * vdc * (sa - 0.5f * (sb + sc));
-        const float ub = vdc * inv_sqrt3 * (sb - sc);
-        const float dist = (ua - valpha_ref) * (ua - valpha_ref)
-                         + (ub - vbeta_ref) * (ub - vbeta_ref);
-        if (dist < best_dist) {
-            best_dist = dist;
-            best_idx = idx;
-        }
-    }
-
-    S_A = static_cast<float>(switch_bits[best_idx][0]);
-    S_B = static_cast<float>(switch_bits[best_idx][1]);
-    S_C = static_cast<float>(switch_bits[best_idx][2]);
-    State_Index = static_cast<float>(best_idx);
+    /* PWM path is Vαβ → SVPWM. Skip FCS enumeration (CPU + dead SwitchToDuty). */
+    S_A = 0.0f;
+    S_B = 0.0f;
+    S_C = 0.0f;
+    State_Index = 3.0f;
     Pred_I_D = rte::Amperes(id_p);
     Pred_I_Q = rte::Amperes(iq_p);
     Cost = cost;
