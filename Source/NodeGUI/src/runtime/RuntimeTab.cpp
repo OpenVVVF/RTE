@@ -64,24 +64,6 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
             this,
             &RuntimeTab::OnExportSession);
     headerRow->addWidget(exportButton);
-    auto* saveFramButton =
-        new QPushButton(QStringLiteral("Save FRAM Keys\u2026"), this);
-    saveFramButton->setToolTip(
-        QStringLiteral("Read FRAM config keys from the device and save them to a JSON file"));
-    connect(saveFramButton,
-            &QPushButton::clicked,
-            this,
-            &RuntimeTab::OnSaveFramKeys);
-    headerRow->addWidget(saveFramButton);
-    auto* loadFramButton =
-        new QPushButton(QStringLiteral("Load FRAM Keys\u2026"), this);
-    loadFramButton->setToolTip(
-        QStringLiteral("Restore FRAM config keys on the device from a JSON file"));
-    connect(loadFramButton,
-            &QPushButton::clicked,
-            this,
-            &RuntimeTab::OnLoadFramKeys);
-    headerRow->addWidget(loadFramButton);
     layout->addLayout(headerRow);
 
     // Graph-layout presets.

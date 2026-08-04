@@ -34,14 +34,16 @@ public:
     void LoadAutosave();
     void SaveAutosave();
 
+public slots:
+    void OnSaveFramKeys();
+    void OnLoadFramKeys();
+
 private slots:
     void OnStoreChanged();
     void OnSavePreset();
     void OnLoadPreset();
     void OnExportSession();
     void OnClearSession();
-    void OnSaveFramKeys();
-    void OnLoadFramKeys();
 
 private:
     void RefreshRecentCombo();
