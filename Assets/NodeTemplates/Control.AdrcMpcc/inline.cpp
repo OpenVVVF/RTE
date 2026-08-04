@@ -1,15 +1,15 @@
 /* Hybrid ADRC + predictive current control for Gen6 PMSM.
  *
  * Based on the Mode-3 law that actually spins Gen6 (deadbeat + Ki), with a
- * mild residual ESO (ADRC) correction:
- *   predict i_p from prior v
- *   v = R i_p + w terms + (L/Ts)*db*(i*-i_p) + Ki*int(err) - k_eso*L*f_hat
+ * mild residual ESO (ADRC) correction.
  *
- * Persistent state lives in AXISRAM (.dma_buffers), not DTCMRAM — the
- * generated tim_isr statics otherwise overflow DTCM (seen +8 B with Ki).
+ * State is in AXISRAM (.dma_buffers) to avoid DTCM overflow. That section is
+ * NOLOAD (not zeroed at boot) — validate magic and clear before use, or
+ * garbage integrators command huge voltage (HybridADRCMPC-3 spikes).
  */
 
 struct HyAdrcMpccState {
+    uint32_t magic;
     float u_alpha_prev;
     float u_beta_prev;
     float enable_s;
@@ -26,7 +26,28 @@ struct HyAdrcMpccState {
     uint8_t _pad[2];
 };
 
+static constexpr uint32_t kHyMagic = 0x48594133u; /* HYA3 */
+
 static HyAdrcMpccState hy __attribute__((section(".dma_buffers"), aligned(4)));
+
+if (hy.magic != kHyMagic) {
+    hy.u_alpha_prev = 0.0f;
+    hy.u_beta_prev = 0.0f;
+    hy.enable_s = 0.0f;
+    hy.id_f = 0.0f;
+    hy.iq_f = 0.0f;
+    hy.z1_d = 0.0f;
+    hy.z2_d = 0.0f;
+    hy.z1_q = 0.0f;
+    hy.z2_q = 0.0f;
+    hy.id_int = 0.0f;
+    hy.iq_int = 0.0f;
+    hy.filt_init = 0;
+    hy.eso_init = 0;
+    hy._pad[0] = 0;
+    hy._pad[1] = 0;
+    hy.magic = kHyMagic;
+}
 
 const float ts = Ts;
 float ld = Ld;
@@ -42,7 +63,6 @@ float wo = OmegaO;
 float db_scale = DbScale;
 if (!(wo > 0.0f)) wo = 1500.0f;
 if (wo > 4000.0f) wo = 4000.0f;
-/* Gen6 L/Ts ~ 0.35-0.8 V/A; Mode-3 used db~0.70 to spin. */
 if (!(db_scale > 0.10f)) db_scale = 0.70f;
 if (db_scale > 1.0f) db_scale = 1.0f;
 
@@ -100,7 +120,9 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     hy.iq_f = iq_raw;
     hy.filt_init = 0;
     hy.eso_init = 0;
+    hy.z1_d = 0.0f;
     hy.z2_d = 0.0f;
+    hy.z1_q = 0.0f;
     hy.z2_q = 0.0f;
     hy.id_int = 0.0f;
     hy.iq_int = 0.0f;
@@ -126,11 +148,9 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
     const float vd_prev = hy.u_alpha_prev * cos_t + hy.u_beta_prev * sin_t;
     const float vq_prev = -hy.u_alpha_prev * sin_t + hy.u_beta_prev * cos_t;
 
-    /* One-step delay compensation (Mode 3). */
     const float id_p = id + (ts / ld) * (vd_prev - rs * id + omega_e * lq * iq);
     const float iq_p = iq + (ts / lq) * (vq_prev - rs * iq - omega_e * ld * id - omega_e * psi_f);
 
-    /* Residual ESO (ADRC) on model mismatch only. */
     if (hy.eso_init == 0) {
         hy.z1_d = id;
         hy.z2_d = 0.0f;
@@ -157,7 +177,6 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
         if (hy.z2_q < -fmax) hy.z2_q = -fmax;
     }
 
-    /* Short soft-start — do not starve voltage for long. */
     const float ramp_s = 0.08f;
     hy.enable_s += ts;
     if (hy.enable_s > ramp_s) hy.enable_s = ramp_s;
@@ -165,7 +184,6 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
 
     const float i_meas = sqrtf(id * id + iq * iq);
     float cost = cost_track;
-    /* Soft |i| limit — scale voltage, never force exact V=0 / duty=50%. */
     if (i_meas > i_max) {
         cost += 1.0e6f;
         if (i_meas > 1.0e-3f) {
@@ -176,7 +194,7 @@ if (!enable || !(ts > 0.0f) || !bus_ok) {
 
     const float kp_d = (ld / ts) * db_scale;
     const float kp_q = (lq / ts) * db_scale;
-    const float ki = 10.0f; /* match foc_demo / Mode-3 */
+    const float ki = 10.0f;
 
     const float id_err = id_ref - id_p;
     const float iq_err = iq_ref - iq_p;
