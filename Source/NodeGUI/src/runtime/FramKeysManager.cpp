@@ -43,6 +43,10 @@ bool WaitForConsoleQuiet(RuntimeController* controller) {
 
     while (elapsedMs < kMaxWaitMs) {
         QThread::msleep(kPollIntervalMs);
+        // We are on the GUI thread; the RuntimeController drain timer also
+        // runs on the GUI thread.  Pump events so queued console lines from
+        // the worker thread are moved into TelemetryStore.
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         elapsedMs += kPollIntervalMs;
 
         const auto snap = controller->Store().Snapshot();
