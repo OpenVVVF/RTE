@@ -1,4 +1,4 @@
-// Stub: Clarke transform shell for later FOC (not in active PWM path).
+// Fixed-Point Q15 Hardware Clarke Transform: 3-phase (U, V) -> (alpha, beta)
 `timescale 1ns / 1ps
 
 module foc_clarke_stub (
@@ -10,14 +10,19 @@ module foc_clarke_stub (
     output reg  signed [15:0] ialpha,
     output reg  signed [15:0] ibeta
 );
+    // Constant 1/sqrt(3) in Q15 format: 0.577350269 * 32768 = 18919 (0x49E6)
+    localparam signed [15:0] ONE_OVER_SQRT3_Q15 = 16'sd18919;
+
+    wire signed [16:0] sum_term = $signed(iu) + ($signed(iv) <<< 1); // iu + 2*iv
+    wire signed [32:0] product  = sum_term * ONE_OVER_SQRT3_Q15;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ialpha <= 16'sd0;
             ibeta  <= 16'sd0;
         end else if (enable) begin
-            // Placeholder: ialpha≈iu, ibeta≈(iu+2*iv)/sqrt(3) — not implemented
             ialpha <= iu;
-            ibeta  <= iv;
+            ibeta  <= product[30:15]; // Scale Q15 back down
         end
     end
 endmodule

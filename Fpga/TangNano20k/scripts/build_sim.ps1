@@ -54,5 +54,19 @@ $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { exit $code }
 
+Write-Host "==> tb_foc"
+& $Iverilog -g2005-sv -o build\sim\tb_foc.vvp `
+    rtl\sincos_lut.v `
+    rtl\foc_clarke_stub.v `
+    rtl\foc_park_stub.v `
+    rtl\foc_svpwm_stub.v `
+    tb\tb_foc.v
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Push-Location build\sim
+& $Vvp tb_foc.vvp
+$code = $LASTEXITCODE
+Pop-Location
+if ($code -ne 0) { exit $code }
+
 Write-Host "ALL SIMS PASSED"
 exit 0
