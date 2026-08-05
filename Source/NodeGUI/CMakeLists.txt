@@ -89,7 +89,7 @@ target_link_libraries(NodeGUI
     PRIVATE
         NodeAPI
         InverterProtocol
-        RTEShared
+        RTE::Runtime
         QtNodes::QtNodes
         Qt6::Core
         Qt6::Concurrent

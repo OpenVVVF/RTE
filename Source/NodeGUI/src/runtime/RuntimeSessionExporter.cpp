@@ -69,7 +69,8 @@ std::vector<std::string> SortedKeys(const Map& values) {
     return keys;
 }
 
-void WriteStatsObject(QTextStream& stream, const TelemetryStats& stats) {
+void WriteStatsObject(QTextStream& stream,
+                      const rte::runtime::TelemetryStats& stats) {
     stream << "{\"rx_hz\":";
     WriteNumber(stream, stats.rxHz);
     stream << ",\"rx_bytes_per_second\":";
@@ -88,7 +89,7 @@ void WriteStatsObject(QTextStream& stream, const TelemetryStats& stats) {
 
 void WriteSignalSummaries(
     QTextStream& stream,
-    const std::unordered_map<std::string, SessionSignalHistory>&
+    const std::unordered_map<std::string, rte::runtime::SessionSignalHistory>&
         signalHistories) {
     stream << '{';
     const auto keys = SortedKeys(signalHistories);
@@ -176,7 +177,7 @@ using EventQueue =
                         LaterEvent>;
 
 void PushNext(EventQueue& events,
-              const RuntimeSessionSnapshot& session,
+              const rte::runtime::RuntimeSessionSnapshot& session,
               EventCursor cursor) {
     ++cursor.index;
     switch (cursor.kind) {
@@ -212,7 +213,7 @@ void PushNext(EventQueue& events,
 }
 
 void PopulateEvents(EventQueue& events,
-                    const RuntimeSessionSnapshot& session) {
+                    const rte::runtime::RuntimeSessionSnapshot& session) {
     for (const auto& key : SortedKeys(session.floatSignals)) {
         const auto& history = session.floatSignals.at(key);
         if (!history.t.empty() && !history.y.empty()) {
@@ -238,7 +239,7 @@ void PopulateEvents(EventQueue& events,
 }
 
 double WriteEvents(QTextStream& stream,
-                   const RuntimeSessionSnapshot& session) {
+                   const rte::runtime::RuntimeSessionSnapshot& session) {
     EventQueue events;
     PopulateEvents(events, session);
     double lastEventTime = 0.0;
@@ -318,7 +319,7 @@ double WriteEvents(QTextStream& stream,
 }  // namespace
 
 bool ExportRuntimeSession(const QString& path,
-                          const RuntimeSessionSnapshot& session,
+                          const rte::runtime::RuntimeSessionSnapshot& session,
                           const RuntimeSessionMetadata& metadata,
                           QString& error) {
     QSaveFile file(path);

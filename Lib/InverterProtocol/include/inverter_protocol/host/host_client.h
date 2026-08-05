@@ -40,6 +40,7 @@ public:
     using ConsoleCallback   = std::function<void(const std::string& line)>;
     using CmdRspCallback    = std::function<void(uint8_t req_id, uint8_t status, const std::vector<float>& fargs)>;
     using StatsCallback     = std::function<void(const ClientStats& stats)>;
+    using ConnectionCallback = std::function<void(bool connected)>;
 
     InverterClient();
     ~InverterClient();
@@ -65,6 +66,7 @@ public:
     void onConsoleLine(ConsoleCallback cb){ cb_console_ = std::move(cb); }
     void onCommandResponse(CmdRspCallback cb) { cb_rsp_ = std::move(cb); }
     void onStats(StatsCallback cb)        { cb_stats_ = std::move(cb); }
+    void onConnection(ConnectionCallback cb) { cb_connection_ = std::move(cb); }
 
     /* Thread-safe snapshot of counters. */
     ClientStats stats() const;
@@ -94,6 +96,7 @@ private:
     ConsoleCallback cb_console_;
     CmdRspCallback  cb_rsp_;
     StatsCallback   cb_stats_;
+    ConnectionCallback cb_connection_;
 };
 
 } // namespace ivp

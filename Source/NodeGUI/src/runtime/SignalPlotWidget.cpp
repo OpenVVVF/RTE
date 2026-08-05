@@ -79,7 +79,7 @@ SignalPlotWidget::~SignalPlotWidget()
     doneCurrent();
 }
 
-void SignalPlotWidget::SetStore(const TelemetryStore* store)
+void SignalPlotWidget::SetStore(const rte::runtime::TelemetryStore* store)
 {
     store_ = store;
     series_.clear();

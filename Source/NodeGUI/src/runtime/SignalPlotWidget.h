@@ -30,7 +30,7 @@ public:
     explicit SignalPlotWidget(QString title, QWidget* parent = nullptr);
     ~SignalPlotWidget() override;
 
-    void SetStore(const TelemetryStore* store);  // call once
+    void SetStore(const rte::runtime::TelemetryStore* store);  // call once
     void SetSignals(const QStringList& names);   // signals assigned to this plot
     QStringList Signals() const { return signals_; }
     void SetViewSeconds(double seconds);         // sliding X window, 0.5..60
@@ -57,7 +57,7 @@ private:
     QString UnitLabel() const;
 
     QString title_;
-    const TelemetryStore* store_ = nullptr;
+    const rte::runtime::TelemetryStore* store_ = nullptr;
     QStringList signals_;
     double viewSeconds_ = 10.0;
 

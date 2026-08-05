@@ -168,8 +168,13 @@ int main(int argc, char* argv[]) {
         if (index >= argc) { Usage(); return 1; }
         const std::string action = argv[index];
         if (action == "status") {
-            PrettyPrint(client.stateJson(&error));
-            return error.empty() ? 0 : 1;
+            const std::string body = client.stateJson(&error);
+            if (body.empty()) {
+                std::cerr << "rtectl: " << error << '\n';
+                return 1;
+            }
+            PrettyPrint(body);
+            return 0;
         }
         if (action == "release") {
             if (!client.hasLease()) {

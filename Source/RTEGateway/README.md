@@ -7,7 +7,7 @@ through `/api/v1` HTTP endpoints and an SSE event stream.
 ## Run locally
 
 ```sh
-./build/Source/RTEServer/rte-gateway --serial /dev/ttyACM0
+./build/Source/RTEGateway/rte-gateway --serial /dev/ttyACM0
 ./build/Source/RTECtl/rtectl info
 ./build/Source/RTECtl/rtectl control hold
 ```
@@ -17,13 +17,12 @@ place the host on the lab VPN and explicitly change `http.bind` in the JSON
 configuration. There is intentionally no application authentication in this
 release, so do not expose the port to an untrusted network.
 
-For a system installation, copy `Deploy/rte-gateway.json` to
-`/etc/rte/gateway.json`, install the binary as `/usr/local/bin/rte-gateway`,
-create the dedicated `rte` account, and install `Deploy/rte-gateway.service`.
+For deployment and verification instructions, see the repository's
+`headless.md` guide.
 
-`RTEServer` remains as a warning-emitting executable alias for one release.
-The old raw TCP serial bridge and unleased mutation routes have been removed.
-Old read-only HTTP routes remain deprecated aliases during the transition.
+The old `RTEServer` executable and raw TCP serial bridge have been removed.
+Deprecated read-only HTTP routes remain temporarily for API migration;
+unleased mutation routes return HTTP 410 and cannot bypass control ownership.
 
 ## Client responsibility
 

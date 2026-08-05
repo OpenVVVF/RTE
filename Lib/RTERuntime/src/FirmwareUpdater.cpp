@@ -3,7 +3,7 @@
 // NodeGUI. Linux only (the old _WIN32 paths were dropped).
 //
 // Deliberate changes vs. the old file:
-//   * Namespace NodeGUI::runtime; class shape follows FirmwareUpdater.h.
+//   * Neutral rte::runtime namespace; no GUI dependency.
 //   * drainSerial uses the in-repo ivp::SerialPort instead of the old app's
 //     own SerialPort.
 //   * The GPIO helper search additionally honors the RTE_TOOLS_DIR compile

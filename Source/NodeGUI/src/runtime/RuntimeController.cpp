@@ -57,10 +57,17 @@ RuntimeController::RuntimeController(
     gateway_->onStats = [this](const rte::runtime::GatewayClientStats& stats) {
         Push(StatsItem{stats});
     };
+    gateway_->onReset = [this] { Push(ResetItem{}); };
     gateway_->onConnection = [this](bool connected, const std::string& detail) {
         QMetaObject::invokeMethod(this, [this, connected, detail] {
             connected_ = connected;
             emit connectionChanged(connected, QString::fromStdString(detail));
+        }, Qt::QueuedConnection);
+    };
+    gateway_->onDevice = [this](bool connected, const std::string& port) {
+        QMetaObject::invokeMethod(this, [this, connected, port] {
+            deviceConnected_ = connected;
+            emit deviceConnectionChanged(connected, QString::fromStdString(port));
         }, Qt::QueuedConnection);
     };
     gateway_->onLease = [this](bool held, const std::string& owner) {
@@ -155,7 +162,7 @@ QString RuntimeController::ControlOwner() const {
     return QString::fromStdString(gateway_->leaseOwner());
 }
 
-RuntimeSessionSnapshot RuntimeController::CaptureSession() {
+rte::runtime::RuntimeSessionSnapshot RuntimeController::CaptureSession() {
     DrainQueue();
     return store_.SessionSnapshot();
 }
@@ -192,12 +199,15 @@ void RuntimeController::DrainQueue() {
                 store_.AddString(value.key, value.value);
             } else if constexpr (std::is_same_v<T, ConsoleItem>) {
                 store_.AddConsoleLine(value.text);
-            } else {
+            } else if constexpr (std::is_same_v<T, StatsItem>) {
                 const auto& s = value.stats;
                 store_.SetStats(s.rxHz, s.rxBytesPerSec, s.goodFrames, s.badFrames,
                                 s.rejectCrc, s.rejectHdr, s.rejectLen,
                                 s.rejectPayloadParse, s.rejectUnknownId, s.lastSeq);
                 store_.SetSuspended(s.suspended);
+            } else {
+                store_.ResetLiveTelemetry();
+                hasFloatTelemetry = true;
             }
         }, item);
     }

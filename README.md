@@ -31,9 +31,12 @@ RTE/
 │   ├── NodeAPI/            # Graph/node serialization and timing validation
 │   ├── InverterCodegen/    # Graph -> C++ code generation engine
 │   ├── RTELogger/          # Shared logging used by the host tools
-│   └── InverterProtocol/   # Shared host/device telemetry + command protocol
+│   ├── InverterProtocol/   # Shared host/device telemetry + command protocol
+│   └── RTERuntime/         # Qt-free gateway/API client static library
 └── Source/
     ├── NodeGUI/            # Qt6 + QtNodes node editor
+    ├── RTEGateway/         # Sole serial owner; HTTP/SSE service
+    ├── RTECtl/             # Command-line HTTP API client
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
     └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
 ```
@@ -42,6 +45,9 @@ RTE/
 - `Images/` contains the base firmware image that the emitter copies and modifies.
 - `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
 - `Source/` contains end-user executables.
+
+The headless architecture, deployment, remote-client, and flashing workflow is
+documented in [headless.md](headless.md).
 
 ## Porting to your platform
 

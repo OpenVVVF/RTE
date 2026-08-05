@@ -143,6 +143,9 @@ public:
                     const std::string& source,
                     bool sent);
     void ClearConsole();
+    // Clears rolling values/histories after an SSE replay gap or source
+    // change while preserving the complete session archive and console.
+    void ResetLiveTelemetry();
     void ClearSession();
 
     void SetStats(float rxHz,
@@ -235,18 +238,3 @@ private:
 };
 
 }  // namespace rte::runtime
-
-// Transitional source compatibility for NodeGUI presentation code. Shared
-// runtime ownership is now neutral and new code should use rte::runtime.
-namespace NodeGUI::runtime {
-using rte::runtime::ConsoleLine;
-using rte::runtime::RuntimeSessionSnapshot;
-using rte::runtime::SessionCommand;
-using rte::runtime::SessionConsoleLine;
-using rte::runtime::SessionSignalHistory;
-using rte::runtime::SessionStringSample;
-using rte::runtime::SignalHistory;
-using rte::runtime::TelemetrySnapshot;
-using rte::runtime::TelemetryStats;
-using rte::runtime::TelemetryStore;
-}  // namespace NodeGUI::runtime

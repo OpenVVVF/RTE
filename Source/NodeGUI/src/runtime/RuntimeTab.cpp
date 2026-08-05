@@ -119,8 +119,19 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     });
     connect(controller_, &RuntimeController::connectionChanged, this,
             [this](bool connected, const QString& detail) {
-        serverStatusLabel_->setText(connected ? QStringLiteral("connected")
-                                              : QStringLiteral("disconnected: %1").arg(detail));
+        serverStatusLabel_->setText(
+            connected
+                ? (controller_->IsDeviceConnected()
+                       ? QStringLiteral("gateway + device connected")
+                       : QStringLiteral("gateway connected; device disconnected"))
+                : QStringLiteral("gateway disconnected: %1").arg(detail));
+    });
+    connect(controller_, &RuntimeController::deviceConnectionChanged, this,
+            [this](bool connected, const QString& port) {
+        if (!controller_->IsConnected()) return;
+        serverStatusLabel_->setText(
+            connected ? QStringLiteral("gateway + device connected (%1)").arg(port)
+                      : QStringLiteral("gateway connected; device disconnected (%1)").arg(port));
     });
     updateHostEnabled();
 
@@ -269,7 +280,7 @@ void RuntimeTab::OnExportSession() {
             : QStringLiteral("inverter");
 
     exportStatus_->setText(QStringLiteral("exporting\u2026"));
-    const RuntimeSessionSnapshot session = controller_->CaptureSession();
+    const rte::runtime::RuntimeSessionSnapshot session = controller_->CaptureSession();
     QString error;
     if (!ExportRuntimeSession(path, session, metadata, error)) {
         exportStatus_->setText(QStringLiteral("export failed"));

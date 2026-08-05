@@ -40,7 +40,6 @@ public:
     LegacyTelemetryClient& operator=(const LegacyTelemetryClient&) = delete;
 
     bool start(const std::string& port);            // spawns reader thread (serial)
-    bool startTcp(const std::string& host, int port); // spawns reader thread (serial-over-TCP)
     void stop();                                    // joins thread, closes port
     void suspend();                                 // close port, idle reader (for flashing)
     void resume();                                  // clear suspend, reader reconnects
@@ -52,6 +51,7 @@ public:
     std::function<void(const std::string& key, const std::string& value)> onString;
     std::function<void(const std::string& line)> onConsole;
     std::function<void(const Stats&)> onStats;      // ~1 Hz
+    std::function<void(bool)> onConnection;         // serial/TCP transport state
 
 private:
     // Byte-stream transport interface (open/read/write/close). The numeric
@@ -82,24 +82,6 @@ private:
 
     private:
         int h_ = -1; // INVALID_SERIAL
-    };
-
-    // TCP client stream to a serial bridge (e.g. RTEServer). Bytes are the
-    // raw UART bytes, so the parser path is identical to serial.
-    class TcpStream : public ByteStream {
-    public:
-        TcpStream() = default;
-        ~TcpStream() override;
-
-        bool open(const std::string& host, int port) override;
-        void close() override;
-        bool isOpen() const override;
-        int read(uint8_t* buf, int cap) override;
-        bool write(const uint8_t* data, int n) override;
-        bool drain() override;
-
-    private:
-        int fd_ = -1;
     };
 
     void threadMain(const std::string& target, int arg, ByteStream& stream);
@@ -137,11 +119,6 @@ private:
 
     std::mutex serial_mtx_;
     SerialPort serial_;
-    TcpStream tcp_;
 };
 
 } // namespace rte::runtime
-
-namespace NodeGUI::runtime {
-using rte::runtime::LegacyTelemetryClient;
-}

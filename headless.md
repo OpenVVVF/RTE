@@ -1,101 +1,182 @@
-  ### 1. Build and test
+# Headless inverter access
 
-  cmake -S . -B build
-  cmake --build build --parallel
-  ctest --test-dir build --output-on-failure
+The headless design has four deliberately separate components:
 
-  Expected: all 91 tests pass.
+- **`RTERuntime`** is a Qt-free static library. It contains the HTTP/SSE API,
+  telemetry store, API client, lease logic, and firmware upload support shared
+  by the applications. It is an implementation library, not a daemon.
+- **`rte-gateway`** is the only process allowed to open the inverter serial
+  device. It parses each frame once and serves all clients over `/api/v1`.
+- **`rtectl`** is the command-line API client used for diagnostics, automation,
+  commands, and remote flashing.
+- **`NodeGUI`** builds graphs and firmware locally, then observes or controls a
+  local or remote gateway through the same `GatewayClient` library as `rtectl`.
 
-  ### 2. Start the gateway on the headless machine
+There is no `RTEServer` executable and no raw serial-over-TCP bridge. A future
+MCP server should be another client adapter over `GatewayClient`; it must not
+open serial devices or be embedded in the gateway.
 
-  Find the serial device:
+## Behavior guaranteed by the architecture
 
-  ls -l /dev/serial/by-id/
+- Any number of NodeGUI/CLI observers can read telemetry and console output.
+- One renewable operator lease gates commands and firmware uploads. A crashed
+  controller loses the lease automatically; observers remain connected.
+- SSE event IDs support ordered replay after short disconnects. A replay gap or
+  gateway restart sends an explicit reset snapshot so plots do not connect
+  unrelated time epochs.
+- Telemetry is streamed at source cadence; text-heavy GUI presentation is
+  throttled separately so console bursts do not stall graphs.
+- Firmware is built on the client. The exact binary body and its SHA-256 digest
+  are sent to the gateway, verified before staging, and flashed on the machine
+  physically connected to the inverter.
+- Gateway reachability and physical device connection are reported separately.
+- Errors use JSON objects under `error` with a stable `code` and readable
+  `message`.
 
-  For local-only testing:
+The old `/api/info`, `/api/telemetry`, `/api/console`, and `/flash/status`
+read-only routes remain as temporary migration aliases. Old mutation routes
+cannot bypass leases and return HTTP 410. New clients must use `/api/v1`.
 
-  ./build/Source/RTEServer/rte-gateway \
-    --serial /dev/ttyACM0 \
-    --bind 127.0.0.1 \
-    --http-port 18080
+## Build and test
 
-  For remote lab access:
+```bash
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
 
-  ./build/Source/RTEServer/rte-gateway \
-    --serial /dev/ttyACM0 \
-    --bind 0.0.0.0 \
-    --http-port 18080
+The relevant outputs are:
 
-  Only expose 0.0.0.0 behind the lab VPN/firewall.
+```text
+build/Source/RTEGateway/rte-gateway
+build/Source/RTECtl/rtectl
+build/Source/NodeGUI/NodeGUI
+build/Lib/RTERuntime/libRTERuntime.a
+```
 
-  ### 3. Test from another terminal or computer
+## Run locally
 
-  RTE_GATEWAY_URL=http://HEADLESS_MACHINE_IP:18080
+Find a stable device path when available:
 
-  Check connectivity:
+```bash
+ls -l /dev/serial/by-id/
+```
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" info
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" status
+Start the gateway on loopback:
 
-  Watch live telemetry and console output:
+```bash
+./build/Source/RTEGateway/rte-gateway \
+  --serial /dev/ttyACM0 \
+  --bind 127.0.0.1 \
+  --http-port 18080
+```
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" watch
+Then inspect it from another terminal:
 
-  Print current console history:
+```bash
+./build/Source/RTECtl/rtectl info
+./build/Source/RTECtl/rtectl status
+./build/Source/RTECtl/rtectl watch
+./build/Source/RTECtl/rtectl console
+```
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" console
+`status` shows the gateway connection, physical device connection, current
+telemetry, lease owner, and flash state.
 
-  Send a harmless device command:
+## Remote access
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" command help
+Prefer a VPN, SSH tunnel, or an authenticated reverse proxy. The gateway has no
+application-level authentication, so do not bind it to an untrusted network.
+An SSH tunnel keeps the service on loopback:
 
-  Replace help with a known safe read-only command if your firmware does not support it.
+```bash
+ssh -N -L 18080:127.0.0.1:18080 user@HEADLESS_HOST
+```
 
-  ### 4. Test multiple clients and control locking
+Clients can then use the local tunnel:
 
-  On computer A:
+```bash
+./build/Source/RTECtl/rtectl --server http://127.0.0.1:18080 info
+./build/Source/NodeGUI/NodeGUI --connect http://127.0.0.1:18080
+```
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" control hold
+On a trusted lab-only network, explicitly set `http.bind` to the host's lab
+address. Avoid `0.0.0.0` unless a firewall or VPN limits who can reach it.
 
-  Leave it running. On computer B:
+## Control and multiple clients
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" command help
+Hold control on computer A:
 
-  Computer B should report that another client holds control. Press Ctrl+C on computer A, then retry the command on B; it should succeed.
+```bash
+./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" control hold
+```
 
-  You can also run watch simultaneously on several computers. All should receive the same telemetry.
+While that runs, `watch`, `console`, `info`, and `status` continue to work from
+other clients. A command from computer B is rejected with the current lease
+owner. Stop the holder with Ctrl+C and the lease is released; if the holder
+disappears, it expires automatically.
 
-  ### 5. Test remote NodeGUI
+```bash
+./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" command help
+```
 
-  On your workstation:
+## Remote flashing
 
-  ./build/Source/NodeGUI/NodeGUI --connect "$RTE_GATEWAY_URL"
+Build the graph and firmware on the workstation first:
 
-  Verify:
+```bash
+Tools/build_flash_graph.sh --no-flash
+sha256sum build/foc-demo-fw/STM32CubeMX.bin
+```
 
-  - Telemetry and console data appear.
-  - NodeGUI initially says Observer.
-  - Take Control enables commands and flashing.
-  - A second NodeGUI shows who currently controls the gateway.
+The following command rewrites the connected inverter firmware:
 
-  ### 6. Test remote flashing
+```bash
+./build/Source/RTECtl/rtectl \
+  --server "$RTE_GATEWAY_URL" \
+  flash /absolute/path/to/STM32CubeMX.bin
+```
 
-  This command actually rewrites the inverter firmware:
+Or use the graph helper end to end:
 
-  ./build/Source/RTECtl/rtectl \
-    --server "$RTE_GATEWAY_URL" \
-    flash /absolute/path/to/firmware.bin
+```bash
+Tools/build_flash_graph.sh --flash-url "$RTE_GATEWAY_URL"
+```
 
-  Or build the graph locally and flash the resulting binary remotely:
+The client acquires and renews control for the whole upload/flash operation,
+prints the actual programmer output, and exits unsuccessfully if upload,
+verification, GPIO boot control, or flashing fails.
 
-  Tools/build_flash_graph.sh --flash-url "$RTE_GATEWAY_URL"
+## System service
 
-  For a build-only check first:
+Install the headless artifacts with the normal CMake prefix:
 
-  Tools/build_flash_graph.sh --no-flash
-  sha256sum build/foc-demo-fw/STM32CubeMX.bin
+```bash
+sudo cmake --install build --prefix /usr/local
+sudo install -d -m 0755 /etc/rte
+sudo install -m 0644 Deploy/rte-gateway.json /etc/rte/gateway.json
+sudo install -m 0644 Deploy/rte-gateway.service \
+  /etc/systemd/system/rte-gateway.service
+```
 
-  The flash output should stream in the terminal and finish with Done. Afterward:
+Validate the deployed settings without touching the serial device:
 
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" status
-  ./build/Source/RTECtl/rtectl --server "$RTE_GATEWAY_URL" watch
+```bash
+/usr/local/bin/rte-gateway --config /etc/rte/gateway.json --check-config
+```
+
+Create the restricted service account once, adjust the serial path and tool
+paths in `/etc/rte/gateway.json`, then enable the service:
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin rte
+sudo usermod -a -G dialout rte
+sudo systemctl daemon-reload
+sudo systemctl enable --now rte-gateway
+systemctl status rte-gateway
+journalctl -u rte-gateway -f
+```
+
+The supplied unit runs as `rte`, restarts on failure, and applies filesystem and
+privilege restrictions. Keep the JSON configuration readable only by trusted
+administrators if the gateway later gains credentials or other secrets.

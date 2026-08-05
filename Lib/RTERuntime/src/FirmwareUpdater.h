@@ -103,10 +103,3 @@ private:
 };
 
 }  // namespace rte::runtime
-
-namespace NodeGUI::runtime {
-using rte::runtime::FirmwareUpdater;
-using rte::runtime::FlashJob;
-using rte::runtime::FlashState;
-using rte::runtime::FlashStatus;
-}

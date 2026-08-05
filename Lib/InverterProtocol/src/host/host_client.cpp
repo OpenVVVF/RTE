@@ -27,6 +27,7 @@ void InverterClient::stop() {
         thread_.join();
     }
     transport_.close();
+    if (cb_connection_) cb_connection_(false);
 }
 
 bool InverterClient::isRunning() const {
@@ -93,6 +94,7 @@ ClientStats InverterClient::stats() const {
 void InverterClient::threadMain(const std::string& port, int baud) {
     auto reopen = [&](bool first) -> bool {
         transport_.close();
+        if (cb_connection_) cb_connection_(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(first ? 200 : 150));
 
         while (running_.load()) {
@@ -101,6 +103,7 @@ void InverterClient::threadMain(const std::string& port, int baud) {
         }
         if (!running_.load()) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if (cb_connection_) cb_connection_(true);
         return true;
     };
 

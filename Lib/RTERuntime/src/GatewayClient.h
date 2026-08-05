@@ -77,7 +77,9 @@ public:
     std::function<void(const std::string&, const std::string&)> onString;
     std::function<void(uint64_t, const std::string&)> onConsole;
     std::function<void(const GatewayClientStats&)> onStats;
+    std::function<void()> onReset;
     std::function<void(bool, const std::string&)> onConnection;
+    std::function<void(bool, const std::string&)> onDevice;
     std::function<void(bool, const std::string&)> onLease;
 
 private:

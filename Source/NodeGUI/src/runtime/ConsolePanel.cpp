@@ -62,7 +62,8 @@ ConsolePanel::ConsolePanel(RuntimeController* controller, QWidget* parent)
 
     consoleView_ = new QPlainTextEdit(this);
     consoleView_->setReadOnly(true);
-    consoleView_->setMaximumBlockCount(static_cast<int>(TelemetryStore::kConsoleCapLines));
+    consoleView_->setMaximumBlockCount(
+        static_cast<int>(rte::runtime::TelemetryStore::kConsoleCapLines));
     layout->addWidget(consoleView_, 1);
 
     auto* sendRow = new QHBoxLayout;

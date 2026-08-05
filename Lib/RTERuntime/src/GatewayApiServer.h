@@ -41,6 +41,7 @@ public:
 
     void setDevicePort(std::string port);
     void setProtocol(std::string protocol);
+    void setDeviceConnected(bool connected);
     void setCommandHandler(std::function<bool(const std::string&)> handler);
 
 private:

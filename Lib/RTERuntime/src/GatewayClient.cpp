@@ -85,6 +85,7 @@ void GatewayClient::setBaseUrl(std::string baseUrl) {
         lastEventId_ = 0;
         lastFlashJobId_.clear();
     }
+    if (onReset) onReset();
     if (restart) startEvents();
 }
 
@@ -423,6 +424,7 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
     const json body = json::parse(data, nullptr, false);
     if (!body.is_object() && !body.is_array()) return;
     if (type == "snapshot") {
+        if (body.value("reset", false) && onReset) onReset();
         const json latest = body.value("latest", json::object());
         const json timestamps = body.value("latest_timestamps", json::object());
         struct SnapshotSample {
@@ -460,6 +462,10 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
             }
         }
         if (body.contains("stats") && onStats) onStats(ParseStats(body["stats"]));
+        if (body.contains("device") && onDevice) {
+            const auto& device = body["device"];
+            onDevice(device.value("connected", false), device.value("port", ""));
+        }
         if (body.contains("lease") && onLease) {
             const auto& lease = body["lease"];
             const bool globallyHeld = lease.value("held", false);
@@ -492,6 +498,8 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
         }
     } else if (type == "stats" && onStats) {
         onStats(ParseStats(body));
+    } else if (type == "device" && onDevice) {
+        onDevice(body.value("connected", false), body.value("port", ""));
     } else if (type == "lease" && onLease) {
         const bool globallyHeld = body.value("held", false);
         const std::string id = body.value("id", "");

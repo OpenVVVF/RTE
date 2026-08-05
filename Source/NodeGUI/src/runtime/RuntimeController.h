@@ -44,9 +44,9 @@ public:
     QString ControlOwner() const;
     QString LeaseId() const { return QString::fromStdString(gateway_->leaseId()); }
 
-    TelemetryStore& Store() { return store_; }
-    const TelemetryStore& Store() const { return store_; }
-    RuntimeSessionSnapshot CaptureSession();
+    rte::runtime::TelemetryStore& Store() { return store_; }
+    const rte::runtime::TelemetryStore& Store() const { return store_; }
+    rte::runtime::RuntimeSessionSnapshot CaptureSession();
     void ClearSession();
 
     QString Port() const { return serialPort_; }
@@ -54,12 +54,14 @@ public:
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }
     bool IsConnected() const { return connected_; }
+    bool IsDeviceConnected() const { return deviceConnected_; }
 
 signals:
     void telemetryChanged();
     void storeChanged();
     void sessionCleared();
     void connectionChanged(bool connected, const QString& detail);
+    void deviceConnectionChanged(bool connected, const QString& port);
     void controlChanged(bool held, const QString& owner);
 
 private:
@@ -67,7 +69,9 @@ private:
     struct StringItem { std::string key; std::string value; };
     struct ConsoleItem { std::string text; };
     struct StatsItem { rte::runtime::GatewayClientStats stats; };
-    using PendingItem = std::variant<F32Item, StringItem, ConsoleItem, StatsItem>;
+    struct ResetItem {};
+    using PendingItem =
+        std::variant<F32Item, StringItem, ConsoleItem, StatsItem, ResetItem>;
 
     void Push(PendingItem item);
     void DrainQueue();
@@ -82,8 +86,9 @@ private:
     Protocol protocol_;
     bool started_ = false;
     bool connected_ = false;
+    bool deviceConnected_ = false;
 
-    TelemetryStore store_;
+    rte::runtime::TelemetryStore store_;
     QTimer* drainTimer_ = nullptr;
     QTimer* presentationTimer_ = nullptr;
     bool storeDirty_ = false;

@@ -532,10 +532,9 @@ QString MainWindow::FindServerExecutable() const {
     const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList candidates = {
         appDir + QStringLiteral("/rte-gateway"),
-        appDir + QStringLiteral("/RTEServer"),
 #ifdef RTE_PROJECT_ROOT
-        QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/build/Source/RTEServer/rte-gateway"),
-        QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/build/Source/RTEServer/RTEServer"),
+        QStringLiteral(RTE_PROJECT_ROOT)
+            + QStringLiteral("/build/Source/RTEGateway/rte-gateway"),
 #endif
     };
     for (const QString& candidate : candidates) {

@@ -15,7 +15,7 @@ struct RuntimeSessionMetadata {
 // Writes one complete runtime session as an atomic, chronological JSONL event
 // stream. Returns false and fills error when the destination cannot be written.
 bool ExportRuntimeSession(const QString& path,
-                          const RuntimeSessionSnapshot& session,
+                          const rte::runtime::RuntimeSessionSnapshot& session,
                           const RuntimeSessionMetadata& metadata,
                           QString& error);
 

@@ -95,6 +95,23 @@ void TelemetryStore::ClearConsole() {
     snap_.console.clear();
 }
 
+void TelemetryStore::ResetLiveTelemetry() {
+    std::lock_guard lock(mtx_);
+    snap_.latest.clear();
+    snap_.hist.clear();
+    snap_.latestStr.clear();
+    snap_.rxHz = 0.0f;
+    snap_.rxBytesPerSec = 0.0f;
+    snap_.goodFrames = 0;
+    snap_.badFrames = 0;
+    snap_.rejectCrc = 0;
+    snap_.rejectHdr = 0;
+    snap_.rejectLen = 0;
+    snap_.rejectPayloadParse = 0;
+    snap_.rejectUnknownId = 0;
+    snap_.lastSeq = 0;
+}
+
 void TelemetryStore::ClearSession() {
     std::lock_guard lock(mtx_);
     const bool suspended = snap_.suspended;

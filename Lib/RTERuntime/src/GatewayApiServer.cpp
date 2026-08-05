@@ -114,6 +114,7 @@ struct GatewayApiServer::Impl {
     mutable std::mutex configMutex;
     std::string devicePort;
     std::string protocol = "legacy";
+    bool deviceConnected = false;
     std::function<bool(const std::string&)> commandHandler;
 
     mutable std::mutex leaseMutex;
@@ -179,6 +180,13 @@ struct GatewayApiServer::Impl {
                 {"log", status.log}};
     }
 
+    json DeviceJson() const {
+        std::lock_guard lock(configMutex);
+        return {{"connected", deviceConnected},
+                {"port", devicePort},
+                {"protocol", protocol}};
+    }
+
     void RequireLease(const httplib::Request& request,
                       httplib::Response& response,
                       const std::function<void()>& action) {
@@ -194,8 +202,10 @@ struct GatewayApiServer::Impl {
     void RegisterRoutes() {
         server.Get("/api/v1/health", [this](const auto&, auto& response) {
             const auto stats = store.GetStatsLine();
+            const json device = DeviceJson();
             JsonResponse(response, 200,
-                         {{"ok", !stats.suspended},
+                         {{"ok", device.value("connected", false) && !stats.suspended},
+                          {"device", device},
                           {"serial_suspended", stats.suspended},
                           {"flash_busy", updater.status().busy}});
         });
@@ -216,6 +226,7 @@ struct GatewayApiServer::Impl {
         server.Get("/api/v1/state", [this](const auto&, auto& response) {
             json body = SnapshotJson(store.Snapshot());
             body["event_sequence"] = store.LatestEventSeq();
+            body["device"] = DeviceJson();
             body["lease"] = LeaseJson();
             body["flash"] = FlashJson();
             JsonResponse(response, 200, body);
@@ -415,6 +426,7 @@ struct GatewayApiServer::Impl {
             auto first = std::make_shared<bool>(true);
             auto lastLease = std::make_shared<std::string>();
             auto lastFlash = std::make_shared<std::string>();
+            auto lastDevice = std::make_shared<std::string>();
             auto lastHeartbeat = std::make_shared<std::chrono::steady_clock::time_point>(
                 std::chrono::steady_clock::now());
             auto lastStateCheck = std::make_shared<std::chrono::steady_clock::time_point>(
@@ -423,15 +435,17 @@ struct GatewayApiServer::Impl {
             response.set_header("X-Accel-Buffering", "no");
             response.set_chunked_content_provider(
                 "text/event-stream",
-                [this, state, first, lastLease, lastFlash, lastHeartbeat,
+                [this, state, first, lastLease, lastFlash, lastDevice, lastHeartbeat,
                  lastStateCheck](std::size_t, httplib::DataSink& sink) {
                     if (!running.load() || !sink.is_writable()) return false;
                     std::string output;
                     if (*first) {
                         const json lease = LeaseJson();
                         const json flash = FlashJson();
+                        const json device = DeviceJson();
                         *lastLease = lease.dump();
                         *lastFlash = flash.dump();
+                        *lastDevice = device.dump();
                         const uint64_t latest = store.LatestEventSeq();
                         // A new observer needs a snapshot. A reconnecting
                         // observer must receive only the ordered replay;
@@ -442,6 +456,7 @@ struct GatewayApiServer::Impl {
                             json snapshot = SnapshotJson(store.Snapshot());
                             snapshot["lease"] = lease;
                             snapshot["flash"] = flash;
+                            snapshot["device"] = device;
                             if (*state > latest) snapshot["reset"] = true;
                             output += SseMessage(latest, "snapshot", snapshot);
                             *state = latest;
@@ -467,6 +482,7 @@ struct GatewayApiServer::Impl {
                         json strings = json::array();
                         json console = json::array();
                         json stats;
+                        bool telemetryReset = false;
                         for (const auto& event : events) {
                             *state = event.seq;
                             switch (event.kind) {
@@ -486,10 +502,16 @@ struct GatewayApiServer::Impl {
                                 case TelemetryEventKind::Stats: stats = StatsJson(event.stats); break;
                                 case TelemetryEventKind::Suspended:
                                     stats = StatsJson(store.GetStatsLine()); break;
-                                case TelemetryEventKind::Reset: break;
+                                case TelemetryEventKind::Reset:
+                                    telemetryReset = true;
+                                    break;
                             }
                         }
-                        if (!telemetry.empty() || !strings.empty()) {
+                        if (telemetryReset) {
+                            json snapshot = SnapshotJson(store.Snapshot());
+                            snapshot["reset"] = true;
+                            output += SseMessage(*state, "snapshot", snapshot);
+                        } else if (!telemetry.empty() || !strings.empty()) {
                             output += SseMessage(*state, "telemetry",
                                                  {{"samples", telemetry}, {"strings", strings}});
                         }
@@ -507,6 +529,11 @@ struct GatewayApiServer::Impl {
                         if (flash != *lastFlash) {
                             output += "event: flash\ndata: " + flash + "\n\n";
                             *lastFlash = flash;
+                        }
+                        const std::string device = DeviceJson().dump();
+                        if (device != *lastDevice) {
+                            output += "event: device\ndata: " + device + "\n\n";
+                            *lastDevice = device;
                         }
                         *lastStateCheck = now;
                     }
@@ -547,9 +574,23 @@ struct GatewayApiServer::Impl {
         server.Post("/flash", gone);
 
         server.set_error_handler([](const auto&, auto& response) {
+            if (response.get_header_value("Content-Type") == "application/json") {
+                return;
+            }
             if (response.status == 404) {
                 ErrorResponse(response, 404, "not_found", "No such gateway endpoint");
+            } else if (response.status == 413) {
+                ErrorResponse(response, 413, "payload_too_large",
+                              "The request body exceeds the configured limit");
+            } else if (response.status >= 400) {
+                ErrorResponse(response, response.status, "http_error",
+                              "The gateway rejected the request");
             }
+        });
+        server.set_exception_handler([](const auto&, auto& response,
+                                        std::exception_ptr) {
+            ErrorResponse(response, 500, "internal_error",
+                          "The gateway could not complete the request");
         });
     }
 };
@@ -597,6 +638,11 @@ void GatewayApiServer::setDevicePort(std::string port) {
 void GatewayApiServer::setProtocol(std::string protocol) {
     std::lock_guard lock(impl_->configMutex);
     impl_->protocol = std::move(protocol);
+}
+
+void GatewayApiServer::setDeviceConnected(bool connected) {
+    std::lock_guard lock(impl_->configMutex);
+    impl_->deviceConnected = connected;
 }
 
 void GatewayApiServer::setCommandHandler(

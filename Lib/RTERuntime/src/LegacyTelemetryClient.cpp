@@ -6,13 +6,8 @@
 #include <vector>
 
 #include <fcntl.h>
-#include <poll.h>
 #include <unistd.h>
 #include <termios.h>
-
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/socket.h>
 
 namespace rte::runtime {
 
@@ -171,110 +166,6 @@ bool LegacyTelemetryClient::SerialPort::drain() {
     return ::tcdrain(h_) == 0;
 }
 
-// ---------------- TcpStream ----------------
-LegacyTelemetryClient::TcpStream::~TcpStream() { close(); }
-
-bool LegacyTelemetryClient::TcpStream::isOpen() const {
-    return fd_ >= 0;
-}
-
-void LegacyTelemetryClient::TcpStream::close() {
-    if (fd_ >= 0) {
-        ::close(fd_);
-        fd_ = -1;
-    }
-}
-
-bool LegacyTelemetryClient::TcpStream::open(const std::string& host, int port) {
-    close();
-
-    char portStr[16];
-    std::snprintf(portStr, sizeof(portStr), "%d", port);
-
-    addrinfo hints{};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-
-    addrinfo* result = nullptr;
-    if (getaddrinfo(host.c_str(), portStr, &hints, &result) != 0) return false;
-
-    int fd = -1;
-    for (addrinfo* ai = result; ai; ai = ai->ai_next) {
-        fd = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-        if (fd < 0) continue;
-
-        // Non-blocking connect with a 500 ms timeout: a plain connect() to an
-        // unreachable host blocks for minutes and stalls the reader thread.
-        const int flags = fcntl(fd, F_GETFL, 0);
-        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-        int rc = ::connect(fd, ai->ai_addr, ai->ai_addrlen);
-        if (rc != 0 && errno == EINPROGRESS) {
-            pollfd pfd{fd, POLLOUT, 0};
-            if (::poll(&pfd, 1, 500) == 1 && (pfd.revents & POLLOUT)) {
-                int err = 0;
-                socklen_t len = sizeof(err);
-                ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
-                rc = (err == 0) ? 0 : -1;
-            } else {
-                rc = -1;
-            }
-        }
-        fcntl(fd, F_SETFL, flags);
-
-        if (rc == 0) break;
-        ::close(fd);
-        fd = -1;
-    }
-    freeaddrinfo(result);
-    if (fd < 0) return false;
-
-    // Match the serial read pacing: reads return promptly with whatever is
-    // available, timing out after 100 ms.
-    timeval tv{};
-    tv.tv_sec = 0;
-    tv.tv_usec = 100000;
-    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    fd_ = fd;
-    return true;
-}
-
-int LegacyTelemetryClient::TcpStream::read(uint8_t* buf, int cap) {
-    if (!isOpen()) return 0;
-    const ssize_t n = ::recv(fd_, buf, (size_t)cap, 0);
-    if (n == 0) {
-        // Orderly close by the bridge: drop the connection so the reader's
-        // reconnect logic kicks in.
-        close();
-        return 0;
-    }
-    if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return 0;
-        close();
-        return 0;
-    }
-    return (int)n;
-}
-
-bool LegacyTelemetryClient::TcpStream::write(const uint8_t* data, int n) {
-    if (!isOpen() || !data || n <= 0) return false;
-    int total = 0;
-    while (total < n) {
-        const ssize_t wrote = ::send(fd_, data + total, (size_t)(n - total), MSG_NOSIGNAL);
-        if (wrote < 0) {
-            if (errno == EINTR) continue;
-            return false;
-        }
-        if (wrote == 0) return false;
-        total += (int)wrote;
-    }
-    return true;
-}
-
-bool LegacyTelemetryClient::TcpStream::drain() {
-    return isOpen();
-}
-
 // ---------------- LegacyTelemetryClient ----------------
 LegacyTelemetryClient::~LegacyTelemetryClient() { stop(); }
 
@@ -286,20 +177,12 @@ bool LegacyTelemetryClient::start(const std::string& port) {
     return true;
 }
 
-bool LegacyTelemetryClient::startTcp(const std::string& host, int port) {
-    stop();
-    run_.store(true);
-    thr_ = std::thread(&LegacyTelemetryClient::threadMain, this,
-                       host, port, std::ref(tcp_));
-    return true;
-}
-
 void LegacyTelemetryClient::stop() {
     run_.store(false);
     if (thr_.joinable()) thr_.join();
     std::lock_guard<std::mutex> lk(serial_mtx_);
     serial_.close();
-    tcp_.close();
+    if (onConnection) onConnection(false);
 }
 
 void LegacyTelemetryClient::suspend() {
@@ -307,8 +190,8 @@ void LegacyTelemetryClient::suspend() {
     {
         std::lock_guard<std::mutex> lk(serial_mtx_);
         serial_.close();
-        tcp_.close();
     }
+    if (onConnection) onConnection(false);
     // Give the reader thread time to see the close and back off.
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
@@ -326,10 +209,8 @@ bool LegacyTelemetryClient::sendLine(const std::string& line) {
     if (out.empty()) return false;
     if (out.back() != '\n' && out.back() != '\r') out.push_back('\n');
     std::lock_guard<std::mutex> lk(serial_mtx_);
-    ByteStream* stream = tcp_.isOpen() ? static_cast<ByteStream*>(&tcp_)
-                                       : static_cast<ByteStream*>(&serial_);
-    if (!stream->write((const uint8_t*)out.data(), (int)out.size())) return false;
-    return stream->drain();
+    if (!serial_.write((const uint8_t*)out.data(), (int)out.size())) return false;
+    return serial_.drain();
 }
 
 void LegacyTelemetryClient::ingestF32(const std::string& key, float v, float tsec) {
@@ -479,6 +360,7 @@ void LegacyTelemetryClient::threadMain(const std::string& target, int arg, ByteS
             std::lock_guard<std::mutex> lk(serial_mtx_);
             stream.close();
         }
+        if (onConnection) onConnection(false);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(first_time ? 200 : 150));
 
@@ -494,6 +376,7 @@ void LegacyTelemetryClient::threadMain(const std::string& target, int arg, ByteS
         if (!run_.load()) return false;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if (onConnection) onConnection(true);
         return true;
     };
 
