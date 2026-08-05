@@ -42,17 +42,25 @@ SimContext& GetSimContext() { return g_sim_ctx; }
 
 void SimNotifyEncoderSample() { g_sim_ctx.encoder_sample_new = true; }
 
+int g_active_pole_pairs = 7;
+
 void SimRuntime_RegisterPlant(IPlant* plant) {
     g_plant = plant;
     auto* ode = dynamic_cast<OdePlant*>(plant);
     if (ode) {
         g_motor = &ode->Model();
+        g_active_pole_pairs = ode->Model().Params().pole_pairs;
     } else {
         g_motor = nullptr;
     }
 }
 
-void SimRuntime_RegisterMotor(MotorModel* motor) { g_motor = motor; }
+void SimRuntime_RegisterMotor(MotorModel* motor) {
+    g_motor = motor;
+    if (motor) {
+        g_active_pole_pairs = motor->Params().pole_pairs;
+    }
+}
 
 } // namespace hostsim
 
@@ -181,7 +189,10 @@ float platform_get_encoder_angle_latest(void) {
 
 float platform_get_motor_rpm(void) {
     float omega_e = 0.0f;
-    int pole_pairs = 7;
+    int pole_pairs = hostsim::g_active_pole_pairs;
+    if (hostsim::g_motor) {
+        pole_pairs = hostsim::g_motor->Params().pole_pairs;
+    }
     if (hostsim::g_plant) {
         omega_e = hostsim::g_plant->OmegaElectricalRadPerSec();
     } else if (hostsim::g_motor) {
@@ -189,9 +200,7 @@ float platform_get_motor_rpm(void) {
     } else {
         return 0.0f;
     }
-    if (hostsim::g_motor) {
-        pole_pairs = hostsim::g_motor->Params().pole_pairs;
-    }
+    if (pole_pairs <= 0) pole_pairs = 7;
     return omega_e * 60.0f / (hostsim::kTwoPi * static_cast<float>(pole_pairs));
 }
 

@@ -1143,7 +1143,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
             QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
             QStringLiteral("-File"), QString::fromStdString(script.string()),
             QStringLiteral("-ForceEmit"),
-            QStringLiteral("-KeepGui"),
+            QStringLiteral("-NoGui"),
             QStringLiteral("-Graph"),
             absoluteGraphPath,
         };

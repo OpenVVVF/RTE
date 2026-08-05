@@ -688,11 +688,6 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             if (!nodeType) continue;
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
-            if (classBased && !node->parameterInputs.empty()) {
-                error = "parameterInputs are not supported on class-based node '" +
-                        node->id + "'";
-                return false;
-            }
 
             source << "    // Step node: " << node->id << " (" << nodeType->id << ")\n";
             source << "    {\n";
@@ -773,6 +768,9 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 auto used = UsedIdentifiers(nodeType->inlineCode);
                 for (const auto& [key, value] : node->parameters) {
                     if (used.count(key)) {
+                        if (std::find(node->parameterInputs.begin(), node->parameterInputs.end(), key) != node->parameterInputs.end()) {
+                            continue; // Already bound from wire connection
+                        }
                         auto paramType = nodeType->FindParameterType(key);
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")

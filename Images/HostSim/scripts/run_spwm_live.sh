@@ -96,6 +96,7 @@ if [[ "${need_emit}" -eq 1 ]]; then
   echo "Emitting ${GRAPH_NAME} graph into HostSim..."
   "${EMITTER}" \
     --base-src "${HOSTSIM_ROOT}" \
+    --templatesDir "${REPO_ROOT}/Assets/NodeTemplates" \
     --graph "${GRAPH}" \
     --output "${EMITTED_REL}" \
     --verbosity info

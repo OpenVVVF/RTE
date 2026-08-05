@@ -411,12 +411,6 @@ bool SimRuntime::StepOnce() {
 
     if (time_s_ + 1e-9f >= next_tim_s_) {
         // RTE_EMIT: tim_isr step
-        if (ctx.duty_u == 0.0f && ctx.duty_v == 0.0f && ctx.duty_w == 0.0f) {
-            if (throttle_a_ > 0.0f || throttle_b_ > 0.0f) {
-                float freq_hz = throttle_b_ > 0.0f ? (1.0f + 19.0f * throttle_b_) : 10.0f;
-                platform_spwm_step(throttle_a_, freq_hz, tim_dt_s_, &ctx.duty_u, &ctx.duty_v, &ctx.duty_w);
-            }
-        }
         duty_u_ = ctx.duty_u;
         duty_v_ = ctx.duty_v;
         duty_w_ = ctx.duty_w;
