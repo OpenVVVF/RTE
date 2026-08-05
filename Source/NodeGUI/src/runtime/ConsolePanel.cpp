@@ -274,6 +274,8 @@ void ConsolePanel::OnSessionCleared() {
     commandHistory_.clear();
     historyIndex_ = -1;
     lastConsoleSeq_ = 0;
+}
+
 void ConsolePanel::OnSendThrottle() {
     controller_->SendCommand(QStringLiteral("throttle a %1")
                                  .arg(throttleASpin_->value(), 0, 'f', 3));
