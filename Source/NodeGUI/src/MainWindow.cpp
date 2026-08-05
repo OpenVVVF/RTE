@@ -426,6 +426,13 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     appSwitcher_->addTab(QStringLiteral("Runtime"));
     runtimeTab_->LoadAutosave();
 
+    if (saveFramKeysAction_) {
+        saveFramKeysAction_->setEnabled(true);
+    }
+    if (loadFramKeysAction_) {
+        loadFramKeysAction_->setEnabled(true);
+    }
+
     firmwareUpdateTab_ = new runtime::FlashPanel(firmwareUpdater_.get(),
                                                   runtimeController_.get(),
                                                   httpApiServer_.get(),
@@ -769,6 +776,25 @@ void MainWindow::SetupMenu() {
     connect(arrangeAction_, &QAction::triggered, this, &MainWindow::OnAutoArrange);
 
     RebuildViewMenu();
+
+    // Runtime menu is only meaningful once SetupRuntime has created runtimeTab_.
+    runtimeMenu_ = menuBar()->addMenu(QStringLiteral("&Runtime"));
+    saveFramKeysAction_ =
+        runtimeMenu_->addAction(QStringLiteral("&Save FRAM Keys\u2026"));
+    saveFramKeysAction_->setEnabled(false);
+    connect(saveFramKeysAction_, &QAction::triggered, this, [this] {
+        if (runtimeTab_) {
+            runtimeTab_->OnSaveFramKeys();
+        }
+    });
+    loadFramKeysAction_ =
+        runtimeMenu_->addAction(QStringLiteral("&Load FRAM Keys\u2026"));
+    loadFramKeysAction_->setEnabled(false);
+    connect(loadFramKeysAction_, &QAction::triggered, this, [this] {
+        if (runtimeTab_) {
+            runtimeTab_->OnLoadFramKeys();
+        }
+    });
 }
 
 void MainWindow::RegisterShortcut(QAction* action,
