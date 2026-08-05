@@ -245,6 +245,7 @@ bool CopySupportFiles(const std::filesystem::path& generatedDir, std::string& er
     std::filesystem::remove(auDst, removeEc);
     std::filesystem::copy_file(auSrc, auDst,
                                std::filesystem::copy_options::overwrite_existing);
+    (void)removeEc;
     return true;
 }
 
@@ -524,7 +525,7 @@ bool Emitter::Run(const EmitterOptions& options) const {
     allDomains.insert(markerDomains.begin(), markerDomains.end());
 
     // Process each file that contains markers.
-    for (auto& [filePath, markers] : fileMarkers) {
+    for (const auto& [filePath, markers] : fileMarkers) {
         std::string readError;
         std::string text = ReadFileText(filePath, readError);
         if (!readError.empty()) {
