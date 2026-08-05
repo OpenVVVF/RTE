@@ -83,6 +83,8 @@ public:
 private:
     void eventLoop();
     void renewalLoop();
+    void startLeaseRenewal();
+    void stopLeaseRenewal();
     void dispatchEvent(const std::string& type, const std::string& data);
     void clearLease();
 
@@ -97,6 +99,8 @@ private:
     mutable std::mutex activeClientMutex_;
     void* activeHttpClient_ = nullptr;
     std::atomic<bool> eventsRun_{false};
+    std::atomic<bool> leaseRun_{false};
+    std::atomic<int> leaseRenewIntervalMs_{5000};
     std::thread eventThread_;
     std::thread renewalThread_;
 };

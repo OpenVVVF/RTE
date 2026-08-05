@@ -361,11 +361,18 @@ static size_t build_define_payload(uint8_t* payload, size_t cap) {
     uint8_t n_defs = 0;
 
     while (!g_define_q.empty()) {
+        const DefineItem* next = g_define_q.front();
+        if (next == nullptr) break;
+
+        // Do not remove a definition until we know it fits. Popping first
+        // silently lost the item at every payload boundary; since periodic
+        // re-announcement uses a stable order, the same telemetry ID could
+        // remain unknown to a late-joining host forever.
+        const size_t need = 2 + 1 + 1 + next->key_len;
+        if ((size_t)(w - payload) + need > cap) break;
+
         DefineItem d{};
         if (!g_define_q.pop(d)) break;
-
-        const size_t need = 2 + 1 + 1 + d.key_len;
-        if ((size_t)(w - payload) + need > cap) break;
 
         put_u16(w, d.id);
         *w++ = d.type;

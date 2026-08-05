@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 
 using json = nlohmann::json;
@@ -49,6 +50,15 @@ GatewayClientStats ParseStats(const json& value) {
     return result;
 }
 
+float TelemetryFloat(const json& value, float fallback = 0.0f) {
+    if (value.is_number()) return value.get<float>();
+    // nlohmann/json deliberately represents non-finite floating-point values
+    // as JSON null. Preserve that meaning for plots instead of throwing from
+    // get<float>() and terminating the SSE reader thread.
+    if (value.is_null()) return std::numeric_limits<float>::quiet_NaN();
+    return fallback;
+}
+
 }  // namespace
 
 GatewayClient::GatewayClient(std::string baseUrl)
@@ -62,6 +72,7 @@ GatewayClient::~GatewayClient() {
         owned = ownsLease_;
     }
     if (owned) releaseLease();
+    stopLeaseRenewal();
 }
 
 void GatewayClient::setBaseUrl(std::string baseUrl) {
@@ -85,7 +96,6 @@ std::string GatewayClient::baseUrl() const {
 bool GatewayClient::startEvents() {
     if (eventsRun_.exchange(true)) return true;
     eventThread_ = std::thread(&GatewayClient::eventLoop, this);
-    renewalThread_ = std::thread(&GatewayClient::renewalLoop, this);
     return true;
 }
 
@@ -96,7 +106,6 @@ void GatewayClient::stopEvents() {
         if (activeHttpClient_) static_cast<httplib::Client*>(activeHttpClient_)->stop();
     }
     if (eventThread_.joinable()) eventThread_.join();
-    if (renewalThread_.joinable()) renewalThread_.join();
 }
 
 bool GatewayClient::acquireLease(const std::string& owner, std::string* error) {
@@ -120,6 +129,9 @@ bool GatewayClient::acquireLease(const std::string& owner, std::string* error) {
         leaseOwner_ = body.value("owner", owner);
         ownsLease_ = true;
     }
+    const int ttlMs = body.value("ttl_ms", 15000);
+    leaseRenewIntervalMs_.store(std::clamp(ttlMs / 3, 100, 5000));
+    startLeaseRenewal();
     if (onLease) onLease(true, leaseOwner());
     return true;
 }
@@ -136,6 +148,7 @@ bool GatewayClient::releaseLease(std::string* error) {
     const bool success = result && (result->status == 200 || result->status == 404);
     if (!success && error) *error = ResponseError(result);
     clearLease();
+    stopLeaseRenewal();
     return success;
 }
 
@@ -155,10 +168,18 @@ std::string GatewayClient::leaseOwner() const {
 }
 
 void GatewayClient::useLease(std::string id, std::string owner) {
-    std::lock_guard lock(mutex_);
-    leaseId_ = std::move(id);
-    leaseOwner_ = std::move(owner);
-    ownsLease_ = false;
+    {
+        std::lock_guard lock(mutex_);
+        leaseId_ = std::move(id);
+        leaseOwner_ = std::move(owner);
+        ownsLease_ = false;
+    }
+    // A supplied lease is not released by this client's destructor, but it
+    // still needs renewal while a long command or firmware upload is active.
+    if (hasLease()) {
+        leaseRenewIntervalMs_.store(100);
+        startLeaseRenewal();
+    }
 }
 
 bool GatewayClient::sendCommand(const std::string& command,
@@ -351,17 +372,41 @@ void GatewayClient::eventLoop() {
 }
 
 void GatewayClient::renewalLoop() {
-    while (eventsRun_.load()) {
-        for (int i = 0; i < 50 && eventsRun_.load(); ++i) {
+    while (leaseRun_.load()) {
+        const int intervalMs = leaseRenewIntervalMs_.load();
+        const int slices = std::max(1, (intervalMs + 99) / 100);
+        for (int i = 0; i < slices && leaseRun_.load(); ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        if (!eventsRun_.load()) break;
+        if (!leaseRun_.load()) break;
         const std::string id = leaseId();
-        if (id.empty()) continue;
+        if (id.empty()) break;
         httplib::Client client(baseUrl());
         const auto result = client.Put("/api/v1/control/lease/" + id,
                                        "", "application/json");
-        if (!result || result->status != 200) clearLease();
+        if (!result || result->status != 200) {
+            clearLease();
+            break;
+        }
+        const json body = json::parse(result->body, nullptr, false);
+        if (body.is_object()) {
+            const int ttlMs = body.value("ttl_ms", 15000);
+            leaseRenewIntervalMs_.store(std::clamp(ttlMs / 3, 100, 5000));
+        }
+    }
+}
+
+void GatewayClient::startLeaseRenewal() {
+    if (leaseRun_.exchange(true)) return;
+    if (renewalThread_.joinable()) renewalThread_.join();
+    renewalThread_ = std::thread(&GatewayClient::renewalLoop, this);
+}
+
+void GatewayClient::stopLeaseRenewal() {
+    leaseRun_.store(false);
+    if (renewalThread_.joinable()
+        && renewalThread_.get_id() != std::this_thread::get_id()) {
+        renewalThread_.join();
     }
 }
 
@@ -370,12 +415,18 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
     if (!body.is_object() && !body.is_array()) return;
     if (type == "snapshot") {
         const json latest = body.value("latest", json::object());
-        for (auto it = latest.begin(); it != latest.end(); ++it) {
-            if (onF32) onF32(it.key(), it.value().get<float>(), 0.0f);
+        if (latest.is_object()) {
+            for (auto it = latest.begin(); it != latest.end(); ++it) {
+                if (onF32) onF32(it.key(), TelemetryFloat(it.value()), 0.0f);
+            }
         }
         const json strings = body.value("latest_strings", json::object());
-        for (auto it = strings.begin(); it != strings.end(); ++it) {
-            if (onString) onString(it.key(), it.value().get<std::string>());
+        if (strings.is_object()) {
+            for (auto it = strings.begin(); it != strings.end(); ++it) {
+                if (onString && it.value().is_string()) {
+                    onString(it.key(), it.value().get<std::string>());
+                }
+            }
         }
         if (body.contains("stats") && onStats) onStats(ParseStats(body["stats"]));
         if (body.contains("lease") && onLease) {
@@ -389,12 +440,20 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
         if (onConnection) onConnection(true, {});
     } else if (type == "telemetry") {
         for (const auto& sample : body.value("samples", json::array())) {
-            if (onF32) onF32(sample.value("signal", ""), sample.value("value", 0.0f),
-                             sample.value("t", 0.0f));
+            if (!sample.is_object()) continue;
+            const std::string signal = sample.value("signal", "");
+            if (onF32 && !signal.empty()) {
+                onF32(signal, TelemetryFloat(sample.value("value", json{})),
+                      TelemetryFloat(sample.value("t", json{})));
+            }
         }
         for (const auto& sample : body.value("strings", json::array())) {
-            if (onString) onString(sample.value("signal", ""),
-                                   sample.value("value", ""));
+            if (!sample.is_object()) continue;
+            const std::string signal = sample.value("signal", "");
+            if (onString && !signal.empty() && sample.contains("value")
+                && sample["value"].is_string()) {
+                onString(signal, sample["value"].get<std::string>());
+            }
         }
     } else if (type == "console") {
         for (const auto& line : body) {
@@ -420,6 +479,7 @@ void GatewayClient::clearLease() {
         leaseOwner_.clear();
         ownsLease_ = false;
     }
+    leaseRun_.store(false);
     if (onLease) onLease(false, owner);
 }
 

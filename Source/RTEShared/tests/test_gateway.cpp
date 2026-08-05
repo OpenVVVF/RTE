@@ -8,6 +8,8 @@
 #include <nlohmann/json.hpp>
 
 #include <condition_variable>
+#include <cmath>
+#include <limits>
 #include <mutex>
 
 using json = nlohmann::json;
@@ -44,6 +46,7 @@ protected:
               options.port = 0;
               options.workerThreads = 8;
               options.maxStreams = 2;
+              options.leaseTtl = std::chrono::seconds(1);
               return options;
           }()) {}
 
@@ -93,6 +96,50 @@ TEST_F(GatewayApiTest, EnforcesSingleOperatorLeaseForCommands) {
     ASSERT_TRUE(command);
     EXPECT_EQ(command->status, 200);
     EXPECT_EQ(json::parse(command->body)["lines"][0]["text"], "ack: status");
+}
+
+TEST_F(GatewayApiTest, ExpiresAnUnrenewedOperatorLease) {
+    const auto acquired = client->Post("/api/v1/control/lease",
+                                       json({{"owner", "short-lived"}}).dump(),
+                                       "application/json");
+    ASSERT_TRUE(acquired);
+    ASSERT_EQ(acquired->status, 201);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    const auto status = client->Get("/api/v1/control/lease");
+    ASSERT_TRUE(status);
+    ASSERT_EQ(status->status, 200);
+    EXPECT_FALSE(json::parse(status->body).value("held", true));
+}
+
+TEST_F(GatewayApiTest, ClientRenewsOwnedLeaseWithoutStartingEventStream) {
+    const std::string url = "http://127.0.0.1:" + std::to_string(api.actualPort());
+    rte::runtime::GatewayClient leaseClient(url);
+    std::string error;
+    ASSERT_TRUE(leaseClient.acquireLease("long-operation", &error)) << error;
+    EXPECT_FALSE(leaseClient.eventsRunning());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1400));
+    std::vector<std::string> output;
+    EXPECT_TRUE(leaseClient.sendCommand("still-owned", &output, &error, 0)) << error;
+    ASSERT_EQ(output.size(), 1U);
+    EXPECT_EQ(output.front(), "ack: still-owned");
+}
+
+TEST_F(GatewayApiTest, ClientRenewsSuppliedLeaseDuringLongOperations) {
+    const auto acquired = client->Post("/api/v1/control/lease",
+                                       json({{"owner", "shared-operation"}}).dump(),
+                                       "application/json");
+    ASSERT_TRUE(acquired);
+    ASSERT_EQ(acquired->status, 201);
+
+    const std::string url = "http://127.0.0.1:" + std::to_string(api.actualPort());
+    rte::runtime::GatewayClient leaseClient(url);
+    leaseClient.useLease(json::parse(acquired->body).at("id"), "shared-operation");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1400));
+
+    std::string error;
+    EXPECT_TRUE(leaseClient.sendCommand("shared-still-owned", nullptr, &error, 0)) << error;
 }
 
 TEST_F(GatewayApiTest, RejectsCorruptFirmwareBeforeQueuing) {
@@ -151,6 +198,28 @@ TEST_F(GatewayApiTest, StreamsDecodedEventsToMultipleObservers) {
     }
     first.stopEvents();
     second.stopEvents();
+}
+
+TEST_F(GatewayApiTest, PreservesNonFiniteTelemetryWithoutCrashingEventClient) {
+    store.AddF32("unstable", std::numeric_limits<float>::quiet_NaN(), 7.0f);
+    const std::string url = "http://127.0.0.1:" + std::to_string(api.actualPort());
+    rte::runtime::GatewayClient eventClient(url);
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool received = false;
+    eventClient.onF32 = [&](const std::string& signal, float value, float) {
+        if (signal != "unstable" || !std::isnan(value)) return;
+        std::lock_guard lock(mutex);
+        received = true;
+        changed.notify_all();
+    };
+    eventClient.startEvents();
+    {
+        std::unique_lock lock(mutex);
+        EXPECT_TRUE(changed.wait_for(lock, std::chrono::seconds(2),
+                                     [&] { return received; }));
+    }
+    eventClient.stopEvents();
 }
 
 }  // namespace
