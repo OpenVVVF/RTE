@@ -331,9 +331,10 @@ void GatewayClient::eventLoop() {
             }
         }
         std::string buffer;
+        bool connectedAnnounced = false;
         const auto result = client.Get(
             "/api/v1/events", headers,
-            [this, &buffer](const char* data, std::size_t size) {
+            [this, &buffer, &connectedAnnounced](const char* data, std::size_t size) {
                 if (!eventsRun_.load()) return false;
                 buffer.append(data, size);
                 for (;;) {
@@ -357,7 +358,13 @@ void GatewayClient::eventLoop() {
                             payload += line.substr(6);
                         }
                     }
-                    if (!type.empty() && !payload.empty()) dispatchEvent(type, payload);
+                    if (!type.empty() && !payload.empty()) {
+                        if (!connectedAnnounced) {
+                            connectedAnnounced = true;
+                            if (onConnection) onConnection(true, {});
+                        }
+                        dispatchEvent(type, payload);
+                    }
                 }
                 return true;
             });
@@ -417,10 +424,32 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
     if (!body.is_object() && !body.is_array()) return;
     if (type == "snapshot") {
         const json latest = body.value("latest", json::object());
+        const json timestamps = body.value("latest_timestamps", json::object());
+        struct SnapshotSample {
+            std::string signal;
+            float value;
+            float timestamp;
+        };
+        std::vector<SnapshotSample> samples;
         if (latest.is_object()) {
+            samples.reserve(latest.size());
             for (auto it = latest.begin(); it != latest.end(); ++it) {
-                if (onF32) onF32(it.key(), TelemetryFloat(it.value()), 0.0f);
+                float timestamp = 0.0f;
+                if (timestamps.is_object() && timestamps.contains(it.key())) {
+                    timestamp = TelemetryFloat(timestamps[it.key()]);
+                }
+                samples.push_back({it.key(), TelemetryFloat(it.value()), timestamp});
             }
+        }
+        // JSON object keys are ordered by name, not sample time. Publishing
+        // an initial snapshot chronologically keeps the receiving store's
+        // time-domain mapper monotonic even when signals update at different
+        // rates.
+        std::stable_sort(samples.begin(), samples.end(), [](const auto& a, const auto& b) {
+            return a.timestamp < b.timestamp;
+        });
+        for (const auto& sample : samples) {
+            if (onF32) onF32(sample.signal, sample.value, sample.timestamp);
         }
         const json strings = body.value("latest_strings", json::object());
         if (strings.is_object()) {
@@ -439,7 +468,6 @@ void GatewayClient::dispatchEvent(const std::string& type, const std::string& da
             onLease(globallyHeld && !localId.empty() && id == localId,
                     globallyHeld ? lease.value("owner", "") : "");
         }
-        if (onConnection) onConnection(true, {});
     } else if (type == "telemetry") {
         for (const auto& sample : body.value("samples", json::array())) {
             if (!sample.is_object()) continue;

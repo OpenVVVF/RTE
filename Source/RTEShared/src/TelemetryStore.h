@@ -216,7 +216,9 @@ private:
     std::vector<SessionCommand> sessionCommands_;
     bool sessionTelemetryClockInitialized_ = false;
     float sessionTelemetrySourceOrigin_ = 0.0f;
+    float sessionTelemetryLastSourceTsec_ = 0.0f;
     double sessionTelemetryElapsedOrigin_ = 0.0;
+    double sessionTelemetryLastMappedTsec_ = 0.0;
     std::chrono::steady_clock::time_point sessionStartSteady_ =
         std::chrono::steady_clock::now();
     std::chrono::system_clock::time_point sessionStartWall_ =

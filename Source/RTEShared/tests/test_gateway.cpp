@@ -38,6 +38,26 @@ TEST(TelemetryStore, ReplaysOrderedEventsAndReportsGaps) {
     EXPECT_EQ(events[2].text, "ready");
 }
 
+TEST(TelemetryStore, StartsANewPlotEpochWhenSourceTimeMovesBackward) {
+    rte::runtime::TelemetryStore store;
+    store.AddF32("voltage", 10.0f, 10.0f);
+    store.AddF32("voltage", 11.0f, 11.0f);
+    store.AddF32("voltage", 12.0f, 1.0f);
+
+    std::deque<float> times;
+    std::deque<float> values;
+    ASSERT_TRUE(store.CopyHistory("voltage", times, values));
+    ASSERT_EQ(times.size(), 1U);
+    EXPECT_FLOAT_EQ(times.front(), 1.0f);
+    EXPECT_FLOAT_EQ(values.front(), 12.0f);
+
+    const auto session = store.SessionSnapshot();
+    const auto& sessionTimes = session.floatSignals.at("voltage").t;
+    ASSERT_EQ(sessionTimes.size(), 3U);
+    EXPECT_LE(sessionTimes[0], sessionTimes[1]);
+    EXPECT_LE(sessionTimes[1], sessionTimes[2]);
+}
+
 class GatewayApiTest : public ::testing::Test {
 protected:
     GatewayApiTest()
@@ -198,6 +218,75 @@ TEST_F(GatewayApiTest, StreamsDecodedEventsToMultipleObservers) {
     }
     first.stopEvents();
     second.stopEvents();
+}
+
+TEST_F(GatewayApiTest, SnapshotPreservesLatestSampleTimestamp) {
+    store.AddF32("voltage", 42.0f, 12.5f);
+    const auto state = client->Get("/api/v1/state");
+    ASSERT_TRUE(state);
+    ASSERT_EQ(state->status, 200);
+    EXPECT_FLOAT_EQ(json::parse(state->body)["latest_timestamps"]["voltage"], 12.5f);
+
+    const std::string url = "http://127.0.0.1:" + std::to_string(api.actualPort());
+    rte::runtime::GatewayClient eventClient(url);
+    std::mutex mutex;
+    std::condition_variable changed;
+    float receivedTimestamp = -1.0f;
+    eventClient.onF32 = [&](const std::string& signal, float, float timestamp) {
+        if (signal != "voltage") return;
+        std::lock_guard lock(mutex);
+        receivedTimestamp = timestamp;
+        changed.notify_all();
+    };
+    eventClient.startEvents();
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, std::chrono::seconds(2),
+                                     [&] { return receivedTimestamp >= 0.0f; }));
+    }
+    eventClient.stopEvents();
+    EXPECT_FLOAT_EQ(receivedTimestamp, 12.5f);
+}
+
+TEST_F(GatewayApiTest, ReconnectReplaysMissedTelemetryInTimestampOrder) {
+    const std::string url = "http://127.0.0.1:" + std::to_string(api.actualPort());
+    rte::runtime::GatewayClient eventClient(url);
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<float> values;
+    eventClient.onF32 = [&](const std::string& signal, float value, float) {
+        if (signal != "voltage") return;
+        std::lock_guard lock(mutex);
+        values.push_back(value);
+        changed.notify_all();
+    };
+    eventClient.startEvents();
+    store.AddF32("voltage", 1.0f, 1.0f);
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, std::chrono::seconds(2),
+                                     [&] { return !values.empty(); }));
+    }
+    eventClient.stopEvents();
+    {
+        std::lock_guard lock(mutex);
+        values.clear();
+    }
+
+    store.AddF32("voltage", 2.0f, 2.0f);
+    store.AddF32("voltage", 3.0f, 3.0f);
+    eventClient.startEvents();
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, std::chrono::seconds(2),
+                                     [&] { return values.size() >= 2; }));
+    }
+    eventClient.stopEvents();
+
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(values.size(), 2U);
+    EXPECT_FLOAT_EQ(values[0], 2.0f);
+    EXPECT_FLOAT_EQ(values[1], 3.0f);
 }
 
 TEST_F(GatewayApiTest, PreservesNonFiniteTelemetryWithoutCrashingEventClient) {

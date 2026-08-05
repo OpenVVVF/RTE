@@ -1,6 +1,7 @@
 #include "TelemetryStore.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace rte::runtime {
 
@@ -16,6 +17,13 @@ TelemetryStore::TelemetryStore(float retainSeconds,
 void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     std::lock_guard lock(mtx_);
     auto& hist = snap_.hist[key];
+    if (!hist.t.empty() && std::isfinite(tsec)
+        && tsec < hist.t.back()) {
+        // A source/gateway restart begins a new time epoch. Keeping the old
+        // point would make GL_LINE_STRIP draw across the reset boundary.
+        hist.t.clear();
+        hist.y.clear();
+    }
     hist.t.push_back(tsec);
     hist.y.push_back(value);
     TrimHistoryLocked(hist);
@@ -28,13 +36,23 @@ void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     if (!sessionTelemetryClockInitialized_) {
         sessionTelemetryClockInitialized_ = true;
         sessionTelemetrySourceOrigin_ = tsec;
+        sessionTelemetryLastSourceTsec_ = tsec;
         sessionTelemetryElapsedOrigin_ = SessionElapsedSeconds();
+        sessionTelemetryLastMappedTsec_ = sessionTelemetryElapsedOrigin_;
+    } else if (std::isfinite(tsec) && std::isfinite(sessionTelemetryLastSourceTsec_)
+               && tsec < sessionTelemetryLastSourceTsec_) {
+        sessionTelemetrySourceOrigin_ = tsec;
+        sessionTelemetryElapsedOrigin_ = std::max(
+            SessionElapsedSeconds(), sessionTelemetryLastMappedTsec_);
     }
-    const float sessionTsec = static_cast<float>(
+    const double sessionTsec =
         sessionTelemetryElapsedOrigin_ +
-        static_cast<double>(tsec - sessionTelemetrySourceOrigin_));
+        static_cast<double>(tsec - sessionTelemetrySourceOrigin_);
+    sessionTelemetryLastSourceTsec_ = tsec;
+    sessionTelemetryLastMappedTsec_ = std::max(
+        sessionTelemetryLastMappedTsec_, sessionTsec);
     auto& sessionHistory = sessionFloatSignals_[key];
-    sessionHistory.t.push_back(sessionTsec);
+    sessionHistory.t.push_back(static_cast<float>(sessionTsec));
     sessionHistory.y.push_back(value);
 }
 
@@ -88,7 +106,9 @@ void TelemetryStore::ClearSession() {
     sessionCommands_.clear();
     sessionTelemetryClockInitialized_ = false;
     sessionTelemetrySourceOrigin_ = 0.0f;
+    sessionTelemetryLastSourceTsec_ = 0.0f;
     sessionTelemetryElapsedOrigin_ = 0.0;
+    sessionTelemetryLastMappedTsec_ = 0.0;
     nextConsoleSeq_ = 1;
     events_.clear();
     AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::Reset});

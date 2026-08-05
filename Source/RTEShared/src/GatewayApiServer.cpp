@@ -34,7 +34,12 @@ json StatsJson(const TelemetryStats& stats) {
 }
 
 json SnapshotJson(const TelemetrySnapshot& snapshot) {
+    json latestTimestamps = json::object();
+    for (const auto& [signal, history] : snapshot.hist) {
+        if (!history.t.empty()) latestTimestamps[signal] = history.t.back();
+    }
     json result = {{"latest", snapshot.latest},
+                   {"latest_timestamps", std::move(latestTimestamps)},
                    {"latest_strings", snapshot.latestStr},
                    {"stats", StatsJson(TelemetryStats{
                        snapshot.rxHz, snapshot.rxBytesPerSec,
@@ -423,13 +428,30 @@ struct GatewayApiServer::Impl {
                     if (!running.load() || !sink.is_writable()) return false;
                     std::string output;
                     if (*first) {
-                        json snapshot = SnapshotJson(store.Snapshot());
-                        snapshot["lease"] = LeaseJson();
-                        snapshot["flash"] = FlashJson();
-                        *lastLease = snapshot["lease"].dump();
-                        *lastFlash = snapshot["flash"].dump();
-                        output += SseMessage(store.LatestEventSeq(), "snapshot", snapshot);
-                        if (*state == 0) *state = store.LatestEventSeq();
+                        const json lease = LeaseJson();
+                        const json flash = FlashJson();
+                        *lastLease = lease.dump();
+                        *lastFlash = flash.dump();
+                        const uint64_t latest = store.LatestEventSeq();
+                        // A new observer needs a snapshot. A reconnecting
+                        // observer must receive only the ordered replay;
+                        // putting the newest snapshot before older missed
+                        // samples made plot time run backwards. If the event
+                        // ID is from a restarted gateway, reset explicitly.
+                        if (*state == 0 || *state > latest) {
+                            json snapshot = SnapshotJson(store.Snapshot());
+                            snapshot["lease"] = lease;
+                            snapshot["flash"] = flash;
+                            if (*state > latest) snapshot["reset"] = true;
+                            output += SseMessage(latest, "snapshot", snapshot);
+                            *state = latest;
+                        } else {
+                            // Replay replaces the telemetry portion of a
+                            // reconnect snapshot. Publish current control
+                            // state separately because it may have changed
+                            // while this observer was disconnected.
+                            output += "event: lease\ndata: " + lease.dump() + "\n\n";
+                        }
                         *first = false;
                     }
                     store.WaitForEvents(*state, std::chrono::milliseconds(20));
