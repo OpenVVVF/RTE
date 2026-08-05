@@ -23,7 +23,7 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(rightSplit);
 
-    connect(controller_, &RuntimeController::storeChanged,
+    connect(controller_, &RuntimeController::telemetryChanged,
             this, &TelemetryPanel::OnStoreChanged);
 }
 

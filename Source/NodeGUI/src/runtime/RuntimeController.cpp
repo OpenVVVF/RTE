@@ -1,7 +1,9 @@
 #include "RuntimeController.h"
 
+#include <QFutureWatcher>
 #include <QMetaObject>
 #include <QTimer>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <cmath>
 #include <random>
@@ -18,6 +20,15 @@ constexpr SimWave kSimWaves[] = {
     {"enc_angle_deg", 0.25, 180.0, 180.0}, {"temp_c", 0.05, 1.5, 35.0},
 };
 
+constexpr int kTelemetryDrainIntervalMs = 8;  // 125 Hz ceiling for ~120 Hz input
+constexpr int kPresentationIntervalMs = 33;   // text-heavy panels do not need 120 Hz
+
+struct CommandResult {
+    std::string command;
+    std::string error;
+    bool sent = false;
+};
+
 }  // namespace
 
 RuntimeController::RuntimeController(
@@ -30,6 +41,10 @@ RuntimeController::RuntimeController(
     : QObject(parent), gateway_(std::move(gateway)), serverUrl_(std::move(serverUrl)),
       serialPort_(std::move(serialPort)), simulate_(simulate), protocol_(protocol),
       startTime_(std::chrono::steady_clock::now()) {
+    // Preserve command ordering without ever doing HTTP work on Qt's GUI
+    // thread. A dedicated one-thread pool also avoids consuming the global
+    // application pool with a slow remote request.
+    commandPool_.setMaxThreadCount(1);
     gateway_->onF32 = [this](const std::string& key, float value, float tsec) {
         Push(F32Item{key, value, tsec});
     };
@@ -57,6 +72,7 @@ RuntimeController::RuntimeController(
 
 RuntimeController::~RuntimeController() {
     gateway_->stopEvents();
+    commandPool_.waitForDone();
 }
 
 void RuntimeController::Start() {
@@ -70,9 +86,19 @@ void RuntimeController::Start() {
         gateway_->startEvents();
     }
     drainTimer_ = new QTimer(this);
-    drainTimer_->setInterval(33);
+    drainTimer_->setTimerType(Qt::PreciseTimer);
+    drainTimer_->setInterval(kTelemetryDrainIntervalMs);
     connect(drainTimer_, &QTimer::timeout, this, &RuntimeController::DrainQueue);
     drainTimer_->start();
+
+    presentationTimer_ = new QTimer(this);
+    presentationTimer_->setInterval(kPresentationIntervalMs);
+    connect(presentationTimer_, &QTimer::timeout, this, [this] {
+        if (!storeDirty_) return;
+        storeDirty_ = false;
+        emit storeChanged();
+    });
+    presentationTimer_->start();
 }
 
 void RuntimeController::ConnectTo(const QString& serverUrl) {
@@ -81,18 +107,33 @@ void RuntimeController::ConnectTo(const QString& serverUrl) {
     gateway_->setBaseUrl(serverUrl.toStdString());
 }
 
-bool RuntimeController::SendCommand(const QString& line) {
-    store_.AddConsoleLine("> " + line.toStdString());
+void RuntimeController::SendCommand(const QString& line) {
+    const std::string command = line.toStdString();
+    store_.AddConsoleLine("> " + command);
+    storeDirty_ = true;
     if (simulate_) {
-        store_.AddCommand(line.toStdString(), "ui", false);
+        store_.AddCommand(command, "ui", false);
         store_.AddConsoleLine("(simulated: no device)");
-        return false;
+        emit storeChanged();
+        return;
     }
-    std::string error;
-    const bool sent = gateway_->sendCommand(line.toStdString(), nullptr, &error);
-    store_.AddCommand(line.toStdString(), "ui", sent);
-    if (!sent) store_.AddConsoleLine("(FAILED: " + error + ")");
-    return sent;
+
+    auto* watcher = new QFutureWatcher<CommandResult>(this);
+    connect(watcher, &QFutureWatcher<CommandResult>::finished, this,
+            [this, watcher] {
+        const CommandResult result = watcher->result();
+        store_.AddCommand(result.command, "ui", result.sent);
+        if (!result.sent) store_.AddConsoleLine("(FAILED: " + result.error + ")");
+        emit storeChanged();
+        watcher->deleteLater();
+    });
+    const auto gateway = gateway_;
+    watcher->setFuture(QtConcurrent::run(&commandPool_, [gateway, command] {
+        CommandResult result;
+        result.command = command;
+        result.sent = gateway->sendCommand(command, nullptr, &result.error);
+        return result;
+    }));
 }
 
 bool RuntimeController::TakeControl(QString* error) {
@@ -122,7 +163,9 @@ RuntimeSessionSnapshot RuntimeController::CaptureSession() {
 void RuntimeController::ClearSession() {
     DrainQueue();
     store_.ClearSession();
+    storeDirty_ = false;
     emit sessionCleared();
+    emit telemetryChanged();
     emit storeChanged();
 }
 
@@ -138,11 +181,13 @@ void RuntimeController::DrainQueue() {
         if (queue_.empty()) return;
         items.swap(queue_);
     }
+    bool hasFloatTelemetry = false;
     for (const auto& item : items) {
-        std::visit([this](const auto& value) {
+        std::visit([this, &hasFloatTelemetry](const auto& value) {
             using T = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<T, F32Item>) {
                 store_.AddF32(value.key, value.value, value.tsec);
+                hasFloatTelemetry = true;
             } else if constexpr (std::is_same_v<T, StringItem>) {
                 store_.AddString(value.key, value.value);
             } else if constexpr (std::is_same_v<T, ConsoleItem>) {
@@ -156,7 +201,11 @@ void RuntimeController::DrainQueue() {
             }
         }, item);
     }
-    emit storeChanged();
+    // Plot history is published at the source cadence. Tables, labels, and
+    // console layout are deliberately published by presentationTimer_ so a
+    // text burst cannot consume the graph's update budget.
+    if (hasFloatTelemetry) emit telemetryChanged();
+    storeDirty_ = true;
 }
 
 void RuntimeController::TickSimulator() {

@@ -37,7 +37,7 @@ public:
     double ViewSeconds() const { return viewSeconds_; }
 
 public slots:
-    void Refresh();  // called ~30 Hz when store changed; triggers update()
+    void Refresh();  // called at the telemetry cadence; triggers update()
 
 protected:
     void initializeGL() override;

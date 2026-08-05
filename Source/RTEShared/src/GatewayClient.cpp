@@ -192,6 +192,8 @@ bool GatewayClient::sendCommand(const std::string& command,
         return false;
     }
     httplib::Client client(baseUrl());
+    client.set_connection_timeout(2, 0);
+    client.set_read_timeout(7, 0);
     httplib::Headers headers{{"X-RTE-Lease-ID", id}};
     const auto result = client.Post("/api/v1/commands", headers,
                                     json({{"command", command}, {"wait_ms", waitMs}}).dump(),

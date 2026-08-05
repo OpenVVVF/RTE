@@ -5,6 +5,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QThreadPool>
 
 #include <chrono>
 #include <memory>
@@ -35,7 +36,7 @@ public:
 
     void Start();
     void ConnectTo(const QString& serverUrl);
-    bool SendCommand(const QString& line);
+    void SendCommand(const QString& line);
 
     bool TakeControl(QString* error = nullptr);
     bool ReleaseControl(QString* error = nullptr);
@@ -55,6 +56,7 @@ public:
     bool IsConnected() const { return connected_; }
 
 signals:
+    void telemetryChanged();
     void storeChanged();
     void sessionCleared();
     void connectionChanged(bool connected, const QString& detail);
@@ -73,6 +75,7 @@ private:
     float NowSec() const;
 
     std::shared_ptr<rte::runtime::GatewayClient> gateway_;
+    QThreadPool commandPool_;
     QString serverUrl_;
     QString serialPort_;
     bool simulate_ = false;
@@ -82,6 +85,8 @@ private:
 
     TelemetryStore store_;
     QTimer* drainTimer_ = nullptr;
+    QTimer* presentationTimer_ = nullptr;
+    bool storeDirty_ = false;
     std::mutex queueMtx_;
     std::vector<PendingItem> queue_;
     QTimer* simTimer_ = nullptr;

@@ -60,7 +60,7 @@ set_target_properties(NodeGUI PROPERTIES
     CXX_EXTENSIONS OFF
 )
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Concurrent Gui Widgets OpenGL OpenGLWidgets)
 
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -92,6 +92,7 @@ target_link_libraries(NodeGUI
         RTEShared
         QtNodes::QtNodes
         Qt6::Core
+        Qt6::Concurrent
         Qt6::Gui
         Qt6::Widgets
         Qt6::OpenGL

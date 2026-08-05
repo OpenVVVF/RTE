@@ -102,10 +102,15 @@ void ConsolePanel::OnStoreChanged() {
     }
 
     const auto lines = controller_->Store().ConsoleSince(lastConsoleSeq_);
+    QStringList text;
+    text.reserve(static_cast<qsizetype>(lines.size()));
     for (const auto& line : lines) {
-        consoleView_->appendPlainText(QString::fromStdString(line.text));
+        text.push_back(QString::fromStdString(line.text));
         lastConsoleSeq_ = line.seq;
     }
+    // One document edit is dramatically cheaper than one edit and relayout
+    // per line when commands such as `help` produce a large burst.
+    if (!text.empty()) consoleView_->appendPlainText(text.join(QLatin1Char('\n')));
     if (autoscrollCheck_->isChecked() && !lines.empty()) {
         auto bar = consoleView_->verticalScrollBar();
         bar->setValue(bar->maximum());
