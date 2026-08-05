@@ -10,7 +10,7 @@ float raw_output = Kp * error + Ki * Integral;
  * the six-step boundary (2*Vdc/3) so the SVPWM stage can use the full
  * hexagon when commanded.  Linear SVPWM limit is Vdc/sqrt(3). */
 const float vdc = platform_get_dc_link_voltage();
-const float dynamic_max = vdc * 2.0f / 3.0f;
+const float dynamic_max = (vdc > 0.0f) ? (vdc * 2.0f / 3.0f) : OutputMax;
 const float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;
 const float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;
 

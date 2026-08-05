@@ -1,6 +1,13 @@
 /* Clamp the alpha/beta voltage vector to the six-step boundary.
  * The maximum line-to-neutral voltage magnitude for linear modulation is
  * Vdc / sqrt(3); overmodulation is allowed up to 2*Vdc/3. */
+if (V_Dc.in(au::volts) <= 0.001f) {
+    Duty_A = 0.0f;
+    Duty_B = 0.0f;
+    Duty_C = 0.0f;
+    return;
+}
+
 const float sqrt3 = 1.7320508075688772f;
 const float v_max_linear = V_Dc.in(au::volts) * 2.0f / 3.0f;
 float valpha = V_Alpha.in(au::volts);
