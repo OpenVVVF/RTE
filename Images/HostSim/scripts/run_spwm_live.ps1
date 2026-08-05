@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Ensure Qt and MinGW runtime DLLs take precedence over system/MSYS2 DLLs
+$env:PATH = "C:\Qt\6.7.3\mingw_64\bin;C:\Qt\Tools\mingw1120_64\bin;" + $env:PATH
+
 $hostSimRoot = Split-Path $PSScriptRoot -Parent
 $repoRoot = Split-Path (Split-Path $hostSimRoot -Parent) -Parent
 
