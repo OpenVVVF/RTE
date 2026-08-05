@@ -1,0 +1,21 @@
+[Unit]
+Description=RTE inverter device gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rte
+Group=rte
+SupplementaryGroups=dialout
+ExecStart=/usr/local/bin/rte-gateway --config /etc/rte/gateway.json
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+
+[Install]
+WantedBy=multi-user.target

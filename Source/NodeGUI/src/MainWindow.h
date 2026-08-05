@@ -51,7 +51,7 @@ public:
     GraphScene* Scene() const { return graphScene_.get(); }
 
     // Adds the top-level Runtime and Firmware Update tabs, then connects to
-    // the RTEServer (spawns a local one unless connectHost names a remote
+    // the gateway (spawns a local one unless connectHost names a remote
     // server or the settings have one saved).
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
@@ -177,7 +177,7 @@ private:
     QPointer<runtime::RuntimeTab> runtimeTab_;
     QPointer<runtime::FlashPanel> firmwareUpdateTab_;
 
-    // Local RTEServer child process (nullptr in remote mode). The GUI never
+    // Local rte-gateway child process (nullptr in remote mode). The GUI never
     // touches the UART itself: the spawned or remote server owns it.
     QProcess* serverProcess_ = nullptr;
     QString serialPort_;

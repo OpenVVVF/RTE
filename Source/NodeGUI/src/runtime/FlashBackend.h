@@ -16,7 +16,7 @@ struct FlashBackendStatus {
 };
 
 // Where the Firmware Update tab sends flash jobs. The GUI ALWAYS talks to an
-// RTEServer over HTTP (spawned locally or remote) — there is deliberately no
+// rte-gateway over HTTP (spawned locally or remote) — there is deliberately no
 // local-serial backend anymore, so all flashing goes through one code path.
 class FlashBackend {
 public:

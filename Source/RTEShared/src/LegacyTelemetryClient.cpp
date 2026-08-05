@@ -14,7 +14,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
-namespace NodeGUI::runtime {
+namespace rte::runtime {
 
 namespace {
 
@@ -650,4 +650,4 @@ void LegacyTelemetryClient::threadMain(const std::string& target, int arg, ByteS
     }
 }
 
-} // namespace NodeGUI::runtime
+} // namespace rte::runtime

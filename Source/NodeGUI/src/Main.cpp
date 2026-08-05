@@ -10,12 +10,12 @@ namespace {
 
 void PrintUsage(const char* exe) {
     std::cerr << "usage: " << exe
-              << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--connect <host>] [--simulate]\n"
-              << "  --serial <port>      inverter serial port for the local RTEServer\n"
+              << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--connect <url>] [--simulate]\n"
+              << "  --serial <port>      inverter serial port for the local rte-gateway\n"
               << "                       (default /dev/ttyACM0)\n"
               << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
               << "                       or 'ivp' (new InverterProtocol stack)\n"
-              << "  --connect <host>     connect to a remote RTEServer instead of spawning one\n"
+              << "  --connect <url>      connect to a remote rte-gateway (for example http://host:18080)\n"
               << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n";
 }
 

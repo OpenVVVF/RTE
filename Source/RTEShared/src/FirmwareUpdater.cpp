@@ -36,7 +36,7 @@
 
 namespace fs = std::filesystem;
 
-namespace NodeGUI::runtime {
+namespace rte::runtime {
 namespace {
 
 constexpr uint32_t FLASH_BAUDRATE = 230400;
@@ -310,6 +310,13 @@ void FirmwareUpdater::logStderr(const char* buf) {
 }
 
 bool FirmwareUpdater::findCli(std::string& out_cli) const {
+    if (const char* configured = std::getenv("RTE_STM32_PROGRAMMER_CLI")) {
+        std::error_code ec;
+        if (fs::is_regular_file(configured, ec)) {
+            out_cli = configured;
+            return true;
+        }
+    }
     const char* candidates[] = {
         "/opt/st/stm32cubeclt_1.21.0/STM32CubeProgrammer/bin/STM32_Programmer_CLI",
         "/opt/st/stm32cubeclt/STM32CubeProgrammer/bin/STM32_Programmer_CLI",
@@ -348,6 +355,12 @@ bool FirmwareUpdater::findCli(std::string& out_cli) const {
 
 bool FirmwareUpdater::findGpioHelper(std::string& out_helper) const {
     std::error_code ec;
+    if (const char* configured = std::getenv("RTE_GPIO_HELPER")) {
+        if (fs::is_regular_file(configured, ec)) {
+            out_helper = configured;
+            return true;
+        }
+    }
     fs::path exe_dir = exeDir();
 
     std::vector<fs::path> candidates;
@@ -603,4 +616,4 @@ void FirmwareUpdater::threadMain() {
     }
 }
 
-}  // namespace NodeGUI::runtime
+}  // namespace rte::runtime

@@ -63,24 +63,30 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     headerRow->addWidget(exportButton);
     layout->addLayout(headerRow);
 
-    // Server connection row: Local spawns an RTEServer child process, Remote
-    // connects to one over IP. Everything runtime (telemetry, console, flash)
-    // goes through that one server.
+    // Gateway connection row. All clients observe; only the renewable control
+    // holder can send commands or flash.
     auto* serverRow = new QHBoxLayout;
     serverRow->addWidget(new QLabel(QStringLiteral("Server:"), this));
     serverModeCombo_ = new QComboBox(this);
-    serverModeCombo_->addItem(QStringLiteral("Local (spawn RTEServer)"));
-    serverModeCombo_->addItem(QStringLiteral("Remote (IP)"));
+    serverModeCombo_->addItem(QStringLiteral("Local (spawn rte-gateway)"));
+    serverModeCombo_->addItem(QStringLiteral("Remote (URL)"));
     serverRow->addWidget(serverModeCombo_);
     serverHostEdit_ = new QLineEdit(this);
-    serverHostEdit_->setPlaceholderText(QStringLiteral("192.168.1.x"));
-    serverHostEdit_->setMaximumWidth(220);
+    serverHostEdit_->setPlaceholderText(QStringLiteral("http://192.168.1.x:18080"));
+    serverHostEdit_->setMaximumWidth(300);
     serverRow->addWidget(serverHostEdit_);
     auto* connectButton = new QPushButton(QStringLiteral("Connect"), this);
     connect(connectButton, &QPushButton::clicked, this, &RuntimeTab::OnConnectClicked);
     serverRow->addWidget(connectButton);
     serverStatusLabel_ = new QLabel(this);
     serverRow->addWidget(serverStatusLabel_);
+    takeControlButton_ = new QPushButton(QStringLiteral("Take Control"), this);
+    releaseControlButton_ = new QPushButton(QStringLiteral("Release Control"), this);
+    releaseControlButton_->setEnabled(false);
+    controlStatusLabel_ = new QLabel(QStringLiteral("Observer"), this);
+    serverRow->addWidget(takeControlButton_);
+    serverRow->addWidget(releaseControlButton_);
+    serverRow->addWidget(controlStatusLabel_);
     serverRow->addStretch(1);
     layout->addLayout(serverRow);
 
@@ -88,6 +94,34 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
         serverHostEdit_->setEnabled(serverModeCombo_->currentIndex() == 1);
     };
     connect(serverModeCombo_, &QComboBox::activated, this, updateHostEnabled);
+    connect(takeControlButton_, &QPushButton::clicked, this, [this] {
+        QString error;
+        if (!controller_->TakeControl(&error)) {
+            controlStatusLabel_->setText(QStringLiteral("Control unavailable: %1").arg(error));
+        }
+    });
+    connect(releaseControlButton_, &QPushButton::clicked, this, [this] {
+        QString error;
+        if (!controller_->ReleaseControl(&error) && !error.isEmpty()) {
+            controlStatusLabel_->setText(QStringLiteral("Release failed: %1").arg(error));
+        }
+    });
+    connect(controller_, &RuntimeController::controlChanged, this,
+            [this](bool owned, const QString& owner) {
+        const bool globallyHeld = !owner.isEmpty();
+        takeControlButton_->setEnabled(!globallyHeld);
+        releaseControlButton_->setEnabled(owned);
+        controlStatusLabel_->setText(
+            owned ? QStringLiteral("Controller: %1").arg(owner)
+                  : (globallyHeld
+                         ? QStringLiteral("Observer (controlled by %1)").arg(owner)
+                         : QStringLiteral("Observer")));
+    });
+    connect(controller_, &RuntimeController::connectionChanged, this,
+            [this](bool connected, const QString& detail) {
+        serverStatusLabel_->setText(connected ? QStringLiteral("connected")
+                                              : QStringLiteral("disconnected: %1").arg(detail));
+    });
     updateHostEnabled();
 
     // Graph-layout presets.
@@ -138,11 +172,9 @@ void RuntimeTab::OnStoreChanged() {
     const double bandwidthPct =
         static_cast<double>(stats.rxBytesPerSec) * 10.0 / 460800.0 * 100.0;
 
-    const QString endpoint = controller_->GetProtocol() == Protocol::Inverter
-                                 ? controller_->Port()
-                                 : QStringLiteral("%1:%2")
-                                       .arg(controller_->ServerHost())
-                                       .arg(controller_->BridgePort());
+    const QString endpoint = controller_->IsSimulating()
+                                 ? QStringLiteral("simulation")
+                                 : controller_->ServerUrl();
     headerLabel_->setText(
         QStringLiteral("Server: %1 | RX: %2 Hz | Bandwidth: %3% | Seq: %4 | "
                        "Good: %5 | Bad: %6 | Reject: crc %7 / hdr %8 / len %9 / "

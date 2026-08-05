@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build the FOC demo graph into a flashable STM32 binary and optionally live-flash
-# it through the InverterClient HTTP API.
+# it through rte-gateway.
 #
 # Usage:
 #   Tools/build_flash_foc_demo.sh [options]
@@ -11,6 +11,7 @@ set -euo pipefail
 #   --no-flash          Build only; do not attempt to flash.
 #   --flash-only        Skip build; only flash the existing binary.
 #   --flash-url <url>   Override the live-flash client URL.
+#   --flash-lease <id>  Use an existing gateway operator lease.
 #   --build-type <type> Debug | Release | RelWithDebInfo | MinSizeRel (default: Release).
 #              NOTE: Debug (-O0) starves the CPU under full control ISR load
 #              (hz_app_loop collapses from ~9 kHz to <100 Hz); only use it
@@ -20,7 +21,8 @@ set -euo pipefail
 #   -h, --help          Show this message.
 #
 # Environment:
-#   INVERTER_CLIENT_FLASH_URL   Base URL of the running client flash server
+#   RTE_GATEWAY_URL             Base URL of the running rte-gateway
+#   INVERTER_CLIENT_FLASH_URL   Deprecated fallback for RTE_GATEWAY_URL
 #                               (default: http://localhost:18080).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +41,8 @@ FLASH_ONLY=0
 CLEAN=0
 DRY_RUN=0
 BUILD_TYPE="Release"
-CLIENT_FLASH_URL="${INVERTER_CLIENT_FLASH_URL:-http://localhost:18080}"
+CLIENT_FLASH_URL="${RTE_GATEWAY_URL:-${INVERTER_CLIENT_FLASH_URL:-http://localhost:18080}}"
+FLASH_LEASE=""
 
 usage() {
     sed -n '4,21p' "$0" | sed 's/^# //' | sed 's/^#//'
@@ -57,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --flash-url)
             CLIENT_FLASH_URL="$2"
+            shift 2
+            ;;
+        --flash-lease)
+            FLASH_LEASE="$2"
             shift 2
             ;;
         --build-type)
@@ -87,14 +94,15 @@ done
 ensure_tools_built() {
     local builder="${BUILD_DIR}/Source/RTEFirmwareBuilder/RTEFirmwareBuilder"
     local emitter="${BUILD_DIR}/Source/RTECodeEmitter/RTECodeEmitter"
+    local ctl="${BUILD_DIR}/Source/RTECtl/rtectl"
 
-    if [[ -x "$builder" && -x "$emitter" ]]; then
+    if [[ -x "$builder" && -x "$emitter" && -x "$ctl" ]]; then
         return 0
     fi
 
     echo "RTE build tools not found; building RTEFirmwareBuilder and RTECodeEmitter ..."
     cmake -S "${PROJECT_ROOT}" -B "${BUILD_DIR}"
-    cmake --build "${BUILD_DIR}" --target RTEFirmwareBuilder RTECodeEmitter --parallel
+    cmake --build "${BUILD_DIR}" --target RTEFirmwareBuilder RTECodeEmitter rtectl --parallel
 }
 
 build_firmware() {
@@ -127,56 +135,14 @@ build_firmware() {
     "${builder}" "${args[@]}"
 }
 
-flash_state() {
-    curl -s -m 3 "${CLIENT_FLASH_URL}/flash/status" \
-        | grep -o '"state":"[^"]*"' \
-        | cut -d'"' -f4
-}
-
 flash_via_client() {
-    echo "Live-flash client detected at ${CLIENT_FLASH_URL}"
-    echo "Uploading ${BIN_FILE} ..."
-
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" -m 30 \
-        -X POST -H "Content-Type: application/octet-stream" \
-        --data-binary @"${BIN_FILE}" "${CLIENT_FLASH_URL}/flash")
-
-    if [[ "$code" != "202" ]]; then
-        echo "Client rejected the flash request (HTTP $code)" >&2
-        return 1
+    echo "Gateway detected at ${CLIENT_FLASH_URL}"
+    echo "Uploading and flashing ${BIN_FILE} ..."
+    local -a ctl_args=(--server "${CLIENT_FLASH_URL}")
+    if [[ -n "${FLASH_LEASE}" ]]; then
+        ctl_args+=(--lease "${FLASH_LEASE}")
     fi
-
-    echo "Flash job accepted; waiting for completion ..."
-
-    local i status
-    for i in $(seq 1 20); do
-        status=$(curl -s -m 3 "${CLIENT_FLASH_URL}/flash/status")
-        if echo "$status" | grep -q '"busy":true'; then
-            break
-        fi
-        sleep 0.5
-    done
-
-    local state
-    for i in $(seq 1 120); do
-        state=$(flash_state)
-        case "$state" in
-            Done|Failed)
-                if ! curl -s -m 3 "${CLIENT_FLASH_URL}/flash/status" | grep -q '"busy":true'; then
-                    break
-                fi
-                ;;
-        esac
-        sleep 1
-    done
-
-    echo "Client flash state: $state"
-    if [[ "$state" != "Done" ]]; then
-        curl -s -m 3 "${CLIENT_FLASH_URL}/flash/status" | grep -o '"last_error":"[^"]*"' >&2 || true
-        return 1
-    fi
-    return 0
+    "${BUILD_DIR}/Source/RTECtl/rtectl" "${ctl_args[@]}" flash "${BIN_FILE}"
 }
 
 flash_firmware() {
@@ -185,18 +151,15 @@ flash_firmware() {
         exit 1
     fi
 
-    if ! command -v curl >/dev/null; then
-        echo "Error: curl is required for live flashing" >&2
-        exit 1
-    fi
+    ensure_tools_built
 
     local probe
-    probe=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "${CLIENT_FLASH_URL}/flash/status" || true)
-    if [[ "$probe" == "000" ]]; then
+    probe=$("${BUILD_DIR}/Source/RTECtl/rtectl" --server "${CLIENT_FLASH_URL}" info 2>/dev/null || true)
+    if [[ -z "$probe" ]]; then
         echo ""
-        echo "No live-flash client detected at ${CLIENT_FLASH_URL}."
+        echo "No rte-gateway detected at ${CLIENT_FLASH_URL}."
         echo "Binary is ready: ${BIN_FILE}"
-        echo "Start the InverterClient (or set INVERTER_CLIENT_FLASH_URL / --flash-url) and re-run."
+        echo "Start rte-gateway (or set RTE_GATEWAY_URL / --flash-url) and re-run."
         exit 0
     fi
 

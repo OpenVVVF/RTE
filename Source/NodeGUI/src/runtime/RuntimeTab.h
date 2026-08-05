@@ -40,8 +40,8 @@ public:
     void SetServerStatus(const QString& text);
 
 signals:
-    // User asked to (re)connect: remote=false spawns a local RTEServer,
-    // remote=true connects to the given host.
+    // User asked to (re)connect: remote=false spawns a local gateway,
+    // remote=true connects to the given URL.
     void connectRequested(bool remote, const QString& host);
 
 private slots:
@@ -62,6 +62,9 @@ private:
     QComboBox* serverModeCombo_ = nullptr;
     QLineEdit* serverHostEdit_ = nullptr;
     QLabel* serverStatusLabel_ = nullptr;
+    QLabel* controlStatusLabel_ = nullptr;
+    QPushButton* takeControlButton_ = nullptr;
+    QPushButton* releaseControlButton_ = nullptr;
     QLineEdit* presetNameEdit_ = nullptr;
     QComboBox* recentCombo_ = nullptr;
     QLabel* presetStatus_ = nullptr;

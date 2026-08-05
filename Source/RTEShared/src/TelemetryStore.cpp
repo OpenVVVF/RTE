@@ -2,7 +2,16 @@
 
 #include <algorithm>
 
-namespace NodeGUI::runtime {
+namespace rte::runtime {
+
+TelemetryStore::TelemetryStore(float retainSeconds,
+                               std::size_t maxSamples,
+                               std::size_t consoleCapLines,
+                               std::size_t eventReplayCap)
+    : retainSeconds_(std::max(retainSeconds, 1.0f)),
+      maxSamples_(std::max<std::size_t>(maxSamples, 1)),
+      consoleCapLines_(std::max<std::size_t>(consoleCapLines, 1)),
+      eventReplayCap_(std::max<std::size_t>(eventReplayCap, 1)) {}
 
 void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     std::lock_guard lock(mtx_);
@@ -11,6 +20,10 @@ void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     hist.y.push_back(value);
     TrimHistoryLocked(hist);
     snap_.latest[key] = value;
+    AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::Float,
+                                  .key = key,
+                                  .value = value,
+                                  .tsec = tsec});
 
     if (!sessionTelemetryClockInitialized_) {
         sessionTelemetryClockInitialized_ = true;
@@ -28,6 +41,9 @@ void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
 void TelemetryStore::AddString(const std::string& key, const std::string& value) {
     std::lock_guard lock(mtx_);
     snap_.latestStr[key] = value;
+    AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::String,
+                                  .key = key,
+                                  .text = value});
     sessionStringSignals_[key].push_back(
         SessionStringSample{SessionElapsedSeconds(), value});
 }
@@ -36,9 +52,12 @@ void TelemetryStore::AddConsoleLine(const std::string& text) {
     std::lock_guard lock(mtx_);
     const uint64_t seq = nextConsoleSeq_++;
     snap_.console.push_back(ConsoleLine{seq, text});
+    AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::Console,
+                                  .key = std::to_string(seq),
+                                  .text = text});
     sessionConsole_.push_back(
         SessionConsoleLine{seq, SessionElapsedSeconds(), text});
-    while (snap_.console.size() > kConsoleCapLines) {
+    while (snap_.console.size() > consoleCapLines_) {
         snap_.console.pop_front();
     }
 }
@@ -71,6 +90,8 @@ void TelemetryStore::ClearSession() {
     sessionTelemetrySourceOrigin_ = 0.0f;
     sessionTelemetryElapsedOrigin_ = 0.0;
     nextConsoleSeq_ = 1;
+    events_.clear();
+    AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::Reset});
     sessionStartSteady_ = std::chrono::steady_clock::now();
     sessionStartWall_ = std::chrono::system_clock::now();
 }
@@ -96,11 +117,27 @@ void TelemetryStore::SetStats(float rxHz,
     snap_.rejectPayloadParse = rejectPayloadParse;
     snap_.rejectUnknownId = rejectUnknownId;
     snap_.lastSeq = lastSeq;
+    TelemetryStats stats;
+    stats.rxHz = rxHz;
+    stats.rxBytesPerSec = rxBytesPerSec;
+    stats.goodFrames = goodFrames;
+    stats.badFrames = badFrames;
+    stats.rejectCrc = rejectCrc;
+    stats.rejectHdr = rejectHdr;
+    stats.rejectLen = rejectLen;
+    stats.rejectPayloadParse = rejectPayloadParse;
+    stats.rejectUnknownId = rejectUnknownId;
+    stats.lastSeq = lastSeq;
+    stats.suspended = snap_.suspended;
+    AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::Stats,
+                                  .stats = stats});
 }
 
 void TelemetryStore::SetSuspended(bool suspended) {
     std::lock_guard lock(mtx_);
     snap_.suspended = suspended;
+    AddEventLocked(TelemetryEvent{.kind = TelemetryEventKind::Suspended,
+                                  .flag = suspended});
 }
 
 TelemetryStore::StatsLine TelemetryStore::GetStatsLine() const {
@@ -215,13 +252,49 @@ uint64_t TelemetryStore::LatestConsoleSeq() const {
     return snap_.console.empty() ? 0 : snap_.console.back().seq;
 }
 
+std::vector<TelemetryEvent> TelemetryStore::EventsSince(uint64_t sinceSeq,
+                                                        std::size_t limit,
+                                                        bool& reset) const {
+    std::lock_guard lock(mtx_);
+    reset = !events_.empty() && sinceSeq != 0
+            && sinceSeq + 1 < events_.front().seq;
+    std::vector<TelemetryEvent> result;
+    result.reserve(std::min(limit, events_.size()));
+    for (const auto& event : events_) {
+        if (event.seq > sinceSeq) {
+            result.push_back(event);
+            if (result.size() >= limit) break;
+        }
+    }
+    return result;
+}
+
+uint64_t TelemetryStore::LatestEventSeq() const {
+    std::lock_guard lock(mtx_);
+    return nextEventSeq_ - 1;
+}
+
+bool TelemetryStore::WaitForEvents(uint64_t sinceSeq,
+                                   std::chrono::milliseconds timeout) const {
+    std::unique_lock lock(mtx_);
+    return eventCv_.wait_for(lock, timeout,
+                             [&] { return nextEventSeq_ - 1 > sinceSeq; });
+}
+
+void TelemetryStore::AddEventLocked(TelemetryEvent event) {
+    event.seq = nextEventSeq_++;
+    events_.push_back(std::move(event));
+    while (events_.size() > eventReplayCap_) events_.pop_front();
+    eventCv_.notify_all();
+}
+
 void TelemetryStore::TrimHistoryLocked(SignalHistory& hist) const {
-    while (hist.t.size() > kMaxSamples) {
+    while (hist.t.size() > maxSamples_) {
         hist.t.pop_front();
         hist.y.pop_front();
     }
     if (!hist.t.empty()) {
-        const float cutoff = hist.t.back() - kRetainSeconds;
+        const float cutoff = hist.t.back() - retainSeconds_;
         while (!hist.t.empty() && hist.t.front() < cutoff) {
             hist.t.pop_front();
             hist.y.pop_front();
@@ -235,4 +308,4 @@ double TelemetryStore::SessionElapsedSeconds() const {
         .count();
 }
 
-}  // namespace NodeGUI::runtime
+}  // namespace rte::runtime

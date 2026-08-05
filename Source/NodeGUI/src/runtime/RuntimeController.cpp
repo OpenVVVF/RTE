@@ -1,155 +1,117 @@
 #include "RuntimeController.h"
 
+#include <QMetaObject>
 #include <QTimer>
 
 #include <cmath>
 #include <random>
 
 namespace NodeGUI::runtime {
-
 namespace {
 
-// Synthetic signals for --simulate mode: name, frequency (Hz), amplitude,
-// offset.
-struct SimWave {
-    const char* name;
-    double freq;
-    double amplitude;
-    double offset;
-};
-
+struct SimWave { const char* name; double freq; double amplitude; double offset; };
 constexpr SimWave kSimWaves[] = {
-    {"vdc_v", 0.2, 0.5, 24.0},
-    {"ph_u_a", 2.0, 8.0, 0.0},
-    {"ph_v_a", 2.0, 8.0, 0.0},
-    {"ph_w_a", 2.0, 8.0, 0.0},
-    {"id_a", 2.0, 3.0, 0.0},
-    {"iq_a", 0.5, 5.0, 2.0},
-    {"V_bus", 0.1, 0.2, 24.0},
-    {"I_ROTOR_speed", 0.3, 50.0, 400.0},
-    {"enc_angle_deg", 0.25, 180.0, 180.0},
-    {"temp_c", 0.05, 1.5, 35.0},
+    {"vdc_v", 0.2, 0.5, 24.0}, {"ph_u_a", 2.0, 8.0, 0.0},
+    {"ph_v_a", 2.0, 8.0, 0.0}, {"ph_w_a", 2.0, 8.0, 0.0},
+    {"id_a", 2.0, 3.0, 0.0}, {"iq_a", 0.5, 5.0, 2.0},
+    {"V_bus", 0.1, 0.2, 24.0}, {"I_ROTOR_speed", 0.3, 50.0, 400.0},
+    {"enc_angle_deg", 0.25, 180.0, 180.0}, {"temp_c", 0.05, 1.5, 35.0},
 };
 
 }  // namespace
 
-RuntimeController::RuntimeController(QString serverHost,
-                                     int bridgePort,
-                                     QString serialPort,
-                                     bool simulate,
-                                     Protocol protocol,
-                                     QObject* parent)
-    : QObject(parent)
-    , serverHost_(std::move(serverHost))
-    , bridgePort_(bridgePort)
-    , serialPort_(std::move(serialPort))
-    , simulate_(simulate)
-    , protocol_(protocol)
-    , startTime_(std::chrono::steady_clock::now()) {
-    legacyClient_.onF32 = [this](const std::string& key, float value, float tsec) {
+RuntimeController::RuntimeController(
+    std::shared_ptr<rte::runtime::GatewayClient> gateway,
+    QString serverUrl,
+    QString serialPort,
+    bool simulate,
+    Protocol protocol,
+    QObject* parent)
+    : QObject(parent), gateway_(std::move(gateway)), serverUrl_(std::move(serverUrl)),
+      serialPort_(std::move(serialPort)), simulate_(simulate), protocol_(protocol),
+      startTime_(std::chrono::steady_clock::now()) {
+    gateway_->onF32 = [this](const std::string& key, float value, float tsec) {
         Push(F32Item{key, value, tsec});
     };
-    legacyClient_.onString = [this](const std::string& key, const std::string& value) {
+    gateway_->onString = [this](const std::string& key, const std::string& value) {
         Push(StringItem{key, value});
     };
-    legacyClient_.onConsole = [this](const std::string& line) { Push(ConsoleItem{line}); };
-    legacyClient_.onStats = [this](const LegacyTelemetryClient::Stats& s) {
-        Push(StatsItem{s.rxHz,
-                       s.rxBytesPerSec,
-                       s.goodFrames,
-                       s.badFrames,
-                       s.rejectCrc,
-                       s.rejectHdr,
-                       s.rejectLen,
-                       s.rejectPayloadParse,
-                       s.rejectUnknownId,
-                       s.lastSeq});
+    gateway_->onConsole = [this](uint64_t, const std::string& line) {
+        Push(ConsoleItem{line});
     };
-
-    ivpClient_.onF32Value([this](uint16_t, const std::string& key, float value, uint32_t) {
-        Push(F32Item{key, value, NowSec()});
-    });
-    ivpClient_.onStringValue([this](uint16_t, const std::string& key, const std::string& value,
-                                    uint32_t) { Push(StringItem{key, value}); });
-    ivpClient_.onConsoleLine([this](const std::string& line) { Push(ConsoleItem{line}); });
-    ivpClient_.onStats([this](const ivp::ClientStats& s) {
-        Push(StatsItem{s.rx_hz,
-                       s.rx_bytes_per_sec,
-                       s.good_frames,
-                       s.bad_frames,
-                       s.reject_crc,
-                       s.reject_hdr,
-                       s.reject_len,
-                       0,
-                       0,
-                       s.last_seq});
-    });
+    gateway_->onStats = [this](const rte::runtime::GatewayClientStats& stats) {
+        Push(StatsItem{stats});
+    };
+    gateway_->onConnection = [this](bool connected, const std::string& detail) {
+        QMetaObject::invokeMethod(this, [this, connected, detail] {
+            connected_ = connected;
+            emit connectionChanged(connected, QString::fromStdString(detail));
+        }, Qt::QueuedConnection);
+    };
+    gateway_->onLease = [this](bool held, const std::string& owner) {
+        QMetaObject::invokeMethod(this, [this, held, owner] {
+            emit controlChanged(held, QString::fromStdString(owner));
+        }, Qt::QueuedConnection);
+    };
 }
 
 RuntimeController::~RuntimeController() {
-    legacyClient_.stop();
-    ivpClient_.stop();
+    gateway_->stopEvents();
 }
 
 void RuntimeController::Start() {
     started_ = true;
     if (simulate_) {
         simTimer_ = new QTimer(this);
-        simTimer_->setInterval(10);  // 100 Hz
+        simTimer_->setInterval(10);
         connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
         simTimer_->start();
-    } else if (protocol_ == Protocol::Legacy) {
-        legacyClient_.startTcp(serverHost_.toStdString(), bridgePort_);
     } else {
-        ivpClient_.start(serialPort_.toStdString());
+        gateway_->startEvents();
     }
-
     drainTimer_ = new QTimer(this);
-    drainTimer_->setInterval(33);  // ~30 Hz GUI updates
+    drainTimer_->setInterval(33);
     connect(drainTimer_, &QTimer::timeout, this, &RuntimeController::DrainQueue);
     drainTimer_->start();
 }
 
-void RuntimeController::ConnectTo(const QString& serverHost, int bridgePort) {
-    if (simulate_) {
-        return;
-    }
-    serverHost_ = serverHost;
-    bridgePort_ = bridgePort;
-    if (protocol_ != Protocol::Legacy) {
-        return;
-    }
-    legacyClient_.stop();
-    if (started_ && !suspended_) {
-        legacyClient_.startTcp(serverHost_.toStdString(), bridgePort_);
-    }
-}
-
-bool RuntimeController::SendLine(const std::string& line) {
-    if (suspended_ || simulate_) {
-        return false;
-    }
-    return protocol_ == Protocol::Legacy ? legacyClient_.sendLine(line)
-                                         : ivpClient_.sendCommandLine(line);
+void RuntimeController::ConnectTo(const QString& serverUrl) {
+    if (simulate_) return;
+    serverUrl_ = serverUrl;
+    gateway_->setBaseUrl(serverUrl.toStdString());
 }
 
 bool RuntimeController::SendCommand(const QString& line) {
     store_.AddConsoleLine("> " + line.toStdString());
-    const bool ok = SendLine(line.toStdString());
-    store_.AddCommand(line.toStdString(), "ui", ok);
-    if (!ok) {
-        store_.AddConsoleLine(simulate_ ? "(simulated: no device)"
-                                        : (suspended_ ? "(suspended)" : "(FAILED to send)"));
+    if (simulate_) {
+        store_.AddCommand(line.toStdString(), "ui", false);
+        store_.AddConsoleLine("(simulated: no device)");
         return false;
     }
-    store_.AddConsoleLine("(sent)");
-    return true;
+    std::string error;
+    const bool sent = gateway_->sendCommand(line.toStdString(), nullptr, &error);
+    store_.AddCommand(line.toStdString(), "ui", sent);
+    if (!sent) store_.AddConsoleLine("(FAILED: " + error + ")");
+    return sent;
 }
 
-bool RuntimeController::SendCommandRaw(const std::string& line) {
-    const bool ok = SendLine(line);
-    store_.AddCommand(line, "api", ok);
-    return ok;
+bool RuntimeController::TakeControl(QString* error) {
+    std::string detail;
+    const bool acquired = gateway_->acquireLease("NodeGUI", &detail);
+    if (error) *error = QString::fromStdString(detail);
+    return acquired;
+}
+
+bool RuntimeController::ReleaseControl(QString* error) {
+    std::string detail;
+    const bool released = gateway_->releaseLease(&detail);
+    if (error) *error = QString::fromStdString(detail);
+    return released;
+}
+
+bool RuntimeController::HasControl() const { return gateway_->hasLease(); }
+QString RuntimeController::ControlOwner() const {
+    return QString::fromStdString(gateway_->leaseOwner());
 }
 
 RuntimeSessionSnapshot RuntimeController::CaptureSession() {
@@ -164,37 +126,6 @@ void RuntimeController::ClearSession() {
     emit storeChanged();
 }
 
-void RuntimeController::SuspendForFlash() {
-    if (suspended_) {
-        return;
-    }
-    suspended_ = true;
-    store_.SetSuspended(true);
-    if (simulate_) {
-        return;
-    }
-    if (protocol_ == Protocol::Legacy) {
-        legacyClient_.suspend();
-    } else {
-        ivpClient_.stop();
-    }
-}
-
-void RuntimeController::ResumeAfterFlash() {
-    if (!suspended_) {
-        return;
-    }
-    if (!simulate_) {
-        if (protocol_ == Protocol::Legacy) {
-            legacyClient_.resume();
-        } else {
-            ivpClient_.start(serialPort_.toStdString());
-        }
-    }
-    suspended_ = false;
-    store_.SetSuspended(false);
-}
-
 void RuntimeController::Push(PendingItem item) {
     std::lock_guard lock(queueMtx_);
     queue_.push_back(std::move(item));
@@ -204,73 +135,50 @@ void RuntimeController::DrainQueue() {
     std::vector<PendingItem> items;
     {
         std::lock_guard lock(queueMtx_);
-        if (queue_.empty()) {
-            return;
-        }
+        if (queue_.empty()) return;
         items.swap(queue_);
     }
-
     for (const auto& item : items) {
-        std::visit(
-            [this](const auto& v) {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, F32Item>) {
-                    store_.AddF32(v.key, v.value, v.tsec);
-                } else if constexpr (std::is_same_v<T, StringItem>) {
-                    store_.AddString(v.key, v.value);
-                } else if constexpr (std::is_same_v<T, ConsoleItem>) {
-                    store_.AddConsoleLine(v.text);
-                } else {
-                    store_.SetStats(v.rxHz,
-                                    v.rxBytesPerSec,
-                                    v.goodFrames,
-                                    v.badFrames,
-                                    v.rejectCrc,
-                                    v.rejectHdr,
-                                    v.rejectLen,
-                                    v.rejectPayloadParse,
-                                    v.rejectUnknownId,
-                                    v.seq);
-                }
-            },
-            item);
+        std::visit([this](const auto& value) {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, F32Item>) {
+                store_.AddF32(value.key, value.value, value.tsec);
+            } else if constexpr (std::is_same_v<T, StringItem>) {
+                store_.AddString(value.key, value.value);
+            } else if constexpr (std::is_same_v<T, ConsoleItem>) {
+                store_.AddConsoleLine(value.text);
+            } else {
+                const auto& s = value.stats;
+                store_.SetStats(s.rxHz, s.rxBytesPerSec, s.goodFrames, s.badFrames,
+                                s.rejectCrc, s.rejectHdr, s.rejectLen,
+                                s.rejectPayloadParse, s.rejectUnknownId, s.lastSeq);
+                store_.SetSuspended(s.suspended);
+            }
+        }, item);
     }
-
     emit storeChanged();
 }
 
 void RuntimeController::TickSimulator() {
     ++simTick_;
     const float t = NowSec();
-
-    static std::mt19937 rng{42};
+    static std::mt19937 random{42};
     std::uniform_real_distribution<float> noise(-0.05f, 0.05f);
-
     for (std::size_t i = 0; i < std::size(kSimWaves); ++i) {
-        const auto& w = kSimWaves[i];
-        const double phase = 2.0 * M_PI * w.freq * t + i * 1.1;
-        const float value = static_cast<float>(w.offset + w.amplitude * std::sin(phase))
-                            + noise(rng);
-        Push(F32Item{w.name, value, t});
+        const auto& wave = kSimWaves[i];
+        const double phase = 2.0 * M_PI * wave.freq * t + i * 1.1;
+        Push(F32Item{wave.name,
+                     static_cast<float>(wave.offset + wave.amplitude * std::sin(phase))
+                         + noise(random), t});
     }
-
-    // Occasional console output so the console path is exercised.
     if (simTick_ % 100 == 0) {
         Push(ConsoleItem{"sim: tick " + std::to_string(simTick_)});
-    }
-
-    // Stats every second.
-    if (simTick_ % 100 == 0) {
-        Push(StatsItem{100.0f,
-                       100.0f * 40.0f,
-                       simTick_ / 100 * 100,
-                       0,
-                       0,
-                       0,
-                       0,
-                       0,
-                       0,
-                       static_cast<uint32_t>(simTick_)});
+        rte::runtime::GatewayClientStats stats;
+        stats.rxHz = 100.0f;
+        stats.rxBytesPerSec = 4000.0f;
+        stats.goodFrames = simTick_;
+        stats.lastSeq = static_cast<uint32_t>(simTick_);
+        Push(StatsItem{stats});
     }
 }
 

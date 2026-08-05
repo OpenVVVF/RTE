@@ -21,7 +21,7 @@ class RuntimeController;
 
 // Firmware Update tab: firmware path + Flash button + Auto-GPIO toggle, the
 // updater state/log and flash progress. All flashing goes through the
-// RTEServer's HTTP API via FlashBackend (spawned-local or remote server).
+// rte-gateway API via FlashBackend (spawned-local or remote gateway).
 class FlashPanel : public QWidget {
     Q_OBJECT
 

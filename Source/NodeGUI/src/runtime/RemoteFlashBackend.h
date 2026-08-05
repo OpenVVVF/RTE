@@ -1,44 +1,35 @@
 #pragma once
 
 #include "FlashBackend.h"
+#include "GatewayClient.h"
 
 #include <QString>
 
 #include <atomic>
+#include <memory>
 #include <mutex>
-#include <string>
 #include <thread>
 
 namespace NodeGUI::runtime {
 
-// FlashBackend over the RTEServer HTTP API: POST /flash to queue, and a
-// polling thread keeps GET /flash/status cached for Status().
 class RemoteFlashBackend : public FlashBackend {
 public:
-    RemoteFlashBackend(QString host, int httpPort);
+    explicit RemoteFlashBackend(std::shared_ptr<rte::runtime::GatewayClient> client);
     ~RemoteFlashBackend() override;
 
-    RemoteFlashBackend(const RemoteFlashBackend&) = delete;
-    RemoteFlashBackend& operator=(const RemoteFlashBackend&) = delete;
-
-    // Re-points the backend at a (possibly different) server.
-    void SetServer(const QString& host, int httpPort);
-
-    QString Host() const;
-    int HttpPort() const;
-
+    void SetServer(const QString& baseUrl);
+    QString BaseUrl() const;
     bool QueueFlash(const std::string& firmwarePath, bool autoGpio) override;
     FlashBackendStatus Status() override;
 
 private:
     void PollLoop();
 
-    mutable std::mutex mtx_;
-    QString host_;
-    int httpPort_ = 18080;
+    std::shared_ptr<rte::runtime::GatewayClient> client_;
+    mutable std::mutex mutex_;
     FlashBackendStatus status_;
     std::string queueError_;
-
+    std::string jobId_;
     std::atomic<bool> run_{true};
     std::thread pollThread_;
 };

@@ -115,9 +115,7 @@ void FlashPanel::PollStatus() {
     const FlashBackendStatus status = backend_->Status();
 
     if (auto* remote = dynamic_cast<RemoteFlashBackend*>(backend_)) {
-        serverLabel_->setText(QStringLiteral("Server: %1:%2")
-                                  .arg(remote->Host())
-                                  .arg(remote->HttpPort()));
+        serverLabel_->setText(QStringLiteral("Gateway: %1").arg(remote->BaseUrl()));
     }
 
     QString color = QStringLiteral("#e0e0e0");
@@ -139,7 +137,7 @@ void FlashPanel::PollStatus() {
                              : QStringLiteral("Error: %1").arg(
                                    QString::fromStdString(status.lastError)));
 
-    flashButton_->setEnabled(!status.busy);
+    flashButton_->setEnabled(!status.busy && controller_->HasControl());
 
     // Progress bar: determinate once the server reports percentages (flash /
     // verify phases), busy-bounce during drains and GPIO waits, hidden when

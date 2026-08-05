@@ -407,14 +407,29 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     {
         QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
         remoteHost_ = connectHost.isEmpty()
-                          ? settings.value(QStringLiteral("runtime/serverHost")).toString()
+                          ? settings.value(QStringLiteral("runtime/serverUrl"),
+                                           settings.value(QStringLiteral("runtime/serverHost")))
+                                .toString()
                           : connectHost;
     }
 
+    auto normalizeUrl = [](QString value) {
+        value = value.trimmed();
+        if (!value.isEmpty() && !value.contains(QStringLiteral("://"))) {
+            value = QStringLiteral("http://%1:18080").arg(value);
+        }
+        return value;
+    };
+    remoteHost_ = normalizeUrl(remoteHost_);
+
+    const QString initialUrl = remoteHost_.isEmpty()
+                                   ? QStringLiteral("http://127.0.0.1:18080")
+                                   : remoteHost_;
+    auto gateway = std::make_shared<rte::runtime::GatewayClient>(
+        initialUrl.toStdString());
     runtimeController_ = std::make_unique<runtime::RuntimeController>(
-        QStringLiteral("127.0.0.1"), 4001, serialPort, simulate, protocol);
-    flashBackend_ = std::make_unique<runtime::RemoteFlashBackend>(
-        QStringLiteral("127.0.0.1"), 18080);
+        gateway, initialUrl, serialPort, simulate, protocol);
+    flashBackend_ = std::make_unique<runtime::RemoteFlashBackend>(gateway);
 
     runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(), this);
     screens_->addWidget(runtimeTab_);
@@ -476,7 +491,7 @@ void MainWindow::SetupRuntime(const QString& serialPort,
 
     runtimeController_->Start();
 
-    // Connect to the RTEServer: a saved/CLI remote host wins, otherwise we
+    // Connect to rte-gateway: a saved/CLI remote URL wins, otherwise we
     // spawn a local one on the serial port.
     ConnectToServer(!remoteHost_.isEmpty(), remoteHost_);
 
@@ -487,35 +502,39 @@ void MainWindow::SetupRuntime(const QString& serialPort,
 void MainWindow::ConnectToServer(bool remote, const QString& host) {
     StopLocalServer();
 
-    QString target = host;
+    QString target = host.trimmed();
     if (!remote) {
-        target = QStringLiteral("127.0.0.1");
+        target = QStringLiteral("http://127.0.0.1:18080");
         if (!runtimeController_->IsSimulating() && !SpawnLocalServer()) {
-            ShowToast(QStringLiteral("Failed to start the local RTEServer process"));
+            ShowToast(QStringLiteral("Failed to start the local rte-gateway process"));
             if (runtimeTab_) {
                 runtimeTab_->SetServerStatus(QStringLiteral("failed to start"));
             }
         }
     }
 
-    remoteHost_ = remote ? host : QString();
-    runtimeController_->ConnectTo(target, 4001);
-    flashBackend_->SetServer(target, 18080);
+    if (remote && !target.contains(QStringLiteral("://"))) {
+        target = QStringLiteral("http://%1:18080").arg(target);
+    }
+    remoteHost_ = remote ? target : QString();
+    runtimeController_->ConnectTo(target);
     if (runtimeTab_) {
         runtimeTab_->SetServerStatus(remote ? QStringLiteral("remote: %1").arg(target)
                                             : QStringLiteral("local server"));
-        runtimeTab_->SetConnectionState(remote, host);
+        runtimeTab_->SetConnectionState(remote, remote ? target : QString());
     }
 
     QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
-    settings.setValue(QStringLiteral("runtime/serverHost"), remoteHost_);
+    settings.setValue(QStringLiteral("runtime/serverUrl"), remoteHost_);
 }
 
 QString MainWindow::FindServerExecutable() const {
     const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList candidates = {
+        appDir + QStringLiteral("/rte-gateway"),
         appDir + QStringLiteral("/RTEServer"),
 #ifdef RTE_PROJECT_ROOT
+        QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/build/Source/RTEServer/rte-gateway"),
         QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/build/Source/RTEServer/RTEServer"),
 #endif
     };
@@ -544,7 +563,10 @@ bool MainWindow::SpawnLocalServer() {
             });
     QStringList args;
     args << QStringLiteral("--serial") << serialPort_
-         << QStringLiteral("--bind") << QStringLiteral("127.0.0.1");
+         << QStringLiteral("--bind") << QStringLiteral("127.0.0.1")
+         << QStringLiteral("--protocol")
+         << (runtimeController_->GetProtocol() == runtime::Protocol::Legacy
+                 ? QStringLiteral("legacy") : QStringLiteral("inverter"));
     serverProcess_->start(exe, args);
     return serverProcess_->waitForStarted(3000);
 }
@@ -1137,10 +1159,14 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         arguments << QStringLiteral("--no-flash");
     }
     if (shouldFlash) {
+        if (!runtimeController_->HasControl()) {
+            ShowToast(QStringLiteral("Take gateway control before flashing"));
+            return;
+        }
         arguments << QStringLiteral("--flash-url")
-                  << QStringLiteral("http://%1:%2")
-                         .arg(flashBackend_->Host())
-                         .arg(flashBackend_->HttpPort());
+                  << flashBackend_->BaseUrl()
+                  << QStringLiteral("--flash-lease")
+                  << runtimeController_->LeaseId();
     }
 
     SetBuildActionsEnabled(false);

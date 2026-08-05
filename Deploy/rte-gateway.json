@@ -1,0 +1,24 @@
+{
+  "serial": {
+    "port": "/dev/ttyACM0"
+  },
+  "protocol": "legacy",
+  "telemetry": {
+    "retain_seconds": 30,
+    "max_samples_per_signal": 12000,
+    "console_lines": 6000,
+    "event_replay": 10000
+  },
+  "tools": {
+    "stm32_programmer_cli": "/opt/st/stm32cubeclt/STM32CubeProgrammer/bin/STM32_Programmer_CLI",
+    "gpio_helper": "/usr/local/lib/rte/mcp2221a_gpio.py",
+    "python": "/usr/bin/python3"
+  },
+  "http": {
+    "bind": "127.0.0.1",
+    "port": 18080,
+    "worker_threads": 32,
+    "max_streams": 24,
+    "max_firmware_bytes": 33554432
+  }
+}

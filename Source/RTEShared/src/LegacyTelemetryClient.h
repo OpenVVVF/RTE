@@ -17,7 +17,7 @@
 #include <thread>
 #include <unordered_map>
 
-namespace NodeGUI::runtime {
+namespace rte::runtime {
 
 class LegacyTelemetryClient {
 public:
@@ -140,4 +140,8 @@ private:
     TcpStream tcp_;
 };
 
-} // namespace NodeGUI::runtime
+} // namespace rte::runtime
+
+namespace NodeGUI::runtime {
+using rte::runtime::LegacyTelemetryClient;
+}
