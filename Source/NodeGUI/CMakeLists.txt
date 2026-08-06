@@ -57,7 +57,7 @@ add_executable(RTEStudio
 )
 
 set_target_properties(RTEStudio PROPERTIES
-    OUTPUT_NAME rte-studio
+    OUTPUT_NAME RTEStudio
     AUTOMOC ON
     AUTORCC ON
     AUTOUIC ON
