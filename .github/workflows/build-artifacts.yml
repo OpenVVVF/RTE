@@ -16,7 +16,7 @@ jobs:
             artifact: rte-linux-x64
           - os: windows-latest
             artifact: rte-windows-x64
-          - os: macos-13
+          - os: macos-15-intel
             artifact: rte-macos-x64
 
     runs-on: ${{ matrix.os }}
@@ -31,6 +31,12 @@ jobs:
         with:
           version: '6.8.3'
           cache: true
+
+      # install-qt-action selects the MSVC Qt package on Windows. Ensure CMake
+      # uses the matching compiler instead of the runner's MinGW toolchain.
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1.13.0
 
       - name: Configure
         shell: bash

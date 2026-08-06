@@ -29,7 +29,7 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_EQ(type->displayName, "Phase Currents");
     EXPECT_EQ(type->domain, "");
     EXPECT_EQ(type->inputPorts.size(), 0u);
-    EXPECT_EQ(type->outputPorts.size(), 3u);
+    EXPECT_EQ(type->outputPorts.size(), 6u);
 
     const auto ia = type->FindOutputPort("I_A");
     ASSERT_TRUE(ia.has_value());

@@ -9,7 +9,8 @@ namespace RTEAutomation {
 
 std::filesystem::path ExecutablePath();
 std::vector<std::filesystem::path> PathDirectories();
-std::optional<std::filesystem::path> FindExecutable(const std::string& name);
+std::optional<std::filesystem::path> FindExecutableOnPath(
+    const std::string& name);
 std::string ExecutableName(std::string name);
 char PathListSeparator();
 

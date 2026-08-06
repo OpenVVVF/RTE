@@ -80,7 +80,7 @@ const char* FlashPhaseName(FlashPhase phase) {
 fs::path FindStm32Programmer() {
     if (const char* configured = std::getenv("RTE_STM32_PROGRAMMER_CLI"))
         if (auto found = Existing(configured)) return *found;
-    if (auto found = FindExecutable("STM32_Programmer_CLI")) return *found;
+    if (auto found = FindExecutableOnPath("STM32_Programmer_CLI")) return *found;
     std::vector<fs::path> candidates;
 #ifdef _WIN32
     if (const char* files = std::getenv("PROGRAMFILES"))
@@ -113,8 +113,8 @@ fs::path FindPythonInterpreter() {
 #endif
     for (const auto& candidate : candidates)
         if (auto found = Existing(candidate)) return *found;
-    if (auto found = FindExecutable("python3")) return *found;
-    if (auto found = FindExecutable("python")) return *found;
+    if (auto found = FindExecutableOnPath("python3")) return *found;
+    if (auto found = FindExecutableOnPath("python")) return *found;
     return {};
 }
 

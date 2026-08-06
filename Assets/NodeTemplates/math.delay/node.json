@@ -2,11 +2,13 @@
   "id": "math.delay",
   "displayName": "Unit Delay",
   "defaultName": "Delay",
+  "description": "Outputs the previous input sample and stores the current sample for the next step.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {
       "name": "In",
+      "description": "Current value to store for the next execution step.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -18,6 +20,7 @@
   "outputPorts": [
     {
       "name": "Out",
+      "description": "Value captured during the previous execution step.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -28,6 +31,7 @@
   ],
   "parameterTypes": {
     "Prev": {
+      "description": "Internal state holding the previous input value.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

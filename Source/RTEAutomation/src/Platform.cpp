@@ -72,7 +72,7 @@ std::vector<fs::path> PathDirectories() {
     return result;
 }
 
-std::optional<fs::path> FindExecutable(const std::string& name) {
+std::optional<fs::path> FindExecutableOnPath(const std::string& name) {
     const fs::path input(name);
     std::error_code ec;
     if (input.has_parent_path() && fs::is_regular_file(input, ec)) {

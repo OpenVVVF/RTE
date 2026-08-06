@@ -15,7 +15,7 @@ namespace RTEFirmwareBuilder {
 namespace {
 
 std::optional<std::filesystem::path> FindExecutableInPath(const std::string& name) {
-    return RTEAutomation::FindExecutable(name);
+    return RTEAutomation::FindExecutableOnPath(name);
 }
 
 std::string ToLower(std::string_view s) {
