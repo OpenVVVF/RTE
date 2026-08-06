@@ -55,7 +55,7 @@ jobs:
 
       - name: Stage portable install
         shell: bash
-        run: cmake --install build --prefix stage
+        run: cmake --install build --prefix "${{ github.workspace }}/stage"
 
       - name: Archive
         shell: bash
