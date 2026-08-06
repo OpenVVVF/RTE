@@ -58,14 +58,22 @@ implementation.
 
 ## Build host tools
 
-Requires CMake 3.24+, a C++20 compiler, Ninja, Qt 6 (for RTE Studio), and
-`libudev-dev` on Linux (for native MCP2221A GPIO access). Clone with
+Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for RTE Studio).
+Clone with
 `--recurse-submodules` (or run `git submodule update --init --recursive`) so the
 QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
 ```bash
 cmake -B build -G Ninja
 cmake --build build -j8
+```
+
+On Linux, install the included udev rule once so non-root IDE/CLI processes can
+control MCP2221A GPIO, then unplug and reconnect the adapter:
+
+```bash
+sudo install -m 0644 packaging/udev/60-rte-mcp2221.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
 ```
 
 Host executables are always placed in `build/bin`; static libraries are placed

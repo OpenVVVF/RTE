@@ -44,11 +44,18 @@ Use `--format json` for one structured result or `--format jsonl` for progress
 events. Commands never require a local web server.
 
 `rte flash` controls MCP2221A GP0 (BOOT0) and GP1 (active-low NRST) directly
-through USB HID before and after invoking STM32CubeProgrammer. This native path
-is the default and does not require Python or EasyMCP2221. Pass
+before and after invoking STM32CubeProgrammer. It uses the kernel GPIO
+character-device API on Linux and USB HID on Windows/macOS. This native path is
+the default and does not require Python or EasyMCP2221. Linux installations
+must install the packaged `share/rte/udev/60-rte-mcp2221.rules` once (the same
+rule is available at `packaging/udev/60-rte-mcp2221.rules` in a source tree).
+Pass
 `--manual-boot` only when BOOT0 and reset will be controlled by hand; automatic
 mode reports a hard error when the MCP2221A is missing or inaccessible instead
 of silently continuing in manual mode.
+
+For hardware diagnosis without building or flashing firmware, the same backend
+is available as `rte mcp2221 enter|exit|release`.
 
 When RTE Studio is running, read its device state through the discovered local
 session:

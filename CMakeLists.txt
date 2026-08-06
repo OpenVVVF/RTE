@@ -4,11 +4,11 @@ project(RTE VERSION 0.1.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(FetchContent)
 
-# HIDAPI is the small cross-platform boundary used by the CLI to control the
-# MCP2221A boot/reset GPIOs directly. Pin the source archive and checksum so a
-# build cannot silently pick up a different implementation.
+# Linux exposes MCP2221A pins through the kernel GPIO character-device API.
+# Windows and macOS use HIDAPI directly. Pin the HIDAPI source archive and
+# checksum so a build cannot silently pick up a different implementation.
 option(RTE_ENABLE_MCP2221_GPIO "Build native MCP2221A GPIO support" ON)
-if(RTE_ENABLE_MCP2221_GPIO)
+if(RTE_ENABLE_MCP2221_GPIO AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(HIDAPI_WITH_LIBUSB OFF CACHE BOOL "" FORCE)
     set(HIDAPI_WITH_HIDRAW ON CACHE BOOL "" FORCE)
@@ -69,6 +69,11 @@ install(DIRECTORY Images/Gen6FW/ DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/Images
     PATTERN ".vscode" EXCLUDE
 )
 install(FILES README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    install(FILES packaging/udev/60-rte-mcp2221.rules
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/udev
+    )
+endif()
 
 set(CPACK_PACKAGE_NAME "RTE")
 set(CPACK_PACKAGE_VENDOR "OpenVVVF")

@@ -3,6 +3,7 @@
 
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Flasher.h>
+#include <RTEAutomation/Mcp2221Gpio.h>
 #include <RTEAutomation/Platform.h>
 #include <RTEAutomation/ProcessRunner.h>
 #include <RTEAutomation/Session.h>
@@ -44,6 +45,7 @@ void Usage() {
         << "  build --graph FILE --base-source DIR [--source-output DIR] [--build-dir DIR]\n"
         << "        [--build-type TYPE] [--toolchain MODE] [--generator NAME] [--clean]\n"
         << "  flash --firmware FILE [--serial PORT | --session FILE] [--manual-boot]\n"
+        << "  mcp2221 enter|exit|release\n"
         << "  device status|telemetry|console|command [--session FILE]\n"
         << "  mcp [--workspace PATH] [--session FILE]\n";
 }
@@ -325,6 +327,34 @@ int Flash(const Options& options, Format format) {
     return 0;
 }
 
+int Mcp2221(const std::vector<std::string>& args, Format format) {
+    if (args.size() != 1) {
+        Emit(format, {{"event","error"},
+                      {"message","mcp2221 requires enter, exit, or release"}});
+        return 2;
+    }
+    RTEAutomation::Mcp2221GpioAction action;
+    if (args[0] == "enter")
+        action = RTEAutomation::Mcp2221GpioAction::EnterBootloader;
+    else if (args[0] == "exit")
+        action = RTEAutomation::Mcp2221GpioAction::StartApplication;
+    else if (args[0] == "release")
+        action = RTEAutomation::Mcp2221GpioAction::ReleasePins;
+    else {
+        Emit(format, {{"event","error"},
+                      {"message","unknown mcp2221 action: " + args[0]}});
+        return 2;
+    }
+    const auto result = RTEAutomation::ControlMcp2221Gpio(action);
+    if (!result.success) {
+        Emit(format, {{"event","error"},{"message",result.error}});
+        return result.error.find("not found") != std::string::npos ? 3 : 4;
+    }
+    Emit(format, {{"event","complete"},{"success",true},
+                  {"message","MCP2221A GPIO action completed"}});
+    return 0;
+}
+
 void EmitDeviceResult(Format format, const std::string& operation, const json& result) {
     if (format == Format::Text) {
         std::cout << result.dump(2) << '\n';
@@ -558,6 +588,7 @@ int Dispatch(const Parsed& parsed) {
         return Flash(options, parsed.format);
     }
     if (parsed.command == "device") return Device(parsed.args, parsed.format);
+    if (parsed.command == "mcp2221") return Mcp2221(parsed.args, parsed.format);
     if (parsed.command == "mcp") return Mcp(parsed.args);
     Usage();
     return 2;

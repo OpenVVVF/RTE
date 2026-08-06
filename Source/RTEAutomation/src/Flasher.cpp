@@ -136,6 +136,8 @@ FlashResult FlashFirmware(const FlashOptions& options, FlashCallback callback) {
             process.started && process.exitCode == 0
                 ? Mcp2221GpioAction::StartApplication
                 : Mcp2221GpioAction::ReleasePins);
+        if (gpioResult.success && process.started && process.exitCode == 0)
+            gpioResult = ControlMcp2221Gpio(Mcp2221GpioAction::ReleasePins);
         if (!gpioResult.success) {
             Notify(callback, FlashPhase::ExitBootloader,
                    "MCP2221A GPIO cleanup failed: " + gpioResult.error);
