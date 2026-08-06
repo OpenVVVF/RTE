@@ -1,8 +1,12 @@
 #include "MainWindow.h"
 
+#include <RTEAutomation/CachePaths.h>
+
 #include <QApplication>
+#include <QLockFile>
 #include <QSurfaceFormat>
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -21,8 +25,23 @@ void PrintUsage(const char* exe) {
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("NodeGUI"));
+    app.setApplicationName(QStringLiteral("RTE Studio"));
+    app.setApplicationDisplayName(QStringLiteral("RTE Studio"));
     app.setOrganizationName(QStringLiteral("RTE"));
+
+    std::error_code cacheError;
+    const std::filesystem::path cacheRoot = RTEAutomation::DefaultCacheRoot();
+    std::filesystem::create_directories(cacheRoot, cacheError);
+    if (cacheError) {
+        std::cerr << "RTE Studio could not create its cache directory: "
+                  << cacheError.message() << "\n";
+        return 1;
+    }
+    QLockFile instanceLock(QString::fromStdString((cacheRoot / "rte-studio.lock").string()));
+    if (!instanceLock.tryLock()) {
+        std::cerr << "RTE Studio is already running. Use the existing window.\n";
+        return 2;
+    }
 
     // Vsync for the GPU telemetry plots. The node canvas keeps its raster
     // viewport regardless (see MainWindow).
@@ -30,7 +49,11 @@ int main(int argc, char* argv[]) {
     format.setSwapInterval(1);
     QSurfaceFormat::setDefaultFormat(format);
 
+#ifdef _WIN32
+    QString serialPort = QStringLiteral("COM3");
+#else
     QString serialPort = QStringLiteral("/dev/ttyACM0");
+#endif
     bool simulate = false;
     auto protocol = NodeGUI::runtime::Protocol::Legacy;
     std::string graphPath;

@@ -1,7 +1,8 @@
 #include "Toolchain.h"
 
+#include <RTEAutomation/Platform.h>
+
 #include <cstdlib>
-#include <sstream>
 #include <vector>
 
 namespace RTEFirmwareBuilder {
@@ -10,17 +11,7 @@ namespace {
 
 std::vector<std::filesystem::path> SplitPath() {
     std::vector<std::filesystem::path> dirs;
-    const char* pathEnv = std::getenv("PATH");
-    if (!pathEnv) return dirs;
-
-    std::string segment;
-    std::istringstream iss(pathEnv);
-    while (std::getline(iss, segment, ':')) {
-        if (!segment.empty()) {
-            dirs.emplace_back(segment);
-        }
-    }
-    return dirs;
+    return RTEAutomation::PathDirectories();
 }
 
 void AddProjectLocalToolchains(const std::filesystem::path& fwSrc,
@@ -48,14 +39,17 @@ void AddProjectLocalToolchains(const std::filesystem::path& fwSrc,
 
 std::vector<std::filesystem::path> GccCandidateDirs(const std::filesystem::path& fwSrc) {
     std::vector<std::filesystem::path> dirs = SplitPath();
+#ifndef _WIN32
     dirs.emplace_back("/usr/bin");
     dirs.emplace_back("/usr/local/bin");
     dirs.emplace_back("/opt/gcc-arm-none-eabi/bin");
+#endif
 
     AddProjectLocalToolchains(fwSrc, dirs);
 
     // STM32CubeCLT bundles its own ARM GCC under /opt/st/.
     try {
+#ifndef _WIN32
         if (std::filesystem::is_directory("/opt/st")) {
             for (const auto& entry : std::filesystem::directory_iterator("/opt/st")) {
                 if (!entry.is_directory()) continue;
@@ -65,6 +59,7 @@ std::vector<std::filesystem::path> GccCandidateDirs(const std::filesystem::path&
                 }
             }
         }
+#endif
     } catch (const std::filesystem::filesystem_error&) {
         // Ignore permission or traversal errors.
     }
@@ -85,8 +80,12 @@ std::optional<std::filesystem::path> FindToolchainDir(
 }
 
 std::optional<ToolchainInfo> TryGcc(const std::filesystem::path& fwSrc,
+                                    const std::filesystem::path& toolSearchRoot,
                                     RTECodeEmitter::Logger& logger) {
-    auto dir = FindToolchainDir(GccCandidateDirs(fwSrc), "arm-none-eabi-gcc", "arm-none-eabi-g++");
+    auto dir = FindToolchainDir(GccCandidateDirs(
+                                    toolSearchRoot.empty() ? fwSrc : toolSearchRoot),
+                                RTEAutomation::ExecutableName("arm-none-eabi-gcc"),
+                                RTEAutomation::ExecutableName("arm-none-eabi-g++"));
     if (!dir) {
         logger.Debug("arm-none-eabi-gcc/g++ not found");
         return std::nullopt;
@@ -113,8 +112,11 @@ std::vector<std::filesystem::path> StarmClangCandidateDirs() {
 }
 
 std::optional<ToolchainInfo> TryStarmClang(const std::filesystem::path& fwSrc,
+                                           const std::filesystem::path&,
                                            RTECodeEmitter::Logger& logger) {
-    auto dir = FindToolchainDir(StarmClangCandidateDirs(), "starm-clang", "starm-clang++");
+    auto dir = FindToolchainDir(StarmClangCandidateDirs(),
+                                RTEAutomation::ExecutableName("starm-clang"),
+                                RTEAutomation::ExecutableName("starm-clang++"));
     if (!dir) {
         logger.Debug("starm-clang/starm-clang++ not found");
         return std::nullopt;
@@ -141,20 +143,23 @@ std::optional<ToolchainInfo> TryStarmClang(const std::filesystem::path& fwSrc,
 std::optional<ToolchainInfo> DetectToolchain(
     const std::filesystem::path& fwSrc,
     const std::string& mode,
-    RTECodeEmitter::Logger& logger) {
+    RTECodeEmitter::Logger& logger,
+    const std::filesystem::path& toolSearchRoot) {
     // Use an absolute path so the project-root walk can traverse up from relative
     // firmware directories like Images/Gen6FW.
     std::filesystem::path absFwSrc = std::filesystem::absolute(fwSrc);
+    const std::filesystem::path absToolSearchRoot = toolSearchRoot.empty()
+        ? absFwSrc : std::filesystem::absolute(toolSearchRoot);
 
     if (mode == "gcc") {
-        return TryGcc(absFwSrc, logger);
+        return TryGcc(absFwSrc, absToolSearchRoot, logger);
     }
     if (mode == "starm-clang") {
-        return TryStarmClang(absFwSrc, logger);
+        return TryStarmClang(absFwSrc, absToolSearchRoot, logger);
     }
     if (mode == "auto") {
-        if (auto gcc = TryGcc(absFwSrc, logger)) return gcc;
-        if (auto starm = TryStarmClang(absFwSrc, logger)) return starm;
+        if (auto gcc = TryGcc(absFwSrc, absToolSearchRoot, logger)) return gcc;
+        if (auto starm = TryStarmClang(absFwSrc, absToolSearchRoot, logger)) return starm;
         return std::nullopt;
     }
 

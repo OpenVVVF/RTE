@@ -9,10 +9,12 @@
 #include "runtime/RuntimeTab.h"
 #include "runtime/SignalTablePanel.h"
 
+#include <RTEAutomation/CachePaths.h>
+#include <RTEAutomation/Platform.h>
+
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
-#include <QCryptographicHash>
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -22,6 +24,8 @@
 #include <QFileSystemWatcher>
 #include <QFrame>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -54,7 +58,21 @@ namespace NodeGUI {
 
 namespace {
 
+std::filesystem::path InstalledResourceRoot() {
+    std::filesystem::path directory =
+        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString());
+    for (int level = 0; level < 6 && !directory.empty(); ++level) {
+        const auto candidate = directory / "share" / "rte";
+        if (std::filesystem::is_directory(candidate)) return candidate;
+        directory = directory.parent_path();
+    }
+    return {};
+}
+
 std::string DefaultTemplatesDir() {
+    const std::filesystem::path installed = InstalledResourceRoot()
+        / "Assets" / "NodeTemplates";
+    if (std::filesystem::is_directory(installed)) return installed.lexically_normal().string();
 #ifdef RTE_NODE_TEMPLATES_DIR
     return RTE_NODE_TEMPLATES_DIR;
 #else
@@ -70,25 +88,26 @@ std::filesystem::path ProjectRoot() {
 #endif
 }
 
-QString BuildKeyForGraph(const std::string& graphPath) {
-    const QFileInfo graphInfo(QString::fromStdString(graphPath));
-    QString stem = graphInfo.completeBaseName();
-    for (qsizetype i = 0; i < stem.size(); ++i) {
-        const QChar ch = stem.at(i);
-        if (!ch.isLetterOrNumber() && ch != u'_' && ch != u'-') {
-            stem[i] = u'_';
-        }
-    }
-    if (stem.isEmpty()) {
-        stem = QStringLiteral("graph");
-    }
+std::filesystem::path DefaultFirmwareBaseDir() {
+    const std::filesystem::path installed = InstalledResourceRoot()
+        / "Images" / "Gen6FW";
+    if (std::filesystem::is_directory(installed)) return installed.lexically_normal();
+    return ProjectRoot() / "Images" / "Gen6FW";
+}
 
-    const QByteArray digest =
-        QCryptographicHash::hash(graphInfo.absoluteFilePath().toUtf8(),
-                                 QCryptographicHash::Sha1)
-            .toHex()
-            .left(8);
-    return stem + QStringLiteral("-") + QString::fromLatin1(digest);
+QString RteCliPath() {
+    const std::filesystem::path adjacent =
+        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())
+        / RTEAutomation::ExecutableName("rte");
+    if (std::filesystem::is_regular_file(adjacent)) {
+        return QString::fromStdString(adjacent.string());
+    }
+#ifdef RTE_CLI_DEVELOPMENT_PATH
+    if (std::filesystem::is_regular_file(RTE_CLI_DEVELOPMENT_PATH)) {
+        return QString::fromUtf8(RTE_CLI_DEVELOPMENT_PATH);
+    }
+#endif
+    return QStringLiteral("rte");
 }
 
 // Native dialogs (QMessageBox statics and, on this system, QMessageBox in
@@ -120,7 +139,7 @@ MainWindow::MainWindow(QWidget* parent)
     , graphScene_{std::make_unique<GraphScene>()} {
     preferences_ = LoadAppPreferences();
 
-    setWindowTitle(QStringLiteral("NodeGUI"));
+    setWindowTitle(QStringLiteral("RTE Studio"));
     resize(1280, 800);
 
     auto* central = new QWidget(this);
@@ -329,33 +348,31 @@ MainWindow::MainWindow(QWidget* parent)
                       2);
 
     buildProcess_ = new QProcess(this);
-    buildProcess_->setProcessChannelMode(QProcess::MergedChannels);
+    buildProcess_->setProcessChannelMode(QProcess::SeparateChannels);
     connect(buildProcess_, &QProcess::readyReadStandardOutput, this, [this] {
-        AppendBuildLog(QString::fromLocal8Bit(buildProcess_->readAllStandardOutput()));
+        HandleCliOutput();
+    });
+    connect(buildProcess_, &QProcess::readyReadStandardError, this, [this] {
+        AppendBuildLog(QString::fromLocal8Bit(buildProcess_->readAllStandardError()));
     });
     connect(buildProcess_,
             qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this,
             [this](int exitCode, QProcess::ExitStatus exitStatus) {
-                AppendBuildLog(
-                    QString::fromLocal8Bit(buildProcess_->readAllStandardOutput()));
+                HandleCliOutput();
+                AppendBuildLog(QString::fromLocal8Bit(buildProcess_->readAllStandardError()));
                 const bool success =
                     exitStatus == QProcess::NormalExit && exitCode == 0;
-                AppendBuildLog(
-                    success
-                        ? QStringLiteral("\n[finished] Operation completed successfully.\n")
-                        : QStringLiteral("\n[finished] Operation failed (exit code %1).\n")
-                              .arg(exitCode));
-                statusBar()->showMessage(
-                    success ? QStringLiteral("Firmware operation completed")
-                            : QStringLiteral("Firmware operation failed"),
-                    5000);
-                SetBuildActionsEnabled(true);
+                FinishCliOperation(success, exitCode);
             });
     connect(buildProcess_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
             AppendBuildLog(QStringLiteral("\n[error] Could not start build workflow: %1\n")
                                .arg(buildProcess_->errorString()));
+            if (cliStage_ == CliStage::Flash && runtimeController_) {
+                runtimeController_->ResumeAfterFlash();
+            }
+            cliStage_ = CliStage::None;
             statusBar()->showMessage(QStringLiteral("Could not start firmware operation"), 5000);
             SetBuildActionsEnabled(true);
         }
@@ -390,7 +407,7 @@ MainWindow::MainWindow(QWidget* parent)
     ResetHistory();
     UpdateStatus();
 
-    QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
     const QByteArray savedGeometry = settings.value(QStringLiteral("window/geometry")).toByteArray();
     if (preferences_.rememberWindowGeometry && !savedGeometry.isEmpty()) {
         restoreGeometry(savedGeometry);
@@ -404,31 +421,30 @@ void MainWindow::SetupRuntime(const QString& serialPort,
                               runtime::Protocol protocol) {
     runtimeController_ =
         std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
-    firmwareUpdater_ = std::make_unique<runtime::FirmwareUpdater>();
-    httpApiServer_ = std::make_unique<runtime::HttpApiServer>(*firmwareUpdater_,
-                                                              runtimeController_->Store());
+    localSessionServer_ = std::make_unique<runtime::LocalSessionServer>(
+        runtimeController_->Store(), this);
 
-    firmwareUpdater_->setSuspendCallback([this](bool suspend) {
-        if (suspend) {
-            runtimeController_->SuspendForFlash();
-        } else {
-            runtimeController_->ResumeAfterFlash();
-        }
-    });
-    firmwareUpdater_->setCurrentPort(serialPort.toStdString());
-
-    httpApiServer_->setDevicePort(serialPort.toStdString());
-    httpApiServer_->setCommandHandler(
+    localSessionServer_->SetDevicePort(serialPort.toStdString());
+    localSessionServer_->SetCommandHandler(
         [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
+    localSessionServer_->SetFlashLeaseHandler([this](bool acquire) {
+        if (acquire) runtimeController_->SuspendForFlash();
+        else runtimeController_->ResumeAfterFlash();
+    });
+    localSessionServer_->SetExternalDeviceWritesEnabled(
+        preferences_.allowExternalDeviceWrites);
+    std::string sessionError;
+    if (!localSessionServer_->Start(&sessionError)) {
+        ShowToast(QStringLiteral("Local automation session could not start: %1")
+                      .arg(QString::fromStdString(sessionError)));
+    }
 
     runtimeTab_ = new runtime::RuntimeTab(runtimeController_.get(), this);
     screens_->addWidget(runtimeTab_);
     appSwitcher_->addTab(QStringLiteral("Runtime"));
     runtimeTab_->LoadAutosave();
 
-    firmwareUpdateTab_ = new runtime::FlashPanel(firmwareUpdater_.get(),
-                                                  runtimeController_.get(),
-                                                  httpApiServer_.get(),
+    firmwareUpdateTab_ = new runtime::FlashPanel(runtimeController_.get(),
                                                   this);
     screens_->addWidget(firmwareUpdateTab_);
     appSwitcher_->addTab(QStringLiteral("Firmware Update"));
@@ -478,7 +494,6 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     editorConsoleDock_->hide();
 
     runtimeController_->Start();
-    httpApiServer_->start();
 
     // The View menu gains the new docks' toggle actions.
     RebuildViewMenu();
@@ -506,7 +521,7 @@ bool MainWindow::OpenGraph(const std::string& path) {
     ConnectModelSignals();
 
     currentPath_ = path;
-    setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    setWindowTitle(QStringLiteral("RTE Studio - %1").arg(QString::fromStdString(path)));
     ResetHistory();
     UpdateStatus();
     HideReloadBanner();
@@ -539,7 +554,7 @@ void MainWindow::OnNew() {
 
     ConnectModelSignals();
     currentPath_.clear();
-    setWindowTitle(QStringLiteral("NodeGUI"));
+    setWindowTitle(QStringLiteral("RTE Studio"));
     ResetHistory();
     UpdateStatus();
     HideReloadBanner();
@@ -791,6 +806,10 @@ void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     if (buildLogView_) {
         buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     }
+    if (localSessionServer_) {
+        localSessionServer_->SetExternalDeviceWritesEnabled(
+            preferences_.allowExternalDeviceWrites);
+    }
 
     const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);
     if (undoHistory_.size() > limit) {
@@ -870,7 +889,7 @@ bool MainWindow::DoSave(const std::string& path) {
     }
 
     currentPath_ = path;
-    setWindowTitle(QStringLiteral("NodeGUI - %1").arg(QString::fromStdString(path)));
+    setWindowTitle(QStringLiteral("RTE Studio - %1").arg(QString::fromStdString(path)));
     UpdateGraphWatcher();
     QTimer::singleShot(500, this, [this] { suppressWatch_ = false; });
     return true;
@@ -984,37 +1003,14 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
-    const bool shouldBuild = command != BuildCommand::Flash;
-    const bool shouldFlash = command != BuildCommand::Generate;
-
-    if (shouldFlash) {
-        if (!httpApiServer_) {
-            AppendBuildLog(QStringLiteral("\n[error] Flash service is not available.\n"));
-            return;
-        }
-        if (!httpApiServer_->isRunning() && !httpApiServer_->start()) {
-            AppendBuildLog(QStringLiteral(
-                "\n[error] Could not start the local firmware flash API.\n"));
-            return;
-        }
-    }
-
-    const std::filesystem::path projectRoot = ProjectRoot();
-    const std::filesystem::path script =
-        projectRoot / "Tools" / "build_flash_graph.sh";
-    if (!std::filesystem::is_regular_file(script)) {
-        AppendBuildLog(QStringLiteral("\n[error] Build workflow script not found: %1\n")
-                           .arg(QString::fromStdString(script.string())));
-        return;
-    }
-
-    const QString buildKey = BuildKeyForGraph(currentPath_);
-    const std::filesystem::path outputRoot =
-        projectRoot / "build" / "nodegui" / buildKey.toStdString();
-    const std::filesystem::path firmwareBuildDir = outputRoot / "firmware";
-    const std::filesystem::path firmwareSourceDir = outputRoot / "firmware-src";
     const QString absoluteGraphPath =
         QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
+    const auto workspace = RTEAutomation::WorkspaceForGraph(
+        absoluteGraphPath.toStdString(), preferences_.firmwareBuildType.toStdString());
+    const std::filesystem::path firmwareBuildDir = workspace.build;
+    const std::filesystem::path firmwareSourceDir = workspace.generated;
+    const std::filesystem::path firmwareBinary =
+        workspace.artifacts / "STM32CubeMX.bin";
 
     QString operationName;
     switch (command) {
@@ -1039,31 +1035,115 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
                  absoluteGraphPath,
                  QString::fromStdString(firmwareBuildDir.string())));
 
-    QStringList arguments;
-    arguments << QStringLiteral("--graph")
-              << absoluteGraphPath
-              << QStringLiteral("--fw-build-dir")
-              << QString::fromStdString(firmwareBuildDir.string())
-              << QStringLiteral("--fw-src-dir")
-              << QString::fromStdString(firmwareSourceDir.string())
-              << QStringLiteral("--build-type")
-              << preferences_.firmwareBuildType;
-
-    if (!shouldBuild) {
-        arguments << QStringLiteral("--flash-only");
-    } else if (!shouldFlash) {
-        arguments << QStringLiteral("--no-flash");
-    }
-    if (shouldFlash) {
-        arguments << QStringLiteral("--flash-url")
-                  << QStringLiteral("http://127.0.0.1:%1")
-                         .arg(httpApiServer_->actualPort());
-    }
-
+    activeBuildCommand_ = command;
+    pendingFirmwarePath_ = QString::fromStdString(firmwareBinary.string());
     SetBuildActionsEnabled(false);
     statusBar()->showMessage(QStringLiteral("%1 in progress...").arg(operationName));
-    buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
-    buildProcess_->start(QString::fromStdString(script.string()), arguments);
+    if (command == BuildCommand::Flash) {
+        if (!std::filesystem::is_regular_file(firmwareBinary)) {
+            AppendBuildLog(QStringLiteral("\n[error] Firmware binary does not exist: %1\n")
+                               .arg(pendingFirmwarePath_));
+            SetBuildActionsEnabled(true);
+            return;
+        }
+        StartCliFlash(pendingFirmwarePath_);
+        return;
+    }
+
+    QStringList arguments{
+        QStringLiteral("--format"), QStringLiteral("jsonl"),
+        command == BuildCommand::Generate ? QStringLiteral("generate")
+                                           : QStringLiteral("build"),
+        QStringLiteral("--graph"), absoluteGraphPath,
+        QStringLiteral("--base-source"),
+        QString::fromStdString(DefaultFirmwareBaseDir().string()),
+        QStringLiteral("--templates"), QString::fromStdString(DefaultTemplatesDir()),
+    };
+    if (command == BuildCommand::Generate) {
+        arguments << QStringLiteral("--output")
+                  << QString::fromStdString(firmwareSourceDir.string());
+        cliStage_ = CliStage::Generate;
+    } else {
+        arguments << QStringLiteral("--source-output")
+                  << QString::fromStdString(firmwareSourceDir.string())
+                  << QStringLiteral("--build-dir")
+                  << QString::fromStdString(firmwareBuildDir.string())
+                  << QStringLiteral("--build-type")
+                  << preferences_.firmwareBuildType;
+        cliStage_ = CliStage::Build;
+    }
+    cliOutputBuffer_.clear();
+    buildProcess_->setWorkingDirectory(
+        QFileInfo(absoluteGraphPath).absolutePath());
+    buildProcess_->start(RteCliPath(), arguments);
+}
+
+void MainWindow::StartCliFlash(const QString& firmwarePath) {
+    if (!runtimeController_) {
+        AppendBuildLog(QStringLiteral("\n[error] Runtime controller is unavailable.\n"));
+        SetBuildActionsEnabled(true);
+        return;
+    }
+    runtimeController_->SuspendForFlash();
+    cliStage_ = CliStage::Flash;
+    cliOutputBuffer_.clear();
+    const QStringList arguments{
+        QStringLiteral("--format"), QStringLiteral("jsonl"),
+        QStringLiteral("flash"), QStringLiteral("--firmware"), firmwarePath,
+        QStringLiteral("--serial"), runtimeController_->Port(),
+        QStringLiteral("--auto-gpio"),
+    };
+    statusBar()->showMessage(QStringLiteral("Flashing firmware..."));
+    buildProcess_->start(RteCliPath(), arguments);
+}
+
+void MainWindow::HandleCliOutput() {
+    if (!buildProcess_) return;
+    cliOutputBuffer_ += buildProcess_->readAllStandardOutput();
+    for (;;) {
+        const qsizetype newline = cliOutputBuffer_.indexOf('\n');
+        if (newline < 0) break;
+        QByteArray line = cliOutputBuffer_.left(newline).trimmed();
+        cliOutputBuffer_.remove(0, newline + 1);
+        if (line.isEmpty()) continue;
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            AppendBuildLog(QString::fromUtf8(line) + u'\n');
+            continue;
+        }
+        const QJsonObject object = document.object();
+        const QString event = object.value(QStringLiteral("event")).toString();
+        const QString message = object.value(QStringLiteral("message")).toString();
+        if (!message.isEmpty()) {
+            AppendBuildLog(QStringLiteral("[%1] %2\n").arg(
+                object.value(QStringLiteral("phase")).toString(event), message));
+        }
+        if (event == QStringLiteral("artifact")
+            && object.value(QStringLiteral("kind")).toString()
+                == QStringLiteral("firmware-bin")) {
+            pendingFirmwarePath_ = object.value(QStringLiteral("path")).toString();
+        }
+    }
+}
+
+void MainWindow::FinishCliOperation(bool success, int exitCode) {
+    const CliStage finishedStage = cliStage_;
+    if (finishedStage == CliStage::Flash && runtimeController_) {
+        runtimeController_->ResumeAfterFlash();
+    }
+    if (success && finishedStage == CliStage::Build
+        && activeBuildCommand_ == BuildCommand::GenerateAndFlash) {
+        StartCliFlash(pendingFirmwarePath_);
+        return;
+    }
+    cliStage_ = CliStage::None;
+    AppendBuildLog(success
+        ? QStringLiteral("\n[finished] Operation completed successfully.\n")
+        : QStringLiteral("\n[finished] Operation failed (exit code %1).\n").arg(exitCode));
+    statusBar()->showMessage(success ? QStringLiteral("Firmware operation completed")
+                                     : QStringLiteral("Firmware operation failed"), 5000);
+    SetBuildActionsEnabled(true);
 }
 
 void MainWindow::ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId) {
@@ -1184,7 +1264,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         runtimeTab_->SaveAutosave();
     }
     if (preferences_.rememberWindowGeometry) {
-        QSettings settings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+        QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
         settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
     }
     QMainWindow::closeEvent(event);

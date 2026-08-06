@@ -20,6 +20,7 @@ struct BuilderOptions {
     std::optional<std::filesystem::path> graphPath;
     std::optional<std::filesystem::path> baseSrc;
     std::optional<std::filesystem::path> outputDir;
+    std::optional<std::filesystem::path> templatesDir;
     RTECodeEmitter::LogLevel verbosity = RTECodeEmitter::LogLevel::Info;
     bool dryRun = false;
     bool clean = false;

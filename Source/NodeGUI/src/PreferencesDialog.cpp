@@ -22,8 +22,17 @@ namespace NodeGUI {
 
 namespace {
 
+void MigrateLegacySettings() {
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    if (settings.allKeys().isEmpty()) {
+        QSettings legacy(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+        for (const QString& key : legacy.allKeys()) settings.setValue(key, legacy.value(key));
+    }
+}
+
 QSettings MakeSettings() {
-    return QSettings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    MigrateLegacySettings();
+    return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
 }
 
 constexpr int kMinimumHistoryLimit = 10;
@@ -47,6 +56,8 @@ AppPreferences LoadAppPreferences() {
         settings.value(QStringLiteral("automaticallyShowBuildLogs"), true).toBool();
     preferences.rememberWindowGeometry =
         settings.value(QStringLiteral("rememberWindowGeometry"), true).toBool();
+    preferences.allowExternalDeviceWrites =
+        settings.value(QStringLiteral("allowExternalDeviceWrites"), false).toBool();
     preferences.undoHistoryLimit =
         std::clamp(settings.value(QStringLiteral("undoHistoryLimit"), 100).toInt(),
                    kMinimumHistoryLimit,
@@ -86,6 +97,8 @@ void SaveAppPreferences(const AppPreferences& preferences) {
                       preferences.automaticallyShowBuildLogs);
     settings.setValue(QStringLiteral("rememberWindowGeometry"),
                       preferences.rememberWindowGeometry);
+    settings.setValue(QStringLiteral("allowExternalDeviceWrites"),
+                      preferences.allowExternalDeviceWrites);
     settings.setValue(QStringLiteral("undoHistoryLimit"), preferences.undoHistoryLimit);
     settings.setValue(QStringLiteral("buildLogLineLimit"),
                       preferences.buildLogLineLimit);
@@ -179,6 +192,22 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     buildLayout->addRow(QStringLiteral("Log retention"), buildLogLineLimitSpin_);
     tabs->addTab(buildPage, QStringLiteral("Build"));
 
+    auto* automationPage = new QWidget(tabs);
+    auto* automationLayout = new QVBoxLayout(automationPage);
+    allowExternalDeviceWritesCheck_ = new QCheckBox(
+        QStringLiteral("Allow CLI and MCP clients to send commands to the device"),
+        automationPage);
+    allowExternalDeviceWritesCheck_->setChecked(preferences.allowExternalDeviceWrites);
+    automationLayout->addWidget(allowExternalDeviceWritesCheck_);
+    auto* automationHint = new QLabel(
+        QStringLiteral("Read-only status, telemetry, and console access stays available. "
+                       "This write permission is disabled by default and only applies while "
+                       "RTE Studio is running."), automationPage);
+    automationHint->setWordWrap(true);
+    automationLayout->addWidget(automationHint);
+    automationLayout->addStretch(1);
+    tabs->addTab(automationPage, QStringLiteral("Automation"));
+
     auto* shortcutsPage = new QWidget(tabs);
     auto* shortcutsLayout = new QVBoxLayout(shortcutsPage);
 
@@ -261,6 +290,7 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.confirmNewGraph = confirmNewGraphCheck_->isChecked();
     preferences.automaticallyShowBuildLogs = showBuildLogsCheck_->isChecked();
     preferences.rememberWindowGeometry = rememberWindowGeometryCheck_->isChecked();
+    preferences.allowExternalDeviceWrites = allowExternalDeviceWritesCheck_->isChecked();
     preferences.undoHistoryLimit = undoHistoryLimitSpin_->value();
     preferences.buildLogLineLimit = buildLogLineLimitSpin_->value();
     preferences.firmwareBuildType = buildTypeCombo_->currentText();

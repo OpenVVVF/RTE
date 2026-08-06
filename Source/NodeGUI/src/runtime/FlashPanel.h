@@ -1,60 +1,47 @@
 #pragma once
 
-#include "FirmwareUpdater.h"
-
+#include <QByteArray>
 #include <QWidget>
 
 class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
+class QProcess;
 class QProgressBar;
 class QPushButton;
-class QTimer;
 
 namespace NodeGUI::runtime {
 
-class HttpApiServer;
 class RuntimeController;
 
-// Top-level Firmware Update tab: firmware path + Flash button + Auto-GPIO
-// toggle, HTTP server controls, and the updater state/log. Polls the Qt-free
-// FirmwareUpdater on a timer.
-class FlashPanel : public QWidget {
+// Firmware Update tab backed by the same finite `rte flash` worker used by
+// graph actions and automation clients.
+class FlashPanel final : public QWidget {
     Q_OBJECT
 
 public:
-    FlashPanel(FirmwareUpdater* updater,
-               RuntimeController* controller,
-               HttpApiServer* httpServer,
-               QWidget* parent = nullptr);
-
-private slots:
-    void OnFlashClicked();
-    void OnBrowse();
-    void OnHttpToggle();
-    void PollStatus();
+    explicit FlashPanel(RuntimeController* controller, QWidget* parent = nullptr);
 
 private:
-    FirmwareUpdater* updater_;
-    RuntimeController* controller_;
-    HttpApiServer* httpServer_;
+    void OnFlashClicked();
+    void OnBrowse();
+    void ReadOutput();
+    void Finish(int exitCode);
+    void AppendJsonLine(const QByteArray& line);
 
-    QLabel* portLabel_ = nullptr;
+    RuntimeController* controller_ = nullptr;
+    QProcess* process_ = nullptr;
+    QByteArray outputBuffer_;
+
     QLineEdit* pathEdit_ = nullptr;
     QPushButton* flashButton_ = nullptr;
     QCheckBox* autoGpioCheck_ = nullptr;
     QLabel* manualHint_ = nullptr;
-    QLineEdit* httpPortEdit_ = nullptr;
-    QPushButton* httpButton_ = nullptr;
-    QLabel* httpStatus_ = nullptr;
     QLabel* stateLabel_ = nullptr;
     QProgressBar* progressBar_ = nullptr;
     QLabel* errorLabel_ = nullptr;
     QPlainTextEdit* logView_ = nullptr;
-    QTimer* pollTimer_ = nullptr;
-
-    std::size_t shownLogLines_ = 0;
 };
 
 }  // namespace NodeGUI::runtime

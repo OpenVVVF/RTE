@@ -6,7 +6,10 @@
 // std::function callbacks. All callbacks fire on the reader thread; the consumer
 // is responsible for marshalling onto the GUI thread.
 //
-// Pure std C++20 + POSIX (termios). No Qt, no _WIN32 branches.
+// Pure std C++20. Serial I/O is provided by the cross-platform
+// InverterProtocol transport.
+
+#include <inverter_protocol/host/uart_transport.h>
 
 #include <atomic>
 #include <cstddef>
@@ -53,24 +56,6 @@ public:
     std::function<void(const Stats&)> onStats;      // ~1 Hz
 
 private:
-    // POSIX serial port (termios), same configuration as the original SerialPort.
-    class SerialPort {
-    public:
-        SerialPort() = default;
-        ~SerialPort();
-
-        bool open(const std::string& port, int baud = 460800);
-        void close();
-        bool isOpen() const;
-
-        int  read(uint8_t* buf, int cap);
-        bool write(const uint8_t* data, int n);
-        bool drain();
-
-    private:
-        int h_ = -1; // INVALID_SERIAL
-    };
-
     void threadMain(const std::string& port);
 
     // Ingest helpers (reader thread only; the original appended "Locked" because
@@ -105,7 +90,7 @@ private:
     std::thread thr_;
 
     std::mutex serial_mtx_;
-    SerialPort serial_;
+    ivp::SerialPort serial_;
 };
 
 } // namespace NodeGUI::runtime

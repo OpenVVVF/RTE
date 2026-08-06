@@ -1,0 +1,63 @@
+name: Build portable artifacts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: rte-linux-x64
+          - os: windows-latest
+            artifact: rte-windows-x64
+          - os: macos-13
+            artifact: rte-macos-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+
+      - name: Configure
+        shell: bash
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DNODEGUI_ENABLE_FPS_OVERLAY=OFF
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --parallel
+
+      - name: Test
+        shell: bash
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Stage portable install
+        shell: bash
+        run: cmake --install build --prefix stage
+
+      - name: Archive
+        shell: bash
+        run: cmake -E tar cf "${{ matrix.artifact }}.zip" --format=zip stage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+          if-no-files-found: error

@@ -24,6 +24,7 @@ struct ToolchainInfo {
 std::optional<ToolchainInfo> DetectToolchain(
     const std::filesystem::path& fwSrc,
     const std::string& mode,
-    RTECodeEmitter::Logger& logger);
+    RTECodeEmitter::Logger& logger,
+    const std::filesystem::path& toolSearchRoot = {});
 
 }  // namespace RTEFirmwareBuilder

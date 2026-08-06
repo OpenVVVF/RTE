@@ -21,7 +21,7 @@ cmake -B build -G Ninja
 cmake --build build -j8
 ```
 
-This produces `build/Source/RTEFirmwareBuilder/RTEFirmwareBuilder`.
+This produces the compatibility wrapper at `build/bin/RTEFirmwareBuilder`.
 
 ## Quick start: build the baseline firmware
 
@@ -30,7 +30,7 @@ It creates empty `app_loop`, `tim_isr`, and `adc_isr` domains so the base
 firmware compiles without any application logic.
 
 ```bash
-./build/Source/RTEFirmwareBuilder/RTEFirmwareBuilder \
+./build/bin/RTEFirmwareBuilder \
     --fw-src    Images/Gen6FW \
     --build-dir build/rtetest-fw \
     --graph     Images/Gen6FW/baseline_graph.json \

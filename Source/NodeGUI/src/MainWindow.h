@@ -4,8 +4,7 @@
 #include "GraphView.h"
 #include "PreferencesDialog.h"
 
-#include "runtime/FirmwareUpdater.h"
-#include "runtime/HttpApiServer.h"
+#include "runtime/LocalSessionServer.h"
 #include "runtime/RuntimeController.h"
 
 #include <QByteArray>
@@ -51,7 +50,7 @@ public:
     GraphScene* Scene() const { return graphScene_.get(); }
 
     // Adds the top-level Runtime and Firmware Update tabs, then starts the
-    // telemetry client and HTTP API server.
+    // telemetry client and authenticated local automation session.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
                       runtime::Protocol protocol = runtime::Protocol::Legacy);
@@ -81,6 +80,7 @@ private:
         Flash,
         GenerateAndFlash,
     };
+    enum class CliStage { None, Generate, Build, Flash };
 
     void SetupMenu();
     void RegisterShortcut(QAction* action,
@@ -93,6 +93,9 @@ private:
     bool DoSave(const std::string& path);
     bool EnsureGraphSaved();
     void StartBuildCommand(BuildCommand command);
+    void StartCliFlash(const QString& firmwarePath);
+    void HandleCliOutput();
+    void FinishCliOperation(bool success, int exitCode);
     void ShowBuildLogs();
     void AppendBuildLog(const QString& text);
     void SetBuildActionsEnabled(bool enabled);
@@ -161,6 +164,10 @@ private:
     QAction* flashAction_ = nullptr;
     QAction* generateFlashAction_ = nullptr;
     QProcess* buildProcess_ = nullptr;
+    CliStage cliStage_ = CliStage::None;
+    BuildCommand activeBuildCommand_ = BuildCommand::Generate;
+    QByteArray cliOutputBuffer_;
+    QString pendingFirmwarePath_;
     QVector<ShortcutBinding> shortcutBindings_;
     AppPreferences preferences_;
     std::vector<std::string> undoHistory_;
@@ -171,8 +178,7 @@ private:
     QByteArray screenStates_[3];
     int previousTab_ = 0;
     std::unique_ptr<runtime::RuntimeController> runtimeController_;
-    std::unique_ptr<runtime::FirmwareUpdater> firmwareUpdater_;
-    std::unique_ptr<runtime::HttpApiServer> httpApiServer_;
+    std::unique_ptr<runtime::LocalSessionServer> localSessionServer_;
     QPointer<runtime::RuntimeTab> runtimeTab_;
     QPointer<runtime::FlashPanel> firmwareUpdateTab_;
 

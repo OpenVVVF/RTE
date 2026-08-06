@@ -66,8 +66,11 @@ if(INVERTERPROTOCOL_BUILD_TESTS)
     )
 
     target_link_libraries(InverterProtocol_tests
-        PRIVATE InverterProtocol InverterProtocolCore GTest::gtest_main ivp_warnings util
+        PRIVATE InverterProtocol InverterProtocolCore GTest::gtest_main ivp_warnings
     )
+    if(UNIX)
+        target_link_libraries(InverterProtocol_tests PRIVATE util)
+    endif()
 
     gtest_discover_tests(InverterProtocol_tests)
 endif()

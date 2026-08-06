@@ -8,7 +8,7 @@ can be targeted by writing your own base image**: the HAL/driver layer,
 plus the small `platform_api` contract the generated code calls.
 
 This repo holds the STM32H723 base firmware image, the node-graph
-libraries, the Qt NodeGUI editor, and the tools that turn a graph into a
+libraries, the RTE Studio editor, and the tools that turn a graph into a
 flashable firmware binary. A plant/inverter simulator based on
 [ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
 exercised in closed loop before touching hardware.
@@ -33,7 +33,9 @@ RTE/
 │   ├── RTELogger/          # Shared logging used by the host tools
 │   └── InverterProtocol/   # Shared host/device telemetry + command protocol
 └── Source/
-    ├── NodeGUI/            # Qt6 + QtNodes node editor
+    ├── NodeGUI/            # RTE Studio (Qt6 + QtNodes; source path kept stable)
+    ├── RTEAutomation/      # Portable generation/build/flash/session library
+    ├── RTECLI/             # Unified `rte` automation and MCP executable
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
     └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
 ```
@@ -56,7 +58,7 @@ implementation.
 
 ## Build host tools
 
-Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for NodeGUI). Clone with
+Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for RTE Studio). Clone with
 `--recurse-submodules` (or run `git submodule update --init --recursive`) so the
 QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
@@ -65,11 +67,15 @@ cmake -B build -G Ninja
 cmake --build build -j8
 ```
 
-### NodeGUI
+Host executables are always placed in `build/bin`; static libraries are placed
+in `build/lib`. Firmware generated from a graph defaults to the platform user
+cache, not to a nested directory in this checkout.
+
+### RTE Studio
 
 ```bash
-cmake --build build --target NodeGUI -j8
-./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
+cmake --build build --target RTEStudio -j8
+./build/bin/rte-studio Assets/Examples/foc_demo.json
 ```
 
 On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
@@ -111,48 +117,47 @@ Message types include the existing telemetry frames (`TELEMETRY_DATA`,
 
 ```bash
 cmake --build build --target InverterProtocol_tests
-./build/Lib/InverterProtocol/InverterProtocol_tests
+./build/bin/InverterProtocol_tests
 ```
 
 ## Build the STM32 firmware
 
-`RTEFirmwareBuilder` handles CMake configuration, ARM toolchain detection, and
-the optional `RTECodeEmitter` step. If you do not have `arm-none-eabi-gcc/g++`
-installed, run the bundled installer first:
+The unified `rte` CLI handles validation, generation, CMake configuration,
+ARM toolchain detection, building, flashing, live Studio access, and MCP. The
+older `RTECodeEmitter` and `RTEFirmwareBuilder` commands remain compatibility
+wrappers for one release.
+If you do not have `arm-none-eabi-gcc/g++` installed, run the bundled installer
+first:
 
 ```bash
-./scripts/install_stm32_toolchain.sh
+./Tools/install_stm32_toolchain.sh
 ```
 
 Then build the baseline firmware:
 
 ```bash
-./build/Source/RTEFirmwareBuilder/RTEFirmwareBuilder \
-    --fw-src    Images/Gen6FW \
-    --build-dir build/rtetest-fw \
+./build/bin/rte build \
     --graph     Images/Gen6FW/baseline_graph.json \
-    --base-src  Images/Gen6FW \
-    --output    build/rtetest-fw-src \
-    --verbosity info
+    --base-source Images/Gen6FW
 ```
 
-After a successful build:
-
-```
-build/rtetest-fw/
-├── STM32CubeMX.elf
-└── STM32CubeMX.bin
-```
+After a successful default build, the CLI prints the artifact path and writes a
+manifest under the user cache (`~/.cache/rte/projects/...` on Linux,
+`~/Library/Caches/RTE/...` on macOS, and Local AppData on Windows). Override
+`--source-output` and `--build-dir` when a fixed workspace is required.
 
 ## Tools
 
-- `NodeGUI` — Qt node editor for NodeAPI graphs (open/save, domains, bridges,
-  parameter edit, auto-arrange).
+- `rte-studio` — lightweight editor and owner of live device/telemetry state.
+- `rte` — portable automation backend and MCP stdio server (`rte mcp`).
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the
   firmware, generates domain code, and inserts it at `// RTE_EMIT:` markers.
 - `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally
-  runs `RTECodeEmitter`, and builds the STM32 firmware.
+  runs code generation, and builds the STM32 firmware (compatibility command).
+
+See [Automation backend](docs/automation-backend.md) for component boundaries,
+the cache layout, CLI examples, MCP setup, and the external-write security gate.
 
 ## Calibration
 

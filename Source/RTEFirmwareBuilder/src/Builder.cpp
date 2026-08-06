@@ -1,66 +1,21 @@
 #include "Builder.h"
 
+#include "Emitter.h"
+
+#include <RTEAutomation/Platform.h>
+#include <RTEAutomation/ProcessRunner.h>
+
 #include <algorithm>
-#include <array>
-#include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
-#include <sstream>
 #include <thread>
-#include <unistd.h>
 
 namespace RTEFirmwareBuilder {
 
 namespace {
 
-std::vector<std::filesystem::path> GetPathDirs() {
-    std::vector<std::filesystem::path> dirs;
-    const char* pathEnv = std::getenv("PATH");
-    if (!pathEnv) return dirs;
-
-    std::string segment;
-    std::istringstream iss(pathEnv);
-    while (std::getline(iss, segment, ':')) {
-        if (!segment.empty()) {
-            dirs.emplace_back(segment);
-        }
-    }
-    return dirs;
-}
-
 std::optional<std::filesystem::path> FindExecutableInPath(const std::string& name) {
-    for (const auto& dir : GetPathDirs()) {
-        auto candidate = dir / name;
-        if (std::filesystem::is_regular_file(candidate)) {
-            return candidate;
-        }
-    }
-    return std::nullopt;
-}
-
-std::string ShellQuote(std::string_view arg) {
-    std::string result;
-    result.reserve(arg.size() + 2);
-    result.push_back('\'');
-    for (char c : arg) {
-        if (c == '\'') {
-            result += "'\\''";
-        } else {
-            result.push_back(c);
-        }
-    }
-    result.push_back('\'');
-    return result;
-}
-
-std::string JoinArgs(const std::vector<std::string>& args) {
-    std::string result;
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (i > 0) result.push_back(' ');
-        result += ShellQuote(args[i]);
-    }
-    return result;
+    return RTEAutomation::FindExecutable(name);
 }
 
 std::string ToLower(std::string_view s) {
@@ -68,14 +23,6 @@ std::string ToLower(std::string_view s) {
     std::transform(out.begin(), out.end(), out.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return out;
-}
-
-std::optional<std::filesystem::path> SelfExecutablePath() {
-    std::array<char, 4096> buf{};
-    ssize_t len = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
-    if (len <= 0) return std::nullopt;
-    buf[static_cast<size_t>(len)] = '\0';
-    return std::filesystem::canonical(buf.data());
 }
 
 }  // namespace
@@ -91,7 +38,9 @@ bool Builder::Run(const BuilderOptions& options) {
         if (!RunEmitter(options, effectiveFwSrc)) return false;
     }
 
-    auto toolchain = DetectToolchain(effectiveFwSrc, options.toolchainMode, logger_);
+    auto toolchain = DetectToolchain(
+        effectiveFwSrc, options.toolchainMode, logger_,
+        options.baseSrc.value_or(effectiveFwSrc));
     if (!toolchain) {
         logger_.Error("No usable ARM toolchain found. The firmware needs both "
                       "arm-none-eabi-gcc and arm-none-eabi-g++. Options:\n"
@@ -148,25 +97,16 @@ bool Builder::ValidateOptions(const BuilderOptions& options) const {
 
 bool Builder::RunEmitter(const BuilderOptions& options,
                          std::filesystem::path& effectiveFwSrc) const {
-    auto emitterExe = FindRTECodeEmitter();
-    if (!emitterExe) {
-        logger_.Error("Could not locate RTECodeEmitter executable. Make sure the RTE project "
-                      "is built and RTEFirmwareBuilder is run from the build output directory.");
-        return false;
-    }
-
-    std::vector<std::string> args;
-    args.push_back(emitterExe->string());
-    args.push_back("--base-src");
-    args.push_back(options.baseSrc->string());
-    args.push_back("--graph");
-    args.push_back(options.graphPath->string());
-    args.push_back("--output");
-    args.push_back(options.outputDir->string());
-    args.push_back("--verbosity");
-    args.push_back(RTECodeEmitter::Logger::LevelToString(options.verbosity));
-
-    if (!RunCommand("Running RTECodeEmitter", args, options.dryRun)) {
+    RTECodeEmitter::EmitterOptions emitterOptions;
+    emitterOptions.baseSrc = *options.baseSrc;
+    emitterOptions.graphPath = *options.graphPath;
+    emitterOptions.outputDir = *options.outputDir;
+    if (options.templatesDir) emitterOptions.templatesDir = *options.templatesDir;
+    emitterOptions.verbosity = options.verbosity;
+    emitterOptions.dryRun = options.dryRun;
+    RTECodeEmitter::Emitter emitter(logger_);
+    logger_.Info("Generating firmware source: " + emitterOptions.outputDir.string());
+    if (!emitter.Run(emitterOptions)) {
         logger_.Error("RTECodeEmitter failed.");
         return false;
     }
@@ -226,7 +166,7 @@ bool Builder::Build(const BuilderOptions& options,
     args.push_back(options.buildDir.string());
     args.push_back("--target");
     args.push_back("STM32CubeMX");
-    args.push_back("-j");
+    args.push_back("--parallel");
     args.push_back(std::to_string(concurrency));
 
     return RunCommand("Building firmware", args, options.dryRun, toolchain.compilerDir);
@@ -268,38 +208,28 @@ bool Builder::RunCommand(const std::string& description,
                          const std::vector<std::string>& args,
                          bool dryRun,
                          const std::filesystem::path& pathPrefix) const {
-    std::string cmd = JoinArgs(args);
+    if (args.empty()) return false;
+    RTEAutomation::ProcessSpec spec;
+    spec.executable = args.front();
+    spec.arguments.assign(args.begin() + 1, args.end());
     if (!pathPrefix.empty()) {
-        cmd = "export PATH=" + ShellQuote(pathPrefix.string()) + ":$PATH; " + cmd;
+        const char* oldPath = std::getenv("PATH");
+        spec.environment["PATH"] = pathPrefix.string()
+            + RTEAutomation::PathListSeparator() + (oldPath ? oldPath : "");
     }
-    logger_.Info(description + ": " + cmd);
+    logger_.Info(description + ": " + RTEAutomation::FormatCommandForDisplay(spec));
 
     if (dryRun) {
         logger_.Info("[dry-run] skipping execution");
         return true;
     }
 
-    // Merge stderr into the pipe so compiler errors are captured too, and
-    // buffer the output: on failure the full message is replayed at Error
-    // level (it used to be logged at Debug, where default verbosity hid it).
-    FILE* pipe = popen((cmd + " 2>&1").c_str(), "r");
-    if (!pipe) {
-        logger_.Error("Failed to start command: " + cmd);
-        return false;
-    }
-
     std::vector<std::string> output;
-    std::array<char, 1024> buffer{};
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
-        size_t len = std::strlen(buffer.data());
-        if (len > 0 && buffer[len - 1] == '\n') --len;
-        output.emplace_back(buffer.data(), len);
-    }
-
-    const int status = pclose(pipe);
-    if (status != 0) {
-        logger_.Error("Command failed with exit code " + std::to_string(status) +
-                      ": " + cmd);
+    const auto result = RTEAutomation::RunProcess(
+        spec, [&](const std::string& line) { output.push_back(line); });
+    if (!result.started || result.exitCode != 0) {
+        logger_.Error("Command failed: " + result.error + ": "
+                      + RTEAutomation::FormatCommandForDisplay(spec));
         logger_.Error("---- full output ----");
         for (const auto& line : output) {
             logger_.Error(line);
@@ -315,17 +245,18 @@ bool Builder::RunCommand(const std::string& description,
 }
 
 std::optional<std::filesystem::path> Builder::FindRTECodeEmitter() const {
-    auto self = SelfExecutablePath();
-    if (!self) return std::nullopt;
+    const auto self = RTEAutomation::ExecutablePath();
+    if (self.empty()) return std::nullopt;
 
-    auto dir = self->parent_path();
+    auto dir = self.parent_path();
 
     // Same directory as this executable.
-    auto sameDir = dir / "RTECodeEmitter";
+    auto sameDir = dir / RTEAutomation::ExecutableName("RTECodeEmitter");
     if (std::filesystem::is_regular_file(sameDir)) return sameDir;
 
     // Sibling source directory layout: Source/RTEFirmwareBuilder and Source/RTECodeEmitter.
-    auto siblingDir = dir.parent_path() / "RTECodeEmitter" / "RTECodeEmitter";
+    auto siblingDir = dir.parent_path() / "RTECodeEmitter"
+        / RTEAutomation::ExecutableName("RTECodeEmitter");
     if (std::filesystem::is_regular_file(siblingDir)) return siblingDir;
 
     // Finally, fall back to PATH.

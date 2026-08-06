@@ -72,7 +72,7 @@ struct RuntimeSessionSnapshot {
 };
 
 // Point-in-time copy of everything the runtime knows. Mirrors the old ImGui
-// client's TelemetryState so the HTTP API can keep its exact JSON contract.
+// client's TelemetryState so the local automation session can expose it.
 // NOTE: expensive to produce (full history copies) — use GetStatsLine() for
 // high-frequency polling.
 struct TelemetrySnapshot {
@@ -98,7 +98,7 @@ struct TelemetrySnapshot {
 // Thread-safe store for live telemetry: float signal histories, latest values
 // (float + string), and the device console scrollback. Written by the GUI
 // thread (from RuntimeController's drain timer) and read by the GUI and the
-// HTTP server thread.
+// local session endpoint.
 //
 // Retention matches the old client: 30 seconds or 12000 samples per signal,
 // 6000 console lines.
