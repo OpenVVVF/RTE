@@ -1,0 +1,30 @@
+{
+  "id": "hw.rpm",
+  "displayName": "RPM (Mech/Elec)",
+  "defaultName": "Rpm",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "RpmMech",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "RpmElec",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

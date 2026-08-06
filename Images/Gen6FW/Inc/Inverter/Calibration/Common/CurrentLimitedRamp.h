@@ -40,6 +40,9 @@ public:
     /** Target modulation index. */
     float target() const { return m_to; }
 
+    /** True if the ramp is currently throttled down by the current limit. */
+    bool isPaused() const { return m_paused; }
+
 private:
     float m_from = 0.0f;
     float m_to = 0.0f;

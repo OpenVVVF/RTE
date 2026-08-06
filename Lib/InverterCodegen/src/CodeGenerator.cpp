@@ -346,10 +346,15 @@ std::string InjectionWrapper(const NodeAPI::Graph& graph,
     return "";
 }
 
-// Var nodes (type id "Values.Var*") hold machine-owned RAM state in their
-// "Stored" parameter; a runtime registry lets the shell adjust them by node id.
+// Var nodes hold machine-owned RAM state in their "Stored" parameter; a
+// runtime registry lets the shell adjust them by node id.  Matches both the
+// library types ("Values.Var*") and graph-embedded custom clones
+// ("Custom.Var*") — the node-library ID migration renamed the example
+// graphs' var nodes to Custom.Var*, which silently emptied every var
+// registry and broke `var set` on target.
 bool IsVarNodeType(const NodeAPI::NodeType& nodeType) {
-    return nodeType.id.rfind("Values.Var", 0) == 0;
+    return nodeType.id.rfind("Values.Var", 0) == 0 ||
+           nodeType.id.rfind("Custom.Var", 0) == 0;
 }
 
 /* True when the instance flags this parameter as a parameterInput (bound

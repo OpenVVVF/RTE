@@ -50,6 +50,8 @@ add_executable(RTEStudio
     src/runtime/FlashPanel.h
     src/runtime/LocalSessionServer.cpp
     src/runtime/LocalSessionServer.h
+    src/runtime/FramKeysManager.cpp
+    src/runtime/FramKeysManager.h
     src/runtime/RuntimeTab.cpp
     src/runtime/RuntimeTab.h
 )

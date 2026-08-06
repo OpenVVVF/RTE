@@ -1,8 +1,13 @@
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/AppState.h"
 #include "Inverter/LoopStats.h"
+#include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/platform_api.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CurrentObserver.h"
+#include "Inverter/Control/MotorParameterEstimator.h"
+#include "Inverter/Control/VoltageVectorSchedule.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Sensors/SpikeRecorder.h"
@@ -28,11 +33,11 @@ PhaseCurrentADC& phaseCurrentADC() {
 
 static ADC_InjectionConfTypeDef makeInjectedConfig(uint32_t channel, uint32_t rank,
                                                     uint32_t trigger, uint32_t edge,
-                                                    uint32_t nbr_of_conv = 2U) {
+                                                    uint32_t nbr_of_conv = 4U) {
     ADC_InjectionConfTypeDef cfg = {};
     cfg.InjectedChannel = channel;
     cfg.InjectedRank = rank;
-    cfg.InjectedSamplingTime = ADC_SAMPLETIME_32CYCLES_5;
+    cfg.InjectedSamplingTime = ADC_SAMPLETIME_8CYCLES_5;
     cfg.InjectedSingleDiff = ADC_SINGLE_ENDED;
     cfg.InjectedOffsetNumber = ADC_OFFSET_NONE;
     cfg.InjectedOffset = 0;
@@ -43,9 +48,12 @@ static ADC_InjectionConfTypeDef makeInjectedConfig(uint32_t channel, uint32_t ra
     cfg.QueueInjectedContext = DISABLE;
     cfg.ExternalTrigInjecConv = trigger;
     cfg.ExternalTrigInjecConvEdge = edge;
-    cfg.InjecOversamplingMode = ENABLE;
-    cfg.InjecOversampling.Ratio = 16;
-    cfg.InjecOversampling.RightBitShift = ADC_RIGHTBITSHIFT_4;
+    /* Hardware oversampling is disabled so the CPU sees individual raw
+     * samples in JDR1..4.  Oversampling would hide the local di/dt needed by
+     * the current observer and RLS estimator. */
+    cfg.InjecOversamplingMode = DISABLE;
+    cfg.InjecOversampling.Ratio = 1;
+    cfg.InjecOversampling.RightBitShift = ADC_RIGHTBITSHIFT_NONE;
     return cfg;
 }
 
@@ -69,14 +77,21 @@ bool PhaseCurrentADC::configureAdcChannels() {
         return false;
     }
 
-    /* ADC1 injected master: U signal then V signal, triggered by TIM1_TRGO.
+    /* ADC1 injected master: [U_sig, V_sig, U_sig, V_sig], triggered by TIM1_TRGO.
      * The reference channels are on ADC2 so each signal/reference pair is
-     * sampled simultaneously (true differential measurement). */
+     * sampled simultaneously (true differential measurement).  The 4-rank
+     * sequence captures a two-point micro-burst for both phases. */
     ADC_InjectionConfTypeDef inj1_r1 = makeInjectedConfig(
         ADC_CHANNEL_4, ADC_INJECTED_RANK_1,
         ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
     ADC_InjectionConfTypeDef inj1_r2 = makeInjectedConfig(
         ADC_CHANNEL_3, ADC_INJECTED_RANK_2,
+        ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
+    ADC_InjectionConfTypeDef inj1_r3 = makeInjectedConfig(
+        ADC_CHANNEL_4, ADC_INJECTED_RANK_3,
+        ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
+    ADC_InjectionConfTypeDef inj1_r4 = makeInjectedConfig(
+        ADC_CHANNEL_3, ADC_INJECTED_RANK_4,
         ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
 
     if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &inj1_r1) != HAL_OK) {
@@ -85,8 +100,14 @@ bool PhaseCurrentADC::configureAdcChannels() {
     if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &inj1_r2) != HAL_OK) {
         return false;
     }
+    if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &inj1_r3) != HAL_OK) {
+        return false;
+    }
+    if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &inj1_r4) != HAL_OK) {
+        return false;
+    }
 
-    /* ADC2 injected slave: U reference then V reference, no external trigger.
+    /* ADC2 injected slave: [U_ref, V_ref, U_ref, V_ref], no external trigger.
      * It is hardware-slaved to ADC1 in injected-simultaneous mode. */
     ADC_InjectionConfTypeDef inj2_r1 = makeInjectedConfig(
         ADC_CHANNEL_8, ADC_INJECTED_RANK_1,
@@ -94,11 +115,23 @@ bool PhaseCurrentADC::configureAdcChannels() {
     ADC_InjectionConfTypeDef inj2_r2 = makeInjectedConfig(
         ADC_CHANNEL_7, ADC_INJECTED_RANK_2,
         ADC_INJECTED_SOFTWARE_START, ADC_EXTERNALTRIGINJECCONV_EDGE_NONE);
+    ADC_InjectionConfTypeDef inj2_r3 = makeInjectedConfig(
+        ADC_CHANNEL_8, ADC_INJECTED_RANK_3,
+        ADC_INJECTED_SOFTWARE_START, ADC_EXTERNALTRIGINJECCONV_EDGE_NONE);
+    ADC_InjectionConfTypeDef inj2_r4 = makeInjectedConfig(
+        ADC_CHANNEL_7, ADC_INJECTED_RANK_4,
+        ADC_INJECTED_SOFTWARE_START, ADC_EXTERNALTRIGINJECCONV_EDGE_NONE);
 
     if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &inj2_r1) != HAL_OK) {
         return false;
     }
     if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &inj2_r2) != HAL_OK) {
+        return false;
+    }
+    if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &inj2_r3) != HAL_OK) {
+        return false;
+    }
+    if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &inj2_r4) != HAL_OK) {
         return false;
     }
 
@@ -144,6 +177,11 @@ bool PhaseCurrentADC::initTrigger() {
 }
 
 bool PhaseCurrentADC::init() {
+    /* DWT cycle counter for microsecond burst timestamps.  Idempotent — safe
+     * if already enabled elsewhere. */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
     if (!configureAdcChannels()) return false;
     if (!initTrigger()) return false;
     if (!configureAnalogWatchdog()) return false;
@@ -275,9 +313,28 @@ bool PhaseCurrentADC::recalibrateOffsets() {
     return ok;
 }
 
+void PhaseCurrentADC::setUseFixedReference(bool use_fixed) {
+    if (use_fixed && !m_use_fixed_ref) {
+        /* Capture the current reference values when enabling fixed mode. */
+        m_fixed_ref_u = m_raw_u_ref;
+        m_fixed_ref_v = m_raw_v_ref;
+    }
+    m_use_fixed_ref = use_fixed;
+}
+
 float PhaseCurrentADC::countsToCurrent(uint32_t sig, uint32_t ref) const {
     const float lsb   = ADC_VREF / static_cast<float>((1U << ADC_BITS) - 1U);
     const float scale = lsb / (DIVIDER * SENSITIVITY_VA);
+    if (m_use_fixed_ref) {
+        /* Use the captured reference for this phase.  The caller passes the
+         * sampled ref; we match it to the captured fixed ref by proximity. */
+        const float sampled = static_cast<float>(ref);
+        const float fixed_u = static_cast<float>(m_fixed_ref_u);
+        const float fixed_v = static_cast<float>(m_fixed_ref_v);
+        const float fixed = (std::fabs(sampled - fixed_u) < std::fabs(sampled - fixed_v))
+                                ? fixed_u : fixed_v;
+        return (static_cast<float>(sig) - fixed) * scale;
+    }
     return (static_cast<float>(sig) - static_cast<float>(ref)) * scale;
 }
 
@@ -325,13 +382,36 @@ bool PhaseCurrentADC::calibrateOffsets() {
 
 void PhaseCurrentADC::onInjectedConversionComplete() {
     ++LoopStats::adc_isr;
+    /* Set the domain time step for generated code that needs it. */
+    platform_set_current_domain_dt(1.0f / PWM_GetUpdateFrequency());
 
-    /* Read the simultaneously-sampled injected pairs.
-     * ADC1 carries the signal channels, ADC2 carries the reference channels. */
-    m_raw_u_sig = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
-    m_raw_v_sig = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
-    m_raw_u_ref = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
-    m_raw_v_ref = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
+    /* RTE codegen: ADC current-sense step.  Generated code can consume the raw
+     * or scaled phase currents for protection, observers, or logging.
+     * The base image continues to perform safety overcurrent checks below. */
+    // RTE_EMIT: adc_isr step
+
+    /* Read the 4-rank micro-burst:
+     *   ADC1 ranks: U_sig, V_sig, U_sig, V_sig
+     *   ADC2 ranks: U_ref, V_ref, U_ref, V_ref
+     * ADC1/ADC2 run simultaneously rank-by-rank in dual injected mode. */
+    m_raw_burst_u_sig[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+    m_raw_burst_v_sig[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
+    m_raw_burst_u_sig[1] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
+    m_raw_burst_v_sig[1] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_4);
+
+    m_raw_burst_u_ref[0] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+    m_raw_burst_v_ref[0] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
+    m_raw_burst_u_ref[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_3);
+    m_raw_burst_v_ref[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_4);
+
+    m_last_burst_us = DWT->CYCCNT / (SystemCoreClock / 1000000U);
+
+    /* Keep the single-point legacy interface working: use the first burst
+     * point as the canonical raw/current values. */
+    m_raw_u_sig = m_raw_burst_u_sig[0];
+    m_raw_v_sig = m_raw_burst_v_sig[0];
+    m_raw_u_ref = m_raw_burst_u_ref[0];
+    m_raw_v_ref = m_raw_burst_v_ref[0];
 
     m_iu = countsToCurrent(m_raw_u_sig, m_raw_u_ref);
     m_iv = countsToCurrent(m_raw_v_sig, m_raw_v_ref);
@@ -339,11 +419,9 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
     m_current_u = m_iu - m_offset_u;
     m_current_v = m_iv - m_offset_v;
 
-    /* RTE codegen: ADC current-sense step.  Run only after publishing the
-     * conversion that triggered this ISR so generated control code consumes
-     * the current PWM-synchronous sample rather than the previous one.
-     * The base image continues to perform safety overcurrent checks below. */
-    // RTE_EMIT: adc_isr step
+    /* The generated adc_isr domain (hw.phase_currents) handles observer
+     * correction and RLS estimation from the micro-burst.  The base image
+     * only computes the legacy single-point currents for compatibility. */
 
     /* Spike event recorder: synchronized raw currents + encoder snapshot for
      * glitch forensics (see `spikes` shell command). */
@@ -416,6 +494,46 @@ bool PhaseCurrentADC::latest(float& iu, float& iv, float& iw) const {
     __enable_irq();
 
     iw = -(iu + iv);
+    return true;
+}
+
+bool PhaseCurrentADC::sampleBurst(BurstSample& out) {
+    if (!m_new_data) {
+        return false;
+    }
+
+    __disable_irq();
+    out.point[0].iu_a = countsToCurrent(m_raw_burst_u_sig[0], m_raw_burst_u_ref[0]) - m_offset_u;
+    out.point[0].iv_a = countsToCurrent(m_raw_burst_v_sig[0], m_raw_burst_v_ref[0]) - m_offset_v;
+    out.point[1].iu_a = countsToCurrent(m_raw_burst_u_sig[1], m_raw_burst_u_ref[1]) - m_offset_u;
+    out.point[1].iv_a = countsToCurrent(m_raw_burst_v_sig[1], m_raw_burst_v_ref[1]) - m_offset_v;
+    /* The two points in one burst are one rank apart; at 48 MHz ADC clock
+     * with 8.5-cycle sampling this is roughly 0.46 us.  We store a nominal
+     * midpoint timestamp for both points. */
+    out.point[0].time_us = m_last_burst_us;
+    out.point[1].time_us = m_last_burst_us;
+    out.valid = true;
+    m_new_data = false;
+    __enable_irq();
+
+    return true;
+}
+
+bool PhaseCurrentADC::latestBurst(BurstSample& out) const {
+    if (!m_running) {
+        return false;
+    }
+
+    __disable_irq();
+    out.point[0].iu_a = countsToCurrent(m_raw_burst_u_sig[0], m_raw_burst_u_ref[0]) - m_offset_u;
+    out.point[0].iv_a = countsToCurrent(m_raw_burst_v_sig[0], m_raw_burst_v_ref[0]) - m_offset_v;
+    out.point[1].iu_a = countsToCurrent(m_raw_burst_u_sig[1], m_raw_burst_u_ref[1]) - m_offset_u;
+    out.point[1].iv_a = countsToCurrent(m_raw_burst_v_sig[1], m_raw_burst_v_ref[1]) - m_offset_v;
+    out.point[0].time_us = m_last_burst_us;
+    out.point[1].time_us = m_last_burst_us;
+    out.valid = true;
+    __enable_irq();
+
     return true;
 }
 

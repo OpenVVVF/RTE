@@ -153,6 +153,9 @@ private:
     QPointer<QTabWidget> editorConsoleTabs_;
     QPointer<QPlainTextEdit> buildLogView_;
     QMenu* viewMenu_ = nullptr;
+    QMenu* runtimeMenu_ = nullptr;
+    QAction* saveFramKeysAction_ = nullptr;
+    QAction* loadFramKeysAction_ = nullptr;
     QAction* arrangeAction_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;

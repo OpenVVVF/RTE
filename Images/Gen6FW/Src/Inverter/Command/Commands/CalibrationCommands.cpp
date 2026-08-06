@@ -4,6 +4,7 @@
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/EncoderOffsetCalibrator.h"
+#include "Inverter/Calibration/EncoderLinearityCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Calibration/InductanceCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
@@ -16,23 +17,28 @@
 
 #include <cstring>
 #include <cctype>
+#include <cmath>
 
 using Inverter::OpenLoopController;
 using Inverter::PoleEstimator;
 using Inverter::PoleCalibrator;
 using Inverter::EncoderOffsetCalibrator;
+using Inverter::EncoderLinearityCalibrator;
 using Inverter::ResistanceCalibrator;
 using Inverter::InductanceCalibrator;
 using Inverter::FluxLinkageCalibrator;
 using Inverter::EncoderCycleCalibrator;
 using Inverter::AutoCalibrationCoordinator;
+using Inverter::EncoderADC;
 using Inverter::openLoopController;
 using Inverter::poleCalibrator;
 using Inverter::encoderOffsetCalibrator;
+using Inverter::encoderLinearityCalibrator;
 using Inverter::resistanceCalibrator;
 using Inverter::inductanceCalibrator;
 using Inverter::fluxLinkageCalibrator;
 using Inverter::autoCalibrationCoordinator;
+using Inverter::encoderADC;
 
 static bool stringsEqual(const char* a, const char* b) {
     if (a == nullptr || b == nullptr) return false;
@@ -368,11 +374,14 @@ static EncOffsetCommand  sEncOffsetCmd;
 class CalCommand : public CommandInterface {
 public:
     CalCommand()
-      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path>",
-            {ArgSpec{"path", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING}}) {}
+      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path> [--no-save]",
+            {ArgSpec{"path", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"flags", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         const char* path = args[0].s_val;
+        const char* flags = args[1].present ? args[1].s_val : "";
+        const bool save_results = !stringsEqual(flags, "--no-save");
         using S = AutoCalibrationCoordinator::State;
 
         if (stringsEqual(path, "list")) {
@@ -383,20 +392,37 @@ public:
             autoCalibrationCoordinator().stop();
             Telemetry::printf("[CAL] stop requested");
         } else if (stringsEqual(path, "all")) {
-            startRun(S::POLE, S::FLUX, path);
+            startRun(S::POLE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.Poles")) {
-            startRun(S::POLE, S::POLE, path);
+            startRun(S::POLE, S::POLE, path, save_results);
         } else if (stringsEqual(path, "Motor.Encoder") ||
                    stringsEqual(path, "Motor.Encoder.SinCos")) {
-            startRun(S::OFFSET, S::OFFSET, path);
+            startRun(S::OFFSET, S::OFFSET, path, save_results);
+        } else if (stringsEqual(path, "Motor.Encoder.Linearity")) {
+            if (openLoopController().isRunning()) {
+                Telemetry::printf("[CAL] stop the motor before starting %s", path);
+                return;
+            }
+            if (encoderLinearityCalibrator().isActive()) {
+                Telemetry::printf("[CAL] %s: already running", path);
+                return;
+            }
+            float poles = 0.0f, cycles = 0.0f;
+            if (!Inverter::RteParamStore::isReady() ||
+                !Inverter::RteParamStore::get("Motor.Poles", &poles) ||
+                !Inverter::RteParamStore::get("Motor.Encoder.SinCos.CyclesRev", &cycles)) {
+                Telemetry::printf("[CAL] %s: need Motor.Poles and Motor.Encoder.SinCos.CyclesRev", path);
+                return;
+            }
+            encoderLinearityCalibrator().start(poles, cycles);
         } else if (stringsEqual(path, "Motor.Resistance")) {
-            startRun(S::SETTLE, S::RESISTANCE, path);
+            startRun(S::SETTLE, S::RESISTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM")) {
-            startRun(S::INDUCTANCE, S::FLUX, path);
+            startRun(S::INDUCTANCE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.Inductance")) {
-            startRun(S::INDUCTANCE, S::INDUCTANCE, path);
+            startRun(S::INDUCTANCE, S::INDUCTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.FluxLinkage")) {
-            startRun(S::FLUX, S::FLUX, path);
+            startRun(S::FLUX, S::FLUX, path, save_results);
         } else {
             Telemetry::printf("[CAL] unknown routine '%s' (try 'cal list')", path);
         }
@@ -405,10 +431,15 @@ public:
 private:
     void startRun(AutoCalibrationCoordinator::State first,
                   AutoCalibrationCoordinator::State last,
-                  const char* name) const {
+                  const char* name,
+                  bool save_results = true) const {
         Inverter::CalKvStore::ensureBaseInfo();
-        if (autoCalibrationCoordinator().startSlice(first, last)) {
-            Telemetry::printf("[CAL] %s: started", name);
+        if (autoCalibrationCoordinator().startSlice(first, last, save_results)) {
+            if (save_results) {
+                Telemetry::printf("[CAL] %s: started", name);
+            } else {
+                Telemetry::printf("[CAL] %s: started (--no-save)", name);
+            }
         }
     }
 
@@ -433,6 +464,14 @@ private:
         Telemetry::printf("[CAL]   Motor.Encoder.SinCos");
         printStored("Motor.Encoder.SinCos.OffsetRad", "encoder offset, elec rad");
         printStored("Motor.Encoder.SinCos.Sign", "encoder direction (+1/-1)");
+        Telemetry::printf("[CAL]   Motor.Encoder.Linearity");
+        Telemetry::printf("[CAL]     run 'cal Motor.Encoder.Linearity' for INL harmonic report");
+        printStored("Motor.Encoder.SinCos.Fit.Valid", "ellipse fit valid (1=yes)");
+        printStored("Motor.Encoder.SinCos.Fit.Cs", "fit sin center, counts");
+        printStored("Motor.Encoder.SinCos.Fit.Cc", "fit cos center, counts");
+        printStored("Motor.Encoder.SinCos.Fit.As", "fit sin amplitude, counts");
+        printStored("Motor.Encoder.SinCos.Fit.Ac", "fit cos amplitude, counts");
+        printStored("Motor.Encoder.SinCos.Fit.Phi", "fit quadrature phase, rad");
         Telemetry::printf("[CAL]   Motor.Resistance");
         printStored("Motor.Resistance.Uv", "phase resistance, ohm");
         printStored("Motor.Resistance.Uw", "phase resistance, ohm");
@@ -455,14 +494,121 @@ private:
     }
 };
 
+class EncFitCommand : public CommandInterface {
+public:
+    EncFitCommand()
+      : CommandInterface("encfit", "Show/clear the active sin/cos ellipse fit",
+            ArgSpec{"subcmd", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* sub = args[0].s_val;
+
+        if (stringsEqual(sub, "clear")) {
+            encoderADC().clearFit();
+            Telemetry::printf("[CAL] encfit: cleared");
+            return;
+        }
+
+        if (!stringsEqual(sub, "status") && sub[0] != '\0') {
+            Telemetry::printf("[CAL] encfit: unknown subcommand '%s' (status/clear)", sub);
+            return;
+        }
+
+        const EncoderADC::SinCosFit fit = encoderADC().currentFit();
+        if (!fit.valid) {
+            Telemetry::printf("[CAL] encfit: no active fit");
+            return;
+        }
+
+        const float phi_deg = fit.phase_err * 57.2957795131f;
+        const float amp_mismatch_pct =
+            100.0f * std::fabs(fit.amp_sin - fit.amp_cos) /
+            (0.5f * (fit.amp_sin + fit.amp_cos));
+        Telemetry::printf("[CAL] encfit: Cs=%.1f Cc=%.1f As=%.1f Ac=%.1f phi=%.4f deg",
+                          static_cast<double>(fit.center_sin),
+                          static_cast<double>(fit.center_cos),
+                          static_cast<double>(fit.amp_sin),
+                          static_cast<double>(fit.amp_cos),
+                          static_cast<double>(phi_deg));
+        Telemetry::printf("[CAL] encfit: samples=%lu gain_mismatch=%.2f%%",
+                          static_cast<unsigned long>(fit.sample_count),
+                          static_cast<double>(amp_mismatch_pct));
+    }
+};
+
+class EncLinCommand : public CommandInterface {
+public:
+    EncLinCommand()
+      : CommandInterface("encinl", "Encoder linearity measurement",
+            {ArgSpec{"subcmd", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"poles", "", 2.0f, 100.0f, 10.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"enc_cycles", "", 0.1f, 100.0f, 1.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"rotate_mod", "", 0.0f, 1.0f, 0.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"revs", "", 0.5f, 20.0f, 3.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"step_size_deg", "", 0.1f, 10.0f, 0.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"dual_pass", "", 0.0f, 1.0f, 1.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        EncoderLinearityCalibrator& cal = encoderLinearityCalibrator();
+        const char* sub = args[0].s_val;
+
+        if (stringsEqual(sub, "stop")) {
+            cal.stop();
+            return;
+        }
+
+        if (stringsEqual(sub, "status")) {
+            Telemetry::printf("[CAL] encinl: state=%s bins=%d paired=%d lag_rms=%.4f rms=%.4f pp=%.4f",
+                              cal.stateName(),
+                              cal.validBinCount(),
+                              cal.pairedBinCount(),
+                              static_cast<double>(cal.lagRmsDeg()),
+                              static_cast<double>(cal.residualRmsDeg()),
+                              static_cast<double>(cal.residualPpDeg()));
+            for (int k = 1; k <= 8; ++k) {
+                Telemetry::printf("[CAL] encinl:   H%02d=%.4f deg",
+                                  k,
+                                  static_cast<double>(cal.harmonicAmplitude(k)));
+            }
+            return;
+        }
+
+        if (stringsEqual(sub, "start")) {
+            if (openLoopController().isRunning()) {
+                Telemetry::printf("[CAL] encinl: stop the motor first");
+                return;
+            }
+            if (cal.isActive()) {
+                Telemetry::printf("[CAL] encinl: already running");
+                return;
+            }
+            if (!args[1].present || !args[2].present) {
+                Telemetry::printf("[CAL] encinl start <poles> <enc_cycles> [rotate_mod] [revs] [step_size_deg] [dual_pass]");
+                return;
+            }
+            cal.start(args[1].f_val, args[2].f_val, args[3].f_val, args[4].f_val,
+                      args[5].f_val, !args[6].present || (args[6].f_val > 0.5f));
+            return;
+        }
+
+        Telemetry::printf("[CAL] encinl: unknown subcommand '%s' (start/stop/status)", sub);
+    }
+};
+
 static ResCalCommand     sResCalCmd;
 static IndCalCommand     sIndCalCmd;
 static FluxCalCommand    sFluxCalCmd;
 static MotorCalCommand   sMotorCalCmd;
+static EncFitCommand     sEncFitCmd;
+/* EncLinCommand is the largest of the calibration commands (~208 B).  Keep it
+ * in AXISRAM so the growing command set does not consume scarce DTCM. */
+static EncLinCommand     sEncLinCmd __attribute__((section(".dma_buffers")));
 static CalCommand        sCalCmd;
 
 void registerCalibrationCommands(CommandManager& mgr) {
     /* Only the hierarchical `cal` command is registered; the legacy flat
      * commands above stay available for debug builds but are not exposed. */
     mgr.registerCommand(&sCalCmd);
+    mgr.registerCommand(&sEncFitCmd);
+    mgr.registerCommand(&sEncLinCmd);
 }

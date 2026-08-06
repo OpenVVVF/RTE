@@ -4,6 +4,7 @@
 #include "Inverter/Calibration/Common/EncoderTracker.h"
 #include "Inverter/Calibration/Common/CurrentLimitedRamp.h"
 #include "Inverter/Calibration/Common/BreakawayFinder.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
 
 #include <cstdint>
 
@@ -108,6 +109,14 @@ public:
      */
     int detectedSign() const { return (m_warmup_sign != 0) ? m_warmup_sign : m_sign; }
 
+    /**
+     * @brief Layer 1 sin/cos ellipse fit computed during the last successful run.
+     *
+     * Only meaningful after DONE; check fit.valid.  Persisted by the caller via
+     * CalKvStore::saveEncoderFit().
+     */
+    const EncoderADC::SinCosFit& lastSinCosFit() const { return m_fit; }
+
     static EncoderOffsetCalibrator& instance();
 
     enum class State {
@@ -159,6 +168,13 @@ private:
     float    m_rotate_start_field = 0.0f;
     bool     m_offset_acquisition_active = false;
 
+    /* Locked-region reference for encoder cycles/rev measurement.
+     * Acquisition starts after the rotor has been pulled into lock; measuring
+     * cycles/rev across the whole rotation includes the initial slip segment
+     * and gives nonsense (e.g. 0.789 for a 1.00 cycle/rev encoder). */
+    float    m_acquire_start_encoder_elec_deg = 0.0f;
+    float    m_acquire_start_field_mech_deg = 0.0f;
+
     /* Encoder/field direction detection.
      * +1: encoder and field rotate in the same direction.
      * -1: encoder and field rotate in opposite directions.
@@ -180,6 +196,7 @@ private:
     float    m_last_offset = 0.0f;
     float    m_average_offset = 0.0f;
     float    m_measured_encoder_cycles_per_rev = 0.0f;
+    EncoderADC::SinCosFit m_fit;
 };
 
 EncoderOffsetCalibrator& encoderOffsetCalibrator();

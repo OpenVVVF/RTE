@@ -1,0 +1,30 @@
+{
+  "id": "hw.encoder_raw",
+  "displayName": "Encoder Raw Sin/Cos",
+  "defaultName": "EncRaw",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [],
+  "outputPorts": [
+    {
+      "name": "SinRaw",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "CosRaw",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}

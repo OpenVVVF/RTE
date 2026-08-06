@@ -22,6 +22,30 @@ namespace Inverter {
  */
 class PhaseCurrentADC {
 public:
+    /**
+     * @brief Two-point micro-burst sample for one phase.
+     *
+     * Each phase is sampled twice per injected sequence so the caller can
+     * estimate a local slope (di/dt) in addition to the average current.
+     */
+    struct BurstPoint {
+        float iu_a;
+        float iv_a;
+        uint32_t time_us;
+    };
+
+    /**
+     * @brief One completed 4-rank injected micro-burst.
+     *
+     * point[0] and point[1] are consecutive samples of U and V taken at the
+     * same trigger.  The local slopes diu/dt and div/dt can be derived from
+     * (point[1] - point[0]) / dt.
+     */
+    struct BurstSample {
+        BurstPoint point[2];
+        bool valid;
+    };
+
     PhaseCurrentADC() = default;
 
     /**
@@ -31,6 +55,24 @@ public:
      * and MX_DMA_Init() have run.
      */
     bool init();
+
+    /**
+     * @brief Consume the latest micro-burst sample.
+     *
+     * Returns false if no new burst is available.  The freshness flag is
+     * cleared on success, matching sample() semantics.
+     */
+    bool sampleBurst(BurstSample& out);
+
+    /**
+     * @brief Non-destructive read of the latest micro-burst sample.
+     */
+    bool latestBurst(BurstSample& out) const;
+
+    /**
+     * @brief Timestamp of the last completed burst [us, DWT based].
+     */
+    uint32_t lastBurstTimeUs() const { return m_last_burst_us; }
 
     /**
      * @brief Start timer-triggered injected conversions and run a one-shot
@@ -125,6 +167,16 @@ public:
     float overcurrentThreshold() const { return m_oc_threshold_a; }
 
     /**
+     * @brief Use a captured fixed reference instead of the sampled reference.
+     *
+     * When enabled, the current reference value is captured and used for all
+     * subsequent conversions.  Eliminates reference noise while keeping the
+     * current operating point.  Default false.
+     */
+    void setUseFixedReference(bool use_fixed);
+    bool useFixedReference() const { return m_use_fixed_ref; }
+
+    /**
      * @brief Set the hardware ADC analog-watchdog overcurrent threshold [A].
      *
      * A value of 0 disables the watchdog.  The watchdog window is centered on
@@ -158,6 +210,14 @@ private:
     volatile uint32_t m_raw_v_ref = 0;
     volatile uint32_t m_raw_dcl_sig = 0;
     volatile uint32_t m_raw_dcl_ref = 0;
+
+    /* Micro-burst raw storage: two differential samples per phase per trigger. */
+    volatile uint32_t m_raw_burst_u_sig[2] = {0, 0};
+    volatile uint32_t m_raw_burst_u_ref[2] = {0, 0};
+    volatile uint32_t m_raw_burst_v_sig[2] = {0, 0};
+    volatile uint32_t m_raw_burst_v_ref[2] = {0, 0};
+    volatile uint32_t m_last_burst_us = 0;
+
     volatile float    m_iu = 0.0f;
     volatile float    m_iv = 0.0f;
     float             m_offset_u = 0.0f;
@@ -173,6 +233,9 @@ private:
     float             m_oc_threshold_a = 500.0f;  /**< software OC trip [A] */
     float             m_hw_oc_threshold_a = 0.0f; /**< 0 = ADC watchdog disabled */
     uint8_t           m_oc_count = 0;
+    bool              m_use_fixed_ref = false;
+    uint32_t          m_fixed_ref_u = 0;
+    uint32_t          m_fixed_ref_v = 0;
     static constexpr uint8_t OC_CONSEC_SAMPLES = 3U;
 
     volatile bool     m_new_data = false;

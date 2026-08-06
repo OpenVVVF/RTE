@@ -57,6 +57,26 @@ public:
     bool sample(float& angle_deg, uint16_t& raw_sin, uint16_t& raw_cos);
 
     /**
+     * @brief Fitted sin/cos ellipse parameters (Layer 1 correction).
+     *
+     * When valid, computeAngle() uses these parameters to de-skew the raw
+     * sin/cos before atan2 instead of the live min/max bounds.  This removes
+     * DC-offset, gain-mismatch, and quadrature-skew errors that bounds
+     * normalization cannot fix.
+     */
+    struct SinCosFit {
+        float center_sin = 0.0f;   /**< Sin channel center offset [counts]. */
+        float center_cos = 0.0f;   /**< Cos channel center offset [counts]. */
+        float amp_sin    = 1.0f;   /**< Sin channel amplitude [counts]. */
+        float amp_cos    = 1.0f;   /**< Cos channel amplitude [counts]. */
+        float phase_err  = 0.0f;   /**< Quadrature phase error [rad]. */
+        float phase_err_sin = 0.0f;/**< Pre-computed sin(phase_err). */
+        float phase_err_cos = 1.0f;/**< Pre-computed cos(phase_err). */
+        bool  valid      = false;  /**< True if the fit has been computed/applied. */
+        uint32_t sample_count = 0; /**< Samples used to compute the fit. */
+    };
+
+    /**
      * @brief Latest raw ADC counts and computed angle.
      */
     uint32_t lastRawSin() const { return m_snapshot.raw_sin; }
@@ -72,6 +92,57 @@ public:
     }
     uint32_t lastRawCos() const { return m_snapshot.raw_cos; }
     float    lastAngle() const { return m_snapshot.angle; }
+
+    /**
+     * @brief Start accumulating raw sin/cos samples for an ellipse fit.
+     *
+     * Resets any previous accumulator state.  Samples are added in the DMA ISR
+     * at the full encoder sample rate until computeFit() or stopFitCapture() is
+     * called.
+     */
+    void startFitCapture();
+
+    /**
+     * @brief Stop sample accumulation without computing a fit.
+     */
+    void stopFitCapture();
+
+    /**
+     * @brief Compute a sin/cos ellipse fit from accumulated samples.
+     *
+     * Disables capture, copies/empties the accumulator, and writes the fitted
+     * parameters to @p out.  Returns true if the fit is valid (sufficient
+     * samples, coverage, and sane amplitudes).
+     */
+    bool computeFit(SinCosFit& out);
+
+    /**
+     * @brief Apply a fitted correction to the live angle decoder.
+     *
+     * The fit becomes active immediately in computeAngle(); bounds learning
+     * remains active only for signal-quality diagnostics.
+     */
+    void applyFit(const SinCosFit& fit);
+
+    /**
+     * @brief Disable the fitted correction and fall back to bounds normalization.
+     */
+    void clearFit();
+
+    /** True if a fitted correction is currently active. */
+    bool fitValid() const { return s_fit.valid; }
+
+    /** Copy of the currently active fit (safe to call from main loop). */
+    SinCosFit currentFit() const;
+
+    /**
+     * @brief Zero the fit accumulator and applied fit.
+     *
+     * The fit state lives in the NOLOAD .dma_buffers section (AXISRAM), so it
+     * is not zero-initialized by the C runtime.  Call once before the encoder
+     * stream is started and before loading a saved fit from FRAM.
+     */
+    static void initializeFitState();
 
     /**
      * @brief HAL tick of the most recent DMA sample completion.
@@ -196,6 +267,58 @@ private:
     bool initDma();
     float computeAngle(uint16_t raw_sin, uint16_t raw_cos);
 
+    /**
+     * @brief One-pass accumulator for the ellipse fit.
+     *
+     * Written only in the DMA ISR when m_fit_capture is true; read/reset in the
+     * main loop inside computeFit().  All sums use double for headroom — a
+     * 3-revolution capture at 10 kHz is ~30k samples and raw^2 sums stay within
+     * uint64_t, but double keeps the variance arithmetic simple.
+     */
+    struct FitAccumulator {
+        double sum_sin     = 0.0;
+        double sum_cos     = 0.0;
+        double sum_sin2    = 0.0;
+        double sum_cos2    = 0.0;
+        double sum_sincos  = 0.0;
+        uint64_t count     = 0;
+        uint16_t min_sin   = 65535U;
+        uint16_t max_sin   = 0U;
+        uint16_t min_cos   = 65535U;
+        uint16_t max_cos   = 0U;
+
+        void reset() {
+            sum_sin = sum_cos = sum_sin2 = sum_cos2 = sum_sincos = 0.0;
+            count = 0;
+            min_sin = min_cos = 65535U;
+            max_sin = max_cos = 0U;
+        }
+
+        void add(uint16_t raw_sin, uint16_t raw_cos) {
+            const double s = static_cast<double>(raw_sin);
+            const double c = static_cast<double>(raw_cos);
+            sum_sin    += s;
+            sum_cos    += c;
+            sum_sin2   += s * s;
+            sum_cos2   += c * c;
+            sum_sincos += s * c;
+            ++count;
+            if (raw_sin < min_sin) min_sin = raw_sin;
+            if (raw_sin > max_sin) max_sin = raw_sin;
+            if (raw_cos < min_cos) min_cos = raw_cos;
+            if (raw_cos > max_cos) max_cos = raw_cos;
+        }
+    };
+
+    static constexpr uint32_t FIT_MIN_SAMPLES      = 1000U;
+    static constexpr uint16_t FIT_MIN_SPAN         = 15000U;
+    static constexpr float    FIT_MIN_AMP          = 1000.0f;
+    static constexpr float    FIT_MAX_SIN_PHASE    = 0.9999f;
+    static constexpr float    FIT_MAX_PHASE_DEG    = 10.0f;
+    static constexpr float    FIT_WARN_PHASE_DEG   = 3.0f;
+    static constexpr float    FIT_WARN_GAIN_PCT    = 5.0f;
+    static constexpr uint16_t FIT_FAULT_COUNT      = 50U;
+
     /* Hard limits measured/calibrated in commit 0eb9f53.  Used as the
      * fallback normalization bounds until the learned bounds become valid. */
     static constexpr uint16_t SIN_MIN_CAP = 427U;
@@ -278,9 +401,10 @@ private:
 
     /* Mechanical speed estimation (main loop, time-based window).
      * m_sample_hz is measured from the actual trigger rate in diagnose(). */
-    static constexpr float    RPM_ALPHA     = 0.005f;
-    static constexpr uint32_t RPM_WINDOW_MS = 40U;  /* long enough to average
-        away per-sample angle noise (EMI) that a 1-sample delta amplifies. */
+    static constexpr float    RPM_ALPHA     = 0.02f;
+    static constexpr uint32_t RPM_WINDOW_MS = 20U;  /* 10-50 ms window: fast
+        enough to track speed changes, slow enough to average encoder
+        nonlinearity ripple at mechanical frequency. */
     float m_sample_hz    = 10000.0f;
     float m_rpm_prev_angle = 0.0f;
     float m_rpm_filt_angle = 0.0f;
@@ -289,6 +413,18 @@ private:
     uint32_t m_rpm_window_ms = 0;
     bool  m_rpm_init       = false;
     volatile float m_rpm_ema = 0.0f;
+
+    /* Layer 1 sin/cos ellipse-fit correction.
+     *
+     * The accumulator and the applied fit are singleton data placed in RAM_D1
+     * (AXISRAM) via the .dma_buffers section.  They are only touched in the
+     * encoder DMA ISR and in main-loop calibration code; keeping them out of
+     * DTCMRAM avoids overflowing the tightly-sized DTCM while leaving the
+     * hot per-sample snapshot and angle trace in fast DTCM. */
+    volatile bool m_fit_capture = false;
+    uint16_t m_fit_fault_count = 0;
+    static FitAccumulator s_fit_acc;
+    static SinCosFit s_fit;
 };
 
 /**

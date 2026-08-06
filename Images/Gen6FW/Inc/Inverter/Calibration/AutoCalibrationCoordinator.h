@@ -48,8 +48,12 @@ public:
      * RTE KV store (e.g. OFFSET needs Motor.Poles and
      * Motor.Encoder.SinCos.CyclesRev).  After `last` completes the results are
      * persisted and the routine finishes.
+     *
+     * @param save_results  If false, the routine skips FRAM/RTE persistence
+     *                      at the end.  Useful for dry-runs or when the user
+     *                      wants to inspect results before committing them.
      */
-    bool startSlice(State first, State last);
+    bool startSlice(State first, State last, bool save_results = true);
 
     /**
      * @brief Abort a running routine and return to idle.
@@ -110,6 +114,7 @@ private:
     float m_r_avg = 0.0f;
     bool m_inductance_ran = false;
     bool m_flux_ran = false;
+    bool m_save_results = true;
 };
 
 AutoCalibrationCoordinator& autoCalibrationCoordinator();
