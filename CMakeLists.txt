@@ -1,7 +1,30 @@
 cmake_minimum_required(VERSION 3.24)
-project(RTE VERSION 0.1.0 LANGUAGES CXX)
+project(RTE VERSION 0.1.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
+include(FetchContent)
+
+# HIDAPI is the small cross-platform boundary used by the CLI to control the
+# MCP2221A boot/reset GPIOs directly. Pin the source archive and checksum so a
+# build cannot silently pick up a different implementation.
+option(RTE_ENABLE_MCP2221_GPIO "Build native MCP2221A GPIO support" ON)
+if(RTE_ENABLE_MCP2221_GPIO)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(HIDAPI_WITH_LIBUSB OFF CACHE BOOL "" FORCE)
+    set(HIDAPI_WITH_HIDRAW ON CACHE BOOL "" FORCE)
+    set(HIDAPI_BUILD_HIDTEST OFF CACHE BOOL "" FORCE)
+    set(HIDAPI_WITH_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(hidapi
+        URL https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.15.0.tar.gz
+        URL_HASH SHA256=5d84dec684c27b97b921d2f3b73218cb773cf4ea915caee317ac8fc73cef8136
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(hidapi)
+    install(FILES ${hidapi_SOURCE_DIR}/LICENSE-bsd.txt
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/licenses
+        RENAME hidapi-BSD.txt
+    )
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,9 +67,6 @@ install(DIRECTORY Images/Gen6FW/ DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/Images
     PATTERN "__pycache__" EXCLUDE
     PATTERN "*.pyc" EXCLUDE
     PATTERN ".vscode" EXCLUDE
-)
-install(FILES Tools/mcp2221a_gpio.py
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/tools
 )
 install(FILES README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte)
 

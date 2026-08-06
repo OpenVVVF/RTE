@@ -1,5 +1,6 @@
 #include <RTEAutomation/Flasher.h>
 
+#include <RTEAutomation/Mcp2221Gpio.h>
 #include <RTEAutomation/Platform.h>
 #include <RTEAutomation/ProcessRunner.h>
 #include <inverter_protocol/host/uart_transport.h>
@@ -36,16 +37,6 @@ int ParsePercent(const std::string& line) {
     while (begin > 0 && std::isdigit(static_cast<unsigned char>(line[begin - 1]))) --begin;
     if (begin == percent) return -1;
     return std::clamp(std::atoi(line.substr(begin, percent - begin).c_str()), 0, 100);
-}
-
-bool RunHelper(const fs::path& python, const fs::path& helper,
-               const std::string& action, const FlashCallback& callback) {
-    ProcessSpec spec{python, {helper.string(), action}};
-    const auto result = RunProcess(spec, [&](const std::string& line) {
-        Notify(callback, action == "enter" ? FlashPhase::EnterBootloader
-                                            : FlashPhase::ExitBootloader, line);
-    });
-    return result.started && result.exitCode == 0;
 }
 
 void Drain(const std::string& port, const FlashCallback& callback) {
@@ -99,41 +90,6 @@ fs::path FindStm32Programmer() {
     return {};
 }
 
-fs::path FindPythonInterpreter() {
-    if (const char* configured = std::getenv("RTE_PYTHON"))
-        if (auto found = Existing(configured)) return *found;
-    const fs::path directory = ExecutablePath().parent_path();
-    std::vector<fs::path> candidates;
-#ifdef _WIN32
-    candidates = {directory / ".venv/Scripts/python.exe",
-                  directory.parent_path() / ".venv/Scripts/python.exe"};
-#else
-    candidates = {directory / ".venv/bin/python",
-                  directory.parent_path() / ".venv/bin/python"};
-#endif
-    for (const auto& candidate : candidates)
-        if (auto found = Existing(candidate)) return *found;
-    if (auto found = FindExecutableOnPath("python3")) return *found;
-    if (auto found = FindExecutableOnPath("python")) return *found;
-    return {};
-}
-
-fs::path FindGpioHelper() {
-    if (const char* configured = std::getenv("RTE_GPIO_HELPER"))
-        if (auto found = Existing(configured)) return *found;
-    fs::path directory = ExecutablePath().parent_path();
-    std::vector<fs::path> candidates = {
-        directory / "tools/mcp2221a_gpio.py",
-        fs::current_path() / "Tools/mcp2221a_gpio.py"};
-    for (int level = 0; level < 6 && !directory.empty(); ++level) {
-        candidates.push_back(directory / "share/rte/tools/mcp2221a_gpio.py");
-        directory = directory.parent_path();
-    }
-    for (const auto& candidate : candidates)
-        if (auto found = Existing(candidate)) return *found;
-    return {};
-}
-
 FlashResult FlashFirmware(const FlashOptions& options, FlashCallback callback) {
     std::error_code ec;
     if (!fs::is_regular_file(options.firmware, ec))
@@ -142,20 +98,21 @@ FlashResult FlashFirmware(const FlashOptions& options, FlashCallback callback) {
     fs::path programmer = options.programmer.empty() ? FindStm32Programmer() : options.programmer;
     if (programmer.empty() || !fs::is_regular_file(programmer, ec))
         return {false, "STM32_Programmer_CLI was not found"};
-    fs::path helper = options.gpioHelper.empty() ? FindGpioHelper() : options.gpioHelper;
-    fs::path python = options.python.empty() ? FindPythonInterpreter() : options.python;
-    bool automatic = options.autoGpio && !helper.empty() && !python.empty();
-
     Drain(options.serialPort, callback);
-    Notify(callback, FlashPhase::EnterBootloader,
-           automatic ? "Entering bootloader using MCP2221A"
-                     : "Enter bootloader manually: BOOT0 high, then reset");
-    if (automatic && !RunHelper(python, helper, "enter", callback)) {
-        automatic = false;
+    if (options.autoGpio) {
         Notify(callback, FlashPhase::EnterBootloader,
-               "GPIO helper failed; continuing with manual bootloader entry");
+               "Entering bootloader using native MCP2221A GPIO control");
+        const auto enter = ControlMcp2221Gpio(Mcp2221GpioAction::EnterBootloader);
+        if (!enter.success) {
+            return {false, "automatic MCP2221A bootloader entry failed: " + enter.error
+                + ". Connect the MCP2221A and check USB permissions, or explicitly use "
+                  "--manual-boot"};
+        }
+    } else {
+        Notify(callback, FlashPhase::EnterBootloader,
+               "Enter bootloader manually: BOOT0 high, then reset");
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
-    if (!automatic) std::this_thread::sleep_for(std::chrono::seconds(5));
     Drain(options.serialPort, callback);
 
     ProcessSpec spec;
@@ -172,12 +129,23 @@ FlashResult FlashFirmware(const FlashOptions& options, FlashCallback callback) {
         Notify(callback, verify ? FlashPhase::Verify : FlashPhase::Program,
                line, ParsePercent(line));
     });
-    if (automatic) {
+    Mcp2221GpioResult gpioResult{true, {}};
+    if (options.autoGpio) {
         Notify(callback, FlashPhase::ExitBootloader, "Releasing boot pins");
-        RunHelper(python, helper, process.exitCode == 0 ? "exit" : "release", callback);
+        gpioResult = ControlMcp2221Gpio(
+            process.started && process.exitCode == 0
+                ? Mcp2221GpioAction::StartApplication
+                : Mcp2221GpioAction::ReleasePins);
+        if (!gpioResult.success) {
+            Notify(callback, FlashPhase::ExitBootloader,
+                   "MCP2221A GPIO cleanup failed: " + gpioResult.error);
+        }
     }
     if (!process.started || process.exitCode != 0)
         return {false, process.error.empty() ? "programmer failed" : process.error};
+    if (!gpioResult.success)
+        return {false, "firmware was programmed, but the application could not be restarted: "
+            + gpioResult.error};
     Notify(callback, FlashPhase::Complete, "Firmware flash complete", 100);
     return {true, {}};
 }

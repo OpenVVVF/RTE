@@ -5,6 +5,7 @@ add_library(RTEAutomation STATIC
     ../RTEFirmwareBuilder/src/Toolchain.cpp
     src/CachePaths.cpp
     src/Flasher.cpp
+    src/Mcp2221Protocol.cpp
     src/Platform.cpp
     src/ProcessRunner.cpp
     src/Session.cpp
@@ -33,14 +34,23 @@ target_link_libraries(RTEAutomation
     PRIVATE project_warnings
 )
 
+if(RTE_ENABLE_MCP2221_GPIO)
+    target_sources(RTEAutomation PRIVATE src/Mcp2221Gpio.cpp)
+    target_link_libraries(RTEAutomation PRIVATE hidapi::hidapi)
+else()
+    target_sources(RTEAutomation PRIVATE src/Mcp2221GpioStub.cpp)
+endif()
+
 if(WIN32)
     target_link_libraries(RTEAutomation PRIVATE ws2_32 shell32 ole32)
 endif()
 
 add_executable(RTEAutomation_tests
     tests/test_cache_paths.cpp
+    tests/test_mcp2221_gpio.cpp
     tests/test_process_runner.cpp
 )
+target_include_directories(RTEAutomation_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(RTEAutomation_tests
     PRIVATE RTEAutomation GTest::gtest_main project_warnings
 )

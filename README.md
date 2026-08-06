@@ -58,7 +58,8 @@ implementation.
 
 ## Build host tools
 
-Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for RTE Studio). Clone with
+Requires CMake 3.24+, a C++20 compiler, Ninja, Qt 6 (for RTE Studio), and
+`libudev-dev` on Linux (for native MCP2221A GPIO access). Clone with
 `--recurse-submodules` (or run `git submodule update --init --recursive`) so the
 QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
