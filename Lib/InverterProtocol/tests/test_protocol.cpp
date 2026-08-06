@@ -335,7 +335,11 @@ TEST(EndToEnd, DefineFrameCobsUartStyle) {
 #include "inverter_protocol/host/uart_transport.h"
 
 #include <fcntl.h>
+#ifdef __APPLE__
+#include <util.h>
+#else
 #include <pty.h>
+#endif
 #include <unistd.h>
 
 namespace {
