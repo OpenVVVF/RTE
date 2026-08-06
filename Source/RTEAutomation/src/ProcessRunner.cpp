@@ -97,7 +97,13 @@ ProcessResult RunProcess(const ProcessSpec& spec, ProcessOutput output) {
     }
     SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
 
-    const std::wstring executable = spec.executable.wstring();
+    std::filesystem::path executablePath = spec.executable;
+    if (!executablePath.has_parent_path()) {
+        if (const auto found = FindExecutableOnPath(executablePath.string())) {
+            executablePath = *found;
+        }
+    }
+    const std::wstring executable = executablePath.wstring();
     std::wstring command = WindowsQuote(executable);
     for (const auto& argument : spec.arguments) {
         command += L" " + WindowsQuote(ToWide(argument));

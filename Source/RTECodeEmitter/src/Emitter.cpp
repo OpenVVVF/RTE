@@ -549,7 +549,9 @@ bool Emitter::Run(const EmitterOptions& options) const {
         // Build include lines to add.
         std::vector<std::string> includesToAdd;
         for (const auto& header : requiredHeaders) {
-            const std::string includePath = (relGeneratedDir / header).string();
+            // C/C++ include paths use forward slashes on every platform.
+            const std::string includePath =
+                (relGeneratedDir / header).generic_string();
             if (existingHeaders.count(includePath) == 0 &&
                 existingHeaders.count(header) == 0) {
                 includesToAdd.push_back("#include \"" + includePath + "\"");
