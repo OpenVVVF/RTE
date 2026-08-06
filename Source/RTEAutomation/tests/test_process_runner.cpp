@@ -6,7 +6,7 @@ TEST(ProcessRunner, CapturesMergedOutputAndExitCode) {
     RTEAutomation::ProcessSpec spec;
 #ifdef _WIN32
     spec.executable = "cmd.exe";
-    spec.arguments = {"/C", "echo first & echo second 1>&2"};
+    spec.arguments = {"/D", "/S", "/C", "echo(first&echo(second 1>&2"};
 #else
     spec.executable = "/bin/sh";
     spec.arguments = {"-c", "printf 'first\\n'; printf 'second\\n' >&2"};
