@@ -122,10 +122,13 @@ add_dependencies(RTEStudio rte)
 # target name. The installed executable is only rte-studio.
 add_custom_target(NodeGUI DEPENDS RTEStudio)
 
-install(TARGETS RTEStudio
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(APPLE)
+    # macdeployqt resolves the generated bundle path relative to the install
+    # prefix, so keep the app bundle at that root.
+    install(TARGETS RTEStudio BUNDLE DESTINATION .)
+else()
+    install(TARGETS RTEStudio RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 
 # Qt's deployment helper copies the required Qt libraries and platform
 # plugins into the install tree on Linux, Windows, and macOS. This keeps the
