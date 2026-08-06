@@ -118,7 +118,10 @@ bool SerialPort::open(const std::string& port, int baud) {
 
 #ifdef __APPLE__
     speed_t requested = static_cast<speed_t>(baud);
-    if (ioctl(fd, IOSSIOSPEED, &requested) == -1) { ::close(fd); return false; }
+    if (ioctl(fd, IOSSIOSPEED, &requested) == -1 && errno != ENOTTY) {
+        ::close(fd);
+        return false;
+    }
 #endif
 
     tcflush(fd, TCIOFLUSH);
