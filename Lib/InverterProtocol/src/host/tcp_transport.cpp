@@ -3,7 +3,9 @@
 #include "inverter_protocol/protocol.h"
 
 #include <cstring>
+#include <chrono>
 #include <string>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -16,6 +18,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -68,6 +71,10 @@ bool SetNonBlocking(Socket s) {
 #endif
 }
 
+/* Upper bound for writeRaw() retrying on WouldBlock; a persistently
+ * unwritable peer must fail the write instead of spinning forever. */
+constexpr auto kWriteTimeout = std::chrono::seconds(2);
+
 } // namespace
 
 struct TcpTransport::Impl {
@@ -93,21 +100,27 @@ bool TcpTransport::open(const std::string& host, int port) {
     EnsureWinsock();
     close();
 
-    Socket fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    /* Resolve both IPv4 literals and hostnames (e.g. "localhost"). */
+    addrinfo hints{};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    addrinfo* res = nullptr;
+    const std::string port_str = std::to_string(port);
+    if (::getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res) != 0)
+        return false;
+
+    Socket fd = kInvalid;
+    for (addrinfo* ai = res; ai; ai = ai->ai_next) {
+        fd = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (fd == kInvalid) continue;
+        if (::connect(fd, ai->ai_addr, static_cast<int>(ai->ai_addrlen)) == 0) break;
+        CloseSock(fd);
+        fd = kInvalid;
+    }
+    ::freeaddrinfo(res);
     if (fd == kInvalid) return false;
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(static_cast<uint16_t>(port));
-    if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-        CloseSock(fd);
-        return false;
-    }
-
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        CloseSock(fd);
-        return false;
-    }
 
     if (!SetNonBlocking(fd)) {
         CloseSock(fd);
@@ -135,23 +148,26 @@ int TcpTransport::readRaw(uint8_t* buf, int cap) {
 
 bool TcpTransport::writeRaw(const uint8_t* data, int n) {
     if (!isOpen() || !data || n <= 0) return false;
+    const auto deadline = std::chrono::steady_clock::now() + kWriteTimeout;
     int total = 0;
     while (total < n) {
 #ifdef _WIN32
         const int wrote = ::send(impl_->fd, reinterpret_cast<const char*>(data + total),
                                  n - total, 0);
-        if (wrote == SOCKET_ERROR) {
-            if (WouldBlock()) continue;
-            return false;
-        }
+        const bool failed = (wrote == SOCKET_ERROR);
 #else
         const int wrote = static_cast<int>(
             ::send(impl_->fd, data + total, static_cast<size_t>(n - total), 0));
-        if (wrote < 0) {
-            if (WouldBlock()) continue;
+        const bool failed = (wrote < 0);
+#endif
+        if (failed) {
+            if (WouldBlock()) {
+                if (std::chrono::steady_clock::now() >= deadline) return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
             return false;
         }
-#endif
         if (wrote == 0) return false;
         total += wrote;
     }

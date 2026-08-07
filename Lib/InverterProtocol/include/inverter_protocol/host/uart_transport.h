@@ -19,7 +19,8 @@ public:
     void close();
     bool isOpen() const;
 
-    /* Read up to `cap` bytes. Returns bytes read (>=0). */
+    /* Read up to `cap` bytes. Returns bytes read, 0 if none available,
+     * or -1 on a read error (e.g. device disconnected). */
     int read(uint8_t* buf, int cap);
 
     /* Write exactly `n` bytes. Returns true on full success. */
@@ -60,12 +61,17 @@ public:
 
     /* Try to receive one complete packet into `out`.
      * Returns packet length on success, 0 if no complete packet is available,
-     * or -1 on a framing/CRC error (caller should resync). Bytes past the
-     * first complete frame stay buffered for the next call. */
+     * or -1 on a framing/CRC error (caller should resync) or a port read
+     * failure (see readFailed()). Bytes past the first complete frame stay
+     * buffered for the next call. */
     int receivePacket(uint8_t* out, size_t cap);
 
     /* Send a text command line followed by \n. Used by the text shell. */
     bool sendLine(const std::string& line);
+
+    /* True when the last receivePacket() failure came from the underlying
+     * port read (device gone) rather than a framing/CRC resync. */
+    bool readFailed() const { return read_failed_; }
 
 private:
     /* Extracts one complete frame from rx_buf_. Same return contract as
@@ -75,6 +81,7 @@ private:
     SerialPort port_;
     uint8_t rx_buf_[RX_FRAME_CAP * 2];
     size_t rx_len_ = 0;
+    bool read_failed_ = false;
 };
 
 } // namespace ivp

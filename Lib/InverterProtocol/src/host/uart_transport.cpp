@@ -98,11 +98,18 @@ bool SerialPort::open(const std::string& port, int baud) {
     cfsetispeed(&tty, B9600);
     cfsetospeed(&tty, B9600);
 #else
-    speed_t speed = B460800;
-    if (baud == 230400) speed = B230400;
-#ifdef B115200
-    else if (baud == 115200) speed = B115200;
+    speed_t speed;
+    switch (baud) {
+#ifdef B921600
+    case 921600: speed = B921600; break;
 #endif
+    case 460800: speed = B460800; break;
+    case 230400: speed = B230400; break;
+#ifdef B115200
+    case 115200: speed = B115200; break;
+#endif
+    default:     speed = B460800; break;
+    }
     cfsetispeed(&tty, speed);
     cfsetospeed(&tty, speed);
 #endif
@@ -134,11 +141,12 @@ int SerialPort::read(uint8_t* buf, int cap) {
     if (!isOpen() || !buf || cap <= 0) return 0;
 #ifdef _WIN32
     DWORD got = 0;
-    if (!ReadFile(impl_->h, buf, static_cast<DWORD>(cap), &got, nullptr)) return 0;
+    if (!ReadFile(impl_->h, buf, static_cast<DWORD>(cap), &got, nullptr)) return -1;
     return static_cast<int>(got);
 #else
     int n = static_cast<int>(::read(impl_->fd, buf, static_cast<size_t>(cap)));
-    return n > 0 ? n : 0;
+    if (n < 0) return (errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : -1;
+    return n;
 #endif
 }
 
@@ -186,10 +194,11 @@ UartTransport::UartTransport() = default;
 UartTransport::~UartTransport() = default;
 
 bool UartTransport::open(const std::string& port, int baud) {
+    read_failed_ = false;
     return port_.open(port, baud);
 }
 
-void UartTransport::close() { port_.close(); }
+void UartTransport::close() { port_.close(); read_failed_ = false; }
 bool UartTransport::isOpen() const { return port_.isOpen(); }
 
 bool UartTransport::sendPacket(const uint8_t* packet, size_t len) {
@@ -210,6 +219,7 @@ bool UartTransport::sendPacket(const uint8_t* packet, size_t len) {
 
 int UartTransport::receivePacket(uint8_t* out, size_t cap) {
     if (!out || cap == 0) return -1;
+    read_failed_ = false;
 
     // rx_buf_ persists across calls: one read() chunk usually contains
     // several frames (or a partial one), and any bytes past the first
@@ -219,7 +229,13 @@ int UartTransport::receivePacket(uint8_t* out, size_t cap) {
 
     uint8_t raw[RX_RAW_CAP];
     int n = port_.read(raw, static_cast<int>(RX_RAW_CAP));
-    if (n <= 0) return 0;
+    if (n < 0) {
+        // Port-level failure (device gone): distinguishable from a framing
+        // resync via readFailed() so the caller can trigger a reconnect.
+        read_failed_ = true;
+        return -1;
+    }
+    if (n == 0) return 0;
 
     if (rx_len_ + static_cast<size_t>(n) > sizeof(rx_buf_)) {
         // No delimiter within a whole buffer: garbage stream, resync.
