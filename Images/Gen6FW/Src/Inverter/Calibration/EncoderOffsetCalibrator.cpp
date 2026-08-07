@@ -21,8 +21,8 @@ static constexpr uint32_t WARMUP_MS = 5000U;
 static constexpr float WARMUP_FREQUENCY_HZ = 1.0f;
 static constexpr float OFFSET_ROTATION_FREQUENCY_HZ = 1.0f;
 static constexpr float OFFSET_ROTATE_REVS = 3.0f;
-static constexpr float OFFSET_ACQUIRE_START_DEG = 360.0f;
-static constexpr float FIT_GIVE_UP_DEG = 540.0f;
+static constexpr float OFFSET_ACQUIRE_START_DEG = 180.0f;
+static constexpr float FIT_GIVE_UP_DEG = 360.0f;
 static constexpr uint32_t OFFSET_SAMPLE_PERIOD_MS = 10U;
 
 static constexpr float NOISE_THRESHOLD_CYCLES = 0.02f;
