@@ -81,7 +81,18 @@ cleanup_apps() {
 
 cleanup_apps
 
-EXE="${BUILD_DIR}/host_sim"
+# Multi-config generators (MSVC) nest the exe under Debug/Release; single-config
+# (Ninja/Make) put it at the build root, with or without .exe.
+find_host_sim() {
+  local c
+  for c in "${BUILD_DIR}/host_sim" "${BUILD_DIR}/host_sim.exe" \
+           "${BUILD_DIR}/Debug/host_sim.exe" "${BUILD_DIR}/Release/host_sim.exe"; do
+    if [[ -x "$c" ]]; then echo "$c"; return 0; fi
+  done
+  echo "${BUILD_DIR}/host_sim"
+}
+
+EXE="$(find_host_sim)"
 need_emit=0
 if [[ "${FORCE_EMIT}" -eq 1 ]] || [[ ! -x "${EXE}" ]]; then
   need_emit=1
@@ -96,7 +107,7 @@ if [[ "${need_emit}" -eq 1 ]]; then
   echo "Emitting ${GRAPH_NAME} graph into HostSim..."
   "${EMITTER}" \
     --base-src "${HOSTSIM_ROOT}" \
-    --templatesDir "${REPO_ROOT}/Assets/NodeTemplates" \
+    --templates "${REPO_ROOT}/Assets/NodeTemplates" \
     --graph "${GRAPH}" \
     --output "${EMITTED_REL}" \
     --verbosity info
@@ -107,6 +118,7 @@ else
   echo "Using existing emitted ${GRAPH_NAME} build (pass --force-emit to rebuild)."
 fi
 
+EXE="$(find_host_sim)"
 if [[ ! -x "${EXE}" ]]; then
   echo "host_sim not found in ${BUILD_DIR}" >&2
   exit 1

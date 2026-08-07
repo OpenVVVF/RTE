@@ -88,7 +88,7 @@ if ($needEmit) {
     Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue
 
     Write-Host "Emitting ${graphName} graph into HostSim..."
-    $emitCmd = "cd $wslRepo && ${emitter} --base-src Images/HostSim --templatesDir Assets/NodeTemplates --graph $wslGraph --output $emittedRel --verbosity info"
+    $emitCmd = "cd $wslRepo && ${emitter} --base-src Images/HostSim --templates Assets/NodeTemplates --graph $wslGraph --output $emittedRel --verbosity info"
     wsl -d Ubuntu -u root -- bash -lc $emitCmd
     if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
 
