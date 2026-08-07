@@ -2,13 +2,19 @@
 
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 
 namespace RTECodeEmitter {
 
 namespace {
+
+/* Serializes Log() so interleaved calls from worker threads cannot garble
+ * output or race on the timestamp conversion. */
+std::mutex g_logMutex;
 
 std::string CurrentTimestamp() {
     const auto now = std::chrono::system_clock::now();
@@ -17,8 +23,17 @@ std::string CurrentTimestamp() {
                         now.time_since_epoch()) %
                     1000;
 
+    /* std::localtime returns shared static storage; use the thread-safe
+     * platform variants instead. */
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &time);
+#else
+    localtime_r(&time, &tm);
+#endif
+
     std::ostringstream oss;
-    oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
     return oss.str();
 }
@@ -41,6 +56,8 @@ LogLevel Logger::ParseLevel(std::string_view level) {
     if (level == "info") return LogLevel::Info;
     if (level == "debug") return LogLevel::Debug;
     if (level == "trace") return LogLevel::Trace;
+    std::cerr << "[Logger] unrecognized log level '" << level
+              << "', defaulting to info\n";
     return LogLevel::Info;
 }
 
@@ -61,6 +78,7 @@ void Logger::Log(LogLevel level, std::string_view message) const {
     std::ostringstream oss;
     oss << "[" << CurrentTimestamp() << "] [" << LevelToString(level) << "] " << message;
 
+    std::lock_guard<std::mutex> lk(g_logMutex);
     if (level == LogLevel::Error || level == LogLevel::Warning) {
         std::cerr << oss.str() << '\n';
     } else {

@@ -141,6 +141,15 @@ TEST(Graph, RejectDuplicateNodeTypeId) {
     EXPECT_FALSE(graph.AddNodeType(MakeValueType()));
 }
 
+TEST(Graph, RemoveNodeTypeRefusesTypeWithInstances) {
+    Graph graph = MakeDemoGraph();
+    EXPECT_FALSE(graph.RemoveNodeType("constant.value"));
+
+    EXPECT_TRUE(graph.RemoveNode("source"));
+    EXPECT_TRUE(graph.RemoveNodeType("constant.value"));
+    EXPECT_FALSE(graph.RemoveNodeType("constant.value"));
+}
+
 TEST(Graph, AddNodeRequiresKnownType) {
     Graph graph;
     EXPECT_FALSE(graph.AddNode(Node{.id = "n", .type = "unknown", .domain = "app_loop"}));
@@ -376,15 +385,28 @@ TEST(Graph, RemoveNodeCleansConnections) {
 
 TEST(Graph, TypeCheckMatchingPorts) {
     Graph graph = MakeDemoGraph();
+    graph.AddNode(Node{.id = "sink2", .type = "display.value", .domain = "app_loop"});
 
     Connection c{
         .id = "c2",
         .from = PortRef{.nodeId = "source", .portName = "out"},
-        .to = PortRef{.nodeId = "sink", .portName = "in"},
+        .to = PortRef{.nodeId = "sink2", .portName = "in"},
     };
 
     EXPECT_TRUE(graph.TypeCheck(c));
     EXPECT_TRUE(graph.Connect(c));
+}
+
+TEST(Graph, RejectDoubleConnectedInput) {
+    /* An input port accepts a single producer, mirroring the AddBridge rule. */
+    Graph graph = MakeDemoGraph();
+
+    EXPECT_FALSE(graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "source", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+    EXPECT_EQ(graph.GetConnections().size(), 1u);
 }
 
 TEST(Graph, TypeCheckImplicitExtraction) {

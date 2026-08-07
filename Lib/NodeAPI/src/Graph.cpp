@@ -14,6 +14,9 @@ bool Graph::AddNodeType(NodeType nodeType) {
 }
 
 bool Graph::RemoveNodeType(const std::string& typeId) {
+    // Refuse to remove a type that still has instances; removing it would
+    // leave those nodes with a dangling type reference.
+    if (CountInstances(typeId) > 0) return false;
     for (auto it = nodeTypes_.begin(); it != nodeTypes_.end(); ++it) {
         if (it->id == typeId) {
             nodeTypes_.erase(it);
@@ -193,6 +196,7 @@ bool Graph::Connect(Connection connection) {
     if (!EndpointExists(connection.from, PortDirection::Output)) return false;
     if (!EndpointExists(connection.to, PortDirection::Input)) return false;
     if (!TypeCheck(connection)) return false;
+    if (ConsumerHasConnection(connection.to)) return false;
     if (ConsumerHasBridge(connection.to)) return false;
     connections_.push_back(std::move(connection));
     return true;

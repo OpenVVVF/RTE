@@ -97,7 +97,7 @@ json ToJson(const NodeType& nodeType) {
     return j;
 }
 
-NodeType NodeTypeFromJson(const json& j) {
+NodeType NodeTypeFromParsedJson(const json& j) {
     NodeType nodeType;
     nodeType.id = j.at("id").get<std::string>();
     nodeType.displayName = j.value("displayName", "");
@@ -296,29 +296,52 @@ Graph LoadFromJson(std::string_view jsonText) {
     return graph;
 }
 
-void LoadIntoGraph(Graph& graph, std::string_view jsonText) {
+GraphLoadResult LoadIntoGraph(Graph& graph, std::string_view jsonText) {
     const json j = json::parse(jsonText);
 
+    GraphLoadResult result;
     graph.SetName(j.value("name", graph.GetName()));
 
     for (const auto& item : j.at("nodeTypes")) {
-        graph.AddNodeType(NodeTypeFromJson(item));
+        NodeType nodeType = NodeTypeFromParsedJson(item);
+        if (!graph.AddNodeType(nodeType)) {
+            result.ok = false;
+            result.failures.push_back("node type '" + nodeType.id + "' was rejected");
+        }
     }
     for (const auto& item : j.at("nodes")) {
-        graph.AddNode(NodeFromJson(item));
+        Node node = NodeFromJson(item);
+        if (!graph.AddNode(node)) {
+            result.ok = false;
+            result.failures.push_back("node '" + node.id + "' was rejected");
+        }
     }
     for (const auto& item : j.at("connections")) {
-        graph.Connect(ConnectionFromJson(item));
+        Connection connection = ConnectionFromJson(item);
+        if (!graph.Connect(std::move(connection))) {
+            result.ok = false;
+            result.failures.push_back("connection '" + connection.id + "' was rejected");
+        }
     }
     if (j.contains("bridges")) {
         for (const auto& item : j.at("bridges")) {
-            graph.AddBridge(BridgeFromJson(item));
+            Bridge bridge = BridgeFromJson(item);
+            if (!graph.AddBridge(std::move(bridge))) {
+                result.ok = false;
+                result.failures.push_back("bridge '" + bridge.id + "' was rejected");
+            }
         }
     }
+
+    return result;
 }
 
 NodeType NodeTypeFromJson(std::string_view jsonText) {
     return NodeTypeFromJson(json::parse(jsonText));
+}
+
+NodeType NodeTypeFromJson(const nlohmann::json& j) {
+    return NodeTypeFromParsedJson(j);
 }
 
 }  // namespace NodeAPI
