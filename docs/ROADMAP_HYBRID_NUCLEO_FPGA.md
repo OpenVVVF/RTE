@@ -95,7 +95,7 @@ only if a contributor requests it.
   work; keep rebasing this fork regularly. Hybrid-FPGA work is fork-local for
   now; consider upstreaming the register-map contract once v2 is proven on hardware.
 - **Open PRs:** #2 (Nucleo base image — mergeable) is the foundation for Phase 2;
-  #3 (HostSim telemetry — conflicting after rebase) provides the telemetry path
+  #3 (HostSim telemetry — mergeable after the 19dbb08 rebase) provides the telemetry path
   used for hybrid bring-up observability.
 
 ## Open questions
