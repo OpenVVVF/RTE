@@ -4087,11 +4087,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "FocFeedforward",
-      "description": "PMSM voltage decoupling feedforward: Vd_ff=-omega*Lq*Iq, Vq_ff=omega*Ld*Id+omega*Psi.",
+      "description": "PMSM voltage decoupling feedforward (sign matched to this graph's dq convention): Vd_ff=+omega*Lq*Iq, Vq_ff=-omega*Ld*Id-omega*Psi.",
       "displayName": "FOC Feedforward",
       "domain": "",
       "id": "Custom.FocFeedforward",
-      "inlineCode": "const float omega = RpmElec * 0.104719755f;  /* rpm -> rad/s */\nconst float id = IdCmd;\nconst float iq = IqCmd;\nV_D_FF = rte::Volts(-omega * Lq * iq);\nV_Q_FF = rte::Volts(omega * Ld * id + omega * Psi);\n",
+      "inlineCode": "const float omega = RpmElec * 0.104719755f;  /* rpm -> rad/s */\nconst float id = IdCmd;\nconst float iq = IqCmd;\nV_D_FF = rte::Volts(omega * Lq * iq);\nV_Q_FF = rte::Volts(-omega * Ld * id - omega * Psi);\n",
       "inputPorts": [
         {
           "description": "Electrical speed in rpm (will be converted to rad/s).",
