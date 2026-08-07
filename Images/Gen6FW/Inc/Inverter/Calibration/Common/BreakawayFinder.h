@@ -23,7 +23,8 @@ public:
 
     void start(float step, uint32_t period_ms, float max_mod,
                float detect_cycles, float torque_margin,
-               uint32_t stall_timeout_ms);
+               uint32_t stall_timeout_ms,
+               uint32_t detect_dwell_ms = 0U);
 
     /** Reset the movement reference without changing ramp parameters. */
     void resetReference();
@@ -57,6 +58,7 @@ private:
     float m_detect_cycles = 0.0f;
     float m_torque_margin = 1.0f;
     uint32_t m_stall_timeout_ms = 0;
+    uint32_t m_detect_dwell_ms = 0U;
 
     float m_mod = 0.0f;
     float m_breakaway_mod = 0.0f;
@@ -65,6 +67,12 @@ private:
     float m_last_cycles = 0.0f;
     float m_start_cycles = 0.0f;
     bool  m_have_start_cycles = false;
+
+    /* Damped breakaway detection: require the movement threshold to be held
+     * continuously for a short dwell.  This rejects ringing/overshoot that
+     * briefly crosses the threshold but immediately snaps back. */
+    bool     m_detect_pending = false;
+    uint32_t m_detect_enter_ms = 0U;
 
     /* Movement reported while modulation is below this threshold is treated as
      * sensor noise / floating-input phantom motion.  The reference is reset

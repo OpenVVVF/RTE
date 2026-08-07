@@ -35,6 +35,7 @@ namespace {
 
 /* Conservative power limits suitable for unknown motors. */
 static constexpr float MAX_MODULATION = 0.35f;
+static constexpr float OFFSET_MAX_MODULATION = 1.0f;   /* allow full inverter range for offset rotation; EncoderOffsetCalibrator clamps by voltage */
 static constexpr float POLE_ROTATE_MOD_FACTOR = 1.00f;
 static constexpr float OFFSET_ROTATE_MOD_FACTOR = 1.00f;
 static constexpr float RES_MAX_CURRENT_A = 30.0f;
@@ -210,7 +211,7 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_r
 
         case State::OFFSET:
             if (!encoderOffsetCalibrator().start(m_poles, m_encoder_cycles_per_rev,
-                                                 m_breakaway_mod, MAX_MODULATION,
+                                                 m_breakaway_mod, OFFSET_MAX_MODULATION,
                                                  OFFSET_ROTATE_MOD_FACTOR)) {
                 Telemetry::printf("[CAL] AUTO: failed to start encoder offset calibration");
                 return false;
@@ -332,7 +333,7 @@ void AutoCalibrationCoordinator::update() {
             }
 
             if (!encoderOffsetCalibrator().start(m_poles, m_encoder_cycles_per_rev,
-                                                 m_breakaway_mod, MAX_MODULATION,
+                                                 m_breakaway_mod, OFFSET_MAX_MODULATION,
                                                  OFFSET_ROTATE_MOD_FACTOR)) {
                 fail("[CAL] AUTO: FAIL: encoder offset calibration failed to start");
                 return;

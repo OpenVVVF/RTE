@@ -3,6 +3,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -13,9 +14,14 @@ namespace Inverter {
 
 static constexpr float CAL_MAX_MOD = 0.50f;
 static constexpr float HOLD_MAX_MOD = 0.50f;
-static constexpr float WARMUP_MAX_MOD = 0.25f;
-static constexpr float RAMP_STEP = 0.005f;
-static constexpr float TORQUE_MARGIN = 0.40f;
+
+/* Voltage-aware breakaway/rotation limits.  Modulation index is peak phase
+ * voltage divided by (Vdc/2), so m = 2*V/Vdc.  Using volts instead of a fixed
+ * modulation step makes the ramp behave similarly at 20 V and 120 V. */
+static constexpr float BREAKAWAY_STEP_V = 0.50f;        /* V per ramp period */
+static constexpr float BREAKAWAY_MAX_V = 10.0f;         /* peak phase voltage */
+static constexpr float ROTATE_HEADROOM_V = 3.0f;        /* V above breakaway */
+static constexpr float CAL_MAX_VOLTAGE_V = 25.0f;       /* hard voltage ceiling */
 
 static constexpr uint32_t WARMUP_MS = 5000U;
 static constexpr float WARMUP_FREQUENCY_HZ = 1.0f;
@@ -27,6 +33,7 @@ static constexpr uint32_t OFFSET_SAMPLE_PERIOD_MS = 10U;
 
 static constexpr float NOISE_THRESHOLD_CYCLES = 0.02f;
 static constexpr float BREAKAWAY_DETECT_CYCLES = 0.15f;
+static constexpr uint32_t BREAKAWAY_DETECT_DWELL_MS = 100U;
 static constexpr uint32_t RAMP_PERIOD_MS = 200U;
 static constexpr uint32_t MOVE_TIMEOUT_MS = 3000U;
 static constexpr uint32_t FIND_VOLTAGE_TIMEOUT_MS = 15000U;
@@ -37,6 +44,14 @@ static constexpr float VOLTAGE_ANGLE_U_HIGH_RAD = 1.57079632679f;
 static constexpr float RAD_TO_DEG = 57.2957795131f;
 
 static EncoderOffsetCalibrator s_instance;
+
+static float voltageToMod(float v_v, float vdc_v) {
+    return (vdc_v > 1.0f) ? (v_v * 2.0f / vdc_v) : 0.0f;
+}
+
+static float modToVoltage(float m, float vdc_v) {
+    return m * vdc_v * 0.5f;
+}
 
 EncoderOffsetCalibrator& EncoderOffsetCalibrator::instance() {
     return s_instance;
@@ -108,17 +123,36 @@ void EncoderOffsetCalibrator::enterState(State state) {
              * to set up here. */
             break;
 
-        case State::FIND_VOLTAGE:
+        case State::FIND_VOLTAGE: {
             PWM_ResetSPWMElectricalCycles();
-            m_breakaway.start(RAMP_STEP, RAMP_PERIOD_MS, m_max_mod,
-                              BREAKAWAY_DETECT_CYCLES, m_torque_margin, MOVE_TIMEOUT_MS);
+            const float vdc = dcLinkVoltageSensor().voltage();
+            const float step_mod = voltageToMod(BREAKAWAY_STEP_V, vdc);
+            const float max_v = std::min(BREAKAWAY_MAX_V, vdc * 0.5f);
+            const float max_mod_search = voltageToMod(max_v, vdc);
+            m_breakaway.start(step_mod, RAMP_PERIOD_MS, max_mod_search,
+                              BREAKAWAY_DETECT_CYCLES, 1.0f, MOVE_TIMEOUT_MS,
+                              BREAKAWAY_DETECT_DWELL_MS);
             PWM_StartSPWM(OFFSET_ROTATION_FREQUENCY_HZ, 0.0f);
             break;
+        }
 
         case State::WARMUP: {
             m_tracker.reset();
-            const float target = (m_mod > WARMUP_MAX_MOD) ? WARMUP_MAX_MOD : m_mod;
-            m_ramp.start(0.0f, target, 4000U, openLoopController().rampCurrentLimit());
+            const float vdc = dcLinkVoltageSensor().voltage();
+            const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
+            float target = m_mod;
+            const float floor_mod = voltageToMod(v_breakaway, vdc);
+            /* Never warm up at a voltage below breakaway; keep a small headroom
+             * so the rotor stays locked. */
+            const float min_target_mod = voltageToMod(v_breakaway + 0.5f, vdc);
+            if (target < min_target_mod) {
+                target = min_target_mod;
+            }
+            const float max_mod = effectiveMaxMod(vdc);
+            if (target > max_mod) {
+                target = max_mod;
+            }
+            m_ramp.start(0.0f, target, 4000U, openLoopController().rampCurrentLimit(), floor_mod);
             PWM_ResetSPWMElectricalCycles();
             PWM_StartSPWM(WARMUP_FREQUENCY_HZ, 0.0f);
 
@@ -157,7 +191,21 @@ void EncoderOffsetCalibrator::enterState(State state) {
              * offset acquisition so that the stored offset matches the same
              * angle decoding the runtime will use. */
             encoderADC().startFitCapture();
-            m_ramp.start(0.0f, m_mod, 4000U, openLoopController().rampCurrentLimit());
+            {
+                const float vdc = dcLinkVoltageSensor().voltage();
+                const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
+                float target = m_mod;
+                const float floor_mod = voltageToMod(v_breakaway, vdc);
+                const float min_target_mod = voltageToMod(v_breakaway + 0.5f, vdc);
+                if (target < min_target_mod) {
+                    target = min_target_mod;
+                }
+                const float max_mod = effectiveMaxMod(vdc);
+                if (target > max_mod) {
+                    target = max_mod;
+                }
+                m_ramp.start(0.0f, target, 4000U, openLoopController().rampCurrentLimit(), floor_mod);
+            }
             break;
 
         case State::DONE:
@@ -229,6 +277,17 @@ float EncoderOffsetCalibrator::wrapOffset(float offset, float period) {
         wrapped -= period;
     }
     return wrapped;
+}
+
+float EncoderOffsetCalibrator::effectiveMaxMod(float vdc_v) const {
+    if (vdc_v <= 1.0f) {
+        return m_max_mod;
+    }
+    /* Clamp to a hard peak-phase-voltage ceiling so high bus voltages do not
+     * translate into huge modulation/current spikes.  At low bus voltages the
+     * same ceiling allows the full inverter range (m up to 1.0). */
+    const float max_mod_from_voltage = CAL_MAX_VOLTAGE_V * 2.0f / vdc_v;
+    return std::min(m_max_mod, max_mod_from_voltage);
 }
 
 static bool encoderAngleReliable() {
@@ -406,12 +465,21 @@ void EncoderOffsetCalibrator::update() {
                 fail("[CAL] ENC: FAIL: rotor did not move during voltage ramp");
                 return;
             } else {
+                /* FOUND */
                 m_breakaway_mod = m_breakaway.breakawayMod();
-                m_mod = mod;  /* already boosted by BreakawayFinder */
+                const float vdc = dcLinkVoltageSensor().voltage();
+                const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
+                const float v_rotate = v_breakaway + ROTATE_HEADROOM_V;
+                m_mod = voltageToMod(v_rotate, vdc);
+                const float max_mod = effectiveMaxMod(vdc);
+                if (m_mod > max_mod) m_mod = max_mod;
+                if (m_mod < 0.0f) m_mod = 0.0f;
                 PWM_StopSPWM();
-                Telemetry::printf("[CAL] ENC: breakaway at mod=%.3f -> rotate mod=%.3f",
+                Telemetry::printf("[CAL] ENC: breakaway at mod=%.3f (%.2f V) -> rotate mod=%.3f (%.2f V)",
                                   static_cast<double>(m_breakaway_mod),
-                                  static_cast<double>(m_mod));
+                                  static_cast<double>(v_breakaway),
+                                  static_cast<double>(m_mod),
+                                  static_cast<double>(v_rotate));
                 enterState(State::WARMUP);
                 return;
             }

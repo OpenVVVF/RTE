@@ -140,6 +140,7 @@ private:
     float encoderMechanicalAngle() const;
     float fieldMechanicalAngle() const;
     static float wrapOffset(float offset, float period);
+    float effectiveMaxMod(float vdc_v) const;
     State    m_state = State::IDLE;
     float    m_poles = 0.0f;
     float    m_pole_pairs = 0.0f;

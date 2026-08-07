@@ -8,13 +8,15 @@ namespace Inverter {
 
 void BreakawayFinder::start(float step, uint32_t period_ms, float max_mod,
                             float detect_cycles, float torque_margin,
-                            uint32_t stall_timeout_ms) {
+                            uint32_t stall_timeout_ms,
+                            uint32_t detect_dwell_ms) {
     m_step = step;
     m_period_ms = period_ms;
     m_max_mod = max_mod;
     m_detect_cycles = detect_cycles;
     m_torque_margin = torque_margin;
     m_stall_timeout_ms = stall_timeout_ms;
+    m_detect_dwell_ms = detect_dwell_ms;
 
     /* A stationary rotor cannot move at zero or near-zero modulation.
      * Require the ramp to reach a few steps before trusting any encoder
@@ -28,6 +30,8 @@ void BreakawayFinder::start(float step, uint32_t period_ms, float max_mod,
     m_last_cycles = 0.0f;
     m_in_trusted_region = false;
     m_max_phantom_cycles = 0.0f;
+    m_detect_pending = false;
+    m_detect_enter_ms = 0U;
     resetReference();
 }
 
@@ -93,18 +97,28 @@ BreakawayFinder::Status BreakawayFinder::update(uint32_t now_ms, float encoder_m
     }
 
     if (std::fabs(moved_cycles) >= m_detect_cycles) {
-        m_breakaway_mod = m_mod;
-        Telemetry::printf("[CAL] RAMP: breakaway FOUND at mod=%.3f moved=%.3f detect=%.3f",
-                          static_cast<double>(m_mod),
-                          static_cast<double>(moved_cycles),
-                          static_cast<double>(m_detect_cycles));
-        float boosted = m_mod * m_torque_margin;
-        if (boosted > m_max_mod) {
-            boosted = m_max_mod;
+        if (!m_detect_pending) {
+            m_detect_pending = true;
+            m_detect_enter_ms = now_ms;
+        } else if ((now_ms - m_detect_enter_ms) >= m_detect_dwell_ms) {
+            m_breakaway_mod = m_mod;
+            Telemetry::printf("[CAL] RAMP: breakaway FOUND at mod=%.3f moved=%.3f detect=%.3f",
+                              static_cast<double>(m_mod),
+                              static_cast<double>(moved_cycles),
+                              static_cast<double>(m_detect_cycles));
+            float boosted = m_mod * m_torque_margin;
+            if (boosted > m_max_mod) {
+                boosted = m_max_mod;
+            }
+            m_mod = boosted;
+            out_mod = m_mod;
+            return Status::FOUND;
         }
-        m_mod = boosted;
-        out_mod = m_mod;
-        return Status::FOUND;
+    } else if (m_detect_pending && std::fabs(moved_cycles) < 0.5f * m_detect_cycles) {
+        /* Movement dropped back below threshold before the dwell expired:
+         * this was ringing/overshoot, not real breakaway. */
+        m_detect_pending = false;
+        m_detect_enter_ms = 0U;
     }
 
     if (m_mod >= m_max_mod && (now_ms - m_last_move_ms) > m_stall_timeout_ms) {
