@@ -1297,7 +1297,7 @@
       "displayName": "FOC Feed-Forward",
       "domain": "",
       "id": "Control.FocFeedforward",
-      "inlineCode": "/* PMSM voltage feed-forward: cross-coupling and back-EMF terms.\n * Electrical speed is supplied in RPM and converted to rad/s internally.\n *\n *   Vd_ff = -\u03c9e * Lq * Iq\n *   Vq_ff =  \u03c9e * Ld * Id + \u03c9e * Lambda\n */\nconstexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;\nconst float omega_e = RpmElec * RPM_TO_RAD_S;\n\nconst float id_a = I_D.in(au::amperes);\nconst float iq_a = I_Q.in(au::amperes);\n\nconst float vd_ff = -(omega_e * Lq * iq_a);\nconst float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);\n\nV_D = rte::Volts(vd_ff);\nV_Q = rte::Volts(vq_ff);\n",
+      "inlineCode": "/* PMSM voltage feed-forward: cross-coupling and back-EMF terms.\n * Electrical speed is supplied in RPM and converted to rad/s internally.\n *\n *   Vd_ff = -ωe * Lq * Iq\n *   Vq_ff =  ωe * Ld * Id + ωe * Lambda\n */\nconstexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;\nconst float omega_e = RpmElec * RPM_TO_RAD_S;\n\nconst float id_a = I_D.in(au::amperes);\nconst float iq_a = I_Q.in(au::amperes);\n\nconst float vd_ff = -(omega_e * Lq * iq_a);\nconst float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);\n\nV_D = rte::Volts(vd_ff);\nV_Q = rte::Volts(vq_ff);\n",
       "inputPorts": [
         {
           "description": "Measured d-axis current.",
@@ -2323,11 +2323,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "Ladrc",
-      "description": "Linear Active Disturbance Rejection Controller for a first-order plant (PMSM dq current). Drop-in alternative to Control.Pi: Setpoint/Measurement \u2192 voltage Output. Uses a 2-state linear ESO + PD-like feedback. Does not modify FOC/MPCC nodes.",
+      "description": "Linear Active Disturbance Rejection Controller for a first-order plant (PMSM dq current). Drop-in alternative to Control.Pi: Setpoint/Measurement → voltage Output. Uses a 2-state linear ESO + PD-like feedback. Does not modify FOC/MPCC nodes.",
       "displayName": "LADRC (1st-order)",
       "domain": "",
       "id": "Control.Ladrc",
-      "inlineCode": "/* Linear ADRC (LADRC) for a first-order plant:\n *   dy/dt = f_total + b0 * u\n * Used here as a PMSM dq-current regulator (drop-in for Control.Pi).\n *\n * ESO (Gao bandwidth parameterization):\n *   e  = z1 - y\n *   z1 += dt * (z2 + b0*u - 2*\u03c9o*e)\n *   z2 += dt * (-\u03c9o^2 * e)\n * Control:\n *   u0 = \u03c9c * (r - z1)\n *   u  = (u0 - z2) / b0\n *\n * Independent of FOC PI and FCS-MPCC implementations.\n */\nfloat dt = Dt;\nfloat b0 = B0;\nfloat wc = OmegaC;\nfloat wo = OmegaO;\nif (!(dt > 0.0f)) dt = 0.0002f;\nif (!(b0 > 1.0e-6f) && !(b0 < -1.0e-6f)) b0 = 10000.0f; /* ~1/100\u00b5H */\nif (!(wc > 0.0f)) wc = 800.0f;\nif (!(wo > 0.0f)) wo = 2400.0f;\n\nconst float y = Measurement;\nconst float r = Setpoint;\n\nconst float beta1 = 2.0f * wo;\nconst float beta2 = wo * wo;\n\nfloat z1 = Z1;\nfloat z2 = Z2;\n/* Cold-start: align observer to measurement once. */\nif (z1 == 0.0f && z2 == 0.0f && UPrev == 0.0f) {\n    z1 = y;\n}\n\nconst float u_prev = UPrev;\nconst float e_obs = z1 - y;\nz1 += dt * (z2 + b0 * u_prev - beta1 * e_obs);\nz2 += dt * (-beta2 * e_obs);\nZ1 = z1;\nZ2 = z2;\n\nconst float u0 = wc * (r - z1);\nfloat u = (u0 - z2) / b0;\n\n/* Same Vdc-aware clamp convention as Control.Pi: allow overmodulation up\n * to the six-step boundary (2*Vdc/3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nfloat max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nfloat min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\nif (u > max_limit) u = max_limit;\nif (u < min_limit) u = min_limit;\n\nUPrev = u;\nOutput = u;\n",
+      "inlineCode": "/* Linear ADRC (LADRC) for a first-order plant:\n *   dy/dt = f_total + b0 * u\n * Used here as a PMSM dq-current regulator (drop-in for Control.Pi).\n *\n * ESO (Gao bandwidth parameterization):\n *   e  = z1 - y\n *   z1 += dt * (z2 + b0*u - 2*ωo*e)\n *   z2 += dt * (-ωo^2 * e)\n * Control:\n *   u0 = ωc * (r - z1)\n *   u  = (u0 - z2) / b0\n *\n * Independent of FOC PI and FCS-MPCC implementations.\n */\nfloat dt = Dt;\nfloat b0 = B0;\nfloat wc = OmegaC;\nfloat wo = OmegaO;\nif (!(dt > 0.0f)) dt = 0.0002f;\nif (!(b0 > 1.0e-6f) && !(b0 < -1.0e-6f)) b0 = 10000.0f; /* ~1/100µH */\nif (!(wc > 0.0f)) wc = 800.0f;\nif (!(wo > 0.0f)) wo = 2400.0f;\n\nconst float y = Measurement;\nconst float r = Setpoint;\n\nconst float beta1 = 2.0f * wo;\nconst float beta2 = wo * wo;\n\nfloat z1 = Z1;\nfloat z2 = Z2;\n/* Cold-start: align observer to measurement once. */\nif (z1 == 0.0f && z2 == 0.0f && UPrev == 0.0f) {\n    z1 = y;\n}\n\nconst float u_prev = UPrev;\nconst float e_obs = z1 - y;\nz1 += dt * (z2 + b0 * u_prev - beta1 * e_obs);\nz2 += dt * (-beta2 * e_obs);\nZ1 = z1;\nZ2 = z2;\n\nconst float u0 = wc * (r - z1);\nfloat u = (u0 - z2) / b0;\n\n/* Same Vdc-aware clamp convention as Control.Pi: allow overmodulation up\n * to the six-step boundary (2*Vdc/3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nfloat max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nfloat min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\nif (u > max_limit) u = max_limit;\nif (u < min_limit) u = min_limit;\n\nUPrev = u;\nOutput = u;\n",
       "inputPorts": [
         {
           "description": "Desired current (A) or process setpoint.",
@@ -2369,7 +2369,7 @@
       ],
       "parameterTypes": {
         "B0": {
-          "description": "Plant gain estimate b0. For dq current use \u2248 1/L (e.g. Ld or Lq).",
+          "description": "Plant gain estimate b0. For dq current use ≈ 1/L (e.g. Ld or Lq).",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -2381,25 +2381,25 @@
           "quantity": "dimensionless"
         },
         "OmegaC": {
-          "description": "Controller bandwidth \u03c9c [rad/s]. kp = \u03c9c.",
+          "description": "Controller bandwidth ωc [rad/s]. kp = ωc.",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
         "OmegaO": {
-          "description": "Observer bandwidth \u03c9o [rad/s]. Typically 3\u201310\u00d7 \u03c9c.",
+          "description": "Observer bandwidth ωo [rad/s]. Typically 3–10× ωc.",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
         "OutputMax": {
-          "description": "Upper output clamp (also limited by Vdc/\u221a3\u00b70.95).",
+          "description": "Upper output clamp (also limited by Vdc/√3·0.95).",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
         "OutputMin": {
-          "description": "Lower output clamp (also limited by \u2212Vdc/\u221a3\u00b70.95).",
+          "description": "Lower output clamp (also limited by −Vdc/√3·0.95).",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -2543,7 +2543,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "Electrical rotor angle wrapped to the range 0 through 2\u03c0 radians.",
+          "description": "Electrical rotor angle wrapped to the range 0 through 2π radians.",
           "direction": "output",
           "name": "ThetaElec",
           "optional": false,

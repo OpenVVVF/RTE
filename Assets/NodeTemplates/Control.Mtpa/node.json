@@ -1,0 +1,69 @@
+{
+  "id": "Control.Mtpa",
+  "displayName": "MTPA Reference",
+  "defaultName": "Mtpa",
+  "description": "Maximum Torque Per Ampere current-reference generator for PMSM. Converts a per-unit current command into optimal d-q current references using motor inductances and flux linkage.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "CurrentRef",
+      "description": "Per-unit current command [-1..1]. Scaled by CurrentMax to obtain the current magnitude used for MTPA.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "I_D",
+      "description": "D-axis current reference that realizes MTPA for the requested current magnitude.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_Q",
+      "description": "Q-axis current reference that realizes MTPA for the requested current magnitude.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "CurrentMax": {
+      "description": "Maximum current magnitude in amperes. CurrentRef is multiplied by this value to obtain the actual current command.",
+      "quantity": "current",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Ld": {
+      "description": "D-axis inductance in henries.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Lq": {
+      "description": "Q-axis inductance in henries.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Lambda": {
+      "description": "Permanent-magnet flux linkage in webers.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}
