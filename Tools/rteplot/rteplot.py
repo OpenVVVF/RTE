@@ -8,13 +8,13 @@ Examples:
     ./rteplot.py info overmodulation_test.jsonl
 
     # Render a built-in recipe
-    ./rteplot.py plot overmodulation_test.jsonl --recipe overmodulation -o overmod.png
+    ./rteplot.py plot example-overmodulation-problem.jsonl --recipe overmodulation -o overmod.png
 
     # Same, but as an interactive HTML file
-    ./rteplot.py plot overmodulation_test.jsonl --recipe overmodulation -o overmod.html
+    ./rteplot.py plot example-overmodulation-problem.jsonl --recipe overmodulation -o overmod.html
 
     # Focus on a specific time window and fewer points
-    ./rteplot.py plot fw-problem.jsonl --recipe fieldweakening \
+    ./rteplot.py plot example-field-weakening-problem.jsonl --recipe fieldweakening \
         -o fw.png --t0 0.5 --t1 2.0 --max-points 2000
 
     # List available recipes

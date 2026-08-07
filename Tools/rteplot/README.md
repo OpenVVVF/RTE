@@ -22,21 +22,21 @@ The tool lives in its own folder and uses the project venv:
 cd Tools/rteplot
 
 # See what is in a log
-../../.venv/bin/python rteplot.py info ../../overmodulation_test.jsonl
+../../.venv/bin/python rteplot.py info ../../example-overmodulation-problem.jsonl
 
 # List available recipes
 ../../.venv/bin/python rteplot.py recipes
 
 # Render a built-in recipe to PNG (retina scale by default)
-../../.venv/bin/python rteplot.py plot ../../overmodulation_test.jsonl \
+../../.venv/bin/python rteplot.py plot ../../example-overmodulation-problem.jsonl \
     --recipe overmodulation -o overmodulation.png
 
 # Interactive HTML
-../../.venv/bin/python rteplot.py plot ../../fw-problem.jsonl \
+../../.venv/bin/python rteplot.py plot ../../example-field-weakening-problem.jsonl \
     --recipe fieldweakening -o fw.html
 
 # Zoom in on the problem and add a logo
-../../.venv/bin/python rteplot.py plot ../../fw-problem.jsonl \
+../../.venv/bin/python rteplot.py plot ../../example-field-weakening-problem.jsonl \
     --recipe fieldweakening -o fw_zoom.png \
     --t0 5 --t1 35 --logo assets/logo.png
 ```
@@ -59,29 +59,30 @@ controller variants.
 
 ### Overmodulation / voltage saturation
 
-`overmodulation_test.jsonl`, zoomed to the transition where the modulation index
-crosses 1:
+`example-overmodulation-problem.jsonl`, zoomed to the transition where the
+modulation index crosses 1:
 
-![overmodulation zoom](examples/overmodulation_test_zoom.png)
+![overmodulation zoom](examples/example-overmodulation-problem-zoom.png)
 
 ### Field-weakening problem
 
-`fw-problem.jsonl`, auto-cropped to the worst anomaly window:
+`example-field-weakening-problem.jsonl`, auto-cropped to the worst anomaly
+window:
 
-![field-weakening auto anomaly](examples/fw-problem-auto.png)
+![field-weakening auto anomaly](examples/example-field-weakening-problem-auto.png)
 
 ## Automatic anomaly detection
 
 ```bash
 # Print a concise anomaly report
-../../.venv/bin/python rteplot.py anomalies ../../fw-problem.jsonl
+../../.venv/bin/python rteplot.py anomalies ../../example-field-weakening-problem.jsonl
 
 # Report + auto-render the worst anomaly window
-../../.venv/bin/python rteplot.py anomalies ../../fw-problem.jsonl \
+../../.venv/bin/python rteplot.py anomalies ../../example-field-weakening-problem.jsonl \
     -p fw_problem.png --recipe fwanalysis
 
 # Auto-crop any recipe to the worst anomaly
-../../.venv/bin/python rteplot.py plot ../../fw-problem.jsonl \
+../../.venv/bin/python rteplot.py plot ../../example-field-weakening-problem.jsonl \
     --recipe fwanalysis --auto-window -o fw_auto.png
 ```
 
