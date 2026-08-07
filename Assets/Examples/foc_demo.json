@@ -3382,7 +3382,7 @@
       "displayName": "PI Controller (Current)",
       "domain": "",
       "id": "Custom.PiCurrent",
-      "inlineCode": "const float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation\n * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
+      "inlineCode": "float dt = platform_get_current_domain_dt();\nif (dt <= 0.0f) dt = 0.0002f;\nconst float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation\n * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
       "inputPorts": [
         {
           "description": "",
@@ -3877,11 +3877,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "EncoderLeadComp",
-      "description": "Lead-compensate encoder angle for measurement/processing latency.",
+      "description": "Lead-compensate encoder angle for measurement/processing latency using real domain dt.",
       "displayName": "Encoder Lead Compensator",
       "domain": "",
       "id": "Custom.EncoderLeadComp",
-      "inlineCode": "const float omega_mech = RpmMech * 0.104719755f;  /* rpm -> rad/s */\nfloat lead = omega_mech * DelayS;\nif (lead > MaxLeadRad) lead = MaxLeadRad;\nif (lead < -MaxLeadRad) lead = -MaxLeadRad;\nfloat theta = Theta + lead;\nconst float two_pi = 6.28318530718f;\ntheta = fmodf(theta, two_pi);\nif (theta < 0.0f) theta += two_pi;\nThetaOut = theta;\n",
+      "inlineCode": "const float dt = platform_get_current_domain_dt();\nconst float delay_s = (dt > 0.0f && DelayScale > 0.0f) ? (dt * DelayScale) : 0.0f;\nconst float omega_mech = RpmMech * 0.104719755f;  /* rpm -> rad/s */\nfloat lead = omega_mech * delay_s;\nif (lead > MaxLeadRad) lead = MaxLeadRad;\nif (lead < -MaxLeadRad) lead = -MaxLeadRad;\nfloat theta = Theta + lead;\nconst float two_pi = 6.28318530718f;\ntheta = fmodf(theta, two_pi);\nif (theta < 0.0f) theta += two_pi;\nThetaOut = theta;\n",
       "inputPorts": [
         {
           "description": "Measured mechanical angle (rad).",
@@ -3922,7 +3922,7 @@
         }
       ],
       "parameterTypes": {
-        "DelayS": {
+        "DelayScale": {
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -4064,7 +4064,7 @@
       "domain": "tim_isr",
       "id": "EncoderLeadComp",
       "parameters": {
-        "DelayS": "0.00015",
+        "DelayScale": "1.0",
         "MaxLeadRad": "0.35"
       },
       "position": {
