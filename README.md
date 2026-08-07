@@ -13,6 +13,12 @@ flashable firmware binary. A plant/inverter simulator based on
 [ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
 exercised in closed loop before touching hardware.
 
+> **Fork direction (hibyemy/RTE):** this fork prioritizes a **hybrid
+> Nucleo-L476 + Tang Nano 20K FPGA** control platform (hardware FOC offload
+> over SPI); simulation work is maintenance-only here. See
+> [docs/ROADMAP_HYBRID_NUCLEO_FPGA.md](docs/ROADMAP_HYBRID_NUCLEO_FPGA.md).
+> Cross-LLM session history lives in [agent-log/](agent-log/README.md).
+
 Hardware designs and safety documentation live in
 [OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
 
