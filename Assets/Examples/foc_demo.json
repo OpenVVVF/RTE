@@ -177,6 +177,28 @@
     },
     {
       "from": {
+        "nodeId": "PiD",
+        "portName": "Output"
+      },
+      "id": "c10",
+      "to": {
+        "nodeId": "InvPark",
+        "portName": "V_D"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "PiQ",
+        "portName": "Output"
+      },
+      "id": "c11",
+      "to": {
+        "nodeId": "InvPark",
+        "portName": "V_Q"
+      }
+    },
+    {
+      "from": {
         "nodeId": "InvPark",
         "portName": "V_Alpha"
       },
@@ -701,149 +723,6 @@
       "to": {
         "nodeId": "EncoderCos",
         "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IdVar",
-        "portName": "Value"
-      },
-      "id": "c57",
-      "to": {
-        "nodeId": "IdCmdDimless",
-        "portName": "Input"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IdCmdDimless",
-        "portName": "Output"
-      },
-      "id": "c58",
-      "to": {
-        "nodeId": "FocFeedforward",
-        "portName": "IdCmd"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IqGate",
-        "portName": "Out"
-      },
-      "id": "c59",
-      "to": {
-        "nodeId": "FocFeedforward",
-        "portName": "IqCmd"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "RPMMechElec1",
-        "portName": "RpmElec"
-      },
-      "id": "c60",
-      "to": {
-        "nodeId": "FocFeedforward",
-        "portName": "RpmElec"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgLd",
-        "portName": "Value"
-      },
-      "id": "c61",
-      "to": {
-        "nodeId": "FocFeedforward",
-        "portName": "Ld"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgLq",
-        "portName": "Value"
-      },
-      "id": "c62",
-      "to": {
-        "nodeId": "FocFeedforward",
-        "portName": "Lq"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgPsi",
-        "portName": "Value"
-      },
-      "id": "c63",
-      "to": {
-        "nodeId": "FocFeedforward",
-        "portName": "Psi"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiD",
-        "portName": "Output"
-      },
-      "id": "c64",
-      "to": {
-        "nodeId": "SumVd",
-        "portName": "Input_A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "FocFeedforward",
-        "portName": "V_D_FF"
-      },
-      "id": "c65",
-      "to": {
-        "nodeId": "SumVd",
-        "portName": "Input_B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SumVd",
-        "portName": "Output"
-      },
-      "id": "c66",
-      "to": {
-        "nodeId": "InvPark",
-        "portName": "V_D"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiQ",
-        "portName": "Output"
-      },
-      "id": "c67",
-      "to": {
-        "nodeId": "SumVq",
-        "portName": "Input_A"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "FocFeedforward",
-        "portName": "V_Q_FF"
-      },
-      "id": "c68",
-      "to": {
-        "nodeId": "SumVq",
-        "portName": "Input_B"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SumVq",
-        "portName": "Output"
-      },
-      "id": "c69",
-      "to": {
-        "nodeId": "InvPark",
-        "portName": "V_Q"
       }
     }
   ],
@@ -4042,200 +3921,6 @@
           "quantity": "dimensionless"
         }
       }
-    },
-    {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
-      "defaultName": "CurrentToDimless",
-      "description": "Extract the numeric value of a Current signal as dimensionless amperes.",
-      "displayName": "Current to Dimless",
-      "domain": "",
-      "id": "Custom.CurrentToDimless",
-      "inlineCode": "Output = Input.in(au::amperes);\n",
-      "inputPorts": [
-        {
-          "description": "Current input.",
-          "direction": "input",
-          "name": "Input",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "current"
-          }
-        }
-      ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
-      "outputPorts": [
-        {
-          "description": "Dimensionless amperes.",
-          "direction": "output",
-          "name": "Output",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        }
-      ]
-    },
-    {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
-      "defaultName": "FocFeedforward",
-      "description": "PMSM voltage decoupling feedforward (sign matched to this graph's dq convention): Vd_ff=+omega*Lq*Iq, Vq_ff=-omega*Ld*Id-omega*Psi.",
-      "displayName": "FOC Feedforward",
-      "domain": "",
-      "id": "Custom.FocFeedforward",
-      "inlineCode": "const float omega = RpmElec * 0.104719755f;  /* rpm -> rad/s */\nconst float id = IdCmd;\nconst float iq = IqCmd;\nV_D_FF = rte::Volts(omega * Lq * iq);\nV_Q_FF = rte::Volts(-omega * Ld * id - omega * Psi);\n",
-      "inputPorts": [
-        {
-          "description": "Electrical speed in rpm (will be converted to rad/s).",
-          "direction": "input",
-          "name": "RpmElec",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        },
-        {
-          "description": "D-axis inductance Ld in henries.",
-          "direction": "input",
-          "name": "Ld",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        },
-        {
-          "description": "Q-axis inductance Lq in henries.",
-          "direction": "input",
-          "name": "Lq",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        },
-        {
-          "description": "Permanent-magnet flux linkage Psi in webers.",
-          "direction": "input",
-          "name": "Psi",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        },
-        {
-          "description": "D-axis current command in amperes (dimensionless).",
-          "direction": "input",
-          "name": "IdCmd",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        },
-        {
-          "description": "Q-axis current command in amperes (dimensionless).",
-          "direction": "input",
-          "name": "IqCmd",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "dimensionless"
-          }
-        }
-      ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
-      "outputPorts": [
-        {
-          "description": "D-axis feedforward voltage.",
-          "direction": "output",
-          "name": "V_D_FF",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "voltage"
-          }
-        },
-        {
-          "description": "Q-axis feedforward voltage.",
-          "direction": "output",
-          "name": "V_Q_FF",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "voltage"
-          }
-        }
-      ]
-    },
-    {
-      "classDefinition": "",
-      "classHeader": "",
-      "constructorCode": "",
-      "defaultName": "VoltageSum2",
-      "description": "Sum two voltage signals.",
-      "displayName": "Voltage Sum",
-      "domain": "",
-      "id": "Custom.VoltageSum2",
-      "inlineCode": "Output = Input_A + Input_B;\n",
-      "inputPorts": [
-        {
-          "description": "First voltage input.",
-          "direction": "input",
-          "name": "Input_A",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "voltage"
-          }
-        },
-        {
-          "description": "Second voltage input.",
-          "direction": "input",
-          "name": "Input_B",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "voltage"
-          }
-        }
-      ],
-      "isEntryPoint": false,
-      "maxInstances": 0,
-      "outputPorts": [
-        {
-          "description": "Sum of inputs.",
-          "direction": "output",
-          "name": "Output",
-          "optional": false,
-          "type": {
-            "dtype": "f32",
-            "frame": "scalar",
-            "quantity": "voltage"
-          }
-        }
-      ]
     }
   ],
   "nodes": [
@@ -5090,95 +4775,6 @@
         "y": 3195.484860825332
       },
       "type": "Debug.TelemetryLog"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "CfgLd",
-      "parameters": {
-        "Cached": "0.0",
-        "DefaultValue": "0.0018",
-        "Key": "Motor.PMSM.Inductance.Ld"
-      },
-      "position": {
-        "x": 940.9548411065375,
-        "y": 2997.7099965706443
-      },
-      "type": "Values.Config"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "CfgLq",
-      "parameters": {
-        "Cached": "0.0",
-        "DefaultValue": "0.0018",
-        "Key": "Motor.PMSM.Inductance.Lq"
-      },
-      "position": {
-        "x": 905.5103966620932,
-        "y": 3120.7988854595337
-      },
-      "type": "Values.Config"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "CfgPsi",
-      "parameters": {
-        "Cached": "0.0",
-        "DefaultValue": "0.039",
-        "Key": "Motor.PMSM.FluxLinkage.Wb"
-      },
-      "position": {
-        "x": 1178.6548411065376,
-        "y": 3104.409996570644
-      },
-      "type": "Values.Config"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "IdCmdDimless",
-      "parameters": {},
-      "position": {
-        "x": 1415.0548411065377,
-        "y": 2577.6099965706444
-      },
-      "type": "Custom.CurrentToDimless"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "FocFeedforward",
-      "parameters": {},
-      "position": {
-        "x": 1619.2215077732044,
-        "y": 2911.7766632373105
-      },
-      "type": "Custom.FocFeedforward"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "SumVd",
-      "parameters": {},
-      "position": {
-        "x": 1915.0548411065377,
-        "y": 2677.6099965706444
-      },
-      "type": "Custom.VoltageSum2"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "SumVq",
-      "parameters": {},
-      "position": {
-        "x": 1915.0548411065377,
-        "y": 2877.6099965706444
-      },
-      "type": "Custom.VoltageSum2"
     }
   ],
   "schemaVersion": 1
