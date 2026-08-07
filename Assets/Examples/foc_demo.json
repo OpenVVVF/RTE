@@ -105,6 +105,17 @@
       },
       "id": "c1",
       "to": {
+        "nodeId": "EncoderLeadComp",
+        "portName": "Theta"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "EncoderLeadComp",
+        "portName": "ThetaOut"
+      },
+      "id": "c1b",
+      "to": {
         "nodeId": "ElecAngle",
         "portName": "ThetaMech"
       }
@@ -690,6 +701,17 @@
       "to": {
         "nodeId": "Mech_RPM",
         "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "RPMMechElec1",
+        "portName": "RpmMech"
+      },
+      "id": "c1c",
+      "to": {
+        "nodeId": "EncoderLeadComp",
+        "portName": "RpmMech"
       }
     },
     {
@@ -3854,6 +3876,68 @@
       "classDefinition": "",
       "classHeader": "",
       "constructorCode": "",
+      "defaultName": "EncoderLeadComp",
+      "description": "Lead-compensate encoder angle for measurement/processing latency.",
+      "displayName": "Encoder Lead Compensator",
+      "domain": "",
+      "id": "Custom.EncoderLeadComp",
+      "inlineCode": "const float omega_mech = RpmMech * 0.104719755f;  /* rpm -> rad/s */\nfloat lead = omega_mech * DelayS;\nif (lead > MaxLeadRad) lead = MaxLeadRad;\nif (lead < -MaxLeadRad) lead = -MaxLeadRad;\nfloat theta = Theta + lead;\nconst float two_pi = 6.28318530718f;\ntheta = fmodf(theta, two_pi);\nif (theta < 0.0f) theta += two_pi;\nThetaOut = theta;\n",
+      "inputPorts": [
+        {
+          "description": "Measured mechanical angle (rad).",
+          "direction": "input",
+          "name": "Theta",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Mechanical speed (rpm).",
+          "direction": "input",
+          "name": "RpmMech",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Lead-compensated mechanical angle (rad).",
+          "direction": "output",
+          "name": "ThetaOut",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "DelayS": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "MaxLeadRad": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
       "defaultName": "Pi",
       "description": "",
       "displayName": "PI Controller",
@@ -3974,6 +4058,20 @@
         "y": 2369.3333333333335
       },
       "type": "Custom.EncoderAngle"
+    },
+    {
+      "displayName": "",
+      "domain": "tim_isr",
+      "id": "EncoderLeadComp",
+      "parameters": {
+        "DelayS": "0.00015",
+        "MaxLeadRad": "0.35"
+      },
+      "position": {
+        "x": 200.0,
+        "y": 2520.0
+      },
+      "type": "Custom.EncoderLeadComp"
     },
     {
       "displayName": "",
