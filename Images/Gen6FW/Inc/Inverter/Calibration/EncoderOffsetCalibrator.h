@@ -190,6 +190,10 @@ private:
     float    m_warmup_enc_start = 0.0f;
     float    m_warmup_fld_start = 0.0f;
 
+    /* Layer 1 ellipse-fit state during offset rotation. */
+    bool     m_fit_checked_at_start = false;
+    bool     m_fit_checked_at_giveup = false;
+
     /* Results. */
     double   m_sum_offset = 0.0;
     int      m_sample_count = 0;

@@ -103,7 +103,10 @@ FocOutputs FocController::Update(const FocInputs& in, const FocSetpoints& set, f
         }
     }
     prev_mech_angle_rad_ = encoder_cycle_angle;
-    ElectricalSpeed_RadPerSec = mech_velocity_rad_per_s_ * motor_.pole_pairs;
+    /* The raw encoder velocity is in the physical encoder-count direction.
+     * The electrical angle used by Park/InversePark applies encoder_sign, so
+     * the electrical speed must use the same sign-corrected convention. */
+    ElectricalSpeed_RadPerSec = mech_velocity_rad_per_s_ * motor_.pole_pairs * motor_.encoder_sign;
 
     // Forward Clarke.
     clarkeAbcToAlphaBeta(in.iu_a, in.iv_a, in.iw_a, Ialpha_A, Ibeta_A);

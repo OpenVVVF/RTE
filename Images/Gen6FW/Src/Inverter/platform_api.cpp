@@ -179,10 +179,18 @@ float platform_get_rpm_mech(void) {
 }
 
 float platform_get_rpm_elec(void) {
-    /* Electrical RPM = mechanical RPM * pole pairs.  Use the calibrated pole
-     * count; default to 5 pairs (10-pole motor) if not calibrated. */
-    const float pole_pairs = Inverter::MotorCalibration::instance().pole_count * 0.5f;
-    return Inverter::encoderADC().rpmMech() * pole_pairs;
+    /* Electrical RPM = mechanical RPM * pole pairs, signed so it follows the
+     * same convention as the sign-corrected electrical angle used by the
+     * generated control graph (ElecAngle applies Motor.Encoder.SinCos.Sign).
+     * The raw encoder RPM is in the physical encoder-count direction; if the
+     * encoder is mounted opposite to the rotor field, encoder_sign is -1 and
+     * the electrical angle increases while the raw encoder counts decrease.
+     * Without the sign correction here, feed-forward terms see the wrong speed
+     * sign and produce braking/cross-coupling voltages instead of assisting. */
+    const auto& cal = Inverter::MotorCalibration::instance();
+    const float pole_pairs = cal.pole_count * 0.5f;
+    const float encoder_sign = (cal.encoder_sign >= 0.0f) ? 1.0f : -1.0f;
+    return Inverter::encoderADC().rpmMech() * pole_pairs * encoder_sign;
 }
 
 uint32_t platform_get_encoder_raw_sin(void) {
