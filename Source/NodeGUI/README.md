@@ -1,12 +1,13 @@
 # RTE Studio
 
-A minimal Qt6 + QtNodes viewer for NodeAPI graph files.
+A Qt6 + QtNodes graph editor and runtime visualizer for NodeAPI graph files.
 
 ## Dependencies
 
-- Qt6 (Core, Gui, Widgets, OpenGL, OpenGLWidgets)
+- Qt6 (Core, Gui, Widgets, OpenGL, OpenGLWidgets, Network)
 - QtNodes — vendored as a git submodule in `third_party/QtNodes`
 - NodeAPI — the RTE library that owns the graph model and JSON serialization
+- InverterProtocol — optional `ivp::InverterClient` transport for live telemetry
 
 ## Build
 
@@ -33,7 +34,7 @@ Open a graph from the command line:
 
 Or launch with no arguments and use `File → Open`.
 
-## What it does today
+## Graph editing
 
 - Loads node-type templates from `RTE/Assets/NodeTemplates`.
 - Shows node descriptions in the palette, on canvas hover, and in the
@@ -41,8 +42,8 @@ Or launch with no arguments and use `File → Open`.
 - Parses a NodeAPI graph JSON with `NodeAPI::LoadFromJson`.
 - Renders each node instance as a QtNodes node at its stored position.
 - Renders `Connection`s as solid lines colored by the port's quantity.
-- Renders `Bridge`s as dashed lines colored by the port's quantity, so cross-domain links are visually distinct by linestyle.
-- Draws each port as a filled shape: color = quantity, shape = frame (e.g., scalar angles are purple diamonds), so matching types are easy to spot.
+- Renders `Bridge`s as dashed lines colored by the port's quantity.
+- Draws each port as a filled shape: color = quantity, shape = frame.
 - Shows an FPS / frametime overlay in the top-right corner of the viewport.
 - Shows the node id, type, and timing domain in each node caption.
 - Draws a colored outline around each timing domain, with the domain name labeled above it.
@@ -78,6 +79,42 @@ Or launch with no arguments and use `File → Open`.
   - All edits are checked against the NodeAPI timing/DAG validator.
   - If a drag is rejected, the reason is shown in the status bar (bottom-left) for 4 seconds.
 
+## Runtime / telemetry
+
+The **Runtime** tab connects to hardware or a simulated feed and visualizes live values:
+
+| Component | Role |
+|-----------|------|
+| `RuntimeController` | Bridges threaded telemetry into the Qt GUI thread |
+| `TelemetryStore` | Ring-buffered float/string samples keyed by telemetry name |
+| `SignalPlotWidget` | Multi-channel waveform plots with zoom and cursors |
+| `SignalTablePanel` | Tabular view of latest signal values |
+| `TelemetryPanel` | Summary telemetry readout |
+| `ConsolePanel` | Shell command echo and device responses |
+| `FlashPanel` | Firmware Update tab backed by the finite `rte flash` CLI worker |
+| `LocalSessionServer` | Local automation session for external command/control |
+| `LegacyTelemetryClient` | Legacy UART telemetry protocol (default) |
+| `InverterProtocol` path | `Protocol::Inverter` uses `ivp::InverterClient` for new firmware |
+
+`RuntimeController` supports `simulate=true` for UI verification without hardware.
+
+### Connecting HostSim live (Path A)
+
+1. Build and run HostSim in live mode:
+   ```powershell
+   Images\HostSim\build\Debug\host_sim.exe Images\HostSim\scenarios\default_motor.json --live
+   ```
+2. Launch NodeGUI against the TCP publisher:
+   ```powershell
+   NodeGUI --tcp 127.0.0.1:14608 --protocol ivp
+   ```
+3. Open the **Runtime** tab — plots receive `throttle_*`, `duty_*`, `i_*`,
+   `theta_e`, `omega_e`, `vdc_v`.
+4. Use the console to adjust: `throttle a 0.5`, `clear`, `quit`.
+
+Offline inspection: `Images/HostSim/scripts/plot_sim.py trace.csv`.
+
 ## What it does not do yet
 
 - No packaged project/archive format or closed-loop plant simulator.
+- HostSim live mode uses TCP + InverterProtocol (not the legacy UART framing).

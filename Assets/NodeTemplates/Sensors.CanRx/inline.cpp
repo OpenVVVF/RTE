@@ -11,6 +11,4 @@ if (dlc > 0) {
     Dlc = static_cast<float>(dlc);
     D0 = buf[0]; D1 = buf[1]; D2 = buf[2]; D3 = buf[3];
     D4 = buf[4]; D5 = buf[5]; D6 = buf[6]; D7 = buf[7];
-} else {
-    Dlc = 0.0f;
 }

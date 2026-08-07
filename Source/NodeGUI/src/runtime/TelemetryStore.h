@@ -5,6 +5,7 @@
 #include <deque>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -104,11 +105,14 @@ struct TelemetrySnapshot {
 // 6000 console lines.
 class TelemetryStore {
 public:
-    static constexpr float kRetainSeconds = 30.0f;
-    static constexpr std::size_t kMaxSamples = 12000;
+    static constexpr float kRetainSeconds = 60.0f;
+    static constexpr float kPwmRetainSeconds = 60.0f;
+    static constexpr std::size_t kMaxSamples = 120000;
+    static constexpr std::size_t kMaxPwmSamples = 120000;
     static constexpr std::size_t kConsoleCapLines = 6000;
 
     void AddF32(const std::string& key, float value, float tsec);
+    void AddF32Batch(const std::vector<std::tuple<std::string, float, float>>& samples);
     void AddString(const std::string& key, const std::string& value);
     void AddConsoleLine(const std::string& text);
     void AddCommand(const std::string& text,
@@ -129,6 +133,10 @@ public:
                   uint32_t lastSeq);
     void SetSuspended(bool suspended);
 
+    // When frozen, latest values still update but history deques are not
+    // appended (used while sim is paused so plot time does not advance).
+    void SetHistoryFrozen(bool frozen);
+
     // Lightweight scalar stats (no histories) — cheap enough for ~30 Hz UI
     // header updates, unlike Snapshot().
     using StatsLine = TelemetryStats;
@@ -144,9 +152,11 @@ public:
 
     // Same as CopyHistory but fills reusable vectors (avoids the allocation
     // churn of deque copies in the ~30 Hz plot refresh path).
+    // When maxSamples > 0, only the most recent maxSamples points are copied.
     bool CopyHistoryInto(const std::string& key,
                          std::vector<float>& t,
-                         std::vector<float>& y) const;
+                         std::vector<float>& y,
+                         std::size_t maxSamples = 0) const;
 
     // Latest float value of one signal. Returns false if unknown.
     bool LatestValue(const std::string& key, float& value) const;
@@ -162,7 +172,8 @@ public:
     uint64_t LatestConsoleSeq() const;
 
 private:
-    void TrimHistoryLocked(SignalHistory& hist) const;
+    void TrimHistoryLocked(const std::string& key, SignalHistory& hist) const;
+    void InvalidateNameCacheLocked();
     double SessionElapsedSeconds() const;
 
     mutable std::mutex mtx_;
@@ -179,6 +190,9 @@ private:
         std::chrono::steady_clock::now();
     std::chrono::system_clock::time_point sessionStartWall_ =
         std::chrono::system_clock::now();
+    bool history_frozen_ = false;
+    mutable bool names_dirty_ = true;
+    mutable std::vector<std::string> cached_names_;
     // Starts at 1: the HTTP console API filters `seq > since` with a default
     // `since` of 0, so seq 0 would never be delivered.
     uint64_t nextConsoleSeq_ = 1;

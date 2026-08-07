@@ -10,7 +10,6 @@ namespace RTEFirmwareBuilder {
 namespace {
 
 std::vector<std::filesystem::path> SplitPath() {
-    std::vector<std::filesystem::path> dirs;
     return RTEAutomation::PathDirectories();
 }
 

@@ -30,6 +30,8 @@ from typing import Dict, List, Optional, Protocol, Tuple
 DEFAULT_BAUD = 460800
 DEFAULT_QUIET_TIMEOUT = 0.25
 DEFAULT_READ_TIMEOUT = 2.0
+DEFAULT_HTTP_WAIT_MS = 2000
+DEFAULT_HTTP_TIMEOUT = 10.0
 
 
 class TransportError(Exception):
@@ -47,7 +49,13 @@ class SerialInterface:
     """Talk to the firmware text shell through a pyserial port."""
 
     def __init__(self, port: str, baud: int = DEFAULT_BAUD):
-        import serial
+        try:
+            import serial
+        except ModuleNotFoundError as exc:
+            raise TransportError(
+                "pyserial is required for --port connections; "
+                "install it with 'pip install pyserial' (or use --http)"
+            ) from exc
 
         self.port_name = port
         try:
@@ -120,7 +128,7 @@ class HttpInterface:
         self.base_url = base_url.rstrip("/")
 
     def send_command(self, line: str) -> List[str]:
-        url = f"{self.base_url}/api/command?wait_ms=2000"
+        url = f"{self.base_url}/api/command?wait_ms={DEFAULT_HTTP_WAIT_MS}"
         body = json.dumps({"cmd": line}).encode("utf-8")
         req = urllib.request.Request(
             url,
@@ -129,7 +137,7 @@ class HttpInterface:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=10.0) as resp:
+            with urllib.request.urlopen(req, timeout=DEFAULT_HTTP_TIMEOUT) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise TransportError(f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}") from exc
@@ -186,7 +194,9 @@ class FramKeysClient:
         key", while `config set` already flushes to FRAM.
         """
         for key, value in keys.items():
-            set_cmd = f"config set {key} {value:g}"
+            # 9 significant digits round-trips any float32 exactly; plain %g
+            # (6 digits) loses precision on save->load round-trips.
+            set_cmd = f"config set {key} {value:.9g}"
             save_cmd = f"config save {key}"
             if dry_run:
                 print(f"[dry-run] {set_cmd}")

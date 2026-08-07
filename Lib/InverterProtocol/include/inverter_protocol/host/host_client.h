@@ -1,5 +1,6 @@
 #pragma once
 
+#include "inverter_protocol/host/tcp_transport.h"
 #include "inverter_protocol/host/uart_transport.h"
 
 #include <atomic>
@@ -48,6 +49,8 @@ public:
     InverterClient& operator=(const InverterClient&) = delete;
 
     bool start(const std::string& port, int baud = UartTransport::DEFAULT_BAUD);
+    /* Connect over TCP using the same COBS-framed InverterProtocol as UART. */
+    bool startTcp(const std::string& host, int port);
     void stop();
     bool isRunning() const;
 
@@ -70,7 +73,12 @@ public:
     ClientStats stats() const;
 
 private:
-    void threadMain(const std::string& port, int baud);
+    enum class LinkKind { Uart, Tcp };
+
+    void threadMainUart(const std::string& port, int baud);
+    void threadMainTcp(const std::string& host, int port);
+    void pumpTransport();
+    bool sendPacket(const uint8_t* packet, size_t len);
     void handleTelemetryData(const uint8_t* payload, uint16_t payload_len, uint32_t time_us);
     void handleCommandResponse(const uint8_t* payload, uint16_t payload_len);
 
@@ -79,7 +87,9 @@ private:
         std::string key;
     };
 
-    UartTransport transport_;
+    LinkKind link_ = LinkKind::Uart;
+    UartTransport uart_;
+    TcpTransport tcp_;
     std::thread thread_;
     std::atomic<bool> running_{false};
 

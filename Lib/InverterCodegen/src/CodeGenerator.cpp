@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -215,33 +216,83 @@ std::string WireTypeToCpp(const NodeAPI::WireType& type) {
     return "float";
 }
 
-std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string& value) {
+namespace {
+
+std::string FormatFloatLiteral(const std::string& value) {
+    if (value.empty()) return "0.0f";
+    if (value.find('.') == std::string::npos && value.find('e') == std::string::npos && value.find('E') == std::string::npos) {
+        return value + ".0f";
+    }
+    return value + "f";
+}
+
+std::string EscapeStringLiteral(const std::string& value) {
+    std::string out = "\"";
+    for (char c : value) {
+        if (c == '\\') out += "\\\\";
+        else if (c == '"') out += "\\\"";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else out += c;
+    }
+    out += "\"";
+    return out;
+}
+
+} // namespace
+
+std::optional<std::string> ParameterValueToCpp(const NodeAPI::WireType& type,
+                                               const std::string& value,
+                                               std::string& error) {
     // Emit a C++ expression that constructs the right unit-wrapped value from a
     // plain numeric literal. Framed parameter types are not supported.
     switch (type.quantity) {
         case NodeAPI::Quantity::Voltage:
             if (type.frame != NodeAPI::Frame::Scalar) break;
-            return "rte::Volts(" + value + "f)";
+            return "rte::Volts(" + FormatFloatLiteral(value) + ")";
         case NodeAPI::Quantity::Current:
             if (type.frame != NodeAPI::Frame::Scalar) break;
-            return "rte::Amperes(" + value + "f)";
+            return "rte::Amperes(" + FormatFloatLiteral(value) + ")";
         case NodeAPI::Quantity::AngularVelocity:
-            return "rte::RadiansPerSecond(" + value + "f)";
+            return "rte::RadiansPerSecond(" + FormatFloatLiteral(value) + ")";
         case NodeAPI::Quantity::Torque:
-            return "rte::NewtonMeters(" + value + "f)";
+            return "rte::NewtonMeters(" + FormatFloatLiteral(value) + ")";
         case NodeAPI::Quantity::Temperature:
-            return "rte::Celsius(" + value + "f)";
+            return "rte::Celsius(" + FormatFloatLiteral(value) + ")";
         case NodeAPI::Quantity::Dimensionless:
+            return FormatFloatLiteral(value);
         case NodeAPI::Quantity::Boolean:
-            return value + "f";
+            // Booleans are not floats: accept only the spellings the graph
+            // format uses and reject anything else instead of emitting
+            // garbage like "truef".
+            if (value == "true" || value == "1") return "true";
+            if (value == "false" || value == "0") return "false";
+            error = "Invalid Boolean parameter value: '" + value + "'";
+            return std::nullopt;
         case NodeAPI::Quantity::String:
-            // String params are stored unquoted in the graph JSON; quote them
-            // for C++ emission.
-            return "\"" + value + "\"";
+            return EscapeStringLiteral(value);
     }
     // Unknown / framed: fall back to a plain float so existing templates keep
     // working, but this loses unit safety for those parameters.
-    return value + "f";
+    return FormatFloatLiteral(value);
+}
+
+// Builds the C++ initializer for one parameter value. Returns nullopt (with
+// error set) when the parameter is not declared by its node type — appending
+// 'f' to the raw value would produce ill-formed C++ for anything non-numeric.
+std::optional<std::string> ParameterInitializer(
+    const std::optional<NodeAPI::WireType>& paramType,
+    const std::string& nodeId,
+    const std::string& key,
+    const std::string& value,
+    std::string& error) {
+    if (!paramType) {
+        error = "Parameter '" + key + "' of node '" + nodeId +
+                "' is not declared by its node type (value '" + value + "')";
+        return std::nullopt;
+    }
+    return ParameterValueToCpp(*paramType, value, error);
 }
 
 // Config nodes (type id "config.*") expose a FRAM-backed value by a user-chosen
@@ -262,7 +313,7 @@ std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
 }
 
 /* Unit extraction for implicit conversions: when a dimensionless scalar
- * input binds from a voltage/current/temperature scalar source (direct
+ * input binds from a voltage/current/temperature/speed/torque scalar source (direct
  * connection), the emitted expression needs the .in(unit) suffix to unwrap
  * the au quantity. */
 std::string ExtractionSuffix(const NodeAPI::Graph& graph,
@@ -272,10 +323,24 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
     if (!targetNode) return "";
     const auto targetType = graph.FindNodeType(targetNode->type);
     if (!targetType) return "";
-    const auto targetPort = targetType->FindInputPort(targetPortName);
-    if (!targetPort) return "";
-    if (targetPort->type.quantity != NodeAPI::Quantity::Dimensionless ||
-        targetPort->type.frame != NodeAPI::Frame::Scalar) {
+
+    NodeAPI::WireType targetTypeInfo{};
+    bool foundTarget = false;
+    const auto targetInputPort = targetType->FindInputPort(targetPortName);
+    if (targetInputPort) {
+        targetTypeInfo = targetInputPort->type;
+        foundTarget = true;
+    } else {
+        const auto paramType = targetType->FindParameterType(targetPortName);
+        if (paramType) {
+            targetTypeInfo = *paramType;
+            foundTarget = true;
+        }
+    }
+    if (!foundTarget) return "";
+
+    if (targetTypeInfo.quantity != NodeAPI::Quantity::Dimensionless ||
+        targetTypeInfo.frame != NodeAPI::Frame::Scalar) {
         return "";
     }
 
@@ -295,6 +360,12 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
             }
             if (srcPort->type.quantity == NodeAPI::Quantity::Temperature) {
                 return ".in(au::celsius)";
+            }
+            if (srcPort->type.quantity == NodeAPI::Quantity::AngularVelocity) {
+                return ".in(au::radians_per_second)";
+            }
+            if (srcPort->type.quantity == NodeAPI::Quantity::Torque) {
+                return ".in(au::newton_meters)";
             }
             return "";
         }
@@ -389,10 +460,30 @@ std::optional<std::string> ExtractClassName(const std::string& classHeader) {
 // Code emission helpers
 // ---------------------------------------------------------------------------
 
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 bool WriteFile(const std::filesystem::path& path, const std::string& content, std::string& error) {
-    std::ofstream file(path);
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+    // Generated sources are non-executable; 0644 is enough to make a stale
+    // read-only output overwritable before unlinking it.
+    chmod(path.c_str(), 0644);
+    unlink(path.c_str());
+#else
+    if (std::filesystem::exists(path, ec)) {
+        std::filesystem::permissions(path, std::filesystem::perms::owner_write, std::filesystem::perm_options::add, ec);
+        std::filesystem::remove(path, ec);
+    }
+#endif
+    std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
-        error = "Failed to open file for writing: " + path.string();
+        error = "Failed to open file for writing: " + path.string() + " (errno: " + std::string(strerror(errno)) + ")";
         return false;
     }
     file << content;
@@ -467,7 +558,14 @@ std::string BuildStateStruct(
 
 bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) const {
     std::filesystem::path outPath(outputDir);
-    std::filesystem::create_directories(outPath);
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(outPath, ec);
+        if (ec) {
+            error = "Failed to create output directory '" + outputDir + "': " + ec.message();
+            return false;
+        }
+    }
 
     // Validate node ids.
     for (const auto& node : graph_.GetNodes()) {
@@ -558,6 +656,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
         // Init function.
         source << "void " << domainTitle << "Init(" << domainTitle << "State& state) {\n";
+        source << "    (void)state;\n";
         for (const auto& nodeId : order) {
             const auto node = graph_.FindNode(nodeId);
             if (!node) continue;
@@ -575,21 +674,21 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 for (const auto& [key, value] : node->parameters) {
                     if (used.count(key)) {
                         auto paramType = nodeType->FindParameterType(key);
+                        auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                        if (!init) return false;
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                               << " " << key << " = "
-                               << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
-                               << ";\n";
+                               << " " << key << " = " << *init << ";\n";
                     }
                 }
             } else {
                 for (const auto& [key, value] : node->parameters) {
                     if (IsParameterInput(*node, key)) continue;
                     auto paramType = nodeType->FindParameterType(key);
+                    auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                    if (!init) return false;
                     source << "        state." << node->id << "." << key << " = "
-                           << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
-                           << ";\n";
+                           << *init << ";\n";
                 }
                 /* Bind local refs for parameters used by constructorCode. */
                 if (!nodeType->constructorCode.empty()) {
@@ -616,6 +715,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
         // Step function.
         source << "void " << domainTitle << "Step(" << domainTitle << "State& state) {\n";
+        source << "    (void)state;\n";
         for (const auto& nodeId : order) {
             const auto node = graph_.FindNode(nodeId);
             if (!node) continue;
@@ -623,11 +723,6 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             if (!nodeType) continue;
 
             const bool classBased = !nodeType->classHeader.empty() || !nodeType->classDefinition.empty();
-            if (classBased && !node->parameterInputs.empty()) {
-                error = "parameterInputs are not supported on class-based node '" +
-                        node->id + "'";
-                return false;
-            }
 
             source << "    // Step node: " << node->id << " (" << nodeType->id << ")\n";
             source << "    {\n";
@@ -668,6 +763,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                            << " = " << *src
                            << ExtractionSuffix(graph_, node->id, port.name) << ";\n";
                 }
+                source << "        (void)" << port.name << ";\n";
             }
 
             // Parameters flagged as parameterInputs bind from connections too.
@@ -692,12 +788,14 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
                        << " " << key << " = " << *src
                        << ExtractionSuffix(graph_, node->id, key) << ";\n";
+                source << "        (void)" << key << ";\n";
             }
 
             // Outputs.
             for (const auto& port : nodeType->outputPorts) {
                 source << "        " << WireTypeToCpp(port.type) << "& " << port.name
                        << " = state." << node->id << "." << port.name << ";\n";
+                source << "        (void)" << port.name << ";\n";
             }
 
             if (classBased) {
@@ -705,13 +803,16 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 auto used = UsedIdentifiers(nodeType->inlineCode);
                 for (const auto& [key, value] : node->parameters) {
                     if (used.count(key)) {
+                        if (std::find(node->parameterInputs.begin(), node->parameterInputs.end(), key) != node->parameterInputs.end()) {
+                            continue; // Already bound from wire connection
+                        }
                         auto paramType = nodeType->FindParameterType(key);
+                        auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                        if (!init) return false;
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                               << " " << key << " = "
-                               << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
-                               << ";\n";
+                               << " " << key << " = " << *init << ";\n";
+                        source << "        (void)" << key << ";\n";
                     }
                 }
             } else {
@@ -737,6 +838,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                     source << "        "
                            << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
                            << "& " << key << " = state." << node->id << "." << key << ";\n";
+                    source << "        (void)" << key << ";\n";
                 }
             }
 
@@ -754,6 +856,12 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                             suffix = ".in(au::volts)";
                         } else if (port.type.quantity == NodeAPI::Quantity::Current) {
                             suffix = ".in(au::amperes)";
+                        } else if (port.type.quantity == NodeAPI::Quantity::Temperature) {
+                            suffix = ".in(au::celsius)";
+                        } else if (port.type.quantity == NodeAPI::Quantity::AngularVelocity) {
+                            suffix = ".in(au::radians_per_second)";
+                        } else if (port.type.quantity == NodeAPI::Quantity::Torque) {
+                            suffix = ".in(au::newton_meters)";
                         }
                     }
                     source << "        Bridge" << Capitalize(bridge.id)
@@ -767,6 +875,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
         // Start function: reset mutable node state to graph defaults.
         source << "void " << domainTitle << "Start(" << domainTitle << "State& state) {\n";
+        source << "    (void)state;\n";
         for (const auto& nodeId : order) {
             const auto node = graph_.FindNode(nodeId);
             if (!node) continue;
@@ -783,9 +892,10 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& [key, value] : node->parameters) {
                 if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
+                auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                if (!init) return false;
                 source << "        state." << node->id << "." << key << " = "
-                       << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
-                       << ";\n";
+                       << *init << ";\n";
             }
             source << "    }\n";
         }
@@ -793,6 +903,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
         // Stop function: zero all output ports.
         source << "void " << domainTitle << "Stop(" << domainTitle << "State& state) {\n";
+        source << "    (void)state;\n";
         for (const auto& nodeId : order) {
             const auto node = graph_.FindNode(nodeId);
             if (!node) continue;

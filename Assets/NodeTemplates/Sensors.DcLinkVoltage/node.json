@@ -13,7 +13,7 @@
       "description": "Measured DC-link voltage in volts.",
       "direction": "output",
       "type": {
-        "quantity": "voltage",
+        "quantity": "dimensionless",
         "frame": "scalar",
         "dtype": "f32"
       }

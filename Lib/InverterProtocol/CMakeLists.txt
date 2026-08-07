@@ -41,6 +41,7 @@ target_link_libraries(InverterProtocolCore
 # ========================================================================
 set(INVERTERPROTOCOL_HOST_SOURCES
     src/host/uart_transport.cpp
+    src/host/tcp_transport.cpp
     src/host/host_client.cpp
 )
 
@@ -55,6 +56,10 @@ target_link_libraries(InverterProtocol
     PRIVATE ivp_warnings
 )
 
+if(WIN32)
+    target_link_libraries(InverterProtocol PRIVATE ws2_32)
+endif()
+
 # ========================================================================
 # Tests
 # ========================================================================
@@ -68,7 +73,7 @@ if(INVERTERPROTOCOL_BUILD_TESTS)
     target_link_libraries(InverterProtocol_tests
         PRIVATE InverterProtocol InverterProtocolCore GTest::gtest_main ivp_warnings
     )
-    if(UNIX)
+    if(UNIX AND NOT APPLE)
         target_link_libraries(InverterProtocol_tests PRIVATE util)
     endif()
 

@@ -29,8 +29,13 @@ import os
 import random
 import struct
 import sys
-import termios
 import time
+
+if os.name != "posix":
+    sys.exit("sim_device.py requires a POSIX system (pty/termios); "
+             "it cannot run on Windows.")
+
+import termios
 import tty
 
 MAGIC = 0x544C4D31  # "TLM1"
@@ -164,6 +169,10 @@ def main():
     parser.add_argument("--link", metavar="PATH",
                         help="symlink PATH to the pty for a stable device name")
     args = parser.parse_args()
+
+    if args.rate < 1:
+        parser.error("--rate must be >= 1 Hz (values below 1 truncate to 0 "
+                     "in the tick schedule and would divide by zero)")
 
     device = FakeDevice(args.rate)
     print(f"fake device on: {device.slave_name}", flush=True)

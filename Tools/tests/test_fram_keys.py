@@ -7,12 +7,14 @@ transport; no real serial device or firmware is required.
 
 import io
 import json
+import os
 import sys
 import unittest
 from typing import Dict, List
 
-# Add parent directory so we can import fram_keys.
-sys.path.insert(0, "..")
+# Add the Tools/ directory (parent of this test file) so we can import
+# fram_keys regardless of the current working directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import fram_keys
 
 

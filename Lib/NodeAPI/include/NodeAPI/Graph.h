@@ -37,6 +37,8 @@ public:
 
     // Node type database.
     bool AddNodeType(NodeType nodeType);
+    // Returns false if the type id is unknown or still has instances (removing
+    // it would leave those nodes with a dangling type reference).
     bool RemoveNodeType(const std::string& typeId);
     std::optional<NodeType> FindNodeType(const std::string& typeId) const;
     const std::vector<NodeType>& GetNodeTypes() const { return nodeTypes_; }

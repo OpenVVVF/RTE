@@ -10,12 +10,19 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <cerrno>
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace RTECodeEmitter {
 
@@ -80,9 +87,24 @@ std::string ReadFileText(const std::filesystem::path& path, std::string& error) 
 }
 
 bool WriteFileText(const std::filesystem::path& path, const std::string& content, std::string& error) {
-    std::ofstream file(path);
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+    // Generated sources are non-executable; 0644 is enough to make a stale
+    // read-only output overwritable before unlinking it.
+    chmod(path.c_str(), 0644);
+    unlink(path.c_str());
+#else
+    if (std::filesystem::exists(path, ec)) {
+        std::filesystem::permissions(path, std::filesystem::perms::owner_write, std::filesystem::perm_options::add, ec);
+        std::filesystem::remove(path, ec);
+    }
+#endif
+    std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
-        error = "Failed to write file: " + path.string();
+        error = "Failed to open file for writing: " + path.string() + " (errno: " + std::string(strerror(errno)) + ")";
         return false;
     }
     file << content;
@@ -114,8 +136,11 @@ std::string JoinLines(const std::vector<std::string>& lines) {
 }
 
 bool IsInsideDirectory(const std::filesystem::path& candidate, const std::filesystem::path& parent) {
-    const auto canonCandidate = std::filesystem::weakly_canonical(candidate);
-    const auto canonParent = std::filesystem::weakly_canonical(parent);
+    std::error_code ec;
+    const auto canonCandidate = std::filesystem::weakly_canonical(candidate, ec);
+    if (ec) return false;
+    const auto canonParent = std::filesystem::weakly_canonical(parent, ec);
+    if (ec) return false;
     auto it = canonCandidate.begin();
     auto ip = canonParent.begin();
     for (; ip != canonParent.end(); ++ip, ++it) {
@@ -126,11 +151,16 @@ bool IsInsideDirectory(const std::filesystem::path& candidate, const std::filesy
     return true;
 }
 
-bool ShouldSkipDirectory(const std::filesystem::path& dir) {
-    const std::string name = dir.filename().string();
+bool ShouldSkipDirectory(const std::filesystem::path& dir, const std::filesystem::path& baseDir) {
     static const std::unordered_set<std::string> kSkip = {
-        ".git", "build", "node_modules", ".vs", "out", "__pycache__"};
-    return kSkip.count(name) > 0;
+        ".git", "build", "generated", "node_modules", ".vs", "out", "__pycache__"};
+    std::error_code ec;
+    auto rel = std::filesystem::relative(dir, baseDir, ec);
+    if (ec) rel = dir;
+    for (const auto& part : rel) {
+        if (kSkip.count(part.string()) > 0) return true;
+    }
+    return false;
 }
 
 bool IsSourceFile(const std::filesystem::path& path) {
@@ -140,7 +170,11 @@ bool IsSourceFile(const std::filesystem::path& path) {
 
 std::filesystem::path RelativePath(const std::filesystem::path& from,
                                    const std::filesystem::path& to) {
-    return std::filesystem::relative(to, from);
+    std::error_code ec;
+    auto rel = std::filesystem::relative(to, from, ec);
+    // Paths on different roots (e.g. separate drives) have no relative form;
+    // an absolute include path still compiles.
+    return ec ? to : rel;
 }
 
 bool GenerateEmptyDomainFiles(const std::filesystem::path& generatedDir,
@@ -190,8 +224,16 @@ bool GenerateEmptyDomainFiles(const std::filesystem::path& generatedDir,
 }
 
 bool CopySupportFiles(const std::filesystem::path& generatedDir, std::string& error) {
-    const std::filesystem::path includeDir = RTE_INVERTERCODEGEN_INCLUDE_DIR;
-    const std::filesystem::path thirdPartyDir = RTE_INVERTERCODEGEN_THIRD_PARTY_DIR;
+    // The compile-time definitions bake in the build machine's source-tree
+    // layout; the environment overrides keep the binary working when the repo
+    // has moved since it was built.
+    const char* envIncludeDir = std::getenv("RTE_INVERTERCODEGEN_INCLUDE_DIR");
+    const char* envThirdPartyDir = std::getenv("RTE_INVERTERCODEGEN_THIRD_PARTY_DIR");
+    const std::filesystem::path includeDir =
+        (envIncludeDir && *envIncludeDir) ? envIncludeDir : RTE_INVERTERCODEGEN_INCLUDE_DIR;
+    const std::filesystem::path thirdPartyDir =
+        (envThirdPartyDir && *envThirdPartyDir) ? envThirdPartyDir
+                                                : RTE_INVERTERCODEGEN_THIRD_PARTY_DIR;
 
     const std::filesystem::path rteQuantitySrc = includeDir / "InverterCodegen" / "RteQuantity.h";
     const std::filesystem::path auSrc = thirdPartyDir / "au" / "au.hh";
@@ -208,13 +250,37 @@ bool CopySupportFiles(const std::filesystem::path& generatedDir, std::string& er
     const std::filesystem::path rteQuantityDst = generatedDir / "InverterCodegen" / "RteQuantity.h";
     const std::filesystem::path auDst = generatedDir / "au" / "au.hh";
 
-    std::filesystem::create_directories(rteQuantityDst.parent_path());
-    std::filesystem::create_directories(auDst.parent_path());
+    std::error_code ec;
+    std::filesystem::create_directories(rteQuantityDst.parent_path(), ec);
+    if (ec) {
+        error = "Failed to create directory " + rteQuantityDst.parent_path().string() +
+                ": " + ec.message();
+        return false;
+    }
+    std::filesystem::create_directories(auDst.parent_path(), ec);
+    if (ec) {
+        error = "Failed to create directory " + auDst.parent_path().string() +
+                ": " + ec.message();
+        return false;
+    }
 
-    std::filesystem::copy_file(rteQuantitySrc, rteQuantityDst,
-                               std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(auSrc, auDst,
-                               std::filesystem::copy_options::overwrite_existing);
+    // MinGW's copy_file can still fail with "File exists" when overwriting;
+    // remove the destination first for reliability.
+    std::error_code removeEc;
+    std::filesystem::remove(rteQuantityDst, removeEc);
+    if (!std::filesystem::copy_file(rteQuantitySrc, rteQuantityDst,
+                                    std::filesystem::copy_options::overwrite_existing, ec)) {
+        error = "Failed to copy " + rteQuantitySrc.string() + " to " +
+                rteQuantityDst.string() + ": " + ec.message();
+        return false;
+    }
+    std::filesystem::remove(auDst, removeEc);
+    if (!std::filesystem::copy_file(auSrc, auDst,
+                                    std::filesystem::copy_options::overwrite_existing, ec)) {
+        error = "Failed to copy " + auSrc.string() + " to " + auDst.string() +
+                ": " + ec.message();
+        return false;
+    }
     return true;
 }
 
@@ -245,8 +311,19 @@ bool Emitter::Run(const EmitterOptions& options) const {
         return false;
     }
 
-    const auto outCanonical = std::filesystem::weakly_canonical(options.outputDir);
-    const auto baseCanonical = std::filesystem::weakly_canonical(options.baseSrc);
+    std::error_code canonEc;
+    const auto outCanonical = std::filesystem::weakly_canonical(options.outputDir, canonEc);
+    if (canonEc) {
+        logger_.Error("Cannot resolve output directory " + options.outputDir.string() +
+                      ": " + canonEc.message());
+        return false;
+    }
+    const auto baseCanonical = std::filesystem::weakly_canonical(options.baseSrc, canonEc);
+    if (canonEc) {
+        logger_.Error("Cannot resolve base source directory " + options.baseSrc.string() +
+                      ": " + canonEc.message());
+        return false;
+    }
     if (outCanonical == baseCanonical || IsInsideDirectory(outCanonical, baseCanonical)) {
         logger_.Error("Output directory cannot be the same as or inside base source directory");
         return false;
@@ -356,27 +433,56 @@ bool Emitter::Run(const EmitterOptions& options) const {
     // Copy base source tree.
     logger_.Info("Copying base source tree to: " + options.outputDir.string());
     if (!options.dryRun) {
-        std::filesystem::create_directories(options.outputDir);
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(
+        std::error_code ec;
+        std::filesystem::create_directories(options.outputDir, ec);
+        if (ec) {
+            logger_.Error("Failed to create output directory " + options.outputDir.string() +
+                          ": " + ec.message());
+            return false;
+        }
+        for (auto it = std::filesystem::recursive_directory_iterator(
                  options.baseSrc,
-                 std::filesystem::directory_options::skip_permission_denied)) {
-            if (entry.is_directory() && ShouldSkipDirectory(entry.path())) {
-                logger_.Debug("Skipping directory: " + entry.path().string());
+                 std::filesystem::directory_options::skip_permission_denied, ec);
+             it != std::filesystem::recursive_directory_iterator();
+             it.increment(ec)) {
+            if (ec) {
+                logger_.Error("Failed while scanning " + options.baseSrc.string() + ": " +
+                              ec.message());
+                return false;
+            }
+            if (ShouldSkipDirectory(it->path(), options.baseSrc)) {
+                logger_.Debug("Skipping entry: " + it->path().string());
+                if (it->is_directory()) {
+                    it.disable_recursion_pending();
+                }
                 continue;
             }
 
-            const auto relative = std::filesystem::relative(entry.path(), options.baseSrc);
+            const auto relative = std::filesystem::relative(it->path(), options.baseSrc, ec);
+            if (ec) {
+                logger_.Error("Failed to resolve relative path for " + it->path().string() +
+                              ": " + ec.message());
+                return false;
+            }
             const auto dest = options.outputDir / relative;
 
-            if (entry.is_directory()) {
+            if (it->is_directory()) {
                 logger_.Debug("Creating directory: " + dest.string());
-                std::filesystem::create_directories(dest);
-            } else if (entry.is_regular_file()) {
+                std::filesystem::create_directories(dest, ec);
+            } else if (it->is_regular_file()) {
                 logger_.Debug("Copying file: " + relative.string());
-                std::filesystem::create_directories(dest.parent_path());
+                std::filesystem::create_directories(dest.parent_path(), ec);
+                // MinGW's copy_file can still fail with "File exists" when
+                // overwriting; remove the destination first for reliability.
+                std::error_code removeEc;
+                std::filesystem::remove(dest, removeEc);
                 std::filesystem::copy_file(
-                    entry.path(), dest,
-                    std::filesystem::copy_options::overwrite_existing);
+                    it->path(), dest,
+                    std::filesystem::copy_options::overwrite_existing, ec);
+            }
+            if (ec) {
+                logger_.Error("Failed to stage " + dest.string() + ": " + ec.message());
+                return false;
             }
         }
     } else {
@@ -390,14 +496,19 @@ bool Emitter::Run(const EmitterOptions& options) const {
     std::vector<std::pair<std::filesystem::path, std::vector<Marker>>> fileMarkers;
     bool anyError = false;
 
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(
+    for (auto it = std::filesystem::recursive_directory_iterator(
              options.outputDir,
-             std::filesystem::directory_options::skip_permission_denied)) {
-        if (!entry.is_regular_file()) continue;
-        if (!IsSourceFile(entry.path())) continue;
+             std::filesystem::directory_options::skip_permission_denied);
+         it != std::filesystem::recursive_directory_iterator();
+         ++it) {
+        if (it->is_directory() && ShouldSkipDirectory(it->path(), options.outputDir)) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (!it->is_regular_file()) continue;
+        if (!IsSourceFile(it->path())) continue;
 
-        const auto filePath = entry.path();
+        const auto filePath = it->path();
         logger_.Debug("Scanning file: " + filePath.string());
 
         std::string readError;
@@ -427,7 +538,13 @@ bool Emitter::Run(const EmitterOptions& options) const {
     const std::filesystem::path generatedDir = options.outputDir / options.generatedDirName;
     logger_.Info("Generating domain files in: " + generatedDir.string());
     if (!options.dryRun) {
-        std::filesystem::create_directories(generatedDir);
+        std::error_code ec;
+        std::filesystem::create_directories(generatedDir, ec);
+        if (ec) {
+            logger_.Error("Failed to create generated directory " + generatedDir.string() +
+                          ": " + ec.message());
+            return false;
+        }
         InverterCodegen::CodeGenerator generator(graph);
         std::string genError;
         if (!generator.Generate(generatedDir.string(), genError)) {
@@ -480,7 +597,7 @@ bool Emitter::Run(const EmitterOptions& options) const {
     allDomains.insert(markerDomains.begin(), markerDomains.end());
 
     // Process each file that contains markers.
-    for (auto& [filePath, markers] : fileMarkers) {
+    for (const auto& [filePath, markers] : fileMarkers) {
         std::string readError;
         std::string text = ReadFileText(filePath, readError);
         if (!readError.empty()) {
@@ -597,7 +714,7 @@ bool Emitter::Run(const EmitterOptions& options) const {
                     snippet = "app::" + domainTitle + "Stop(" + stateAccess + ");";
                 }
 
-                const size_t adjustedLine = marker.lineNumber + linesAdded;
+                const size_t adjustedLine = marker.lineNumber + (marker.lineNumber >= includeInsertLine ? linesAdded : 0);
                 if (adjustedLine < lines.size()) {
                     // Preserve the indentation of the original marker line.
                     const std::string& originalLine = lines[adjustedLine];
@@ -620,6 +737,11 @@ bool Emitter::Run(const EmitterOptions& options) const {
                     logger_.Debug("Replaced marker at line " +
                                   std::to_string(marker.lineNumber + 1) + " in " +
                                   filePath.string());
+                } else {
+                    logger_.Warning("Marker at line " +
+                                    std::to_string(marker.lineNumber + 1) + " in " +
+                                    filePath.string() +
+                                    " is out of range; snippet not emitted");
                 }
             }
 

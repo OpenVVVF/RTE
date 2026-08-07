@@ -12,6 +12,7 @@
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Platform.h>
 
+#include <QCoreApplication>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -95,6 +96,19 @@ std::filesystem::path DefaultFirmwareBaseDir() {
     return ProjectRoot() / "Images" / "Gen6FW";
 }
 
+// Base image for the user-selected firmware target (Images/<target>), e.g.
+// Gen6FW, NucleoL476FW, or HostSim. Empty falls back to the default target.
+std::filesystem::path FirmwareBaseDir(const QString& targetName) {
+    if (targetName.isEmpty()) {
+        return DefaultFirmwareBaseDir();
+    }
+    const std::string target = targetName.toStdString();
+    const std::filesystem::path installed = InstalledResourceRoot()
+        / "Images" / target;
+    if (std::filesystem::is_directory(installed)) return installed.lexically_normal();
+    return ProjectRoot() / "Images" / target;
+}
+
 QString RteCliPath() {
     const std::filesystem::path adjacent =
         std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())
@@ -108,6 +122,31 @@ QString RteCliPath() {
     }
 #endif
     return QStringLiteral("rte");
+}
+
+std::string FindSpwmDemoGraph() {
+    namespace fs = std::filesystem;
+    const fs::path rel = fs::path("Images") / "HostSim" / "graphs" / "spwm_demo_graph.json";
+    std::vector<fs::path> roots;
+    roots.push_back(fs::current_path());
+    if (auto exe = QCoreApplication::applicationDirPath(); !exe.isEmpty()) {
+        roots.push_back(fs::path(exe.toStdString()));
+        auto p = fs::path(exe.toStdString());
+        for (int i = 0; i < 6; ++i) {
+            p = p.parent_path();
+            if (p.empty() || p == p.parent_path()) {
+                break;
+            }
+            roots.push_back(p);
+        }
+    }
+    for (const fs::path& root : roots) {
+        const fs::path candidate = root / rel;
+        if (fs::exists(candidate)) {
+            return candidate.string();
+        }
+    }
+    return {};
 }
 
 // Native dialogs (QMessageBox statics and, on this system, QMessageBox in
@@ -418,9 +457,12 @@ MainWindow::MainWindow(QWidget* parent)
 
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
-                              runtime::Protocol protocol) {
+                              runtime::Protocol protocol,
+                              const QString& tcpHost,
+                              int tcpPort) {
     runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
+        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol,
+                                                     tcpHost, tcpPort);
     localSessionServer_ = std::make_unique<runtime::LocalSessionServer>(
         runtimeController_->Store(), this);
 
@@ -648,6 +690,19 @@ void MainWindow::SetupMenu() {
 
     fileMenu->addSeparator();
 
+    QAction* spwmAction = fileMenu->addAction(QStringLiteral("Open SPWM &Demo Graph..."));
+    spwmAction->setToolTip(QStringLiteral(
+        "Load Images/HostSim/graphs/spwm_demo_graph.json. "
+#ifdef _WIN32
+        "Run: powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+        "Run: Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+        ));
+    connect(spwmAction, &QAction::triggered, this, &MainWindow::OnOpenSpwmDemo);
+
+    fileMenu->addSeparator();
+
     QAction* exitAction = fileMenu->addAction(QStringLiteral("E&xit"));
     RegisterShortcut(exitAction,
                      QStringLiteral("file.exit"),
@@ -777,6 +832,15 @@ void MainWindow::SetupMenu() {
                      QKeySequence(Qt::Key_F5));
     connect(generateFlashAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
+    });
+
+    buildMenu->addSeparator();
+
+    buildSimAction_ = buildMenu->addAction(QStringLiteral("Build &Reflect in Simulator"));
+    buildSimAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
+    buildSimAction_->setToolTip(QStringLiteral("Re-emit graph into HostSim, compile simulator, and restart live telemetry feed"));
+    connect(buildSimAction_, &QAction::triggered, this, [this] {
+        StartBuildCommand(BuildCommand::BuildSimulation);
     });
 
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
@@ -1010,6 +1074,7 @@ void MainWindow::SetBuildActionsEnabled(bool enabled) {
     if (generateAction_) generateAction_->setEnabled(enabled);
     if (flashAction_) flashAction_->setEnabled(enabled);
     if (generateFlashAction_) generateFlashAction_->setEnabled(enabled);
+    if (buildSimAction_) buildSimAction_->setEnabled(enabled);
 }
 
 void MainWindow::StartBuildCommand(BuildCommand command) {
@@ -1029,6 +1094,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
+    const std::filesystem::path projectRoot = ProjectRoot();
     const QString absoluteGraphPath =
         QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
     const auto workspace = RTEAutomation::WorkspaceForGraph(
@@ -1049,17 +1115,22 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         case BuildCommand::GenerateAndFlash:
             operationName = QStringLiteral("Generate and Flash");
             break;
+        case BuildCommand::BuildSimulation:
+            operationName = QStringLiteral("Build Simulation");
+            break;
     }
 
     AppendBuildLog(
         QStringLiteral("\n============================================================\n"
                        "%1\n"
                        "Graph: %2\n"
-                       "Build: %3\n"
+                       "Project Root: %3\n"
+                       "Firmware Target: %4\n"
                        "============================================================\n")
             .arg(operationName,
                  absoluteGraphPath,
-                 QString::fromStdString(firmwareBuildDir.string())));
+                 QString::fromStdString(projectRoot.string()),
+                 preferences_.firmwareTarget));
 
     activeBuildCommand_ = command;
     pendingFirmwarePath_ = QString::fromStdString(firmwareBinary.string());
@@ -1076,13 +1147,51 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
+    if (command == BuildCommand::BuildSimulation) {
+        // Re-emit the graph into HostSim, rebuild the simulator, and restart
+        // the live telemetry feed (see Images/HostSim/scripts). One-shot:
+        // there is no follow-up CLI stage, so make that explicit here rather
+        // than rely on the previous operation having reset cliStage_.
+        cliStage_ = CliStage::None;
+        cliOutputBuffer_.clear();
+        // The working directory must be set before start(); afterwards it is
+        // ignored for the already-launched process.
+        buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
+#ifdef _WIN32
+        const std::filesystem::path script =
+            projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.ps1";
+        const QStringList arguments{
+            QStringLiteral("-NoProfile"),
+            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+            QStringLiteral("-File"), QString::fromStdString(script.string()),
+            QStringLiteral("-ForceEmit"),
+            QStringLiteral("-NoGui"),
+            QStringLiteral("-Graph"),
+            absoluteGraphPath,
+        };
+        buildProcess_->start(QStringLiteral("powershell.exe"), arguments);
+#else
+        const std::filesystem::path script =
+            projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.sh";
+        const QStringList arguments{
+            QString::fromStdString(script.string()),
+            QStringLiteral("--force-emit"),
+            QStringLiteral("--no-gui"),
+            QStringLiteral("--graph"),
+            absoluteGraphPath,
+        };
+        buildProcess_->start(QStringLiteral("bash"), arguments);
+#endif
+        return;
+    }
+
     QStringList arguments{
         QStringLiteral("--format"), QStringLiteral("jsonl"),
         command == BuildCommand::Generate ? QStringLiteral("generate")
                                            : QStringLiteral("build"),
         QStringLiteral("--graph"), absoluteGraphPath,
         QStringLiteral("--base-source"),
-        QString::fromStdString(DefaultFirmwareBaseDir().string()),
+        QString::fromStdString(FirmwareBaseDir(preferences_.firmwareTarget).string()),
         QStringLiteral("--templates"), QString::fromStdString(DefaultTemplatesDir()),
     };
     if (command == BuildCommand::Generate) {
@@ -1304,6 +1413,35 @@ void MainWindow::UpdateStatus() {
             .arg(graph.GetConnections().size())
             .arg(graph.GetBridges().size());
     statusBar()->showMessage(message);
+}
+
+void MainWindow::OnOpenSpwmDemo() {
+    const std::string path = FindSpwmDemoGraph();
+    if (path.empty()) {
+        ShowToast(QStringLiteral(
+            "SPWM graph not found. Run from the repo root or use "
+#ifdef _WIN32
+            "Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+            "Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+            ));
+        OnOpen();
+        return;
+    }
+    if (!OpenGraph(path)) {
+        ShowToast(QStringLiteral("Failed to open SPWM demo graph"));
+    } else {
+        appSwitcher_->setCurrentIndex(0);
+        ShowToast(QStringLiteral(
+            "SPWM graph loaded. Start live sim: "
+#ifdef _WIN32
+            "powershell -File Images\\HostSim\\scripts\\run_spwm_live.ps1"
+#else
+            "Images/HostSim/scripts/run_spwm_live.sh"
+#endif
+            ));
+    }
 }
 
 void MainWindow::OnOpen() {

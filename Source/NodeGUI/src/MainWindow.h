@@ -53,7 +53,9 @@ public:
     // telemetry client and authenticated local automation session.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
-                      runtime::Protocol protocol = runtime::Protocol::Legacy);
+                      runtime::Protocol protocol = runtime::Protocol::Legacy,
+                      const QString& tcpHost = {},
+                      int tcpPort = 0);
 
 private slots:
     void OnOpen();
@@ -64,6 +66,7 @@ private slots:
     void OnRedo();
     void OnPreferences();
     void OnAutoArrange();
+    void OnOpenSpwmDemo();
     void OnExit();
     void CheckForRejectionReason();
     void OnTabChanged(int index);
@@ -79,6 +82,7 @@ private:
         Generate,
         Flash,
         GenerateAndFlash,
+        BuildSimulation,
     };
     enum class CliStage { None, Generate, Build, Flash };
 
@@ -166,6 +170,7 @@ private:
     QAction* generateAction_ = nullptr;
     QAction* flashAction_ = nullptr;
     QAction* generateFlashAction_ = nullptr;
+    QAction* buildSimAction_ = nullptr;
     QProcess* buildProcess_ = nullptr;
     CliStage cliStage_ = CliStage::None;
     BuildCommand activeBuildCommand_ = BuildCommand::Generate;
