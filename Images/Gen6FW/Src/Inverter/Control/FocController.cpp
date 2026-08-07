@@ -128,6 +128,10 @@ FocOutputs FocController::Update(const FocInputs& in, const FocSetpoints& set, f
     // --- 4. Vector PI control ---
     CalculateDecoupling();
 
+    // set.vd_ff_v / set.vq_ff_v are calibration-only. In normal operation
+    // FocControlManager leaves them at zero because the generated node-graph
+    // control law replaces the entire runtime control path (including any
+    // feed-forward). They are summed here only for test/cal injection.
     float total_vd_ff = vd_decoupling_ff_v_ + set.vd_ff_v;
     float total_vq_ff = vq_decoupling_ff_v_ + set.vq_ff_v;
 
