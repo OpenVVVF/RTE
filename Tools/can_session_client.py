@@ -87,6 +87,8 @@ class CanTransport:
         flags = data[0] & (FLAG_START | FLAG_END)
         seq = data[0] & 0x0F
         if flags & FLAG_START:
+            if dlc < 3:  # need header byte + 2-byte total length
+                return None
             self.rx_expect = struct.unpack("<H", data[1:3])[0]
             self.rx_buf = data[3:]
             self.rx_seq = (seq + 1) & 0x0F
@@ -103,6 +105,8 @@ class CanTransport:
 
 
 def decode_packet(pkt):
+    if len(pkt) < 18:  # 16-byte header + 2-byte CRC
+        return None
     magic, ver, mtype, plen, seq, t = struct.unpack("<IBBHII", pkt[:16])
     if magic != IVP_MAGIC:
         return None

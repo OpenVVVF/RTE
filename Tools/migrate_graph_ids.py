@@ -7,6 +7,7 @@ The ID_MAP is importable for other tooling.
 """
 
 import json
+import os
 import sys
 from collections import OrderedDict
 
@@ -51,46 +52,6 @@ ID_MAP = {
 }
 
 
-ID_MAP = {
-    # consolidations
-    "hw.adc.phase_currents": "Sensors.PhaseCurrents",
-    "hw.phase_current_reader": "Sensors.PhaseCurrents",
-    "hw.encoder_angle": "Sensors.Encoder",
-    "hw.encoder.decode": "Sensors.Encoder",
-    "control.pi": "Control.Pi",
-    "control.pi_current": "Control.Pi",
-    "var.float": "Values.Var",
-    "var.current": "Values.Var",
-    "constant.current": "Values.Constant",
-    # plain renames
-    "hw.dc_link_voltage": "Sensors.DcLinkVoltage",
-    "hw.phase_voltages": "Sensors.PhaseVoltages",
-    "hw.temperatures": "Sensors.Temperatures",
-    "hw.throttle": "Sensors.Throttle",
-    "hw.digital_in": "Sensors.DigitalIn",
-    "hw.digital_out": "Actuators.DigitalOut",
-    "hw.can_rx": "Sensors.CanRx",
-    "hw.can_tx": "Actuators.CanTx",
-    "hw.pwm.set_duty": "Actuators.PwmOut",
-    "math.clarke": "Transforms.Clarke",
-    "math.park": "Transforms.Park",
-    "math.inverse_clarke": "Transforms.InverseClarke",
-    "math.inverse_park": "Transforms.InversePark",
-    "math.sincos": "Transforms.SinCos",
-    "math.svpwm": "Transforms.Svpwm",
-    "math.encoder_elec_angle": "Transforms.ElecAngle",
-    "math.forced_angle": "Transforms.ForcedAngle",
-    "math.greater": "Logic.Greater",
-    "math.less": "Logic.Less",
-    "math.mux": "Logic.Mux",
-    "control.gate": "Logic.Gate",
-    "control.slew": "Control.Slew",
-    "var.bool": "Values.VarBool",
-    "config.value": "Values.Config",
-    "app.telemetry_log": "Debug.TelemetryLog",
-    "app.telemetry_current_sink": "Debug.TelemetryCurrentSink",
-}
-
 # Ids that are merges of several old types: embedded nodeTypes with these ids
 # are replaced with the canonical template content (older embedded variants
 # can carry mismatched ports/maxInstances/forced domains).
@@ -101,7 +62,6 @@ MERGE_TARGETS = {
 
 
 def load_template(templates_dir, tid):
-    import os
     with open(os.path.join(templates_dir, tid, "node.json")) as f:
         t = json.load(f, object_pairs_hook=OrderedDict)
     with open(os.path.join(templates_dir, tid, "inline.cpp")) as f:
@@ -180,18 +140,13 @@ def migrate(path, write=True, templates_dir=None):
 
 
 if __name__ == "__main__":
+    # Resolve the template dir relative to the repo root (this script lives in
+    # Tools/), not the caller's cwd, so template canonicalization always runs.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    templates_dir = os.path.join(repo_root, "Assets", "NodeTemplates")
     total = 0
     for path in sys.argv[1:]:
-        n = migrate(path, templates_dir="Assets/NodeTemplates")
-        total += n
-        print(f"{path}: {n} ids rewritten")
-    sys.exit(0 if total or len(sys.argv) > 1 else 1)
-
-
-if __name__ == "__main__":
-    total = 0
-    for path in sys.argv[1:]:
-        n = migrate(path)
+        n = migrate(path, templates_dir=templates_dir)
         total += n
         print(f"{path}: {n} ids rewritten")
     sys.exit(0 if total or len(sys.argv) > 1 else 1)
