@@ -708,143 +708,143 @@
         "nodeId": "IdVar",
         "portName": "Value"
       },
+      "id": "c57",
       "to": {
         "nodeId": "IdCmdDimless",
         "portName": "Input"
-      },
-      "id": "c57"
+      }
     },
     {
       "from": {
         "nodeId": "IdCmdDimless",
         "portName": "Output"
       },
+      "id": "c58",
       "to": {
         "nodeId": "FocFeedforward",
         "portName": "IdCmd"
-      },
-      "id": "c58"
+      }
     },
     {
       "from": {
         "nodeId": "IqGate",
         "portName": "Out"
       },
+      "id": "c59",
       "to": {
         "nodeId": "FocFeedforward",
         "portName": "IqCmd"
-      },
-      "id": "c59"
+      }
     },
     {
       "from": {
         "nodeId": "RPMMechElec1",
         "portName": "RpmElec"
       },
+      "id": "c60",
       "to": {
         "nodeId": "FocFeedforward",
         "portName": "RpmElec"
-      },
-      "id": "c60"
+      }
     },
     {
       "from": {
         "nodeId": "CfgLd",
         "portName": "Value"
       },
+      "id": "c61",
       "to": {
         "nodeId": "FocFeedforward",
         "portName": "Ld"
-      },
-      "id": "c61"
+      }
     },
     {
       "from": {
         "nodeId": "CfgLq",
         "portName": "Value"
       },
+      "id": "c62",
       "to": {
         "nodeId": "FocFeedforward",
         "portName": "Lq"
-      },
-      "id": "c62"
+      }
     },
     {
       "from": {
         "nodeId": "CfgPsi",
         "portName": "Value"
       },
+      "id": "c63",
       "to": {
         "nodeId": "FocFeedforward",
         "portName": "Psi"
-      },
-      "id": "c63"
+      }
     },
     {
       "from": {
         "nodeId": "PiD",
         "portName": "Output"
       },
+      "id": "c64",
       "to": {
         "nodeId": "SumVd",
         "portName": "Input_A"
-      },
-      "id": "c64"
+      }
     },
     {
       "from": {
         "nodeId": "FocFeedforward",
         "portName": "V_D_FF"
       },
+      "id": "c65",
       "to": {
         "nodeId": "SumVd",
         "portName": "Input_B"
-      },
-      "id": "c65"
+      }
     },
     {
       "from": {
         "nodeId": "SumVd",
         "portName": "Output"
       },
+      "id": "c66",
       "to": {
         "nodeId": "InvPark",
         "portName": "V_D"
-      },
-      "id": "c66"
+      }
     },
     {
       "from": {
         "nodeId": "PiQ",
         "portName": "Output"
       },
+      "id": "c67",
       "to": {
         "nodeId": "SumVq",
         "portName": "Input_A"
-      },
-      "id": "c67"
+      }
     },
     {
       "from": {
         "nodeId": "FocFeedforward",
         "portName": "V_Q_FF"
       },
+      "id": "c68",
       "to": {
         "nodeId": "SumVq",
         "portName": "Input_B"
-      },
-      "id": "c68"
+      }
     },
     {
       "from": {
         "nodeId": "SumVq",
         "portName": "Output"
       },
+      "id": "c69",
       "to": {
         "nodeId": "InvPark",
         "portName": "V_Q"
-      },
-      "id": "c69"
+      }
     }
   ],
   "name": "foc_demo",
@@ -2225,11 +2225,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "Ladrc",
-      "description": "Linear Active Disturbance Rejection Controller for a first-order plant (PMSM dq current). Drop-in alternative to Control.Pi: Setpoint/Measurement \u2192 voltage Output. Uses a 2-state linear ESO + PD-like feedback. Does not modify FOC/MPCC nodes.",
+      "description": "Linear Active Disturbance Rejection Controller for a first-order plant (PMSM dq current). Drop-in alternative to Control.Pi: Setpoint/Measurement → voltage Output. Uses a 2-state linear ESO + PD-like feedback. Does not modify FOC/MPCC nodes.",
       "displayName": "LADRC (1st-order)",
       "domain": "",
       "id": "Control.Ladrc",
-      "inlineCode": "/* Linear ADRC (LADRC) for a first-order plant:\n *   dy/dt = f_total + b0 * u\n * Used here as a PMSM dq-current regulator (drop-in for Control.Pi).\n *\n * ESO (Gao bandwidth parameterization):\n *   e  = z1 - y\n *   z1 += dt * (z2 + b0*u - 2*\u03c9o*e)\n *   z2 += dt * (-\u03c9o^2 * e)\n * Control:\n *   u0 = \u03c9c * (r - z1)\n *   u  = (u0 - z2) / b0\n *\n * Independent of FOC PI and FCS-MPCC implementations.\n */\nfloat dt = Dt;\nfloat b0 = B0;\nfloat wc = OmegaC;\nfloat wo = OmegaO;\nif (!(dt > 0.0f)) dt = 0.0002f;\nif (!(b0 > 1.0e-6f) && !(b0 < -1.0e-6f)) b0 = 10000.0f; /* ~1/100\u00b5H */\nif (!(wc > 0.0f)) wc = 800.0f;\nif (!(wo > 0.0f)) wo = 2400.0f;\n\nconst float y = Measurement;\nconst float r = Setpoint;\n\nconst float beta1 = 2.0f * wo;\nconst float beta2 = wo * wo;\n\nfloat z1 = Z1;\nfloat z2 = Z2;\n/* Cold-start: align observer to measurement once. */\nif (z1 == 0.0f && z2 == 0.0f && UPrev == 0.0f) {\n    z1 = y;\n}\n\nconst float u_prev = UPrev;\nconst float e_obs = z1 - y;\nz1 += dt * (z2 + b0 * u_prev - beta1 * e_obs);\nz2 += dt * (-beta2 * e_obs);\nZ1 = z1;\nZ2 = z2;\n\nconst float u0 = wc * (r - z1);\nfloat u = (u0 - z2) / b0;\n\n/* Same Vdc-aware clamp convention as Control.Pi: allow overmodulation up\n * to the six-step boundary (2*Vdc/3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nfloat max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nfloat min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\nif (u > max_limit) u = max_limit;\nif (u < min_limit) u = min_limit;\n\nUPrev = u;\nOutput = u;\n",
+      "inlineCode": "/* Linear ADRC (LADRC) for a first-order plant:\n *   dy/dt = f_total + b0 * u\n * Used here as a PMSM dq-current regulator (drop-in for Control.Pi).\n *\n * ESO (Gao bandwidth parameterization):\n *   e  = z1 - y\n *   z1 += dt * (z2 + b0*u - 2*ωo*e)\n *   z2 += dt * (-ωo^2 * e)\n * Control:\n *   u0 = ωc * (r - z1)\n *   u  = (u0 - z2) / b0\n *\n * Independent of FOC PI and FCS-MPCC implementations.\n */\nfloat dt = Dt;\nfloat b0 = B0;\nfloat wc = OmegaC;\nfloat wo = OmegaO;\nif (!(dt > 0.0f)) dt = 0.0002f;\nif (!(b0 > 1.0e-6f) && !(b0 < -1.0e-6f)) b0 = 10000.0f; /* ~1/100µH */\nif (!(wc > 0.0f)) wc = 800.0f;\nif (!(wo > 0.0f)) wo = 2400.0f;\n\nconst float y = Measurement;\nconst float r = Setpoint;\n\nconst float beta1 = 2.0f * wo;\nconst float beta2 = wo * wo;\n\nfloat z1 = Z1;\nfloat z2 = Z2;\n/* Cold-start: align observer to measurement once. */\nif (z1 == 0.0f && z2 == 0.0f && UPrev == 0.0f) {\n    z1 = y;\n}\n\nconst float u_prev = UPrev;\nconst float e_obs = z1 - y;\nz1 += dt * (z2 + b0 * u_prev - beta1 * e_obs);\nz2 += dt * (-beta2 * e_obs);\nZ1 = z1;\nZ2 = z2;\n\nconst float u0 = wc * (r - z1);\nfloat u = (u0 - z2) / b0;\n\n/* Same Vdc-aware clamp convention as Control.Pi: allow overmodulation up\n * to the six-step boundary (2*Vdc/3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nfloat max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nfloat min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\nif (u > max_limit) u = max_limit;\nif (u < min_limit) u = min_limit;\n\nUPrev = u;\nOutput = u;\n",
       "inputPorts": [
         {
           "description": "Desired current (A) or process setpoint.",
@@ -2271,7 +2271,7 @@
       ],
       "parameterTypes": {
         "B0": {
-          "description": "Plant gain estimate b0. For dq current use \u2248 1/L (e.g. Ld or Lq).",
+          "description": "Plant gain estimate b0. For dq current use ≈ 1/L (e.g. Ld or Lq).",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -2283,25 +2283,25 @@
           "quantity": "dimensionless"
         },
         "OmegaC": {
-          "description": "Controller bandwidth \u03c9c [rad/s]. kp = \u03c9c.",
+          "description": "Controller bandwidth ωc [rad/s]. kp = ωc.",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
         "OmegaO": {
-          "description": "Observer bandwidth \u03c9o [rad/s]. Typically 3\u201310\u00d7 \u03c9c.",
+          "description": "Observer bandwidth ωo [rad/s]. Typically 3–10× ωc.",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
         "OutputMax": {
-          "description": "Upper output clamp (also limited by Vdc/\u221a3\u00b70.95).",
+          "description": "Upper output clamp (also limited by Vdc/√3·0.95).",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
         },
         "OutputMin": {
-          "description": "Lower output clamp (also limited by \u2212Vdc/\u221a3\u00b70.95).",
+          "description": "Lower output clamp (also limited by −Vdc/√3·0.95).",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -2445,7 +2445,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "Electrical rotor angle wrapped to the range 0 through 2\u03c0 radians.",
+          "description": "Electrical rotor angle wrapped to the range 0 through 2π radians.",
           "direction": "output",
           "name": "ThetaElec",
           "optional": false,
@@ -4080,8 +4080,7 @@
             "quantity": "dimensionless"
           }
         }
-      ],
-      "parameterTypes": {}
+      ]
     },
     {
       "classDefinition": "",
@@ -4186,8 +4185,7 @@
             "quantity": "voltage"
           }
         }
-      ],
-      "parameterTypes": {}
+      ]
     },
     {
       "classDefinition": "",
@@ -4237,8 +4235,7 @@
             "quantity": "voltage"
           }
         }
-      ],
-      "parameterTypes": {}
+      ]
     }
   ],
   "nodes": [
@@ -5100,12 +5097,12 @@
       "id": "CfgLd",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.0015",
+        "DefaultValue": "0.0018",
         "Key": "Motor.PMSM.Inductance.Ld"
       },
       "position": {
-        "x": 1415.0548411065377,
-        "y": 2977.6099965706444
+        "x": 940.9548411065375,
+        "y": 2997.7099965706443
       },
       "type": "Values.Config"
     },
@@ -5115,12 +5112,12 @@
       "id": "CfgLq",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.0015",
+        "DefaultValue": "0.0018",
         "Key": "Motor.PMSM.Inductance.Lq"
       },
       "position": {
-        "x": 1415.0548411065377,
-        "y": 3077.6099965706444
+        "x": 905.5103966620932,
+        "y": 3120.7988854595337
       },
       "type": "Values.Config"
     },
@@ -5130,12 +5127,12 @@
       "id": "CfgPsi",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.052",
+        "DefaultValue": "0.039",
         "Key": "Motor.PMSM.FluxLinkage.Wb"
       },
       "position": {
-        "x": 1415.0548411065377,
-        "y": 3177.6099965706444
+        "x": 1178.6548411065376,
+        "y": 3104.409996570644
       },
       "type": "Values.Config"
     },
@@ -5143,6 +5140,7 @@
       "displayName": "",
       "domain": "tim_isr",
       "id": "IdCmdDimless",
+      "parameters": {},
       "position": {
         "x": 1415.0548411065377,
         "y": 2577.6099965706444
@@ -5153,9 +5151,10 @@
       "displayName": "",
       "domain": "tim_isr",
       "id": "FocFeedforward",
+      "parameters": {},
       "position": {
-        "x": 1615.0548411065377,
-        "y": 2877.6099965706444
+        "x": 1619.2215077732044,
+        "y": 2911.7766632373105
       },
       "type": "Custom.FocFeedforward"
     },
@@ -5163,6 +5162,7 @@
       "displayName": "",
       "domain": "tim_isr",
       "id": "SumVd",
+      "parameters": {},
       "position": {
         "x": 1915.0548411065377,
         "y": 2677.6099965706444
@@ -5173,6 +5173,7 @@
       "displayName": "",
       "domain": "tim_isr",
       "id": "SumVq",
+      "parameters": {},
       "position": {
         "x": 1915.0548411065377,
         "y": 2877.6099965706444
