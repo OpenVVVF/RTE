@@ -10,6 +10,20 @@
 
 namespace Inverter {
 
+namespace {
+uint32_t irqSave() {
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    __DMB();
+    return primask;
+}
+
+void irqRestore(uint32_t primask) {
+    __DMB();
+    __set_PRIMASK(primask);
+}
+} // namespace
+
 /* Out-of-class definition for pre-C++17 ODR. */
 constexpr Inverter::FaultMeta Inverter::FaultManager::s_meta[];
 
@@ -27,10 +41,10 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::EncoderAtRail:        return "encoder signal at rail";
         case FaultReason::EncoderDmaError:      return "encoder ADC DMA error";
         case FaultReason::EncoderSampleTimeout: return "no encoder sample";
-        case FaultReason::CanBusOff:            return "FDCAN2 bus-off";
-        case FaultReason::CanErrorPassive:      return "FDCAN2 error-passive";
-        case FaultReason::CanErrorLogOverflow:  return "FDCAN2 error-log overflow";
-        case FaultReason::CanHalError:          return "FDCAN2 HAL error";
+        case FaultReason::CanBusOff:            return "FDCAN bus-off";
+        case FaultReason::CanErrorPassive:      return "FDCAN error-passive";
+        case FaultReason::CanErrorLogOverflow:  return "FDCAN error-log overflow";
+        case FaultReason::CanHalError:          return "FDCAN HAL error";
         case FaultReason::VosNotReady:          return "VOS not ready";
         case FaultReason::PvdTriggered:         return "PVD triggered";
         case FaultReason::AvdTriggered:         return "AVD triggered";
@@ -108,7 +122,7 @@ void FaultManager::raise(FaultSource src, FaultReason reason) {
         return;
     }
 
-    __disable_irq();
+    const uint32_t primask = irqSave();
     const uint32_t old = m_active;
     m_active |= bits;
     const uint32_t newly = m_active & ~old;
@@ -120,7 +134,7 @@ void FaultManager::raise(FaultSource src, FaultReason reason) {
         m_reason[idx] = reason;
         b &= b - 1U;
     }
-    __enable_irq();
+    irqRestore(primask);
 }
 
 void FaultManager::clear(FaultSource src) {
@@ -129,26 +143,26 @@ void FaultManager::clear(FaultSource src) {
         return;
     }
 
-    __disable_irq();
+    const uint32_t primask = irqSave();
     m_active &= ~bits;
-    __enable_irq();
+    irqRestore(primask);
 }
 
 void FaultManager::clearAll() {
-    __disable_irq();
+    const uint32_t primask = irqSave();
     m_active = 0;
     m_pending_log = 0;
     m_safety_executed = false;
     for (size_t i = 0; i < SOURCE_COUNT; ++i) {
         m_reason[i] = FaultReason::Unspecified;
     }
-    __enable_irq();
+    irqRestore(primask);
 }
 
 bool FaultManager::isActive(FaultSource mask) const {
-    __disable_irq();
+    const uint32_t primask = irqSave();
     const bool active = (m_active & static_cast<uint32_t>(mask)) != 0;
-    __enable_irq();
+    irqRestore(primask);
     return active;
 }
 
@@ -167,9 +181,9 @@ bool FaultManager::isSeverityActive(FaultSeverity severity) const {
 }
 
 uint32_t FaultManager::activeFlags() const {
-    __disable_irq();
+    const uint32_t primask = irqSave();
     const uint32_t flags = m_active;
-    __enable_irq();
+    irqRestore(primask);
     return flags;
 }
 
@@ -204,10 +218,10 @@ void FaultManager::printSummary() {
 }
 
 void FaultManager::service() {
-    __disable_irq();
+    const uint32_t primask = irqSave();
     const uint32_t pending = m_pending_log;
     m_pending_log = 0;
-    __enable_irq();
+    irqRestore(primask);
 
     if (pending == 0) {
         return;
@@ -238,9 +252,9 @@ void FaultManager::service() {
 void FaultManager::executeSafetyActions() {
     if (!isSeverityActive(FaultSeverity::Critical)) {
         /* Reset the one-shot so the next critical fault logs/shuts down again. */
-        __disable_irq();
+        const uint32_t primask = irqSave();
         m_safety_executed = false;
-        __enable_irq();
+        irqRestore(primask);
         return;
     }
 

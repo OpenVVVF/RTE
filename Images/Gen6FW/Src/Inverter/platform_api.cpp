@@ -306,15 +306,22 @@ bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
                        const uint8_t* data, uint8_t dlc) {
     /* Graph/shell-facing bus numbering is 1-based (1 = "A"/FDCAN1,
      * 2 = "B"/FDCAN2); the driver is 0-based. */
-    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
-    return Inverter::canBus().send(b, id, ext, data, dlc);
+    if (bus < 1 || bus > Inverter::CanBus::NUM_BUSES) {
+        return false;
+    }
+    return Inverter::canBus().send(bus - 1, id, ext, data, dlc);
 }
 
 int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out) {
-    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
+    if (bus < 1 || bus > Inverter::CanBus::NUM_BUSES) {
+        if (seq_out != nullptr) {
+            *seq_out = 0;
+        }
+        return -1;
+    }
     Inverter::CanBus::Frame f;
     uint32_t seq = 0;
-    if (!Inverter::canBus().rxLatest(b, id, f, &seq)) {
+    if (!Inverter::canBus().rxLatest(bus - 1, id, false, f, &seq)) {
         if (seq_out != nullptr) {
             *seq_out = seq;
         }

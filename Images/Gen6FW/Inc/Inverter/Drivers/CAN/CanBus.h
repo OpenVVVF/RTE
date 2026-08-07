@@ -16,10 +16,11 @@ namespace Inverter {
  * KV config (RteParamStore, applied at init; changes need reboot):
  *   Can.A.En (default 0), Can.B.En (default 1), Can.BitRate (default 500000).
  *
- * send() only queues (ISR-safe, drop-oldest on full); update() (main loop)
- * drains the queues into the TX FIFOs.  RX runs on the FIFO0 interrupt:
- * exact-ID mailboxes for graph nodes, a recent-frames ring for `can rxdump`,
- * and a sniffer hook for the protocol layer (stage 3).
+ * send() only queues (ISR-safe, drop-newest on full); update() (main loop)
+ * drains the queues into the TX FIFOs.  The FIFO0 interrupt only copies
+ * frames into a bounded software ring.  update() publishes exact-ID
+ * mailboxes, the `can rxdump` history, and protocol-layer hooks so command
+ * parsing and telemetry can never execute in interrupt context.
  */
 class CanBus {
 public:
@@ -46,7 +47,8 @@ public:
      * frame with that ID has been received.  seqOut (optional) gets the
      * mailbox sequence counter (compare to detect "new since last step").
      */
-    bool rxLatest(uint8_t bus, uint32_t id, Frame& out, uint32_t* seqOut = nullptr);
+    bool rxLatest(uint8_t bus, uint32_t id, bool ext, Frame& out,
+                  uint32_t* seqOut = nullptr);
 
     /** @brief Free slots in the TX ring (main-loop pacing decisions). */
     size_t txFree(uint8_t bus) const;
@@ -58,7 +60,7 @@ public:
     void   printStatus(uint8_t bus) const;
     void   printRecentRx(uint8_t bus) const;
 
-    /** @brief HAL callback entry points (wired in CanBus.cpp). */
+    /** @brief HAL callback entry point; captures frames only (wired in CanBus.cpp). */
     void onRxFifo0(FDCAN_HandleTypeDef* h);
 
 private:
@@ -80,16 +82,24 @@ private:
     };
 
     FDCAN_HandleTypeDef* handle(uint8_t bus) const;
+    static bool validId(uint32_t id, bool ext);
+    void resetState();
     bool applyTiming(uint8_t bus, uint32_t rate);
     void recoverIfBusOff(uint8_t bus);
+    void processRx(uint8_t bus);
     void storeRx(uint8_t bus, const Frame& f);
 
     bool     m_enabled[NUM_BUSES] = {false, false};
     uint32_t m_bitrate = 500000;
 
     TxSlot   m_tx[NUM_BUSES][TX_RING] = {};
-    size_t   m_tx_head[NUM_BUSES] = {};
-    size_t   m_tx_tail[NUM_BUSES] = {};
+    volatile size_t m_tx_head[NUM_BUSES] = {};
+    volatile size_t m_tx_tail[NUM_BUSES] = {};
+
+    /* RX frame storage lives in AXI SRAM in CanBus.cpp.  The ISR is the only
+     * producer and update() is the only consumer. */
+    volatile size_t m_rx_head[NUM_BUSES] = {};
+    volatile size_t m_rx_tail[NUM_BUSES] = {};
 
     Mailbox  m_mail[NUM_BUSES][RX_MAILBOXES] = {};
     Frame    m_recent[NUM_BUSES][RX_RECENT] = {};
@@ -98,10 +108,13 @@ private:
     RxHook   m_hook = nullptr;
     void*    m_hook_user = nullptr;
 
-    uint32_t m_tx_frames[NUM_BUSES] = {};
-    uint32_t m_tx_dropped[NUM_BUSES] = {};
-    uint32_t m_rx_frames[NUM_BUSES] = {};
-    uint32_t m_busoff_recoveries[NUM_BUSES] = {};
+    volatile uint32_t m_tx_frames[NUM_BUSES] = {};
+    volatile uint32_t m_tx_dropped[NUM_BUSES] = {};
+    volatile uint32_t m_rx_frames[NUM_BUSES] = {};
+    volatile uint32_t m_rx_queue_dropped[NUM_BUSES] = {};
+    volatile uint32_t m_rx_malformed[NUM_BUSES] = {};
+    volatile uint32_t m_rx_hal_errors[NUM_BUSES] = {};
+    volatile uint32_t m_busoff_recoveries[NUM_BUSES] = {};
 };
 
 /** @brief Global CAN bus instance. */

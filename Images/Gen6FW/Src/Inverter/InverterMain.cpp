@@ -115,9 +115,6 @@ static void init()
     Telemetry::init();
     Telemetry::set_period_us(10000);  /* 100 Hz data frames */
 
-    /* CAN error-status notifications (FDCAN2 is the active interface). */
-    (void)Inverter::fdcanFaultInit();
-
     /* Supply rail monitoring (PVD/AVD/VOSRDY). */
     (void)Inverter::supplyMonitorInit();
 
@@ -161,6 +158,10 @@ static void init()
 
     /* CAN buses (KV enables; no-op when both disabled). */
     Inverter::canBus().init();
+
+    /* Register error notifications only after CanBus has applied timing by
+     * deinitializing/reinitializing each enabled peripheral. */
+    (void)Inverter::fdcanFaultInit();
 
     /* CAN session protocol (KV Can.Proto.*; no-op unless enabled). */
     Inverter::canSession().init();

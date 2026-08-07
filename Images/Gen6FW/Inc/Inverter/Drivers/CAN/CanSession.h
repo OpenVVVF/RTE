@@ -23,8 +23,8 @@ namespace Inverter {
  *   Can.Proto.Bus       bus number 1=A / 2=B (default 2)
  *   Can.Proto.IdBase    CAN ID base (default 0x700; +0 host->dev, +1 dev->host)
  *   Can.Proto.AllowTelem allow TELEMETRY grants (default 1)
- *   Can.Proto.AllowCmd   allow COMMANDS grants (default 1)
- *   Can.Proto.AllowFlash allow FLASH grants (default 0; reserved)
+ *   Can.Proto.AllowCmd   allow unauthenticated COMMANDS grants (default 0)
+ *   FLASH is reserved and is never advertised or granted in this version.
  *   Can.Proto.SessTimeoutMs heartbeat timeout (default 3000)
  *
  * Auth hook: every grant decision funnels through grantAllowed(); the
@@ -38,6 +38,7 @@ public:
 
     bool attached() const { return m_attached; }
     uint8_t grants() const { return m_grants; }
+    void printStatus() const;
 
     /** @brief Telemetry sink entry: stream a raw packet to the session. */
     bool sendTelemetryPacket(const uint8_t* packet, size_t len);
@@ -66,6 +67,8 @@ private:
     uint32_t m_pkt_seq = 0;
     uint8_t  m_telem_div = 5;
     uint32_t m_telem_count = 0;
+    uint32_t m_invalid_packets = 0;
+    uint32_t m_rejected_commands = 0;
 };
 
 /** @brief Global CAN session instance. */

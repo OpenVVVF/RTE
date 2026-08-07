@@ -63,14 +63,35 @@ bool CanSession::init() {
     if (!m_enabled) {
         return true;
     }
-    m_bus = static_cast<uint8_t>(kvOr("Can.Proto.Bus", 2.0f));
-    const uint32_t id_base = static_cast<uint32_t>(kvOr("Can.Proto.IdBase", 1792.0f));  /* 0x700 */
-    m_timeout_ms = static_cast<uint32_t>(kvOr("Can.Proto.SessTimeoutMs", 3000.0f));
-    m_telem_div = static_cast<uint8_t>(kvOr("Can.Proto.TelemDiv", 5.0f));
-    if (m_telem_div == 0) m_telem_div = 1;
+    const float bus_config = kvOr("Can.Proto.Bus", 2.0f);
+    const float id_config = kvOr("Can.Proto.IdBase", 1792.0f);  /* 0x700 */
+    if ((bus_config != 1.0f && bus_config != 2.0f) ||
+        id_config != id_config || id_config < 0.0f || id_config > 2046.0f) {
+        Telemetry::printf("[CAN] session: invalid bus/id configuration; session off");
+        m_enabled = false;
+        return false;
+    }
+    m_bus = static_cast<uint8_t>(bus_config);
+    const uint32_t id_base = static_cast<uint32_t>(id_config);
+    if (id_config != static_cast<float>(id_base)) {
+        Telemetry::printf("[CAN] session: IdBase must be an integer; session off");
+        m_enabled = false;
+        return false;
+    }
+    const float timeout_config = kvOr("Can.Proto.SessTimeoutMs", 3000.0f);
+    const float telem_div_config = kvOr("Can.Proto.TelemDiv", 5.0f);
+    if (!(timeout_config >= 100.0f && timeout_config <= 60000.0f) ||
+        timeout_config != static_cast<float>(static_cast<uint32_t>(timeout_config)) ||
+        !(telem_div_config >= 1.0f && telem_div_config <= 255.0f) ||
+        telem_div_config != static_cast<float>(static_cast<uint8_t>(telem_div_config))) {
+        Telemetry::printf("[CAN] session: invalid timeout/telemetry divisor; session off");
+        m_enabled = false;
+        return false;
+    }
+    m_timeout_ms = static_cast<uint32_t>(timeout_config);
+    m_telem_div = static_cast<uint8_t>(telem_div_config);
     m_allows = (kvOr("Can.Proto.AllowTelem", 1.0f) != 0.0f ? IVP_CAP_TELEMETRY : 0) |
-               (kvOr("Can.Proto.AllowCmd", 1.0f) != 0.0f ? IVP_CAP_COMMANDS : 0) |
-               (kvOr("Can.Proto.AllowFlash", 0.0f) != 0.0f ? IVP_CAP_FLASH : 0);
+               (kvOr("Can.Proto.AllowCmd", 0.0f) != 0.0f ? IVP_CAP_COMMANDS : 0);
 
     if (!canBus().enabled(m_bus - 1)) {
         Telemetry::printf("[CAN] session: bus %u disabled; session off",
@@ -94,6 +115,16 @@ bool CanSession::grantAllowed(uint8_t cap_bit) const {
     /* Auth hook: the future password/token check plugs in here.  v1: KV
      * allow mask is the whole policy. */
     return (m_allows & cap_bit) != 0;
+}
+
+void CanSession::printStatus() const {
+    Telemetry::printf("[SHELL] can session: en=%d attached=%d bus=%u grants=0x%02X allow=0x%02X tx_busy=%d proto_drop=%lu invalid_pkt=%lu cmd_reject=%lu",
+                      m_enabled ? 1 : 0, m_attached ? 1 : 0,
+                      static_cast<unsigned>(m_bus), m_grants, m_allows,
+                      m_transport.txBusy() ? 1 : 0,
+                      static_cast<unsigned long>(m_transport.rxDropped()),
+                      static_cast<unsigned long>(m_invalid_packets),
+                      static_cast<unsigned long>(m_rejected_commands));
 }
 
 void CanSession::applyTelemetryRouting() {
@@ -141,7 +172,8 @@ void CanSession::sendAttachRsp() {
 }
 
 void CanSession::handleCapReq(const uint8_t* payload, size_t len) {
-    if (len < 1) {
+    if (len != 1) {
+        ++m_invalid_packets;
         return;
     }
     const uint8_t req = payload[0];
@@ -152,9 +184,6 @@ void CanSession::handleCapReq(const uint8_t* payload, size_t len) {
     if ((req & IVP_CAP_COMMANDS) && grantAllowed(IVP_CAP_COMMANDS)) {
         granted |= IVP_CAP_COMMANDS;
     }
-    if ((req & IVP_CAP_FLASH) && grantAllowed(IVP_CAP_FLASH)) {
-        granted |= IVP_CAP_FLASH;
-    }
     m_grants = granted;
     applyTelemetryRouting();
     sendPacket(IVP_MSG_CAP_RSP, &granted, 1);
@@ -163,13 +192,15 @@ void CanSession::handleCapReq(const uint8_t* payload, size_t len) {
 
 void CanSession::handleCommandReq(const uint8_t* packet, size_t len) {
     if ((m_grants & IVP_CAP_COMMANDS) == 0) {
+        ++m_rejected_commands;
         sendPacket(IVP_MSG_NACK, nullptr, 0);
         return;
     }
     /* Parse header, then the command args: first STR arg is the line. */
     ivp_header_t hdr;
     if (ivp_header_decode(packet, &hdr) != IVP_OK ||
-        len < IVP_HEADER_SIZE + 2) {
+        len != IVP_HEADER_SIZE + static_cast<size_t>(hdr.payload_len) + 2U) {
+        ++m_invalid_packets;
         return;
     }
     const uint8_t* payload = packet + IVP_HEADER_SIZE;
@@ -179,6 +210,7 @@ void CanSession::handleCommandReq(const uint8_t* packet, size_t len) {
     ivp_arg_iter_t args;
     if (ivp_command_req_parse(payload, payload_len, &opcode, &req_id,
                               &args) != IVP_OK) {
+        ++m_invalid_packets;
         sendPacket(IVP_MSG_NACK, nullptr, 0);
         return;
     }
@@ -195,6 +227,7 @@ void CanSession::handleCommandReq(const uint8_t* packet, size_t len) {
         }
     }
     if (line == nullptr) {
+        ++m_invalid_packets;
         sendPacket(IVP_MSG_NACK, nullptr, 0);
         return;
     }
@@ -212,19 +245,30 @@ void CanSession::handleCommandReq(const uint8_t* packet, size_t len) {
 
 void CanSession::onPacket(const uint8_t* packet, size_t len) {
     if (len < IVP_HEADER_SIZE + 2) {
+        ++m_invalid_packets;
         return;
     }
     ivp_header_t hdr;
     if (ivp_header_decode(packet, &hdr) != IVP_OK) {
+        ++m_invalid_packets;
+        return;
+    }
+    if (len != IVP_HEADER_SIZE + static_cast<size_t>(hdr.payload_len) + 2U) {
+        ++m_invalid_packets;
         return;
     }
     /* CRC16 over header+payload must match the trailing 2 bytes. */
     if (ivp_crc16_ccitt(packet, len - 2) != ivp_read_u16le(packet + len - 2)) {
+        ++m_invalid_packets;
         return;  /* CRC mismatch: drop silently */
     }
 
     switch (hdr.msg_type) {
         case IVP_MSG_HELLO:
+            if (hdr.payload_len != 0) {
+                ++m_invalid_packets;
+                break;
+            }
             m_attached = true;
             m_grants = 0;
             m_last_hb_ms = HAL_GetTick();
@@ -237,12 +281,18 @@ void CanSession::onPacket(const uint8_t* packet, size_t len) {
             }
             break;
         case IVP_MSG_HEARTBEAT:
-            if (m_attached) {
+            if (hdr.payload_len != 0) {
+                ++m_invalid_packets;
+            } else if (m_attached) {
                 m_last_hb_ms = HAL_GetTick();
             }
             break;
         case IVP_MSG_DETACH:
-            detach("host requested");
+            if (hdr.payload_len != 0) {
+                ++m_invalid_packets;
+            } else {
+                detach("host requested");
+            }
             break;
         case IVP_MSG_COMMAND_REQ:
             if (m_attached) {

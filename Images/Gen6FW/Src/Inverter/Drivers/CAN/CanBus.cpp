@@ -10,7 +10,29 @@
 namespace Inverter {
 
 namespace {
-CanBus s_instance;
+/* CAN transport state is not control-loop working state.  Keep its TX rings,
+ * mailboxes, histories, and counters in roomy AXI SRAM instead of consuming
+ * scarce DTCM needed by generated motor-control graphs. */
+CanBus s_instance __attribute__((section(".dma_buffers")));
+
+/* Capacity is 63 frames because one slot distinguishes full from empty.
+ * Keep the payload out of DTCM: this is transport buffering, not control-loop
+ * working state. */
+constexpr size_t RX_RING = 64;
+CanBus::Frame s_rx_ring[CanBus::NUM_BUSES][RX_RING]
+    __attribute__((section(".dma_buffers")));
+
+uint32_t irqSave() {
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    __DMB();
+    return primask;
+}
+
+void irqRestore(uint32_t primask) {
+    __DMB();
+    __set_PRIMASK(primask);
+}
 
 float kvOr(const char* key, float def) {
     float v = def;
@@ -42,6 +64,42 @@ CanBus& canBus() {
 
 FDCAN_HandleTypeDef* CanBus::handle(uint8_t bus) const {
     return (bus == 0) ? &hfdcan1 : &hfdcan2;
+}
+
+bool CanBus::validId(uint32_t id, bool ext) {
+    return ext ? id <= 0x1FFFFFFFU : id <= 0x7FFU;
+}
+
+void CanBus::resetState() {
+    /* .dma_buffers is intentionally NOLOAD, so explicitly initialize every
+     * field that controls whether buffered data is considered valid. */
+    m_bitrate = 500000;
+    m_hook = nullptr;
+    m_hook_user = nullptr;
+    for (uint8_t bus = 0; bus < NUM_BUSES; ++bus) {
+        m_enabled[bus] = false;
+        m_tx_head[bus] = 0;
+        m_tx_tail[bus] = 0;
+        m_rx_head[bus] = 0;
+        m_rx_tail[bus] = 0;
+        m_recent_head[bus] = 0;
+        m_tx_frames[bus] = 0;
+        m_tx_dropped[bus] = 0;
+        m_rx_frames[bus] = 0;
+        m_rx_queue_dropped[bus] = 0;
+        m_rx_malformed[bus] = 0;
+        m_rx_hal_errors[bus] = 0;
+        m_busoff_recoveries[bus] = 0;
+        for (size_t i = 0; i < TX_RING; ++i) {
+            m_tx[bus][i] = TxSlot{};
+        }
+        for (size_t i = 0; i < RX_MAILBOXES; ++i) {
+            m_mail[bus][i] = Mailbox{};
+        }
+        for (size_t i = 0; i < RX_RECENT; ++i) {
+            m_recent[bus][i] = Frame{};
+        }
+    }
 }
 
 bool CanBus::enabled(uint8_t bus) const {
@@ -82,6 +140,9 @@ bool CanBus::applyTiming(uint8_t bus, uint32_t rate) {
     FDCAN_HandleTypeDef* h = handle(bus);
     (void)HAL_FDCAN_Stop(h);
     (void)HAL_FDCAN_DeInit(h);
+    /* Normal CAN reliability requires retry after arbitration loss or a
+     * transient transmit error.  Cube's generated defaults disable it. */
+    h->Init.AutoRetransmission = ENABLE;
     h->Init.NominalPrescaler = best_presc;
     h->Init.NominalSyncJumpWidth = 4;
     h->Init.NominalTimeSeg1 = 17;
@@ -98,9 +159,18 @@ bool CanBus::applyTiming(uint8_t bus, uint32_t rate) {
 }
 
 bool CanBus::init() {
+    resetState();
     m_enabled[0] = kvOr("Can.A.En", 0.0f) != 0.0f;
     m_enabled[1] = kvOr("Can.B.En", 1.0f) != 0.0f;
-    m_bitrate = static_cast<uint32_t>(kvOr("Can.BitRate", 500000.0f));
+    const float bitrate_config = kvOr("Can.BitRate", 500000.0f);
+    if (!(bitrate_config >= 10000.0f && bitrate_config <= 1000000.0f) ||
+        bitrate_config != static_cast<float>(static_cast<uint32_t>(bitrate_config))) {
+        Telemetry::printf("[CAN] invalid Can.BitRate; both buses disabled");
+        m_enabled[0] = false;
+        m_enabled[1] = false;
+        return false;
+    }
+    m_bitrate = static_cast<uint32_t>(bitrate_config);
 
     if (!m_enabled[0] && !m_enabled[1]) {
         Telemetry::printf("[CAN] both buses disabled (Can.A.En/Can.B.En)");
@@ -151,10 +221,11 @@ bool CanBus::init() {
 
 bool CanBus::send(uint8_t bus, uint32_t id, bool ext, const uint8_t* data,
                   uint8_t dlc) {
-    if (!enabled(bus) || dlc > 8 || data == nullptr) {
+    if (!enabled(bus) || !validId(id, ext) || dlc > 8 ||
+        (data == nullptr && dlc != 0)) {
         return false;
     }
-    __disable_irq();
+    const uint32_t primask = irqSave();
     size_t next = (m_tx_head[bus] + 1) % TX_RING;
     if (next == m_tx_tail[bus]) {
         /* Full: reject (drop-newest).  Dropping the OLDEST would corrupt an
@@ -162,16 +233,18 @@ bool CanBus::send(uint8_t bus, uint32_t id, bool ext, const uint8_t* data,
          * its remaining chunks; rejecting new work keeps in-flight packets
          * intact. */
         ++m_tx_dropped[bus];
-        __enable_irq();
+        irqRestore(primask);
         return false;
     }
     TxSlot& s = m_tx[bus][m_tx_head[bus]];
     s.id = id;
     s.ext = ext;
     s.dlc = dlc;
-    std::memcpy(s.data, data, dlc);
+    if (dlc != 0) {
+        std::memcpy(s.data, data, dlc);
+    }
     m_tx_head[bus] = next;
-    __enable_irq();
+    irqRestore(primask);
     return true;
 }
 
@@ -180,6 +253,7 @@ void CanBus::update() {
         if (!enabled(bus)) {
             continue;
         }
+        processRx(bus);
         recoverIfBusOff(bus);
 
         FDCAN_HandleTypeDef* h = handle(bus);
@@ -228,26 +302,35 @@ void CanBus::storeRx(uint8_t bus, const Frame& f) {
     for (size_t i = 0; i < RX_MAILBOXES; ++i) {
         if (m_mail[bus][i].used && m_mail[bus][i].id == f.id &&
             m_mail[bus][i].frame.ext == f.ext) {
+            /* A generated high-rate domain may read this mailbox from an ISR.
+             * Prevent it from observing a partially copied frame. */
+            const uint32_t primask = irqSave();
             m_mail[bus][i].frame = f;
             ++m_mail[bus][i].seq;
+            irqRestore(primask);
             return;
         }
     }
 }
 
-bool CanBus::rxLatest(uint8_t bus, uint32_t id, Frame& out, uint32_t* seqOut) {
-    if (!enabled(bus)) {
+bool CanBus::rxLatest(uint8_t bus, uint32_t id, bool ext, Frame& out,
+                      uint32_t* seqOut) {
+    if (!enabled(bus) || !validId(id, ext)) {
         return false;
     }
     /* Find (or lazily subscribe) the mailbox for this ID. */
+    const uint32_t primask = irqSave();
     size_t free_slot = RX_MAILBOXES;
     for (size_t i = 0; i < RX_MAILBOXES; ++i) {
-        if (m_mail[bus][i].used && m_mail[bus][i].id == id) {
+        if (m_mail[bus][i].used && m_mail[bus][i].id == id &&
+            m_mail[bus][i].frame.ext == ext) {
             out = m_mail[bus][i].frame;
             if (seqOut != nullptr) {
                 *seqOut = m_mail[bus][i].seq;
             }
-            return m_mail[bus][i].seq > 0;
+            const bool received = m_mail[bus][i].seq > 0;
+            irqRestore(primask);
+            return received;
         }
         if (!m_mail[bus][i].used && free_slot == RX_MAILBOXES) {
             free_slot = i;
@@ -256,27 +339,27 @@ bool CanBus::rxLatest(uint8_t bus, uint32_t id, Frame& out, uint32_t* seqOut) {
     if (free_slot < RX_MAILBOXES) {
         m_mail[bus][free_slot].used = true;
         m_mail[bus][free_slot].id = id;
-        m_mail[bus][free_slot].frame.ext = false;
+        m_mail[bus][free_slot].frame.ext = ext;
         m_mail[bus][free_slot].frame.id = id;
     }
+    irqRestore(primask);
     return false;
 }
 
-void CanBus::onRxFifo0(FDCAN_HandleTypeDef* h) {
-    const uint8_t bus = (h->Instance == FDCAN1) ? 0 : 1;
-    FDCAN_RxHeaderTypeDef hdr;
-    while (HAL_FDCAN_GetRxFifoFillLevel(h, FDCAN_RX_FIFO0) > 0) {
-        Frame f = {};
-        if (HAL_FDCAN_GetRxMessage(h, FDCAN_RX_FIFO0, &hdr, f.data) != HAL_OK) {
+void CanBus::processRx(uint8_t bus) {
+    /* A full ring can be drained per update without allowing continuously
+     * arriving traffic to starve the rest of the foreground loop. */
+    for (size_t count = 0; count < RX_RING; ++count) {
+        const size_t tail = m_rx_tail[bus];
+        if (tail == m_rx_head[bus]) {
             break;
         }
-        f.id = hdr.Identifier;
-        f.ext = (hdr.IdType == FDCAN_EXTENDED_ID);
-        f.dlc = dlcToBytes(hdr.DataLength);
-        ++m_rx_frames[bus];
+        __DMB();
+        const Frame f = s_rx_ring[bus][tail];
+        __DMB();
+        m_rx_tail[bus] = (tail + 1) % RX_RING;
 
         storeRx(bus, f);
-
         m_recent[bus][m_recent_head[bus]] = f;
         m_recent_head[bus] = (m_recent_head[bus] + 1) % RX_RECENT;
 
@@ -286,18 +369,55 @@ void CanBus::onRxFifo0(FDCAN_HandleTypeDef* h) {
     }
 }
 
+void CanBus::onRxFifo0(FDCAN_HandleTypeDef* h) {
+    if (h == nullptr || (h->Instance != FDCAN1 && h->Instance != FDCAN2)) {
+        return;
+    }
+    const uint8_t bus = (h->Instance == FDCAN1) ? 0 : 1;
+    FDCAN_RxHeaderTypeDef hdr;
+    while (HAL_FDCAN_GetRxFifoFillLevel(h, FDCAN_RX_FIFO0) > 0) {
+        Frame f = {};
+        if (HAL_FDCAN_GetRxMessage(h, FDCAN_RX_FIFO0, &hdr, f.data) != HAL_OK) {
+            ++m_rx_hal_errors[bus];
+            break;
+        }
+        ++m_rx_frames[bus];
+        f.id = hdr.Identifier;
+        f.ext = (hdr.IdType == FDCAN_EXTENDED_ID);
+        f.dlc = dlcToBytes(hdr.DataLength);
+        if (hdr.RxFrameType != FDCAN_DATA_FRAME || f.dlc > 8 ||
+            !validId(f.id, f.ext)) {
+            ++m_rx_malformed[bus];
+            continue;
+        }
+
+        const size_t head = m_rx_head[bus];
+        const size_t next = (head + 1) % RX_RING;
+        if (next == m_rx_tail[bus]) {
+            ++m_rx_queue_dropped[bus];
+            continue;
+        }
+        s_rx_ring[bus][head] = f;
+        __DMB();
+        m_rx_head[bus] = next;
+    }
+}
+
 void CanBus::printStatus(uint8_t bus) const {
     if (bus >= NUM_BUSES) {
         return;
     }
     FDCAN_HandleTypeDef* h = handle(bus);
-    Telemetry::printf("[SHELL] can %s: en=%d rate=%lu tx=%lu drop=%lu rx=%lu busoff_rec=%lu PSR=0x%02lX",
+    Telemetry::printf("[SHELL] can %s: en=%d rate=%lu tx=%lu tx_drop=%lu rx=%lu rx_q_drop=%lu malformed=%lu hal_err=%lu busoff_rec=%lu PSR=0x%02lX",
                       bus == 0 ? "A(FDCAN1)" : "B(FDCAN2)",
                       m_enabled[bus] ? 1 : 0,
                       static_cast<unsigned long>(m_bitrate),
                       static_cast<unsigned long>(m_tx_frames[bus]),
                       static_cast<unsigned long>(m_tx_dropped[bus]),
                       static_cast<unsigned long>(m_rx_frames[bus]),
+                      static_cast<unsigned long>(m_rx_queue_dropped[bus]),
+                      static_cast<unsigned long>(m_rx_malformed[bus]),
+                      static_cast<unsigned long>(m_rx_hal_errors[bus]),
                       static_cast<unsigned long>(m_busoff_recoveries[bus]),
                       static_cast<unsigned long>(h->Instance->PSR));
 }

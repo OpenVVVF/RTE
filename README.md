@@ -229,7 +229,9 @@ KV bit rate (`Can.BitRate`, default 500 kbit/s).
   and keeps the session alive with heartbeats (timeout drops it — fail-safe
   on host loss). Telemetry streams to the session only while granted
   (decimated, `Can.Proto.TelemDiv`); shell commands ride the same transport
-  into the shared `CommandManager`. Packets use the shared
+  into the shared `CommandManager` only when explicitly enabled with
+  `Can.Proto.AllowCmd=1` (default off while authentication is not implemented).
+  Packets use the shared
   `Lib/InverterProtocol` format segmented over classic CAN frames; AUTH
   message IDs are reserved for a future password gate. IDs default
   0x700/0x701 (`Can.Proto.IdBase`).

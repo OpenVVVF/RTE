@@ -37,6 +37,9 @@ public:
     /** @brief Main-loop housekeeping: paced TX pump + reassembly timeout. */
     void update();
 
+    uint32_t rxDropped() const { return m_rx_dropped; }
+    bool txBusy() const { return m_tx_len != 0; }
+
 private:
     void pumpTx();
     uint8_t  m_bus = 1;
