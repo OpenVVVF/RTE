@@ -37,3 +37,4 @@ covers the HostSim live-telemetry / PR #3 work. Treat it as the first entry.
 | 2026-08-04 | Gemini 3.6 Flash | `2026-08-04-gemini-windows-fixes-fpga-foc.md` |
 | 2026-08-05 | Kimi Code | `2026-08-05-kimi-fork-sync-rebase-audit.md` |
 | 2026-08-05 | Kimi Code | `2026-08-05-audit-report.md` (module audit findings) |
+| 2026-08-06 | Kimi Code | `2026-08-06-kimi-audit-fixes-fpga-doc.md` |
