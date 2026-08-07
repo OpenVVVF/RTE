@@ -129,9 +129,10 @@ TEST(NodeTemplates, LoadsControlBlocks) {
 
     const auto pi = graph.FindNodeType("Control.Pi");
     ASSERT_TRUE(pi.has_value());
-    EXPECT_EQ(pi->inputPorts.size(), 2u);
+    EXPECT_EQ(pi->inputPorts.size(), 3u);
     EXPECT_EQ(pi->outputPorts.size(), 1u);
     EXPECT_NE(pi->inlineCode.find("Integral += error"), std::string::npos);
+    EXPECT_TRUE(pi->FindInputPort("Feedforward").has_value());
 
     const auto clarke = graph.FindNodeType("Transforms.Clarke");
     ASSERT_TRUE(clarke.has_value());

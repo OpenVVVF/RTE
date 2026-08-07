@@ -2,7 +2,7 @@
   "id": "Control.Pi",
   "displayName": "PI Controller",
   "defaultName": "Pi",
-  "description": "Proportional-integral controller with output clamping and back-calculation anti-windup.",
+  "description": "Proportional-integral controller with output clamping, back-calculation anti-windup, and an optional feed-forward term.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "domain": "",
@@ -26,6 +26,17 @@
         "frame": "scalar",
         "dtype": "f32"
       }
+    },
+    {
+      "name": "Feedforward",
+      "description": "Optional additive feed-forward value. Wired voltage sources are extracted automatically; unconnected ports default to zero.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
     }
   ],
   "outputPorts": [
@@ -79,6 +90,12 @@
     },
     "AwGain": {
       "description": "Back-calculation anti-windup gain. Zero disables anti-windup.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Feedforward": {
+      "description": "Default value used when the Feedforward input port is not connected.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"

@@ -4,7 +4,7 @@
 const float error = Setpoint - Measurement;
 Integral += error * Dt;
 
-float raw_output = Kp * error + Ki * Integral;
+float raw_output = Kp * error + Ki * Integral + Feedforward;
 
 /* Dynamic limit derived from DC-link voltage.  Allow overmodulation up to
  * the six-step boundary (2*Vdc/3) so the SVPWM stage can use the full
