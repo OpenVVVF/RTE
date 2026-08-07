@@ -1218,14 +1218,14 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "SampleTrigger",
-      "description": "",
+      "description": "Schedules the next phase-current ADC burst in the quietest available PWM window.",
       "displayName": "Adaptive Sample Trigger",
       "domain": "tim_isr",
       "id": "hw.adaptive_sample_trigger",
       "inlineCode": "/* Adaptive current-sample trigger:\n *   Place the ADC micro-burst trigger at the quietest point in the upcoming\n *   PWM period, computed from the three phase duties.  Falls back to the\n *   legacy bottom trigger when no clean window exists.\n *\n * Connect after the SVPWM node so the duties reflect the upcoming period.\n */\nconst uint32_t arr = platform_pwm_get_arr();\nconst uint32_t gap = platform_schedule_adaptive_sample(\n    Duty_A, Duty_B, Duty_C, arr);\n\nGapTicks = rte::Dimensionless(static_cast<float>(gap));\n",
       "inputPorts": [
         {
-          "description": "",
+          "description": "Normalized phase-A PWM duty command for the upcoming period.",
           "direction": "input",
           "name": "Duty_A",
           "optional": false,
@@ -1236,7 +1236,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Normalized phase-B PWM duty command for the upcoming period.",
           "direction": "input",
           "name": "Duty_B",
           "optional": false,
@@ -1247,7 +1247,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Normalized phase-C PWM duty command for the upcoming period.",
           "direction": "input",
           "name": "Duty_C",
           "optional": false,
@@ -1262,7 +1262,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "",
+          "description": "Available quiet-window width in PWM timer ticks.",
           "direction": "output",
           "name": "GapTicks",
           "optional": false,
@@ -1330,7 +1330,7 @@
       "displayName": "PI Controller",
       "domain": "",
       "id": "Control.Pi",
-      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage, matching the base image's\n * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
+      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage.  Allow overmodulation up to\n * the six-step boundary (2*Vdc/3) so the SVPWM stage can use the full\n * hexagon when commanded.  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
       "inputPorts": [
         {
           "description": "Desired target value.",
@@ -1463,6 +1463,82 @@
           }
         }
       ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Mtpa",
+      "description": "Maximum Torque Per Ampere current-reference generator for PMSM. Converts a per-unit current command into optimal d-q current references using motor inductances and flux linkage.",
+      "displayName": "MTPA Reference",
+      "domain": "",
+      "id": "Control.Mtpa",
+      "inlineCode": "/* Maximum Torque Per Ampere (MTPA) current-reference generator.\n * CurrentRef is per-unit [-1..1] and scaled by CurrentMax to obtain the\n * actual current magnitude. For SPM motors (Ld == Lq) the result is\n * Id=0, Iq=CurrentRef*CurrentMax. For IPMSM (Lq > Ld) the current angle\n * is computed from the analytical MTPA condition.\n *\n * Torque equation: T = (3/2)*pp*(Lambda*Iq + (Ld-Lq)*Id*Iq)\n * MTPA condition:  Lambda*cos(beta) + (Ld-Lq)*Is*cos(2*beta) = 0\n * Solving for cos(beta) with delta = Lq - Ld:\n *   cos(beta) = (sqrt(Lambda^2 + 8*delta^2*Is^2) - Lambda) / (4*delta*Is)\n */\nconst float i_cmd = CurrentRef * CurrentMax.in(au::amperes);\nconst float i_abs = fabsf(i_cmd);\nfloat id_ref = 0.0f;\n\nif (i_abs > 1e-6f) {\n    const float delta = Lq - Ld;\n    if (fabsf(delta) > 1e-9f) {\n        const float radical = sqrtf(Lambda * Lambda + 8.0f * delta * delta * i_abs * i_abs);\n        float cos_beta = (radical - Lambda) / (4.0f * delta * i_abs);\n        if (cos_beta > 1.0f) cos_beta = 1.0f;\n        if (cos_beta < -1.0f) cos_beta = -1.0f;\n        id_ref = i_abs * cos_beta;\n    }\n}\n\nconst float ratio = (i_abs > 1e-6f) ? (id_ref / i_abs) : 0.0f;\nconst float sin_beta = sqrtf(1.0f - ratio * ratio);\nconst float iq_ref = i_cmd * sin_beta;\n\nI_D = rte::Amperes(id_ref);\nI_Q = rte::Amperes(iq_ref);\n",
+      "inputPorts": [
+        {
+          "description": "Per-unit current command [-1..1]. Scaled by CurrentMax to obtain the current magnitude used for MTPA.",
+          "direction": "input",
+          "name": "CurrentRef",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "D-axis current reference that realizes MTPA for the requested current magnitude.",
+          "direction": "output",
+          "name": "I_D",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Q-axis current reference that realizes MTPA for the requested current magnitude.",
+          "direction": "output",
+          "name": "I_Q",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "CurrentMax": {
+          "description": "Maximum current magnitude in amperes. CurrentRef is multiplied by this value to obtain the actual current command.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "current"
+        },
+        "Lambda": {
+          "description": "Permanent-magnet flux linkage in webers.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ld": {
+          "description": "D-axis inductance in henries.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lq": {
+          "description": "Q-axis inductance in henries.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
     },
     {
       "classDefinition": "",
@@ -1679,7 +1755,7 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "Rpm",
-      "description": "",
+      "description": "Reads the platform's mechanical and electrical motor-speed estimates.",
       "displayName": "RPM (Mech/Elec)",
       "domain": "",
       "id": "hw.rpm",
@@ -1689,7 +1765,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "",
+          "description": "Estimated mechanical speed in revolutions per minute.",
           "direction": "output",
           "name": "RpmMech",
           "optional": false,
@@ -1700,7 +1776,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Estimated electrical speed in revolutions per minute.",
           "direction": "output",
           "name": "RpmElec",
           "optional": false,
@@ -1759,7 +1835,7 @@
       "displayName": "Space Vector PWM",
       "domain": "",
       "id": "Transforms.Svpwm",
-      "inlineCode": "/* Clamp the alpha/beta voltage vector to the linear SVM limit.\n * The maximum line-to-neutral voltage magnitude for linear modulation is\n * Vdc / sqrt(3).  Use a small margin to stay away from the overmodulation\n * boundary. */\nconst float sqrt3 = 1.7320508075688772f;\nconst float v_max_linear = (V_Dc.in(au::volts) / sqrt3) * 0.95f;\nfloat valpha = V_Alpha.in(au::volts);\nfloat vbeta  = V_Beta.in(au::volts);\nconst float v_albe_sq = valpha * valpha + vbeta * vbeta;\nif (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n    const float scale = v_max_linear / sqrtf(v_albe_sq);\n    valpha *= scale;\n    vbeta  *= scale;\n}\n\n/* Inverse Clarke: alpha/beta -> A/B/C. */\nconst float v_a = valpha / V_Dc.in(au::volts);\nconst float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);\nconst float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\n/* Convert to percent duty and clamp.  Linear SVM stays roughly in\n * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\nfloat duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\nfloat duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\nfloat duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\nif (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\nif (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\nif (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\nDuty_A = duty_a_pct;\nDuty_B = duty_b_pct;\nDuty_C = duty_c_pct;\n",
+      "inlineCode": "/* Clamp the alpha/beta voltage vector to the six-step boundary.\n * The maximum line-to-neutral voltage magnitude for linear modulation is\n * Vdc / sqrt(3); overmodulation is allowed up to 2*Vdc/3. */\nconst float sqrt3 = 1.7320508075688772f;\nconst float v_max_linear = V_Dc.in(au::volts) * 2.0f / 3.0f;\nfloat valpha = V_Alpha.in(au::volts);\nfloat vbeta  = V_Beta.in(au::volts);\nconst float v_albe_sq = valpha * valpha + vbeta * vbeta;\nif (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n    const float scale = v_max_linear / sqrtf(v_albe_sq);\n    valpha *= scale;\n    vbeta  *= scale;\n}\n\n/* Inverse Clarke: alpha/beta -> A/B/C. */\nconst float v_a = valpha / V_Dc.in(au::volts);\nconst float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);\nconst float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);\n\nfloat v_min = v_a;\nif (v_b < v_min) v_min = v_b;\nif (v_c < v_min) v_min = v_c;\n\nfloat v_max = v_a;\nif (v_b > v_max) v_max = v_b;\nif (v_c > v_max) v_max = v_c;\n\nconst float v_offset = 0.5f * (v_min + v_max);\n\n/* Convert to percent duty and clamp.  Linear SVM stays roughly in\n * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\nfloat duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\nfloat duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\nfloat duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\nif (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\nif (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\nif (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\nDuty_A = duty_a_pct;\nDuty_B = duty_b_pct;\nDuty_C = duty_c_pct;\n",
       "inputPorts": [
         {
           "description": "Requested stationary-frame alpha-axis voltage.",
@@ -2032,7 +2108,7 @@
       "displayName": "LADRC (1st-order)",
       "domain": "",
       "id": "Control.Ladrc",
-      "inlineCode": "/* Linear ADRC (LADRC) for a first-order plant:\n *   dy/dt = f_total + b0 * u\n * Used here as a PMSM dq-current regulator (drop-in for Control.Pi).\n *\n * ESO (Gao bandwidth parameterization):\n *   e  = z1 - y\n *   z1 += dt * (z2 + b0*u - 2*ωo*e)\n *   z2 += dt * (-ωo^2 * e)\n * Control:\n *   u0 = ωc * (r - z1)\n *   u  = (u0 - z2) / b0\n *\n * Independent of FOC PI and FCS-MPCC implementations.\n */\nfloat dt = Dt;\nfloat b0 = B0;\nfloat wc = OmegaC;\nfloat wo = OmegaO;\nif (!(dt > 0.0f)) dt = 0.0002f;\nif (!(b0 > 1.0e-6f) && !(b0 < -1.0e-6f)) b0 = 10000.0f; /* ~1/100µH */\nif (!(wc > 0.0f)) wc = 800.0f;\nif (!(wo > 0.0f)) wo = 2400.0f;\n\nconst float y = Measurement;\nconst float r = Setpoint;\n\nconst float beta1 = 2.0f * wo;\nconst float beta2 = wo * wo;\n\nfloat z1 = Z1;\nfloat z2 = Z2;\n/* Cold-start: align observer to measurement once. */\nif (z1 == 0.0f && z2 == 0.0f && UPrev == 0.0f) {\n    z1 = y;\n}\n\nconst float u_prev = UPrev;\nconst float e_obs = z1 - y;\nz1 += dt * (z2 + b0 * u_prev - beta1 * e_obs);\nz2 += dt * (-beta2 * e_obs);\nZ1 = z1;\nZ2 = z2;\n\nconst float u0 = wc * (r - z1);\nfloat u = (u0 - z2) / b0;\n\n/* Same Vdc-aware clamp convention as Control.Pi. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nfloat max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nfloat min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\nif (u > max_limit) u = max_limit;\nif (u < min_limit) u = min_limit;\n\nUPrev = u;\nOutput = u;\n",
+      "inlineCode": "/* Linear ADRC (LADRC) for a first-order plant:\n *   dy/dt = f_total + b0 * u\n * Used here as a PMSM dq-current regulator (drop-in for Control.Pi).\n *\n * ESO (Gao bandwidth parameterization):\n *   e  = z1 - y\n *   z1 += dt * (z2 + b0*u - 2*ωo*e)\n *   z2 += dt * (-ωo^2 * e)\n * Control:\n *   u0 = ωc * (r - z1)\n *   u  = (u0 - z2) / b0\n *\n * Independent of FOC PI and FCS-MPCC implementations.\n */\nfloat dt = Dt;\nfloat b0 = B0;\nfloat wc = OmegaC;\nfloat wo = OmegaO;\nif (!(dt > 0.0f)) dt = 0.0002f;\nif (!(b0 > 1.0e-6f) && !(b0 < -1.0e-6f)) b0 = 10000.0f; /* ~1/100µH */\nif (!(wc > 0.0f)) wc = 800.0f;\nif (!(wo > 0.0f)) wo = 2400.0f;\n\nconst float y = Measurement;\nconst float r = Setpoint;\n\nconst float beta1 = 2.0f * wo;\nconst float beta2 = wo * wo;\n\nfloat z1 = Z1;\nfloat z2 = Z2;\n/* Cold-start: align observer to measurement once. */\nif (z1 == 0.0f && z2 == 0.0f && UPrev == 0.0f) {\n    z1 = y;\n}\n\nconst float u_prev = UPrev;\nconst float e_obs = z1 - y;\nz1 += dt * (z2 + b0 * u_prev - beta1 * e_obs);\nz2 += dt * (-beta2 * e_obs);\nZ1 = z1;\nZ2 = z2;\n\nconst float u0 = wc * (r - z1);\nfloat u = (u0 - z2) / b0;\n\n/* Same Vdc-aware clamp convention as Control.Pi: allow overmodulation up\n * to the six-step boundary (2*Vdc/3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nfloat max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nfloat min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\nif (u > max_limit) u = max_limit;\nif (u < min_limit) u = min_limit;\n\nUPrev = u;\nOutput = u;\n",
       "inputPorts": [
         {
           "description": "Desired current (A) or process setpoint.",
@@ -2285,14 +2361,14 @@
       "classHeader": "",
       "constructorCode": "/* Seed the current observer with motor parameters from calibration.\n * The codegen FOC does not call FocControlManager::start(), so the observer\n * must be initialized here. */\nplatform_observer_init_from_calibration();\n",
       "defaultName": "Observer",
-      "description": "",
+      "description": "Corrects and predicts phase currents using burst measurements and the applied voltage vector.",
       "displayName": "Current Observer",
       "domain": "tim_isr",
       "id": "hw.current_observer",
       "inlineCode": "/* Current observer node:\n *   1. Correct the observer with the measured phase currents from the\n *      hw.phase_currents node (ADC ISR domain).\n *   2. Run the Luenberger prediction step using the applied voltage vector.\n *   3. Output the observer-estimated phase currents.\n *\n * The correction uses the latest micro-burst measurement.  The prediction\n * uses the voltage vector applied for the next control period.\n */\nconst float iu_meas = I_A_Meas.in(au::amperes);\nconst float iv_meas = I_B_Meas.in(au::amperes);\nconst float diudt = Diudt;\nconst float divdt = Divdt;\nconst uint32_t burst_time_us = static_cast<uint32_t>(BurstTimeUs);\n\nplatform_observer_correct(iu_meas, iv_meas, diudt, divdt, burst_time_us);\n\n/* The input voltage is already delayed by one control step via the\n * math.delay node, breaking the algebraic loop. */\nplatform_observer_predict(V_Alpha.in(au::volts), V_Beta.in(au::volts),\n                          ThetaElec, platform_get_current_domain_dt());\n\nfloat iu_obs = 0.0f, iv_obs = 0.0f, iw_obs = 0.0f;\nplatform_get_observer_currents(&iu_obs, &iv_obs, &iw_obs);\n\nI_A = rte::Amperes(iu_obs);\nI_B = rte::Amperes(iv_obs);\nI_C = rte::Amperes(iw_obs);\n",
       "inputPorts": [
         {
-          "description": "",
+          "description": "Measured phase-A current used to correct the observer.",
           "direction": "input",
           "name": "I_A_Meas",
           "optional": false,
@@ -2303,7 +2379,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Measured phase-B current used to correct the observer.",
           "direction": "input",
           "name": "I_B_Meas",
           "optional": false,
@@ -2314,7 +2390,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Measured phase-C current used to correct the observer.",
           "direction": "input",
           "name": "I_C_Meas",
           "optional": false,
@@ -2325,7 +2401,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Estimated phase-U current slope from the ADC sample burst.",
           "direction": "input",
           "name": "Diudt",
           "optional": false,
@@ -2336,7 +2412,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Estimated phase-V current slope from the ADC sample burst.",
           "direction": "input",
           "name": "Divdt",
           "optional": false,
@@ -2347,7 +2423,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Elapsed time in microseconds across the ADC sample burst.",
           "direction": "input",
           "name": "BurstTimeUs",
           "optional": false,
@@ -2358,7 +2434,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Previously applied alpha-axis voltage used for prediction.",
           "direction": "input",
           "name": "V_Alpha",
           "optional": false,
@@ -2369,7 +2445,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Previously applied beta-axis voltage used for prediction.",
           "direction": "input",
           "name": "V_Beta",
           "optional": false,
@@ -2380,7 +2456,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Electrical rotor angle used by the observer prediction.",
           "direction": "input",
           "name": "ThetaElec",
           "optional": false,
@@ -2395,7 +2471,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "",
+          "description": "Observer-estimated phase-A current.",
           "direction": "output",
           "name": "I_A",
           "optional": false,
@@ -2406,7 +2482,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Observer-estimated phase-B current.",
           "direction": "output",
           "name": "I_B",
           "optional": false,
@@ -2417,7 +2493,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Observer-estimated phase-C current.",
           "direction": "output",
           "name": "I_C",
           "optional": false,
@@ -2477,7 +2553,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Estimated phase-U current slope from the ADC sample burst.",
           "direction": "output",
           "name": "Diudt",
           "optional": false,
@@ -2488,7 +2564,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Estimated phase-V current slope from the ADC sample burst.",
           "direction": "output",
           "name": "Divdt",
           "optional": false,
@@ -2499,7 +2575,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Elapsed time in microseconds across the ADC sample burst.",
           "direction": "output",
           "name": "BurstTimeUs",
           "optional": false,
@@ -2524,14 +2600,14 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "Delay",
-      "description": "",
+      "description": "Outputs the previous input sample and stores the current sample for the next step.",
       "displayName": "Unit Delay",
       "domain": "",
       "id": "math.delay",
       "inlineCode": "/* Unit delay: output the previous input, then store the current input. */\nOut = Prev;\nPrev = In;\n",
       "inputPorts": [
         {
-          "description": "",
+          "description": "Current value to store for the next execution step.",
           "direction": "input",
           "name": "In",
           "optional": false,
@@ -2546,7 +2622,7 @@
       "maxInstances": 0,
       "outputPorts": [
         {
-          "description": "",
+          "description": "Value captured during the previous execution step.",
           "direction": "output",
           "name": "Out",
           "optional": false,
@@ -2559,6 +2635,7 @@
       ],
       "parameterTypes": {
         "Prev": {
+          "description": "Internal state holding the previous input value.",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -3180,7 +3257,7 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "EncRaw",
-      "description": "",
+      "description": "Reads the raw sine and cosine channels from the position encoder.",
       "displayName": "Encoder Raw Sin/Cos",
       "domain": "",
       "id": "hw.encoder_raw",
@@ -3190,7 +3267,7 @@
       "maxInstances": 1,
       "outputPorts": [
         {
-          "description": "",
+          "description": "Raw encoder sine-channel sample.",
           "direction": "output",
           "name": "SinRaw",
           "optional": false,
@@ -3201,7 +3278,7 @@
           }
         },
         {
-          "description": "",
+          "description": "Raw encoder cosine-channel sample.",
           "direction": "output",
           "name": "CosRaw",
           "optional": false,
@@ -3283,7 +3360,7 @@
       "displayName": "PI Controller (Current)",
       "domain": "",
       "id": "Custom.PiCurrent",
-      "inlineCode": "const float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage, matching the base\n * image's VectorPIController convention: max = Vdc * 0.5 * MaxModulation. */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
+      "inlineCode": "const float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation\n * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
       "inputPorts": [
         {
           "description": "",

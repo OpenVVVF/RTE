@@ -6,10 +6,11 @@ Integral += error * Dt;
 
 float raw_output = Kp * error + Ki * Integral;
 
-/* Dynamic limit derived from DC-link voltage, matching the base image's
- * VectorPIController convention: max = Vdc/sqrt(3) * 0.95. */
+/* Dynamic limit derived from DC-link voltage.  Allow overmodulation up to
+ * the six-step boundary (2*Vdc/3) so the SVPWM stage can use the full
+ * hexagon when commanded.  Linear SVPWM limit is Vdc/sqrt(3). */
 const float vdc = platform_get_dc_link_voltage();
-const float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;
+const float dynamic_max = vdc * 2.0f / 3.0f;
 const float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;
 const float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;
 
