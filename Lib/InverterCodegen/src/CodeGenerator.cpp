@@ -242,7 +242,9 @@ std::string EscapeStringLiteral(const std::string& value) {
 
 } // namespace
 
-std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string& value) {
+std::optional<std::string> ParameterValueToCpp(const NodeAPI::WireType& type,
+                                               const std::string& value,
+                                               std::string& error) {
     // Emit a C++ expression that constructs the right unit-wrapped value from a
     // plain numeric literal. Framed parameter types are not supported.
     switch (type.quantity) {
@@ -259,14 +261,38 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
         case NodeAPI::Quantity::Temperature:
             return "rte::Celsius(" + FormatFloatLiteral(value) + ")";
         case NodeAPI::Quantity::Dimensionless:
-        case NodeAPI::Quantity::Boolean:
             return FormatFloatLiteral(value);
+        case NodeAPI::Quantity::Boolean:
+            // Booleans are not floats: accept only the spellings the graph
+            // format uses and reject anything else instead of emitting
+            // garbage like "truef".
+            if (value == "true" || value == "1") return "true";
+            if (value == "false" || value == "0") return "false";
+            error = "Invalid Boolean parameter value: '" + value + "'";
+            return std::nullopt;
         case NodeAPI::Quantity::String:
             return EscapeStringLiteral(value);
     }
     // Unknown / framed: fall back to a plain float so existing templates keep
     // working, but this loses unit safety for those parameters.
     return FormatFloatLiteral(value);
+}
+
+// Builds the C++ initializer for one parameter value. Returns nullopt (with
+// error set) when the parameter is not declared by its node type — appending
+// 'f' to the raw value would produce ill-formed C++ for anything non-numeric.
+std::optional<std::string> ParameterInitializer(
+    const std::optional<NodeAPI::WireType>& paramType,
+    const std::string& nodeId,
+    const std::string& key,
+    const std::string& value,
+    std::string& error) {
+    if (!paramType) {
+        error = "Parameter '" + key + "' of node '" + nodeId +
+                "' is not declared by its node type (value '" + value + "')";
+        return std::nullopt;
+    }
+    return ParameterValueToCpp(*paramType, value, error);
 }
 
 // Config nodes (type id "config.*") expose a FRAM-backed value by a user-chosen
@@ -445,7 +471,9 @@ bool WriteFile(const std::filesystem::path& path, const std::string& content, st
         std::filesystem::create_directories(path.parent_path(), ec);
     }
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-    chmod(path.c_str(), 0777);
+    // Generated sources are non-executable; 0644 is enough to make a stale
+    // read-only output overwritable before unlinking it.
+    chmod(path.c_str(), 0644);
     unlink(path.c_str());
 #else
     if (std::filesystem::exists(path, ec)) {
@@ -530,7 +558,14 @@ std::string BuildStateStruct(
 
 bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) const {
     std::filesystem::path outPath(outputDir);
-    std::filesystem::create_directories(outPath);
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(outPath, ec);
+        if (ec) {
+            error = "Failed to create output directory '" + outputDir + "': " + ec.message();
+            return false;
+        }
+    }
 
     // Validate node ids.
     for (const auto& node : graph_.GetNodes()) {
@@ -639,21 +674,21 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 for (const auto& [key, value] : node->parameters) {
                     if (used.count(key)) {
                         auto paramType = nodeType->FindParameterType(key);
+                        auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                        if (!init) return false;
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                               << " " << key << " = "
-                               << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
-                               << ";\n";
+                               << " " << key << " = " << *init << ";\n";
                     }
                 }
             } else {
                 for (const auto& [key, value] : node->parameters) {
                     if (IsParameterInput(*node, key)) continue;
                     auto paramType = nodeType->FindParameterType(key);
+                    auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                    if (!init) return false;
                     source << "        state." << node->id << "." << key << " = "
-                           << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
-                           << ";\n";
+                           << *init << ";\n";
                 }
                 /* Bind local refs for parameters used by constructorCode. */
                 if (!nodeType->constructorCode.empty()) {
@@ -772,12 +807,11 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                             continue; // Already bound from wire connection
                         }
                         auto paramType = nodeType->FindParameterType(key);
+                        auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                        if (!init) return false;
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                               << " " << key << " = "
-                               << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
-                               << ";\n";
+                               << " " << key << " = " << *init << ";\n";
                         source << "        (void)" << key << ";\n";
                     }
                 }
@@ -858,9 +892,10 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& [key, value] : node->parameters) {
                 if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
+                auto init = ParameterInitializer(paramType, node->id, key, value, error);
+                if (!init) return false;
                 source << "        state." << node->id << "." << key << " = "
-                       << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
-                       << ";\n";
+                       << *init << ";\n";
             }
             source << "    }\n";
         }

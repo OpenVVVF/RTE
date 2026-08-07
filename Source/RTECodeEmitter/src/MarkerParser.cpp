@@ -46,8 +46,8 @@ std::optional<Marker> MarkerParser::ParseLine(std::string_view line, size_t line
         return std::nullopt;
     }
 
-    // Split on whitespace: first token is domain, rest is section.
-    const size_t spacePos = payload.find(' ');
+    // Split on whitespace (space or tab): first token is domain, rest is section.
+    const size_t spacePos = payload.find_first_of(" \t");
     if (spacePos == std::string_view::npos) {
         return std::nullopt;
     }

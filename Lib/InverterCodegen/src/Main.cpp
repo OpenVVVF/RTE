@@ -11,14 +11,18 @@
 
 namespace {
 
-std::string ReadFile(const std::string& path) {
+// Reads the whole file. Returns false (with error set) when the file cannot
+// be opened; an open-but-empty file returns true with empty content.
+bool ReadFile(const std::string& path, std::string& content, std::string& error) {
     std::ifstream file(path);
     if (!file.is_open()) {
-        return {};
+        error = "Failed to open input file: " + path;
+        return false;
     }
     std::stringstream buffer;
     buffer << file.rdbuf();
-    return buffer.str();
+    content = buffer.str();
+    return true;
 }
 
 }  // namespace
@@ -32,9 +36,14 @@ int main(int argc, char* argv[]) {
     const std::string inputPath = argv[1];
     const std::string outputDir = argv[2];
 
-    const std::string jsonText = ReadFile(inputPath);
+    std::string jsonText;
+    std::string readError;
+    if (!ReadFile(inputPath, jsonText, readError)) {
+        std::cerr << readError << "\n";
+        return 1;
+    }
     if (jsonText.empty()) {
-        std::cerr << "Failed to read input file: " << inputPath << "\n";
+        std::cerr << "Input file is empty: " << inputPath << "\n";
         return 1;
     }
 
