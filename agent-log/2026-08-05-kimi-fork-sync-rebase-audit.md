@@ -53,16 +53,38 @@ root `launch_*.bat`.
 - Created `agent-log/` (this directory) with README convention + seed entries.
 - Wrote `docs/ROADMAP_HYBRID_NUCLEO_FPGA.md` (pivot roadmap, doc-only).
 
+### Second rebase (same day, upstream moved again)
+
+- Upstream landed 16 more commits / 431 files (+494k lines): "major refactor"
+  (`f7a2b0c`), **Gen7FW started** (`Images/Gen7FW/`), RTECLI/RTEAutomation added,
+  FirmwareUpdater/HttpApiServer architecture **deleted** upstream (replaced by
+  `rte` CLI + `LocalSessionServer`), `Tools/mcp2221a_gpio.py` deleted (moved to CLI),
+  foc_demo graphs gained SVPWM overmodulation + MTPA node.
+- `fork/main` + local `main` fast-forwarded to `19dbb08` and pushed.
+- Branch rebased again (coder subagent): 23 commits. Dropped as redundant:
+  `8d254b6` (Windows builder portability — superseded by upstream
+  `RTEAutomation::ExecutablePath()`) and `0a6f923` (native Windows codegen —
+  superseded by upstream `rte generate` CLI flow). FirmwareUpdater/HttpApiServer
+  files deleted following upstream. Branch's BuildSimulation ("Build & Reflect in
+  Simulator") re-applied onto upstream's CLI flow; upstream six-step
+  overmodulation kept with branch zero-guards re-applied.
+- Subagent missed a conflict-marker tail in root `CMakeLists.txt:92-97`
+  (stray `=======` + duplicated BUILD_NODEGUI block) — fixed post-rebase by Kimi.
+- Subagent's judgment calls to revisit: in-GUI HTTP flash API dropped (~1,900
+  lines — upstream direction, but confirm with user); GUI Generate now targets
+  Gen6FW default, not Nucleo/HostSim (follow-up candidate); BuildSimulation
+  wiring hand-integrated, needs a click-test.
+- Old tip `b294763` recoverable via reflog.
+
 ## State at handoff
 
-- Checked out: `feat/hostsim-live-telemetry` @ `d62b332` (+ roadmap/log commits on top).
-- Build green, tests green, working tree clean.
-- Push status: see git remotes — all 7 local branches pushed to `fork`
-  (`main`, `docs/...` FF; `feat/hostsim-live-telemetry`, `feat/nucleo-l476-base-image`
-  via `--force-with-lease`; 4 variant branches new on fork).
-- Open PRs on OpenVVVF/RTE: **#3** (HostSim telemetry, head = this branch —
-  was force-pushed, re-check mergeability) and **#2** (Nucleo base image —
-  also rebased, may need PR refresh).
+- Checked out: `feat/hostsim-live-telemetry` (23 commits on `19dbb08`; see git log).
+- Build/tests green after the CMakeLists marker fix (see entry history).
+- Push status: all 7 local branches on `fork`; `feat/hostsim-live-telemetry`
+  force-pushed again after the second rebase.
+- Open PRs on OpenVVVF/RTE: **#3** (HostSim telemetry — rebased onto latest
+  main; re-check mergeability) and **#2** (Nucleo base image — mergeable, may
+  need refresh against Gen7FW-era main).
 
 ## Gotchas for the next agent
 
