@@ -88,6 +88,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Control/CurrentObserver.cpp
     Src/Inverter/Control/MotorParameterEstimator.cpp
     Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
+    Src/Inverter/Calibration/BreakawayCalibrator.cpp
     Src/Inverter/Calibration/CalKvStore.cpp
     Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
     Src/Inverter/Calibration/EncoderLinearityCalibrator.cpp

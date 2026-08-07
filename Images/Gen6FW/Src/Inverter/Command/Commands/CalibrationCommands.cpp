@@ -10,6 +10,7 @@
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/BreakawayCalibrator.h"
 #include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
@@ -38,6 +39,7 @@ using Inverter::resistanceCalibrator;
 using Inverter::inductanceCalibrator;
 using Inverter::fluxLinkageCalibrator;
 using Inverter::autoCalibrationCoordinator;
+using Inverter::breakawayCalibrator;
 using Inverter::encoderADC;
 
 static bool stringsEqual(const char* a, const char* b) {
@@ -395,6 +397,21 @@ public:
             startRun(S::POLE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.Poles")) {
             startRun(S::POLE, S::POLE, path, save_results);
+        } else if (stringsEqual(path, "Motor.Encoder.SinCos.Breakaway") ||
+                   stringsEqual(path, "Motor.Encoder.Breakaway")) {
+            if (openLoopController().isRunning()) {
+                Telemetry::printf("[CAL] stop the motor before starting %s", path);
+                return;
+            }
+            if (breakawayCalibrator().isActive()) {
+                Telemetry::printf("[CAL] %s: already running", path);
+                return;
+            }
+            if (breakawayCalibrator().start()) {
+                Telemetry::printf("[CAL] %s: started", path);
+            } else {
+                Telemetry::printf("[CAL] %s: failed to start", path);
+            }
         } else if (stringsEqual(path, "Motor.Encoder") ||
                    stringsEqual(path, "Motor.Encoder.SinCos")) {
             startRun(S::OFFSET, S::OFFSET, path, save_results);
@@ -458,6 +475,7 @@ private:
         Telemetry::printf("[CAL] routines (cal <path> to run):");
         Telemetry::printf("[CAL]   all                         full profile, in order");
         Telemetry::printf("[CAL]   Motor.Poles");
+        Telemetry::printf("[CAL]   Motor.Encoder.SinCos.Breakaway   find breakaway voltage only");
         printStored("Motor.Poles", "rotor pole count");
         printStored("Motor.Encoder.SinCos.CyclesRev", "encoder elec cycles/mech rev");
         printStored("Motor.Encoder.SinCos.BreakMod", "breakaway modulation");

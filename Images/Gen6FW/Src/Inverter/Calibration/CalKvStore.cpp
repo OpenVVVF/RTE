@@ -26,6 +26,7 @@ constexpr const char* KEY_ENC_FIT_AS     = "Motor.Encoder.SinCos.Fit.As";
 constexpr const char* KEY_ENC_FIT_AC     = "Motor.Encoder.SinCos.Fit.Ac";
 constexpr const char* KEY_ENC_FIT_PHI    = "Motor.Encoder.SinCos.Fit.Phi";
 constexpr const char* KEY_ENC_FIT_VALID  = "Motor.Encoder.SinCos.Fit.Valid";
+constexpr const char* KEY_ENC_BREAK_MOD  = "Motor.Encoder.SinCos.BreakMod";
 constexpr const char* KEY_RES_UV         = "Motor.Resistance.Uv";
 constexpr const char* KEY_RES_UW         = "Motor.Resistance.Uw";
 constexpr const char* KEY_RES_VW         = "Motor.Resistance.Vw";
@@ -117,6 +118,11 @@ bool loadEncoderBounds() {
                                   static_cast<uint16_t>(cMin),
                                   static_cast<uint16_t>(cMax));
     return true;
+}
+
+void saveBreakaway(float breakawayMod) {
+    if (!RteParamStore::isReady()) return;
+    setIfValid(KEY_ENC_BREAK_MOD, breakawayMod);
 }
 
 void saveEncoderFit(const EncoderADC::SinCosFit& fit) {

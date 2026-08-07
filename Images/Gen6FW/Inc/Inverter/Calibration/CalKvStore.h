@@ -39,6 +39,9 @@ void saveEncoderBounds(uint16_t sinMin, uint16_t sinMax,
 /** Restore saved bounds into the decoder.  Returns false if not stored. */
 bool loadEncoderBounds();
 
+/** Persist measured breakaway modulation. */
+void saveBreakaway(float breakawayMod);
+
 /** Persist a fitted sin/cos ellipse correction. */
 void saveEncoderFit(const EncoderADC::SinCosFit& fit);
 

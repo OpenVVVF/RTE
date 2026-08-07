@@ -3,6 +3,7 @@
 #include "Inverter/LoopStats.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/BreakawayCalibrator.h"
 #include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/EncoderOffsetCalibrator.h"
@@ -258,6 +259,7 @@ static void loop()
      * calibrator state machine.  All early-out when inactive. */
     Inverter::openLoopController().update();
     Inverter::autoCalibrationCoordinator().update();
+    Inverter::breakawayCalibrator().update();
     Inverter::poleCalibrator().update();
     Inverter::encoderOffsetCalibrator().update();
     Inverter::encoderLinearityCalibrator().update();
