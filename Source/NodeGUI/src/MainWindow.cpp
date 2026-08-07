@@ -96,6 +96,19 @@ std::filesystem::path DefaultFirmwareBaseDir() {
     return ProjectRoot() / "Images" / "Gen6FW";
 }
 
+// Base image for the user-selected firmware target (Images/<target>), e.g.
+// Gen6FW, NucleoL476FW, or HostSim. Empty falls back to the default target.
+std::filesystem::path FirmwareBaseDir(const QString& targetName) {
+    if (targetName.isEmpty()) {
+        return DefaultFirmwareBaseDir();
+    }
+    const std::string target = targetName.toStdString();
+    const std::filesystem::path installed = InstalledResourceRoot()
+        / "Images" / target;
+    if (std::filesystem::is_directory(installed)) return installed.lexically_normal();
+    return ProjectRoot() / "Images" / target;
+}
+
 QString RteCliPath() {
     const std::filesystem::path adjacent =
         std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())
@@ -1112,10 +1125,12 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
                        "%1\n"
                        "Graph: %2\n"
                        "Project Root: %3\n"
+                       "Firmware Target: %4\n"
                        "============================================================\n")
             .arg(operationName,
                  absoluteGraphPath,
-                 QString::fromStdString(projectRoot.string())));
+                 QString::fromStdString(projectRoot.string()),
+                 preferences_.firmwareTarget));
 
     activeBuildCommand_ = command;
     pendingFirmwarePath_ = QString::fromStdString(firmwareBinary.string());
@@ -1134,7 +1149,14 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
 
     if (command == BuildCommand::BuildSimulation) {
         // Re-emit the graph into HostSim, rebuild the simulator, and restart
-        // the live telemetry feed (see Images/HostSim/scripts).
+        // the live telemetry feed (see Images/HostSim/scripts). One-shot:
+        // there is no follow-up CLI stage, so make that explicit here rather
+        // than rely on the previous operation having reset cliStage_.
+        cliStage_ = CliStage::None;
+        cliOutputBuffer_.clear();
+        // The working directory must be set before start(); afterwards it is
+        // ignored for the already-launched process.
+        buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
 #ifdef _WIN32
         const std::filesystem::path script =
             projectRoot / "Images" / "HostSim" / "scripts" / "run_spwm_live.ps1";
@@ -1160,7 +1182,6 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         };
         buildProcess_->start(QStringLiteral("bash"), arguments);
 #endif
-        buildProcess_->setWorkingDirectory(QString::fromStdString(projectRoot.string()));
         return;
     }
 
@@ -1170,7 +1191,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
                                            : QStringLiteral("build"),
         QStringLiteral("--graph"), absoluteGraphPath,
         QStringLiteral("--base-source"),
-        QString::fromStdString(DefaultFirmwareBaseDir().string()),
+        QString::fromStdString(FirmwareBaseDir(preferences_.firmwareTarget).string()),
         QStringLiteral("--templates"), QString::fromStdString(DefaultTemplatesDir()),
     };
     if (command == BuildCommand::Generate) {

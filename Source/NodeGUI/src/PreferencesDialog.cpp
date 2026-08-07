@@ -69,6 +69,9 @@ AppPreferences LoadAppPreferences() {
     preferences.firmwareBuildType =
         settings.value(QStringLiteral("firmwareBuildType"),
                        QStringLiteral("Release")).toString();
+    preferences.firmwareTarget =
+        settings.value(QStringLiteral("firmwareTarget"),
+                       QStringLiteral("Gen6FW")).toString();
     preferences.panMouseButton = static_cast<Qt::MouseButton>(
         settings.value(QStringLiteral("panMouseButton"),
                        static_cast<int>(Qt::MiddleButton)).toInt());
@@ -82,6 +85,14 @@ AppPreferences LoadAppPreferences() {
     };
     if (!supportedBuildTypes.contains(preferences.firmwareBuildType)) {
         preferences.firmwareBuildType = QStringLiteral("Release");
+    }
+    const QStringList supportedFirmwareTargets = {
+        QStringLiteral("Gen6FW"),
+        QStringLiteral("NucleoL476FW"),
+        QStringLiteral("HostSim"),
+    };
+    if (!supportedFirmwareTargets.contains(preferences.firmwareTarget)) {
+        preferences.firmwareTarget = QStringLiteral("Gen6FW");
     }
     if (!IsSupportedPanButton(preferences.panMouseButton)) {
         preferences.panMouseButton = Qt::MiddleButton;
@@ -104,6 +115,8 @@ void SaveAppPreferences(const AppPreferences& preferences) {
                       preferences.buildLogLineLimit);
     settings.setValue(QStringLiteral("firmwareBuildType"),
                       preferences.firmwareBuildType);
+    settings.setValue(QStringLiteral("firmwareTarget"),
+                      preferences.firmwareTarget);
     settings.setValue(QStringLiteral("panMouseButton"),
                       static_cast<int>(preferences.panMouseButton));
     settings.endGroup();
@@ -166,6 +179,18 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
 
     auto* buildPage = new QWidget(tabs);
     auto* buildLayout = new QFormLayout(buildPage);
+    firmwareTargetCombo_ = new QComboBox(buildPage);
+    firmwareTargetCombo_->addItems({
+        QStringLiteral("Gen6FW"),
+        QStringLiteral("NucleoL476FW"),
+        QStringLiteral("HostSim"),
+    });
+    firmwareTargetCombo_->setCurrentText(preferences.firmwareTarget);
+    firmwareTargetCombo_->setToolTip(
+        QStringLiteral("Base image passed to the generator as --base-source "
+                       "(Images/<target>)"));
+    buildLayout->addRow(QStringLiteral("Firmware target"), firmwareTargetCombo_);
+
     buildTypeCombo_ = new QComboBox(buildPage);
     buildTypeCombo_->addItems({
         QStringLiteral("Release"),
@@ -294,6 +319,7 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.undoHistoryLimit = undoHistoryLimitSpin_->value();
     preferences.buildLogLineLimit = buildLogLineLimitSpin_->value();
     preferences.firmwareBuildType = buildTypeCombo_->currentText();
+    preferences.firmwareTarget = firmwareTargetCombo_->currentText();
     preferences.panMouseButton = static_cast<Qt::MouseButton>(
         panMouseButtonCombo_->currentData().toInt());
     return preferences;
