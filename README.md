@@ -245,6 +245,7 @@ KV bit rate (`Can.BitRate`, default 500 kbit/s).
   fixed sample into an SPSC ring. Foreground code quantizes three samples into
   each 64-byte CAN-FD frame, and low-priority FDCAN IT1 drains transmission.
   Sequence numbers and status frames expose all sample/frame loss.
+  See [CAN_TRACE.md](CAN_TRACE.md) for the short setup and capture guide.
 - Trace is disabled by default. Configure `Can.Trace.En=1`,
   `Can.Trace.Bus=1|2`, `Can.Trace.DataBitRate=3000000`, and optionally
   `Can.Trace.IdBase=1664` / `Can.Trace.AutoStart=1`, then reboot. The selected
