@@ -129,9 +129,10 @@ void EncoderOffsetCalibrator::enterState(State state) {
             const float step_mod = voltageToMod(BREAKAWAY_STEP_V, vdc);
             const float max_v = std::min(BREAKAWAY_MAX_V, vdc * 0.5f);
             const float max_mod_search = voltageToMod(max_v, vdc);
+            const float min_trusted_mod = voltageToMod(0.3f, vdc);
             m_breakaway.start(step_mod, RAMP_PERIOD_MS, max_mod_search,
                               BREAKAWAY_DETECT_CYCLES, 1.0f, MOVE_TIMEOUT_MS,
-                              BREAKAWAY_DETECT_DWELL_MS);
+                              BREAKAWAY_DETECT_DWELL_MS, min_trusted_mod);
             PWM_StartSPWM(OFFSET_ROTATION_FREQUENCY_HZ, 0.0f);
             break;
         }
@@ -508,7 +509,6 @@ void EncoderOffsetCalibrator::update() {
             const float field_mech = fieldMechanicalAngle();
             const float moved_field = std::fabs(field_mech - m_rotate_start_field);
             const float encoder_mech = m_tracker.unwrappedDegrees() / m_encoder_cycles_per_rev;
-            const bool ramp_done = (ramp_status == CurrentLimitedRamp::Status::DONE);
 
             if ((now_ms - m_last_dbg_ms) >= 500U) {
                 m_last_dbg_ms = now_ms;
@@ -562,7 +562,7 @@ void EncoderOffsetCalibrator::update() {
                     return;
                 }
 
-                if (ramp_done && moved_field >= OFFSET_ACQUIRE_START_DEG && m_sign != 0) {
+                if (moved_field >= OFFSET_ACQUIRE_START_DEG && m_sign != 0) {
                     /* Compute and apply the Layer 1 ellipse fit *before* measuring
                      * the offset.  The runtime decoder uses the fit (if valid), so
                      * the stored offset must refer to the fitted angle, not the

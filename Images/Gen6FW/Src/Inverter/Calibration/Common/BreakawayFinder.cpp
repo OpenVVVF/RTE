@@ -9,7 +9,8 @@ namespace Inverter {
 void BreakawayFinder::start(float step, uint32_t period_ms, float max_mod,
                             float detect_cycles, float torque_margin,
                             uint32_t stall_timeout_ms,
-                            uint32_t detect_dwell_ms) {
+                            uint32_t detect_dwell_ms,
+                            float min_trusted_mod) {
     m_step = step;
     m_period_ms = period_ms;
     m_max_mod = max_mod;
@@ -20,8 +21,13 @@ void BreakawayFinder::start(float step, uint32_t period_ms, float max_mod,
 
     /* A stationary rotor cannot move at zero or near-zero modulation.
      * Require the ramp to reach a few steps before trusting any encoder
-     * movement as real breakaway. */
-    m_min_trusted_mod = std::max(0.01f, 3.0f * step);
+     * movement as real breakaway.  Callers that pass an explicit threshold
+     * (e.g. a fixed voltage converted to modulation) override this default. */
+    if (min_trusted_mod > 0.0f) {
+        m_min_trusted_mod = min_trusted_mod;
+    } else {
+        m_min_trusted_mod = std::max(0.01f, 3.0f * step);
+    }
 
     m_mod = 0.0f;
     m_breakaway_mod = 0.0f;

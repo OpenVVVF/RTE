@@ -24,7 +24,8 @@ public:
     void start(float step, uint32_t period_ms, float max_mod,
                float detect_cycles, float torque_margin,
                uint32_t stall_timeout_ms,
-               uint32_t detect_dwell_ms = 0U);
+               uint32_t detect_dwell_ms = 0U,
+               float min_trusted_mod = 0.0f);
 
     /** Reset the movement reference without changing ramp parameters. */
     void resetReference();
