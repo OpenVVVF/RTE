@@ -20,7 +20,7 @@ static constexpr float HOLD_MAX_MOD = 0.50f;
  * modulation step makes the ramp behave similarly at 20 V and 120 V. */
 static constexpr float BREAKAWAY_STEP_V = 0.50f;        /* V per ramp period */
 static constexpr float BREAKAWAY_MAX_V = 10.0f;         /* peak phase voltage */
-static constexpr float ROTATE_HEADROOM_V = 3.0f;        /* V above breakaway */
+static constexpr float ROTATE_HEADROOM_FACTOR = 1.20f;  /* rotation = breakaway * this */
 static constexpr float CAL_MAX_VOLTAGE_V = 25.0f;       /* hard voltage ceiling */
 
 static constexpr uint32_t WARMUP_MS = 5000U;
@@ -144,7 +144,7 @@ void EncoderOffsetCalibrator::enterState(State state) {
             const float floor_mod = voltageToMod(v_breakaway, vdc);
             /* Never warm up at a voltage below breakaway; keep a small headroom
              * so the rotor stays locked. */
-            const float min_target_mod = voltageToMod(v_breakaway + 0.5f, vdc);
+            const float min_target_mod = voltageToMod(v_breakaway * 1.05f, vdc);
             if (target < min_target_mod) {
                 target = min_target_mod;
             }
@@ -196,7 +196,7 @@ void EncoderOffsetCalibrator::enterState(State state) {
                 const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
                 float target = m_mod;
                 const float floor_mod = voltageToMod(v_breakaway, vdc);
-                const float min_target_mod = voltageToMod(v_breakaway + 0.5f, vdc);
+                const float min_target_mod = voltageToMod(v_breakaway * 1.05f, vdc);
                 if (target < min_target_mod) {
                     target = min_target_mod;
                 }
@@ -469,7 +469,7 @@ void EncoderOffsetCalibrator::update() {
                 m_breakaway_mod = m_breakaway.breakawayMod();
                 const float vdc = dcLinkVoltageSensor().voltage();
                 const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
-                const float v_rotate = v_breakaway + ROTATE_HEADROOM_V;
+                const float v_rotate = v_breakaway * ROTATE_HEADROOM_FACTOR;
                 m_mod = voltageToMod(v_rotate, vdc);
                 const float max_mod = effectiveMaxMod(vdc);
                 if (m_mod > max_mod) m_mod = max_mod;

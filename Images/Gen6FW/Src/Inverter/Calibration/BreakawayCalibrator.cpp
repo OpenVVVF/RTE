@@ -13,7 +13,9 @@
 namespace Inverter {
 
 static constexpr float RAMP_FREQUENCY_HZ = 1.0f;
-static constexpr uint32_t RAMP_TIMEOUT_MS = 15000U;
+static constexpr float REVERSE_FREQUENCY_HZ = -1.0f;
+static constexpr uint32_t RAMP_TIMEOUT_MS = 60000U;
+static constexpr uint32_t REVERSE_TIMEOUT_MS = 5000U;
 static constexpr float MIN_TRUSTED_VOLTAGE_V = 0.3f;
 static constexpr uint32_t HW_INIT_TIMEOUT_MS = 2000U;
 
@@ -32,21 +34,24 @@ float BreakawayCalibrator::modToVoltage(float m, float vdc_v) {
 }
 
 bool BreakawayCalibrator::start(float max_voltage, float step_voltage,
-                                uint32_t ramp_period_ms, float detect_cycles) {
+                                uint32_t step_dwell_ms, float detect_cycles,
+                                float reverse_cycles) {
     if (isActive()) {
         Telemetry::printf("[CAL] BREAK: already active");
         return false;
     }
 
-    if (max_voltage <= 0.0f || step_voltage <= 0.0f || ramp_period_ms == 0U || detect_cycles <= 0.0f) {
+    if (max_voltage <= 0.0f || step_voltage <= 0.0f || step_dwell_ms == 0U ||
+        detect_cycles <= 0.0f || reverse_cycles <= 0.0f) {
         Telemetry::printf("[CAL] BREAK: invalid parameters");
         return false;
     }
 
     m_max_voltage = max_voltage;
     m_step_voltage = step_voltage;
-    m_ramp_period_ms = ramp_period_ms;
+    m_step_dwell_ms = step_dwell_ms;
     m_detect_cycles = detect_cycles;
+    m_reverse_cycles = reverse_cycles;
 
     m_mod = 0.0f;
     m_breakaway_mod = 0.0f;
@@ -54,6 +59,8 @@ bool BreakawayCalibrator::start(float max_voltage, float step_voltage,
     m_have_start = false;
     m_in_trusted_region = false;
     m_max_phantom_cycles = 0.0f;
+    m_have_reverse_start = false;
+    m_forward_final_cycles = 0.0f;
     m_tracker.reset();
 
     m_hw.begin();
@@ -64,6 +71,7 @@ bool BreakawayCalibrator::start(float max_voltage, float step_voltage,
 void BreakawayCalibrator::enterState(State state) {
     m_state = state;
     m_state_start_ms = HAL_GetTick();
+    m_step_enter_ms = HAL_GetTick();
 }
 
 void BreakawayCalibrator::fail(const char* reason) {
@@ -109,18 +117,24 @@ void BreakawayCalibrator::update() {
                 PWM_StartPhase(2);
                 PWM_ResetSPWMElectricalCycles();
                 PWM_StartSPWM(RAMP_FREQUENCY_HZ, 0.0f);
-                Telemetry::printf("[CAL] BREAK: starting ramp to %.2f V in %.2f V steps",
+                Telemetry::printf("[CAL] BREAK: ramp to %.2f V in %.2f V steps (dwell %lu ms)",
                                   static_cast<double>(m_max_voltage),
-                                  static_cast<double>(m_step_voltage));
-                enterState(State::RAMP);
+                                  static_cast<double>(m_step_voltage),
+                                  static_cast<unsigned long>(m_step_dwell_ms));
+                enterState(State::RAMP_FWD);
             } else if ((now_ms - m_state_start_ms) > HW_INIT_TIMEOUT_MS) {
                 fail("gate driver init timeout");
             }
             break;
         }
 
-        case State::RAMP: {
-            updateRamp();
+        case State::RAMP_FWD: {
+            updateRampFwd();
+            break;
+        }
+
+        case State::VERIFY_REVERSE: {
+            updateVerifyReverse();
             break;
         }
 
@@ -132,7 +146,20 @@ void BreakawayCalibrator::update() {
     }
 }
 
-void BreakawayCalibrator::updateRamp() {
+void BreakawayCalibrator::advanceVoltageStep() {
+    const float vdc = dcLinkVoltageSensor().voltage();
+    m_mod += voltageToMod(m_step_voltage, vdc);
+    const float max_mod = voltageToMod(m_max_voltage, vdc);
+    if (m_mod > max_mod) {
+        m_mod = max_mod;
+    }
+    m_step_enter_ms = HAL_GetTick();
+    Telemetry::printf("[CAL] BREAK: step mod=%.3f (%.2f V)",
+                      static_cast<double>(m_mod),
+                      static_cast<double>(modToVoltage(m_mod, vdc)));
+}
+
+void BreakawayCalibrator::updateRampFwd() {
     const uint32_t now_ms = HAL_GetTick();
     const float vdc = dcLinkVoltageSensor().voltage();
     const float cycles = m_tracker.mechanicalCycles();
@@ -143,14 +170,9 @@ void BreakawayCalibrator::updateRamp() {
     }
     const float moved_cycles = cycles - m_start_cycles;
 
-    /* Step the voltage ramp. */
-    if ((now_ms - m_last_ramp_ms) >= m_ramp_period_ms) {
-        m_last_ramp_ms = now_ms;
-        m_mod += voltageToMod(m_step_voltage, vdc);
-        const float max_mod = voltageToMod(m_max_voltage, vdc);
-        if (m_mod > max_mod) {
-            m_mod = max_mod;
-        }
+    /* Advance the voltage only after the dwell has expired. */
+    if ((now_ms - m_step_enter_ms) >= m_step_dwell_ms) {
+        advanceVoltageStep();
     }
 
     PWM_SetSPWMParams(RAMP_FREQUENCY_HZ, m_mod);
@@ -166,7 +188,7 @@ void BreakawayCalibrator::updateRamp() {
         if (v_applied < MIN_TRUSTED_VOLTAGE_V) {
             return;
         }
-        Telemetry::printf("[CAL] BREAK: entering trusted region at mod=%.3f (%.2f V), discarding %.3f cycles of phantom motion",
+        Telemetry::printf("[CAL] BREAK: trusted at mod=%.3f (%.2f V), phantom=%.3f cycles",
                           static_cast<double>(m_mod),
                           static_cast<double>(v_applied),
                           static_cast<double>(moved_cycles));
@@ -176,24 +198,60 @@ void BreakawayCalibrator::updateRamp() {
     }
 
     const float moved_since_trusted = cycles - m_start_cycles;
+    if (std::fabs(moved_since_trusted) > 0.01f) {
+        m_last_move_ms = now_ms;
+    }
 
     if (std::fabs(moved_since_trusted) >= m_detect_cycles) {
         m_breakaway_mod = m_mod;
         m_breakaway_voltage = modToVoltage(m_mod, vdc);
+        m_forward_final_cycles = cycles;
         CalKvStore::saveBreakaway(m_breakaway_mod);
-        PWM_StopSPWM();
-        CalibrationHardware::shutdown();
-        Telemetry::printf("[CAL] BREAK: DONE: breakaway at mod=%.3f (%.2f V), moved=%.3f cycles",
+        Telemetry::printf("[CAL] BREAK: forward breakaway at mod=%.3f (%.2f V), moved=%.3f cycles",
                           static_cast<double>(m_breakaway_mod),
                           static_cast<double>(m_breakaway_voltage),
                           static_cast<double>(moved_since_trusted));
+
+        /* Reverse the field at the same voltage and watch the encoder go back. */
+        PWM_SetSPWMParams(REVERSE_FREQUENCY_HZ, m_mod);
+        Telemetry::printf("[CAL] BREAK: reversing field to verify encoder sign");
+        m_have_reverse_start = false;
+        enterState(State::VERIFY_REVERSE);
+        return;
+    }
+
+    const float max_mod = voltageToMod(m_max_voltage, vdc);
+    if (m_mod >= max_mod && (now_ms - m_state_start_ms) > RAMP_TIMEOUT_MS) {
+        fail("ramp timeout: rotor did not move");
+    }
+}
+
+void BreakawayCalibrator::updateVerifyReverse() {
+    const uint32_t now_ms = HAL_GetTick();
+    const float cycles = m_tracker.mechanicalCycles();
+
+    if (!m_have_reverse_start) {
+        m_reverse_start_cycles = cycles;
+        m_have_reverse_start = true;
+    }
+
+    /* The encoder should move in the opposite direction of the forward motion. */
+    const float d_reverse = cycles - m_reverse_start_cycles;
+    const float d_forward = m_forward_final_cycles - m_start_cycles;
+
+    if ((d_forward > 0.0f && d_reverse <= -m_reverse_cycles) ||
+        (d_forward < 0.0f && d_reverse >= m_reverse_cycles)) {
+        PWM_StopSPWM();
+        CalibrationHardware::shutdown();
+        Telemetry::printf("[CAL] BREAK: DONE: reverse check passed (d_fwd=%.3f d_rev=%.3f)",
+                          static_cast<double>(d_forward),
+                          static_cast<double>(d_reverse));
         m_state = State::DONE;
         return;
     }
 
-    if (m_mod >= voltageToMod(m_max_voltage, vdc) &&
-        (now_ms - m_state_start_ms) > RAMP_TIMEOUT_MS) {
-        fail("ramp timeout: rotor did not move");
+    if ((now_ms - m_state_start_ms) > REVERSE_TIMEOUT_MS) {
+        fail("reverse check timeout: encoder did not follow reversed field");
     }
 }
 

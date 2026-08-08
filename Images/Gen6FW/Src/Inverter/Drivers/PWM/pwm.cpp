@@ -345,7 +345,7 @@ bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
  */
 void PWM_StartSPWM(float fundamental_freq_hz, float modulation_index)
 {
-    if (fundamental_freq_hz < 0.0f) fundamental_freq_hz = 0.0f;
+    /* Negative frequency reverses the rotation direction. */
     if (modulation_index < 0.0f) modulation_index = 0.0f;
     if (modulation_index > SVPWM_M_MAX) modulation_index = SVPWM_M_MAX;
 
@@ -373,7 +373,7 @@ void PWM_StopSPWM(void)
 
 void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
 {
-    if (fundamental_freq_hz < 0.0f) fundamental_freq_hz = 0.0f;
+    /* Negative frequency reverses the rotation direction. */
     if (modulation_index < 0.0f) modulation_index = 0.0f;
     if (modulation_index > SVPWM_M_MAX) modulation_index = SVPWM_M_MAX;
 
@@ -442,11 +442,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     PWM_SetThreePhaseDuty(du, dv, dw);
 
-    /* Advance angle by one PWM period. */
+    /* Advance angle by one PWM period.  Negative frequency reverses direction;
+     * keep the angle in [0, 2pi) and count net forward cycles only. */
     angle += TWO_PI * spwm_fundamental_freq_hz / pwm_switching_freq_hz;
     if (angle >= TWO_PI) {
         angle -= TWO_PI;
         ++spwm_elec_cycles;
+    } else if (angle < 0.0f) {
+        angle += TWO_PI;
     }
     spwm_angle = angle;
 }
