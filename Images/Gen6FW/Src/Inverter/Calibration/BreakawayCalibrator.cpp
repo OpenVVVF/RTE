@@ -15,6 +15,8 @@ namespace Inverter {
 static constexpr float RAMP_FREQUENCY_HZ = 1.0f;
 static constexpr float REVERSE_FREQUENCY_HZ = -1.0f;
 static constexpr uint32_t RAMP_TIMEOUT_MS = 60000U;
+static constexpr uint32_t PAUSE_AFTER_FWD_MS = 1000U;
+static constexpr uint32_t REVERSE_SETTLE_MS = 500U;
 static constexpr uint32_t REVERSE_TIMEOUT_MS = 5000U;
 static constexpr float MIN_TRUSTED_VOLTAGE_V = 0.3f;
 static constexpr uint32_t HW_INIT_TIMEOUT_MS = 2000U;
@@ -133,6 +135,11 @@ void BreakawayCalibrator::update() {
             break;
         }
 
+        case State::PAUSE_AFTER_FWD: {
+            updatePauseAfterFwd();
+            break;
+        }
+
         case State::VERIFY_REVERSE: {
             updateVerifyReverse();
             break;
@@ -211,12 +218,9 @@ void BreakawayCalibrator::updateRampFwd() {
                           static_cast<double>(m_breakaway_mod),
                           static_cast<double>(m_breakaway_voltage),
                           static_cast<double>(moved_since_trusted));
-
-        /* Reverse the field at the same voltage and watch the encoder go back. */
-        PWM_SetSPWMParams(REVERSE_FREQUENCY_HZ, m_mod);
-        Telemetry::printf("[CAL] BREAK: reversing field to verify encoder sign");
-        m_have_reverse_start = false;
-        enterState(State::VERIFY_REVERSE);
+        Telemetry::printf("[CAL] BREAK: pausing %.1f s before reverse check",
+                          static_cast<double>(PAUSE_AFTER_FWD_MS) * 0.001);
+        enterState(State::PAUSE_AFTER_FWD);
         return;
     }
 
@@ -226,9 +230,30 @@ void BreakawayCalibrator::updateRampFwd() {
     }
 }
 
+void BreakawayCalibrator::updatePauseAfterFwd() {
+    const uint32_t now_ms = HAL_GetTick();
+
+    /* Keep the forward field running so the rotor stays pulled in the same
+     * direction during the pause. */
+    PWM_SetSPWMParams(RAMP_FREQUENCY_HZ, m_mod);
+
+    if ((now_ms - m_state_start_ms) >= PAUSE_AFTER_FWD_MS) {
+        PWM_SetSPWMParams(REVERSE_FREQUENCY_HZ, m_mod);
+        Telemetry::printf("[CAL] BREAK: reversing field to verify encoder sign");
+        m_have_reverse_start = false;
+        enterState(State::VERIFY_REVERSE);
+    }
+}
+
 void BreakawayCalibrator::updateVerifyReverse() {
     const uint32_t now_ms = HAL_GetTick();
     const float cycles = m_tracker.mechanicalCycles();
+
+    /* Give the rotor a moment to react to the reversed field before we start
+     * measuring the reverse motion. */
+    if ((now_ms - m_state_start_ms) < REVERSE_SETTLE_MS) {
+        return;
+    }
 
     if (!m_have_reverse_start) {
         m_reverse_start_cycles = cycles;

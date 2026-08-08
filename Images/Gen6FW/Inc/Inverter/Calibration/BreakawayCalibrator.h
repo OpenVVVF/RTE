@@ -21,6 +21,7 @@ public:
         IDLE,
         HW_INIT,
         RAMP_FWD,
+        PAUSE_AFTER_FWD,
         VERIFY_REVERSE,
         DONE,
         FAIL
@@ -42,7 +43,7 @@ public:
                float step_voltage = 0.5f,
                uint32_t step_dwell_ms = 1000U,
                float detect_cycles = 0.15f,
-               float reverse_cycles = 0.10f);
+               float reverse_cycles = 0.15f);
 
     /** Non-blocking state-machine update; call at ~100 Hz. */
     void update();
@@ -67,6 +68,7 @@ private:
     void enterState(State state);
     void fail(const char* reason);
     void updateRampFwd();
+    void updatePauseAfterFwd();
     void updateVerifyReverse();
     void advanceVoltageStep();
 
