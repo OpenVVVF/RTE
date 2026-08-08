@@ -229,7 +229,7 @@ bool CanBus::init() {
     m_enabled[1] = kvOr("Can.B.En", 1.0f) != 0.0f;
     const bool trace_enabled = kvOr("Can.Trace.En", 0.0f) != 0.0f;
     const float trace_bus = kvOr("Can.Trace.Bus", 1.0f);
-    const float data_bitrate_config = kvOr("Can.Trace.DataBitRate", 3000000.0f);
+    const float data_kbaud_config = kvOr("Can.Trace.DataKBaud", 3000.0f);
     if (trace_enabled && (trace_bus == 1.0f || trace_bus == 2.0f)) {
         m_fd_enabled[static_cast<uint8_t>(trace_bus) - 1U] = true;
     }
@@ -242,13 +242,13 @@ bool CanBus::init() {
         return false;
     }
     m_bitrate = static_cast<uint32_t>(bitrate_config);
-    if (!(data_bitrate_config >= 1000000.0f && data_bitrate_config <= 5000000.0f) ||
-        data_bitrate_config != static_cast<float>(static_cast<uint32_t>(data_bitrate_config))) {
-        Telemetry::printf("[CAN] invalid Can.Trace.DataBitRate; trace FD disabled");
+    if (!(data_kbaud_config >= 1000.0f && data_kbaud_config <= 5000.0f) ||
+        data_kbaud_config != static_cast<float>(static_cast<uint32_t>(data_kbaud_config))) {
+        Telemetry::printf("[CAN] invalid Can.Trace.DataKBaud; trace FD disabled");
         m_fd_enabled[0] = false;
         m_fd_enabled[1] = false;
     } else {
-        m_data_bitrate = static_cast<uint32_t>(data_bitrate_config);
+        m_data_bitrate = static_cast<uint32_t>(data_kbaud_config) * 1000U;
     }
 
     if (!m_enabled[0] && !m_enabled[1]) {

@@ -25,14 +25,15 @@ A dedicated bus is recommended. For CAN A/FDCAN1 at 500 kbit/s nominal and
 config set Can.A.En 1
 config set Can.Trace.En 1
 config set Can.Trace.Bus 1
-config set Can.Trace.DataBitRate 3000000
+config set Can.Trace.DataKBaud 3000
 config set Can.Trace.IdBase 1664
 config set Can.Trace.AutoStart 0
 ```
 
 These raw driver settings are saved immediately. Reboot so the selected CAN
 controller is initialized for CAN-FD. `Can.Trace.Bus` uses `1` for CAN A and
-`2` for CAN B.
+`2` for CAN B. The data rate is stored in kilobaud because FRAM values are
+limited to 1,000,000.
 
 ## 3. Configure SocketCAN (Linux)
 
