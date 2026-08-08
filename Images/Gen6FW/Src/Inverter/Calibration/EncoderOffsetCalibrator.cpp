@@ -20,7 +20,7 @@ static constexpr float HOLD_MAX_MOD = 0.50f;
  * modulation step makes the ramp behave similarly at 20 V and 120 V. */
 static constexpr float BREAKAWAY_STEP_V = 0.50f;        /* V per ramp period */
 static constexpr float BREAKAWAY_MAX_V = 10.0f;         /* peak phase voltage */
-static constexpr float ROTATE_HEADROOM_FACTOR = 1.20f;  /* rotation = breakaway * this */
+static constexpr float ROTATE_HEADROOM_FACTOR = 1.50f;  /* rotation = breakaway * this */
 static constexpr float CAL_MAX_VOLTAGE_V = 25.0f;       /* hard voltage ceiling */
 
 static constexpr uint32_t WARMUP_MS = 5000U;
@@ -34,7 +34,7 @@ static constexpr uint32_t OFFSET_SAMPLE_PERIOD_MS = 10U;
 static constexpr float NOISE_THRESHOLD_CYCLES = 0.02f;
 static constexpr float BREAKAWAY_DETECT_CYCLES = 0.15f;
 static constexpr uint32_t BREAKAWAY_DETECT_DWELL_MS = 100U;
-static constexpr uint32_t RAMP_PERIOD_MS = 200U;
+static constexpr uint32_t RAMP_PERIOD_MS = 1000U;
 static constexpr uint32_t MOVE_TIMEOUT_MS = 3000U;
 static constexpr uint32_t FIND_VOLTAGE_TIMEOUT_MS = 15000U;
 static constexpr uint32_t OFFSET_ROTATE_TIMEOUT_MS = 60000U;
@@ -152,9 +152,11 @@ void EncoderOffsetCalibrator::enterState(State state) {
             if (target > max_mod) {
                 target = max_mod;
             }
-            m_ramp.start(0.0f, target, 4000U, openLoopController().rampCurrentLimit(), floor_mod);
+            /* Start at breakaway voltage so the rotor is pulled from the first
+             * PWM period instead of coasting/cogging through a low-voltage ramp. */
+            m_ramp.start(floor_mod, target, 4000U, openLoopController().rampCurrentLimit(), floor_mod);
             PWM_ResetSPWMElectricalCycles();
-            PWM_StartSPWM(WARMUP_FREQUENCY_HZ, 0.0f);
+            PWM_StartSPWM(WARMUP_FREQUENCY_HZ, floor_mod);
 
             m_warmup_sign = 0;
             m_warmup_enc_start = m_tracker.unwrappedDegrees() / m_encoder_cycles_per_rev;
@@ -162,9 +164,24 @@ void EncoderOffsetCalibrator::enterState(State state) {
             break;
         }
 
-        case State::OFFSET_ROTATE:
+        case State::OFFSET_ROTATE: {
+            /* Compute voltage targets first so SPWM can start at breakaway
+             * voltage and keep the rotor locked from the first period. */
+            const float vdc = dcLinkVoltageSensor().voltage();
+            const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
+            const float floor_mod = voltageToMod(v_breakaway, vdc);
+            float target = m_mod;
+            const float min_target_mod = voltageToMod(v_breakaway * 1.05f, vdc);
+            if (target < min_target_mod) {
+                target = min_target_mod;
+            }
+            const float max_mod = effectiveMaxMod(vdc);
+            if (target > max_mod) {
+                target = max_mod;
+            }
+
             PWM_ResetSPWMElectricalCycles();
-            PWM_StartSPWM(OFFSET_ROTATION_FREQUENCY_HZ, 0.0f);
+            PWM_StartSPWM(OFFSET_ROTATION_FREQUENCY_HZ, floor_mod);
             /* Reset the tracker here so the offset measurement starts from the
              * same instant as the field angle.  This removes any scale/offset
              * error accumulated during the warmup phase. */
@@ -191,22 +208,9 @@ void EncoderOffsetCalibrator::enterState(State state) {
              * offset acquisition so that the stored offset matches the same
              * angle decoding the runtime will use. */
             encoderADC().startFitCapture();
-            {
-                const float vdc = dcLinkVoltageSensor().voltage();
-                const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
-                float target = m_mod;
-                const float floor_mod = voltageToMod(v_breakaway, vdc);
-                const float min_target_mod = voltageToMod(v_breakaway * 1.05f, vdc);
-                if (target < min_target_mod) {
-                    target = min_target_mod;
-                }
-                const float max_mod = effectiveMaxMod(vdc);
-                if (target > max_mod) {
-                    target = max_mod;
-                }
-                m_ramp.start(0.0f, target, 4000U, openLoopController().rampCurrentLimit(), floor_mod);
-            }
+            m_ramp.start(floor_mod, target, 4000U, openLoopController().rampCurrentLimit(), floor_mod);
             break;
+        }
 
         case State::DONE:
         case State::FAIL:
