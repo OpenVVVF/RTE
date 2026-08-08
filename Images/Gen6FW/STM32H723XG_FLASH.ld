@@ -206,6 +206,15 @@ SECTIONS
     . = ALIGN(32);
   } >RAM_D1
 
+  /* ISR trace samples use a dedicated SPSC area outside control-loop DTCM. */
+  .trace_buffers (NOLOAD) :
+  {
+    . = ALIGN(32);
+    *(.trace_buffers)
+    *(.trace_buffers*)
+    . = ALIGN(32);
+  } >RAM_D2
+
 
   /* Remove information from the standard libraries */
   /DISCARD/ :

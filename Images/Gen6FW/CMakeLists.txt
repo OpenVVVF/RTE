@@ -62,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${IVP_CORE_DIR}/src/protocol.c
     ${IVP_CORE_DIR}/src/packet_builder.c
     ${IVP_CORE_DIR}/src/packet_parser.c
+    ${IVP_CORE_DIR}/src/trace_protocol.c
     Src/Inverter/InverterMain.cpp
     Src/Inverter/LoopStats.cpp
     Src/Inverter/platform_api.cpp
@@ -79,6 +80,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Command/Commands/FocCommands.cpp
     Src/Inverter/Command/Commands/CanCommands.cpp
+    Src/Inverter/Command/Commands/TraceCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
     Src/Inverter/Control/FocControlManager.cpp
@@ -112,6 +114,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Storage/FramStore.cpp
     Src/Inverter/Drivers/Logging/ontime_logger.c
     Src/Inverter/Drivers/Logging/SupplyMonitor.cpp
+    Src/Inverter/Drivers/Logging/TraceRecorder.cpp
     Src/Inverter/Drivers/PWM/pwm.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensor.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensorTest.cpp

@@ -24,6 +24,7 @@ set(INVERTERPROTOCOL_CORE_SOURCES
     src/protocol.c
     src/packet_builder.c
     src/packet_parser.c
+    src/trace_protocol.c
 )
 
 add_library(InverterProtocolCore STATIC ${INVERTERPROTOCOL_CORE_SOURCES})
@@ -63,6 +64,7 @@ if(INVERTERPROTOCOL_BUILD_TESTS)
 
     add_executable(InverterProtocol_tests
         tests/test_protocol.cpp
+        tests/test_trace_protocol.cpp
     )
 
     target_link_libraries(InverterProtocol_tests

@@ -1,0 +1,38 @@
+{
+  "id": "Debug.Trace8",
+  "displayName": "High-rate Trace (8)",
+  "defaultName": "Trace8",
+  "description": "Captures eight values in the control ISR for the independent CAN-FD trace plane. Trace remains disabled unless Can.Trace.En is enabled.",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {"name":"Value0","description":"Fast channel 0.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value1","description":"Fast channel 1.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value2","description":"Fast channel 2.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value3","description":"Fast channel 3.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value4","description":"Fast channel 4.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value5","description":"Fast channel 5.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value6","description":"Fast channel 6.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}},
+    {"name":"Value7","description":"Fast channel 7.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}}
+  ],
+  "outputPorts": [],
+  "parameterTypes": {
+    "Key0":{"description":"Channel 0 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale0":{"description":"Channel 0 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key1":{"description":"Channel 1 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale1":{"description":"Channel 1 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key2":{"description":"Channel 2 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale2":{"description":"Channel 2 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key3":{"description":"Channel 3 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale3":{"description":"Channel 3 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key4":{"description":"Channel 4 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale4":{"description":"Channel 4 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key5":{"description":"Channel 5 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale5":{"description":"Channel 5 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key6":{"description":"Channel 6 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale6":{"description":"Channel 6 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Key7":{"description":"Channel 7 name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Scale7":{"description":"Channel 7 units per signed 16-bit count.","quantity":"dimensionless","frame":"scalar","dtype":"f32"}
+  }
+}
