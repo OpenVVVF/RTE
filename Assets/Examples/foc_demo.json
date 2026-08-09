@@ -1526,6 +1526,208 @@
     {
       "classDefinition": "",
       "classHeader": "",
+      "constructorCode": "platform_trace_configure8(Key0, Scale0, Key1, Scale1, Key2, Scale2, Key3, Scale3,\n                          Key4, Scale4, Key5, Scale5, Key6, Scale6, Key7, Scale7);\n",
+      "defaultName": "Trace8",
+      "description": "Captures eight values in the control ISR for the independent CAN-FD trace plane. Trace remains disabled unless Can.Trace.En is enabled.",
+      "displayName": "High-rate Trace (8)",
+      "domain": "tim_isr",
+      "id": "Debug.Trace8",
+      "inlineCode": "platform_trace_capture8(Value0, Value1, Value2, Value3, Value4, Value5, Value6, Value7);\n",
+      "inputPorts": [
+        {
+          "description": "Fast channel 0.",
+          "direction": "input",
+          "name": "Value0",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 1.",
+          "direction": "input",
+          "name": "Value1",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 2.",
+          "direction": "input",
+          "name": "Value2",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 3.",
+          "direction": "input",
+          "name": "Value3",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 4.",
+          "direction": "input",
+          "name": "Value4",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 5.",
+          "direction": "input",
+          "name": "Value5",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 6.",
+          "direction": "input",
+          "name": "Value6",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Fast channel 7.",
+          "direction": "input",
+          "name": "Value7",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Key0": {
+          "description": "Channel 0 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key1": {
+          "description": "Channel 1 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key2": {
+          "description": "Channel 2 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key3": {
+          "description": "Channel 3 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key4": {
+          "description": "Channel 4 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key5": {
+          "description": "Channel 5 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key6": {
+          "description": "Channel 6 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Key7": {
+          "description": "Channel 7 name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "Scale0": {
+          "description": "Channel 0 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale1": {
+          "description": "Channel 1 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale2": {
+          "description": "Channel 2 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale3": {
+          "description": "Channel 3 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale4": {
+          "description": "Channel 4 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale5": {
+          "description": "Channel 5 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale6": {
+          "description": "Channel 6 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Scale7": {
+          "description": "Channel 7 units per signed 16-bit count.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
       "constructorCode": "",
       "defaultName": "Pi",
       "description": "Proportional-integral controller with output clamping, back-calculation anti-windup, and an optional feed-forward term.",
@@ -2982,6 +3184,59 @@
           }
         }
       ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "platform_trace_register_event(static_cast<uint8_t>(Channel), Key);\n",
+      "defaultName": "TraceEvent",
+      "description": "Sends a snapshot once, then sends this value only when it changes. Use sparse channel IDs 8 through 31.",
+      "displayName": "Trace on Change",
+      "domain": "app_loop",
+      "id": "Debug.TraceEvent",
+      "inlineCode": "if (Initialized < 0.5f) {\n    if (platform_trace_event(static_cast<uint8_t>(Channel), Value, true)) {\n        LastValue = Value;\n        Initialized = 1.0f;\n    }\n} else if (Value != LastValue) {\n    if (platform_trace_event(static_cast<uint8_t>(Channel), Value, false)) {\n        LastValue = Value;\n    }\n}\n",
+      "inputPorts": [
+        {
+          "description": "Setpoint, constant, or other user-applied value.",
+          "direction": "input",
+          "name": "Value",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 24,
+      "outputPorts": [],
+      "parameterTypes": {
+        "Channel": {
+          "description": "Unique sparse channel ID from 8 through 31.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Initialized": {
+          "description": "Internal initial-snapshot state.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Key": {
+          "description": "Sparse channel name.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "string"
+        },
+        "LastValue": {
+          "description": "Internal last successfully transmitted value.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
     },
     {
       "classDefinition": "",
