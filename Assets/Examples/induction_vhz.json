@@ -3067,7 +3067,7 @@
       "displayName": "V/Hz to Alpha/Beta",
       "domain": "",
       "id": "induction.VHzToAlphaBeta",
-      "inlineCode": "float vmag = Hz * VoltsPerHz + BoostVolts;\nif (vmag < 0.0f) vmag = 0.0f;\nV_Alpha = rte::Volts(vmag * cosf(Theta));\nV_Beta  = rte::Volts(vmag * sinf(Theta));\n",
+      "inlineCode": "float vmag = fabsf(Hz) * VoltsPerHz + BoostVolts;\nif (vmag < 0.0f) vmag = 0.0f;\nV_Alpha = rte::Volts(vmag * cosf(Theta));\nV_Beta  = rte::Volts(vmag * sinf(Theta));\n",
       "inputPorts": [
         {
           "description": "Electrical frequency in Hz.",

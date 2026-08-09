@@ -132,7 +132,7 @@ def make_custom_types() -> list[dict]:
                 },
             },
             "inlineCode": (
-                "float vmag = Hz * VoltsPerHz + BoostVolts;\n"
+                "float vmag = fabsf(Hz) * VoltsPerHz + BoostVolts;\n"
                 "if (vmag < 0.0f) vmag = 0.0f;\n"
                 "V_Alpha = rte::Volts(vmag * cosf(Theta));\n"
                 "V_Beta  = rte::Volts(vmag * sinf(Theta));\n"
