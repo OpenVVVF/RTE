@@ -66,6 +66,27 @@ static bool stringsEqual(const char* a, const char* b) {
     return *a == '\0' && *b == '\0';
 }
 
+static bool isPmsmMotorType(MotorType mt) {
+    return mt == MotorType::PmsmIpm || mt == MotorType::PmsmSpm;
+}
+
+static bool isInductionMotorType(MotorType mt) {
+    return mt == MotorType::Induction;
+}
+
+/** Refuse a motor-family-specific cal command if the runtime motor type does
+ *  not match.  Keeps the family checks in one place so the error message and
+ *  type-name lookup are not duplicated in every command handler. */
+static bool requireMotorFamily(const char* path, bool want_pmsm) {
+    const MotorType mt = motorCalibration().motor_type;
+    const bool ok = want_pmsm ? isPmsmMotorType(mt) : isInductionMotorType(mt);
+    if (!ok) {
+        Telemetry::printf("[CAL] %s: motor type is %s; refusing",
+                          path, Inverter::MotorConfigStore::typeName(mt));
+    }
+    return ok;
+}
+
 static bool parsePair(const char* token, ResistanceCalibrator::Pair& out) {
     if (stringsEqual(token, "uv")) {
         out = ResistanceCalibrator::Pair::UV;
@@ -326,15 +347,18 @@ static EncOffsetCommand  sEncOffsetCmd;
  *   cal Motor.Resistance [I_A]   Phase resistances. Optional target current;
  *                                default uses the firmware default. Append
  *                                --force to skip the inactive-phase check.
- *   cal Motor.PMSM               Inductance then flux linkage.
+ *   cal Motor.PMSM               Inductance then flux linkage. Requires the
+ *                                runtime motor type to be a PMSM variant.
  *   cal Motor.PMSM.Inductance [I_A]  Ld/Lq only. Optional max bias current;
- *                                    default uses firmware default.
- *   cal Motor.PMSM.FluxLinkage   PM flux linkage only.
+ *                                    default uses firmware default. Requires PMSM.
+ *   cal Motor.PMSM.FluxLinkage   PM flux linkage only. Requires PMSM.
  *   cal Motor.Induction [I_A]    Induction-machine sigma_Ls / tau_r. Optional
  *                                flux current; default uses firmware default.
+ *                                Requires motor type Induction.
  *   cal Motor.Induction.VHz [f]  Encoderless V/Hz spin Ls sweep. Optional
- *                                electrical frequency in Hz (default 5).
+ *                                electrical frequency in Hz (default 10).
  *                                Append --wye if the motor is not delta.
+ *                                Requires motor type Induction.
  *
  * Results are stored in the RTE KV store under the same Motor.* paths and
  * picked up by graph config nodes at boot.
@@ -407,30 +431,25 @@ public:
             }
             startRun(S::SETTLE, S::RESISTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM")) {
+            if (!requireMotorFamily(path, true)) return;
             startRun(S::INDUCTANCE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.Inductance")) {
+            if (!requireMotorFamily(path, true)) return;
             if (args[2].present) {
                 autoCalibrationCoordinator().setInductanceParams(args[2].f_val, 0.0f, 0.0f);
             }
             startRun(S::INDUCTANCE, S::INDUCTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.FluxLinkage")) {
+            if (!requireMotorFamily(path, true)) return;
             startRun(S::FLUX, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.Induction")) {
-            /* Ensure the coordinator branches to the induction parameter-identification
-             * routine rather than the PMSM Ld/Lq + flux-linkage path. */
-            if (motorCalibration().motor_type != MotorType::Induction) {
-                motorCalibration().motor_type = MotorType::Induction;
-                Telemetry::printf("[CAL] motor type set to induction for this run");
-            }
+            if (!requireMotorFamily(path, false)) return;
             if (args[2].present) {
                 autoCalibrationCoordinator().setInductionParams(args[2].f_val, 0.0f, 0.0f, 0.0f);
             }
             startRun(S::SETTLE, S::INDUCTION_PARAMS, path, save_results);
         } else if (stringsEqual(path, "Motor.Induction.VHz")) {
-            if (motorCalibration().motor_type != MotorType::Induction) {
-                motorCalibration().motor_type = MotorType::Induction;
-                Telemetry::printf("[CAL] motor type set to induction for this run");
-            }
+            if (!requireMotorFamily(path, false)) return;
             /* Accept either `cal ...VHz 20` or `cal ...VHz --wye 20`.
              * args[1] is the string slot, so a bare number lands there. */
             float freq_hz = 10.0f;
