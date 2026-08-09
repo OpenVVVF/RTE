@@ -120,6 +120,7 @@ void ControlSupervisor::stop() {
     /* Back to the free-running TIM2 encoder trigger (always sampling). */
     Inverter::encoderADC().useSynchronizedTrigger(false);
 
+    PWM_DisableFocMode();
     PWM_Stop();
     GateDriver_DisableOutputs();
     m_state = State::Idle;

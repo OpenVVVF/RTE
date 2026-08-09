@@ -746,6 +746,94 @@
         "nodeId": "EncoderCos",
         "portName": "Value"
       }
+    },
+    {
+      "from": {
+        "nodeId": "CfgLd",
+        "portName": "Value"
+      },
+      "id": "c_cfg_ld",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Ld"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgLq",
+        "portName": "Value"
+      },
+      "id": "c_cfg_lq",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Lq"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgLambda",
+        "portName": "Value"
+      },
+      "id": "c_cfg_lambda",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Lambda"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c_ff_id",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_D"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c_ff_iq",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_Q"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "RPMMechElec1",
+        "portName": "RpmElec"
+      },
+      "id": "c_ff_rpm",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "RpmElec"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "FocFeedforward",
+        "portName": "V_D"
+      },
+      "id": "c_ff_vd",
+      "to": {
+        "nodeId": "PiD",
+        "portName": "Feedforward"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "FocFeedforward",
+        "portName": "V_Q"
+      },
+      "id": "c_ff_vq",
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Feedforward"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1204,6 +1292,98 @@
       "classDefinition": "",
       "classHeader": "",
       "constructorCode": "",
+      "defaultName": "FocFeedforward",
+      "description": "Computes PMSM d/q voltage feed-forward terms from electrical speed, measured currents, and motor parameters. Outputs cross-coupling and back-EMF voltages for the current-loop PI controllers.",
+      "displayName": "FOC Feed-Forward",
+      "domain": "",
+      "id": "Control.FocFeedforward",
+      "inlineCode": "/* PMSM voltage feed-forward: cross-coupling and back-EMF terms.\n * Electrical speed is supplied in RPM and converted to rad/s internally.\n *\n *   Vd_ff = -ωe * Lq * Iq\n *   Vq_ff =  ωe * Ld * Id + ωe * Lambda\n */\nconstexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;\nconst float omega_e = RpmElec * RPM_TO_RAD_S;\n\nconst float id_a = I_D.in(au::amperes);\nconst float iq_a = I_Q.in(au::amperes);\n\nconst float vd_ff = -(omega_e * Lq * iq_a);\nconst float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);\n\nV_D = rte::Volts(vd_ff);\nV_Q = rte::Volts(vq_ff);\n",
+      "inputPorts": [
+        {
+          "description": "Measured d-axis current.",
+          "direction": "input",
+          "name": "I_D",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Measured q-axis current.",
+          "direction": "input",
+          "name": "I_Q",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Electrical rotor speed in revolutions per minute. Converted internally to rad/s.",
+          "direction": "input",
+          "name": "RpmElec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "D-axis feed-forward voltage (cross-coupling term).",
+          "direction": "output",
+          "name": "V_D",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Q-axis feed-forward voltage (cross-coupling + back-EMF terms).",
+          "direction": "output",
+          "name": "V_Q",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Lambda": {
+          "description": "Permanent-magnet flux linkage in webers.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ld": {
+          "description": "D-axis inductance in henries.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lq": {
+          "description": "Q-axis inductance in henries.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
       "defaultName": "Dout",
       "description": "Writes a boolean signal to a user digital output or onboard status LED.",
       "displayName": "Digital Out",
@@ -1348,11 +1528,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "Pi",
-      "description": "Proportional-integral controller with output clamping and back-calculation anti-windup.",
+      "description": "Proportional-integral controller with output clamping, back-calculation anti-windup, and an optional feed-forward term.",
       "displayName": "PI Controller",
       "domain": "",
       "id": "Control.Pi",
-      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic limit derived from DC-link voltage.  Allow overmodulation up to\n * the six-step boundary (2*Vdc/3) so the SVPWM stage can use the full\n * hexagon when commanded.  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
+      "inlineCode": "/* PI with clamping + back-calculation anti-windup.\n * Dimensionless throughout: implicit unit extraction/injection handles any\n * physical-quantity wiring at the binding sites. */\nconst float error = Setpoint - Measurement;\nIntegral += error * Dt;\n\nfloat raw_output = Kp * error + Ki * Integral + Feedforward;\n\n/* Dynamic limit derived from DC-link voltage.  Allow overmodulation up to\n * the six-step boundary (2*Vdc/3) so the SVPWM stage can use the full\n * hexagon when commanded.  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * Dt * AwGain / (Kp * Ki);\n}\n\nOutput = limited_output;\n",
       "inputPorts": [
         {
           "description": "Desired target value.",
@@ -1370,6 +1550,17 @@
           "direction": "input",
           "name": "Measurement",
           "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Optional additive feed-forward value. Wired voltage sources are extracted automatically; unconnected ports default to zero.",
+          "direction": "input",
+          "name": "Feedforward",
+          "optional": true,
           "type": {
             "dtype": "f32",
             "frame": "scalar",
@@ -1401,6 +1592,12 @@
         },
         "Dt": {
           "description": "Controller step period in seconds.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Feedforward": {
+          "description": "Default value used when the Feedforward input port is not connected.",
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
@@ -3382,7 +3579,7 @@
       "displayName": "PI Controller (Current)",
       "domain": "",
       "id": "Custom.PiCurrent",
-      "inlineCode": "float dt = platform_get_current_domain_dt();\nif (dt <= 0.0f) dt = 0.0002f;\nconst float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * dt;\n\nfloat raw_output = Kp * error + Ki * Integral;\n\n/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation\n * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
+      "inlineCode": "float dt = platform_get_current_domain_dt();\nif (dt <= 0.0f) dt = 0.0002f;\nconst float error = (Setpoint - Measurement).in(au::amperes);\nIntegral += error * dt;\n\nfloat raw_output = Kp * error + Ki * Integral + Feedforward.in(au::volts);\n\n/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation\n * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */\nconst float vdc = platform_get_dc_link_voltage();\nconst float dynamic_max = vdc * 2.0f / 3.0f;\nconst float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;\nconst float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;\n\nfloat limited_output = raw_output;\nif (limited_output > max_limit) limited_output = max_limit;\nif (limited_output < min_limit) limited_output = min_limit;\n\n/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches\n * the base-image VectorPIController). */\nif (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {\n    const float excess = raw_output - limited_output;\n    Integral -= excess * dt * AwGain / (Kp * Ki);\n}\n\nOutput = rte::Volts(limited_output);\n",
       "inputPorts": [
         {
           "description": "",
@@ -3404,6 +3601,17 @@
             "dtype": "f32",
             "frame": "scalar",
             "quantity": "current"
+          }
+        },
+        {
+          "description": "Optional additive feed-forward voltage (e.g. decoupling or back-EMF).",
+          "direction": "input",
+          "name": "Feedforward",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
           }
         }
       ],
@@ -3432,6 +3640,12 @@
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "dimensionless"
+        },
+        "Feedforward": {
+          "description": "Default feed-forward voltage when the port is not connected.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "voltage"
         },
         "Integral": {
           "dtype": "f32",
@@ -4299,6 +4513,7 @@
       "parameters": {
         "AwGain": "1.0",
         "Dt": "0.0002",
+        "Feedforward": "0.0",
         "Integral": "0.0",
         "Ki": "10.0",
         "Kp": "0.03",
@@ -4322,6 +4537,7 @@
       "parameters": {
         "AwGain": "1.0",
         "Dt": "0.0002",
+        "Feedforward": "0.0",
         "Integral": "0.0",
         "Ki": "10.0",
         "Kp": "0.03",
@@ -4418,7 +4634,7 @@
         "Key": "Motor.Poles"
       },
       "position": {
-        "x": -247.22222222222223,
+        "x": -253.6522633744856,
         "y": 2906.444444444444
       },
       "type": "Values.Config"
@@ -4429,8 +4645,8 @@
       "id": "VoltSense",
       "parameters": {},
       "position": {
-        "x": 3226.8003415040007,
-        "y": 1631.287785472
+        "x": 3220.370300351738,
+        "y": 1634.5028060481316
       },
       "type": "Sensors.PhaseVoltages"
     },
@@ -4711,8 +4927,8 @@
         "Value": "0.0"
       },
       "position": {
-        "x": 475.55555555555554,
-        "y": 3339.222222222222
+        "x": 384.3888841258953,
+        "y": 3395.0385516689526
       },
       "type": "Control.Slew"
     },
@@ -4806,8 +5022,8 @@
       "id": "RPMMechElec1",
       "parameters": {},
       "position": {
-        "x": 220.2884468830971,
-        "y": 3053.5253295991465
+        "x": -126.88912227556779,
+        "y": 3108.2253324569424
       },
       "type": "hw.rpm"
     },
@@ -4843,8 +5059,8 @@
       "id": "EncoderRawSinCos1",
       "parameters": {},
       "position": {
-        "x": 239.78695130315504,
-        "y": 3197.605881344308
+        "x": 300.5699004349143,
+        "y": 3191.791680360274
       },
       "type": "hw.encoder_raw"
     },
@@ -4856,8 +5072,8 @@
         "Key": "EncoderSin"
       },
       "position": {
-        "x": 575.9935108183458,
-        "y": 3121.063088229692
+        "x": 582.4537341339394,
+        "y": 3130.1074008715227
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4869,10 +5085,75 @@
         "Key": "EncoderCos"
       },
       "position": {
-        "x": 591.498046775771,
-        "y": 3195.484860825332
+        "x": 583.7457787970584,
+        "y": 3249.104714344761
       },
       "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "CfgLd",
+      "domain": "tim_isr",
+      "id": "CfgLd",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.0001",
+        "Key": "Motor.Ld"
+      },
+      "position": {
+        "x": -250.0,
+        "y": 3100.0
+      },
+      "type": "Values.Config"
+    },
+    {
+      "displayName": "CfgLq",
+      "domain": "tim_isr",
+      "id": "CfgLq",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.0001",
+        "Key": "Motor.Lq"
+      },
+      "position": {
+        "x": -250.0,
+        "y": 3250.0
+      },
+      "type": "Values.Config"
+    },
+    {
+      "displayName": "CfgLambda",
+      "domain": "tim_isr",
+      "id": "CfgLambda",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.01",
+        "Key": "Motor.Lambda"
+      },
+      "position": {
+        "x": -250.0,
+        "y": 3400.0
+      },
+      "type": "Values.Config"
+    },
+    {
+      "displayName": "FocFeedforward",
+      "domain": "tim_isr",
+      "id": "FocFeedforward",
+      "parameterInputs": [
+        "Ld",
+        "Lq",
+        "Lambda"
+      ],
+      "parameters": {
+        "Lambda": "0.01",
+        "Ld": "0.0001",
+        "Lq": "0.0001"
+      },
+      "position": {
+        "x": 1700.0,
+        "y": 2900.0
+      },
+      "type": "Control.FocFeedforward"
     }
   ],
   "schemaVersion": 1

@@ -27,6 +27,8 @@ MotorConfigData s_working = {
     0, 0, 0, 0,         /* encoder bounds: unset until learned */
     0, 0,               /* ind_n_points / reserved */
     {0}, {0}, {0}, {0}, /* ind_bias_ld_a / ind_ld_h / ind_bias_lq_a / ind_lq_h */
+    0.0f, 0.0f,         /* sigma_ls_h / rotor_tau_ms */
+    0.0f, 0.0f, 0.0f, 0.0f, /* lm_h / lr_h / rr_ohm / l_leak_h */
 };
 bool s_stored = false;
 CY15B102Q_HandleTypeDef* s_fram_dev = nullptr;
@@ -45,6 +47,7 @@ MotorConfigData capture(const MotorConfigData& base) {
     d.r_phase_vw_ohm = mc.r_phase_vw;
     d.pi_kp = focControlManager().kp();
     d.pi_ki = focControlManager().ki();
+    d.motor_type = static_cast<uint32_t>(mc.motor_type);
     /* Encoder amplitude bounds are learned dynamically as the rotor turns;
      * persist them so FOC commutates correctly from the first electrical
      * cycle after a reboot (the hardcoded fallback bounds distort the angle
@@ -71,6 +74,13 @@ MotorConfigData capture(const MotorConfigData& base) {
             d.ind_lq_h[i] = ic.lqPoint(i);
         }
     }
+    /* Induction parameters: take runtime values when measured. */
+    if (mc.sigma_ls_henry > 0.0f) d.ind_sigma_ls_h = mc.sigma_ls_henry;
+    if (mc.rotor_time_constant_ms > 0.0f) d.ind_rotor_tau_ms = mc.rotor_time_constant_ms;
+    if (mc.lm_henry > 0.0f) d.ind_lm_h = mc.lm_henry;
+    if (mc.lr_henry > 0.0f) d.ind_lr_h = mc.lr_henry;
+    if (mc.rr_ohm > 0.0f) d.ind_rr_ohm = mc.rr_ohm;
+    if (mc.l_leak_henry > 0.0f) d.ind_l_leak_h = mc.l_leak_henry;
     return d;
 }
 
@@ -154,6 +164,14 @@ bool applyToRuntime() {
     if (s_working.ld_henry > 0.0f) mc.ld_henry = s_working.ld_henry;
     if (s_working.lq_henry > 0.0f) mc.lq_henry = s_working.lq_henry;
     if (s_working.flux_linkage_wb > 0.0f) mc.flux_linkage_wb = s_working.flux_linkage_wb;
+
+    mc.motor_type = static_cast<MotorType>(s_working.motor_type);
+    if (s_working.ind_sigma_ls_h > 0.0f) mc.sigma_ls_henry = s_working.ind_sigma_ls_h;
+    if (s_working.ind_rotor_tau_ms > 0.0f) mc.rotor_time_constant_ms = s_working.ind_rotor_tau_ms;
+    if (s_working.ind_lm_h > 0.0f) mc.lm_henry = s_working.ind_lm_h;
+    if (s_working.ind_lr_h > 0.0f) mc.lr_henry = s_working.ind_lr_h;
+    if (s_working.ind_rr_ohm > 0.0f) mc.rr_ohm = s_working.ind_rr_ohm;
+    if (s_working.ind_l_leak_h > 0.0f) mc.l_leak_henry = s_working.ind_l_leak_h;
     mc.valid = true;
 
     if (s_working.pi_kp >= 0.0f) focControlManager().setKp(s_working.pi_kp);
@@ -242,6 +260,16 @@ void dump() {
         } else {
             Telemetry::printf("[CFG]   (no Ld/Lq curve stored)");
         }
+        if (stored.motor_type == static_cast<uint32_t>(MotorType::Induction)) {
+            Telemetry::printf("[CFG]   sigma_Ls      = %.2e H", static_cast<double>(stored.ind_sigma_ls_h));
+            Telemetry::printf("[CFG]   tau_r         = %.2f ms", static_cast<double>(stored.ind_rotor_tau_ms));
+            Telemetry::printf("[CFG]   Lm / Lr       = %.2e / %.2e H",
+                              static_cast<double>(stored.ind_lm_h),
+                              static_cast<double>(stored.ind_lr_h));
+            Telemetry::printf("[CFG]   Rr' / Ll      = %.4f ohm / %.2e H",
+                              static_cast<double>(stored.ind_rr_ohm),
+                              static_cast<double>(stored.ind_l_leak_h));
+        }
         Telemetry::printf("[CFG]   pi kp / ki    = %.4f / %.3f",
                           static_cast<double>(stored.pi_kp),
                           static_cast<double>(stored.pi_ki));
@@ -322,7 +350,32 @@ bool setField(const char* name, float value) {
         s_working.lq_henry = value;
     } else if (std::strcmp(name, "type") == 0) {
         if (value < 0.0f || value > static_cast<float>(MotorType::SlipRing)) return false;
+        mc.motor_type = static_cast<MotorType>(value);
         s_working.motor_type = static_cast<uint32_t>(value);
+    } else if (std::strcmp(name, "sigma_ls") == 0) {
+        if (value <= 0.0f || value > 1.0f) return false;
+        s_working.ind_sigma_ls_h = value;
+        mc.sigma_ls_henry = value;
+    } else if (std::strcmp(name, "tau_r") == 0) {
+        if (value <= 0.0f || value > 10000.0f) return false;
+        s_working.ind_rotor_tau_ms = value;
+        mc.rotor_time_constant_ms = value;
+    } else if (std::strcmp(name, "lm") == 0) {
+        if (value <= 0.0f || value > 1.0f) return false;
+        s_working.ind_lm_h = value;
+        mc.lm_henry = value;
+    } else if (std::strcmp(name, "lr") == 0) {
+        if (value <= 0.0f || value > 1.0f) return false;
+        s_working.ind_lr_h = value;
+        mc.lr_henry = value;
+    } else if (std::strcmp(name, "rr") == 0) {
+        if (value <= 0.0f || value > 10.0f) return false;
+        s_working.ind_rr_ohm = value;
+        mc.rr_ohm = value;
+    } else if (std::strcmp(name, "l_leak") == 0) {
+        if (value <= 0.0f || value > 1.0f) return false;
+        s_working.ind_l_leak_h = value;
+        mc.l_leak_henry = value;
     } else {
         return false;
     }

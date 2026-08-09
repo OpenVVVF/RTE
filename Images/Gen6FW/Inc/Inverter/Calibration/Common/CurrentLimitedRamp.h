@@ -26,7 +26,8 @@ public:
      * @param duration_ms   Total ramp time (excluding pauses).
      * @param current_limit_a Abort/pause threshold [A].  <=0 disables current limit.
      */
-    void start(float from, float to, uint32_t duration_ms, float current_limit_a);
+    void start(float from, float to, uint32_t duration_ms, float current_limit_a,
+               float floor = 0.0f);
 
     /**
      * @param now_ms Current tick count.
@@ -48,6 +49,7 @@ private:
     float m_to = 0.0f;
     uint32_t m_duration_ms = 0;
     float m_current_limit = 0.0f;
+    float m_floor = 0.0f;
 
     uint32_t m_start_ms = 0;
     float m_applied = 0.0f;

@@ -1,0 +1,83 @@
+{
+  "id": "Control.FocFeedforward",
+  "displayName": "FOC Feed-Forward",
+  "defaultName": "FocFeedforward",
+  "description": "Computes PMSM d/q voltage feed-forward terms from electrical speed, measured currents, and motor parameters. Outputs cross-coupling and back-EMF voltages for the current-loop PI controllers.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "I_D",
+      "description": "Measured d-axis current.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_Q",
+      "description": "Measured q-axis current.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "RpmElec",
+      "description": "Electrical rotor speed in revolutions per minute. Converted internally to rad/s.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "V_D",
+      "description": "D-axis feed-forward voltage (cross-coupling term).",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Q",
+      "description": "Q-axis feed-forward voltage (cross-coupling + back-EMF terms).",
+      "direction": "output",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Ld": {
+      "description": "D-axis inductance in henries.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Lq": {
+      "description": "Q-axis inductance in henries.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Lambda": {
+      "description": "Permanent-magnet flux linkage in webers.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}

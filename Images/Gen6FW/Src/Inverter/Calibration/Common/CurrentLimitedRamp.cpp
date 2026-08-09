@@ -21,11 +21,13 @@ static float maxPhaseCurrentMagnitude() {
     return max_i;
 }
 
-void CurrentLimitedRamp::start(float from, float to, uint32_t duration_ms, float current_limit_a) {
+void CurrentLimitedRamp::start(float from, float to, uint32_t duration_ms, float current_limit_a,
+                               float floor) {
     m_from = from;
     m_to = to;
     m_duration_ms = duration_ms;
     m_current_limit = current_limit_a;
+    m_floor = floor;
     m_start_ms = 0;  /* set on first update */
     m_applied = from;
     m_paused = false;
@@ -59,22 +61,22 @@ CurrentLimitedRamp::Status CurrentLimitedRamp::update(uint32_t now_ms) {
 
         if (i_max > m_current_limit) {
             /* Throttle down instead of pausing/aborting: at high bus voltage
-             * the demanded modulation would draw far too much current, so
-             * back the applied modulation off fast and let the rotation
-             * continue at the current limit.  Floored at half the target so
-             * a transient spike cannot kill the rotation entirely. */
+             * the demanded modulation would draw far too much current.  Use a
+             * slower decay (100 ms) so the voltage does not collapse and stall
+             * the rotor, and floor at the supplied breakaway voltage so we
+             * never drop below the torque needed to keep the shaft moving. */
             if (!m_paused) {
                 m_paused = true;
                 Telemetry::printf("[CAL] RAMP: throttled: I=%.1f A limit=%.1f A",
                                   static_cast<double>(i_max),
                                   static_cast<double>(m_current_limit));
             }
-            const float floor_mod = 0.5f * m_to;
-            const float decay = 1.0f - std::exp(-dt / 0.020f);
+            const float floor_mod = std::max(m_floor, 0.5f * m_to);
+            const float decay = 1.0f - std::exp(-dt / 0.100f);
             m_applied -= m_applied * decay;
             if (m_applied < floor_mod) m_applied = floor_mod;
         } else {
-            if (m_paused && i_max <= 0.8f * m_current_limit) {
+            if (m_paused && i_max <= 0.6f * m_current_limit) {
                 m_paused = false;
                 Telemetry::printf("[CAL] RAMP: released: I=%.1f A limit=%.1f A",
                                   static_cast<double>(i_max),

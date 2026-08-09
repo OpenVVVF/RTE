@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -53,6 +54,7 @@ struct SessionConsoleLine {
 
 struct SessionCommand {
     double tsec = 0.0;
+    double receivedTsec = std::numeric_limits<double>::quiet_NaN();
     std::string source;
     std::string text;
     bool sent = false;
@@ -114,6 +116,11 @@ public:
     void AddCommand(const std::string& text,
                     const std::string& source,
                     bool sent);
+    // Marks the most recent command that has not yet been marked as received
+    // with the current session elapsed time. Call when a device console line
+    // arrives so the exported command event can record when the response came
+    // back. Safe to call when no pending command exists (no-op).
+    void MarkLastCommandReceived();
     void ClearConsole();
     void ClearSession();
 

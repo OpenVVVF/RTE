@@ -248,6 +248,7 @@ void ResistanceCalibrator::stop() {
         restoreHardware();
         enterState(State::FAIL);
     }
+    m_force_mode = false;
 }
 
 void ResistanceCalibrator::fail(const char* reason_fmt, ...) {
@@ -441,15 +442,19 @@ void ResistanceCalibrator::finishPairMeasurement() {
         const float i_inactive = std::fabs(
             m_sum_i_inactive[pt] / static_cast<float>(m_sample_count[pt]));
 
-        /* The inactive (high-Z) phase should carry essentially zero current. */
-        const float max_inactive = std::max(
-            MAX_INACTIVE_CURRENT_MIN_A, std::fabs(i_active) * MAX_INACTIVE_CURRENT_RATIO);
-        if (i_inactive > max_inactive) {
-            fail("[CAL] RES: FAIL: %s inactive current %.3f A exceeds limit (active %.3f A)",
-                 pairName(pair),
-                 static_cast<double>(i_inactive),
-                 static_cast<double>(std::fabs(i_active)));
-            return;
+        /* The inactive (high-Z) phase should carry essentially zero current.
+         * Force mode skips this check for non-motor loads where sensor noise
+         * or wiring makes the inactive-phase reading non-negligible. */
+        if (!m_force_mode) {
+            const float max_inactive = std::max(
+                MAX_INACTIVE_CURRENT_MIN_A, std::fabs(i_active) * MAX_INACTIVE_CURRENT_RATIO);
+            if (i_inactive > max_inactive) {
+                fail("[CAL] RES: FAIL: %s inactive current %.3f A exceeds limit (active %.3f A)",
+                     pairName(pair),
+                     static_cast<double>(i_inactive),
+                     static_cast<double>(std::fabs(i_active)));
+                return;
+            }
         }
 
         const float duty = m_sum_duty[pt] / static_cast<float>(m_sample_count[pt]);

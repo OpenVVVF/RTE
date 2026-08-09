@@ -95,6 +95,29 @@ std::filesystem::path DefaultFirmwareBaseDir() {
     return ProjectRoot() / "Images" / "Gen6FW";
 }
 
+/**
+ * @brief Find the firmware base source directory that belongs to a graph file.
+ *
+ * Graphs live under <project>/Assets/Examples, while the matching firmware tree
+ * is at <project>/Images/Gen6FW.  When RTE Studio is launched from a directory
+ * other than the project root (or packaged without RTE_PROJECT_ROOT), the
+ * generic DefaultFirmwareBaseDir() resolves relative to cwd and points at the
+ * wrong place.  This helper walks up from the graph file until it finds the
+ * Images/Gen6FW tree and returns an absolute path.
+ */
+std::filesystem::path FirmwareBaseDirForGraph(const std::filesystem::path& graphPath) {
+    std::error_code ec;
+    std::filesystem::path dir = graphPath.parent_path();
+    for (int level = 0; level < 6 && !dir.empty(); ++level) {
+        std::filesystem::path candidate = dir / "Images" / "Gen6FW";
+        if (std::filesystem::is_regular_file(candidate / "CMakeLists.txt", ec)) {
+            return candidate.lexically_normal();
+        }
+        dir = dir.parent_path();
+    }
+    return DefaultFirmwareBaseDir();
+}
+
 QString RteCliPath() {
     const std::filesystem::path adjacent =
         std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())
@@ -1076,13 +1099,16 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
+    const std::filesystem::path firmwareBaseDir =
+        FirmwareBaseDirForGraph(absoluteGraphPath.toStdString());
+
     QStringList arguments{
         QStringLiteral("--format"), QStringLiteral("jsonl"),
         command == BuildCommand::Generate ? QStringLiteral("generate")
                                            : QStringLiteral("build"),
         QStringLiteral("--graph"), absoluteGraphPath,
         QStringLiteral("--base-source"),
-        QString::fromStdString(DefaultFirmwareBaseDir().string()),
+        QString::fromStdString(firmwareBaseDir.string()),
         QStringLiteral("--templates"), QString::fromStdString(DefaultTemplatesDir()),
     };
     if (command == BuildCommand::Generate) {

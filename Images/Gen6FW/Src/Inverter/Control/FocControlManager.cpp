@@ -541,7 +541,10 @@ void FocControlManager::onPwmPeriod() {
     }
 
     /* Copy setpoints atomically so a main-loop update cannot give us a
-     * partially-written id/iq pair. */
+     * partially-written id/iq pair.  Note: vd_ff_v / vq_ff_v in FocSetpoints
+     * are calibration-only and are never set by this manager; they remain zero
+     * here because the generated node-graph control law provides the full
+     * runtime control path, not this base-image FOC controller. */
     FocSetpoints set;
     __disable_irq();
     set = m_setpoints;

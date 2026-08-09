@@ -337,6 +337,18 @@ static void reserve_print_key() {
     enqueue_define(g_dyn[idx].id, g_dyn[idx].type, g_dyn[idx].key, g_dyn[idx].key_len);
 }
 
+static void reserve_float_key(const char* key) {
+    const uint32_t h = fnv1a(key);
+
+    int idx = find_dyn_key(key, h);
+    if (idx >= 0) return;
+
+    idx = alloc_dyn_key(key, h, VT_F32);
+    if (idx < 0) return;
+
+    enqueue_define(g_dyn[idx].id, g_dyn[idx].type, g_dyn[idx].key, g_dyn[idx].key_len);
+}
+
 static void enqueue_all_definitions() {
 #if TELEMETRY_HAS_MEASUREMENT_SYSTEM
     for (uint16_t i = 0; i < g_sensor_count; ++i) {
@@ -655,6 +667,12 @@ void init(UART_HandleTypeDef* uart) {
 
     init_dwt_timebase();
     reserve_print_key();
+
+    /* Pre-register keys that are logged from ISRs (e.g. tim_isr domain) so the
+     * fast-path update never has to allocate from interrupt context. */
+    reserve_float_key("Iu");
+    reserve_float_key("Iv");
+    reserve_float_key("Iw");
 }
 
 bool log(const char* key, float value) {

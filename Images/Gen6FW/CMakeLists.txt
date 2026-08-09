@@ -80,6 +80,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Command/Commands/FocCommands.cpp
     Src/Inverter/Command/Commands/CanCommands.cpp
+    Src/Inverter/Command/Commands/OpenLoopCommands.cpp
     Src/Inverter/Command/Commands/TraceCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
@@ -90,12 +91,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Control/CurrentObserver.cpp
     Src/Inverter/Control/MotorParameterEstimator.cpp
     Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
+    Src/Inverter/Calibration/BreakawayCalibrator.cpp
     Src/Inverter/Calibration/CalKvStore.cpp
     Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
     Src/Inverter/Calibration/EncoderLinearityCalibrator.cpp
     Src/Inverter/Calibration/EncoderOffsetCalibrator.cpp
     Src/Inverter/Calibration/FluxLinkageCalibrator.cpp
     Src/Inverter/Calibration/InductanceCalibrator.cpp
+    Src/Inverter/Calibration/InductionMotorCalibrator.cpp
+    Src/Inverter/Calibration/InductionVHzCalibrator.cpp
     Src/Inverter/Calibration/MotorCalibration.cpp
     Src/Inverter/Calibration/PoleCalibrator.cpp
     Src/Inverter/Calibration/ResistanceCalibrator.cpp

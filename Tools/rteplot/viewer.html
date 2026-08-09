@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTE Telemetry Viewer</title>
+  <!-- Plotly.js from CDN. For fully-offline use, download
+       https://cdn.plot.ly/plotly-2.27.0.min.js and change the src below. -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --text: #1a1a1a;
+      --muted: #666666;
+      --border: #d1d5db;
+      --accent: #003c6c;
+      --accent-hover: #002a4d;
+      --danger: #d64550;
+      --success: #13a665;
+      --row-hover: #eef2f7;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #sidebar {
+      width: 340px;
+      min-width: 260px;
+      max-width: 45vw;
+      resize: horizontal;
+      overflow: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      gap: 12px;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 12px;
+      gap: 10px;
+    }
+
+    h1 {
+      margin: 0 0 4px 0;
+      font-size: 18px;
+      color: var(--accent);
+    }
+
+    h2 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 6px;
+      padding: 24px 12px;
+      text-align: center;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: #e8f0f8;
+    }
+
+    .dropzone strong {
+      display: block;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    button, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    button:hover, .btn:hover { background: var(--accent-hover); }
+    button.secondary { background: #6b7280; }
+    button.secondary:hover { background: #4b5563; }
+    button.danger { background: var(--danger); }
+    button.danger:hover { background: #b03640; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    input, select, textarea {
+      font: inherit;
+      padding: 5px 7px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      width: 100%;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: 2px solid rgba(0, 60, 108, 0.2);
+      border-color: var(--accent);
+    }
+
+    .row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .row > * { flex: 1; }
+    .row > .shrink { flex: 0 0 auto; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .toolbar label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    #graph {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-height: 0;
+    }
+
+    #signalList {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .signal-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #eef1f4;
+    }
+
+    .signal-item:last-child { border-bottom: none; }
+    .signal-item:hover { background: var(--row-hover); }
+    .signal-item.active { background: #e8f0f8; font-weight: 600; }
+
+    .signal-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .signal-meta { color: var(--muted); font-size: 11px; margin-left: 6px; }
+    .signal-actions { display: flex; gap: 4px; align-items: center; }
+
+    .badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .badge.right { background: #dbeafe; color: #1e40af; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 5px 6px;
+      border-bottom: 1px solid #eef1f4;
+      white-space: nowrap;
+    }
+
+    th { color: var(--muted); font-weight: 600; }
+
+    .scroll-table {
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .scroll-table tr:hover { background: var(--row-hover); cursor: pointer; }
+
+    .marker-item, .annotation-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 6px;
+      border-bottom: 1px solid #eef1f4;
+    }
+
+    .marker-item:last-child, .annotation-item:last-child { border-bottom: none; }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 11px; }
+
+    .status-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .monospace { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div>
+        <h1>RTE Telemetry Viewer</h1>
+        <div class="hint">Upload a <code>.jsonl</code> runtime session file.</div>
+      </div>
+
+      <div id="dropzone" class="dropzone">
+        <strong>Click or drag a JSONL file here</strong>
+        <span class="small">Sessions exported from RTE Studio</span>
+        <input type="file" id="fileInput" accept=".jsonl,.json,.txt" style="display:none">
+      </div>
+
+      <div class="panel" id="metadataPanel" style="display:none">
+        <h2>Session</h2>
+        <div id="metadata" class="small"></div>
+      </div>
+
+      <div class="panel" id="windowPanel" style="display:none">
+        <h2>Time window</h2>
+        <div class="row">
+          <input id="t0" type="number" step="any" placeholder="t start">
+          <input id="t1" type="number" step="any" placeholder="t end">
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button id="applyWindow" class="secondary">Apply</button>
+          <button id="fitAll" class="secondary">Fit all</button>
+        </div>
+      </div>
+
+      <div class="panel" id="signalsPanel" style="display:none">
+        <h2>Signals</h2>
+        <input id="signalSearch" type="text" placeholder="Search signals…">
+        <div class="row" style="margin-top:6px">
+          <button id="clearSignals" class="danger">Clear all</button>
+          <button id="selectAllVisible" class="secondary">Add visible</button>
+        </div>
+        <div id="signalList"></div>
+      </div>
+
+      <div class="panel" id="commandsPanel" style="display:none">
+        <h2>Commands</h2>
+        <div class="scroll-table">
+          <table>
+            <thead>
+              <tr><th>t</th><th>src</th><th>text</th><th>sent</th></tr>
+            </thead>
+            <tbody id="commandTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" id="markersPanel" style="display:none">
+        <h2>Markers & annotations</h2>
+        <div class="hint">Shift+click the plot to add a marker. Click to annotate.</div>
+        <div id="markerList" style="margin-top:6px"></div>
+        <div id="annotationList" style="margin-top:6px"></div>
+      </div>
+
+      <div class="status-bar" id="statusBar"></div>
+    </aside>
+
+    <main id="main">
+      <div class="toolbar">
+        <button id="exportPng">Export PNG</button>
+        <label>Width <input id="exportWidth" type="number" value="1280" style="width:60px"></label>
+        <label>Scale <input id="exportScale" type="number" value="2" min="1" max="4" style="width:50px"></label>
+        <button id="addMarkerBtn" class="secondary">Add marker at cursor</button>
+        <button id="addAnnotationBtn" class="secondary">Add annotation</button>
+        <span class="muted" style="margin-left:auto" id="graphHint">Upload a file to begin</span>
+      </div>
+      <div id="graph">
+        <div class="empty-state">
+          <div>
+            <strong>No telemetry loaded</strong><br>
+            Upload an RTE runtime session <code>.jsonl</code> file from the sidebar.
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function() {
+      'use strict';
+
+      // -------------------------------------------------------------------------
+      // State
+      // -------------------------------------------------------------------------
+      const state = {
+        meta: null,
+        signals: {},        // name -> {x: Float64Array, y: Float64Array, count}
+        commands: [],
+        console: [],
+        selected: new Map(), // name -> {axis: 'left'|'right'}
+        markers: [],
+        annotations: [],
+        lastClick: { t: null, y: null },
+        fileName: '',
+      };
+
+      const palette = [
+        '#003c6c', '#f29813', '#13a665', '#d64550',
+        '#6c4c9d', '#00848e', '#5f6b7d', '#c25e00',
+        '#2e7d32', '#ad1457', '#4527a0', '#00695c',
+      ];
+
+      // -------------------------------------------------------------------------
+      // DOM refs
+      // -------------------------------------------------------------------------
+      const els = {
+        dropzone: document.getElementById('dropzone'),
+        fileInput: document.getElementById('fileInput'),
+        metadataPanel: document.getElementById('metadataPanel'),
+        metadata: document.getElementById('metadata'),
+        windowPanel: document.getElementById('windowPanel'),
+        t0: document.getElementById('t0'),
+        t1: document.getElementById('t1'),
+        applyWindow: document.getElementById('applyWindow'),
+        fitAll: document.getElementById('fitAll'),
+        signalsPanel: document.getElementById('signalsPanel'),
+        signalSearch: document.getElementById('signalSearch'),
+        signalList: document.getElementById('signalList'),
+        clearSignals: document.getElementById('clearSignals'),
+        selectAllVisible: document.getElementById('selectAllVisible'),
+        commandsPanel: document.getElementById('commandsPanel'),
+        commandTable: document.getElementById('commandTable'),
+        markersPanel: document.getElementById('markersPanel'),
+        markerList: document.getElementById('markerList'),
+        annotationList: document.getElementById('annotationList'),
+        statusBar: document.getElementById('statusBar'),
+        graph: document.getElementById('graph'),
+        exportPng: document.getElementById('exportPng'),
+        exportWidth: document.getElementById('exportWidth'),
+        exportScale: document.getElementById('exportScale'),
+        addMarkerBtn: document.getElementById('addMarkerBtn'),
+        addAnnotationBtn: document.getElementById('addAnnotationBtn'),
+        graphHint: document.getElementById('graphHint'),
+      };
+
+      // -------------------------------------------------------------------------
+      // File loading
+      // -------------------------------------------------------------------------
+      els.dropzone.addEventListener('click', () => els.fileInput.click());
+      els.fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
+      });
+
+      ['dragenter', 'dragover'].forEach(evt => {
+        els.dropzone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          els.dropzone.classList.add('dragover');
+        });
+      });
+      ['dragleave', 'drop'].forEach(evt => {
+        els.dropzone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          els.dropzone.classList.remove('dragover');
+        });
+      });
+      els.dropzone.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          loadFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      function loadFile(file) {
+        state.fileName = file.name;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            parseJsonl(e.target.result);
+            restoreSelectionFromHash();
+            updateUI();
+            renderGraph();
+          } catch (err) {
+            alert('Error parsing file: ' + err.message);
+            console.error(err);
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      // -------------------------------------------------------------------------
+      // JSONL parser
+      // -------------------------------------------------------------------------
+      function parseJsonl(text) {
+        resetState();
+        const rows = [];
+        const signalSet = new Set();
+        const signalCounts = {};
+        let lines = 0, telemetryEvents = 0, badLines = 0;
+
+        const lineArray = text.split(/\r?\n/);
+        for (const raw of lineArray) {
+          const line = raw.trim();
+          if (!line) continue;
+          lines++;
+          let obj;
+          try { obj = JSON.parse(line); }
+          catch { badLines++; continue; }
+
+          const type = obj.type;
+          if (type === 'session_start') {
+            state.meta = {
+              started_at: obj.started_at_utc || '',
+              exported_at: obj.exported_at_utc || '',
+              port: obj.port || '',
+              mode: obj.mode || '',
+              protocol: obj.protocol || '',
+              version: obj.version || '',
+            };
+            continue;
+          }
+          if (type === 'command') {
+            state.commands.push({
+              t: parseFloat(obj.t),
+              received_t: obj.received_t === null || obj.received_t === undefined ? null : parseFloat(obj.received_t),
+              source: obj.source || '',
+              text: String(obj.text || ''),
+              sent: !!obj.sent,
+            });
+            continue;
+          }
+          if (type === 'console') {
+            state.console.push({
+              t: parseFloat(obj.t),
+              sequence: obj.sequence || 0,
+              text: String(obj.text || ''),
+            });
+            continue;
+          }
+          if (type !== 'telemetry') continue;
+
+          telemetryEvents++;
+          const t = parseFloat(obj.t);
+          const row = { t };
+          const vals = obj.values || {};
+          for (const [k, v] of Object.entries(vals)) {
+            if (v === null || v === undefined) continue;
+            const f = parseFloat(v);
+            if (Number.isNaN(f)) continue;
+            row[k] = f;
+            signalSet.add(k);
+            signalCounts[k] = (signalCounts[k] || 0) + 1;
+          }
+          rows.push(row);
+        }
+
+        // Build per-signal arrays
+        const names = Array.from(signalSet).sort();
+        for (const name of names) {
+          const x = new Float64Array(signalCounts[name]);
+          const y = new Float64Array(signalCounts[name]);
+          let i = 0;
+          for (const row of rows) {
+            if (name in row) {
+              x[i] = row.t;
+              y[i] = row[name];
+              i++;
+            }
+          }
+          state.signals[name] = { x, y, count: i };
+        }
+
+        state.commands.sort((a, b) => a.t - b.t);
+        state.console.sort((a, b) => a.t - b.t);
+
+        updateStatus({
+          lines, telemetryEvents, badLines,
+          signals: names.length,
+          commands: state.commands.length,
+          duration: rows.length ? rows[rows.length - 1].t - rows[0].t : 0,
+        });
+      }
+
+      function resetState() {
+        state.meta = null;
+        state.signals = {};
+        state.commands = [];
+        state.console = [];
+        state.selected = new Map();
+        state.markers = [];
+        state.annotations = [];
+        state.lastClick = { t: null, y: null };
+      }
+
+      function updateStatus(stats) {
+        const parts = [
+          `lines: ${stats.lines}`,
+          `telemetry: ${stats.telemetryEvents}`,
+          `signals: ${stats.signals}`,
+          `commands: ${stats.commands}`,
+          `duration: ${stats.duration.toFixed(3)}s`,
+        ];
+        if (stats.badLines) parts.push(`bad lines: ${stats.badLines}`);
+        els.statusBar.textContent = parts.join('  ·  ');
+      }
+
+      // -------------------------------------------------------------------------
+      // UI updates
+      // -------------------------------------------------------------------------
+      function updateUI() {
+        const hasData = Object.keys(state.signals).length > 0 || state.commands.length > 0;
+        els.metadataPanel.style.display = 'block';
+        els.windowPanel.style.display = hasData ? 'block' : 'none';
+        els.signalsPanel.style.display = Object.keys(state.signals).length ? 'block' : 'none';
+        els.commandsPanel.style.display = state.commands.length ? 'block' : 'none';
+        els.markersPanel.style.display = hasData ? 'block' : 'none';
+        els.graphHint.textContent = hasData ? 'Click signals in the sidebar to plot them' : 'Upload a file to begin';
+
+        renderMetadata();
+        renderSignalList();
+        renderCommandTable();
+        renderMarkers();
+        renderAnnotations();
+      }
+
+      function renderMetadata() {
+        const m = state.meta || {};
+        const parts = [
+          m.started_at && `<div><strong>Started:</strong> ${escapeHtml(m.started_at)}</div>`,
+          m.exported_at && `<div><strong>Exported:</strong> ${escapeHtml(m.exported_at)}</div>`,
+          m.mode && `<div><strong>Mode:</strong> ${escapeHtml(m.mode)}</div>`,
+          m.protocol && `<div><strong>Protocol:</strong> ${escapeHtml(m.protocol)}</div>`,
+          m.port && `<div><strong>Port:</strong> ${escapeHtml(m.port)}</div>`,
+          m.version && `<div><strong>Format version:</strong> ${escapeHtml(String(m.version))}</div>`,
+        ].filter(Boolean);
+        els.metadata.innerHTML = parts.length ? parts.join('') : '<div class="muted">No session metadata</div>';
+      }
+
+      function renderSignalList() {
+        const q = els.signalSearch.value.toLowerCase();
+        const names = Object.keys(state.signals).sort();
+        const filtered = names.filter(n => n.toLowerCase().includes(q));
+        els.signalList.innerHTML = '';
+        for (const name of filtered) {
+          const sig = state.signals[name];
+          const sel = state.selected.get(name);
+          const div = document.createElement('div');
+          div.className = 'signal-item' + (sel ? ' active' : '');
+          div.innerHTML = `
+            <span class="signal-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+            <span class="signal-meta">${sig.count}</span>
+            <span class="signal-actions">
+              ${sel ? `<span class="badge ${sel.axis === 'right' ? 'right' : ''}">${sel.axis}</span>` : ''}
+            </span>
+          `;
+          div.addEventListener('click', (e) => {
+            if (e.shiftKey) {
+              toggleAxis(name);
+            } else {
+              toggleSignal(name);
+            }
+          });
+          els.signalList.appendChild(div);
+        }
+      }
+
+      function renderCommandTable() {
+        els.commandTable.innerHTML = '';
+        for (const cmd of state.commands) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="monospace">${fmtTime(cmd.t)}</td>
+            <td><span class="badge">${escapeHtml(cmd.source)}</span></td>
+            <td title="${escapeHtml(cmd.text)}">${escapeHtml(truncate(cmd.text, 35))}</td>
+            <td>${cmd.sent ? '✓' : '✗'}</td>
+          `;
+          tr.addEventListener('click', () => addMarker(cmd.t, `cmd: ${truncate(cmd.text, 30)}`));
+          els.commandTable.appendChild(tr);
+        }
+      }
+
+      function renderMarkers() {
+        els.markerList.innerHTML = '';
+        if (!state.markers.length) {
+          els.markerList.innerHTML = '<div class="muted small">No markers yet</div>';
+          return;
+        }
+        state.markers.forEach((m, idx) => {
+          const div = document.createElement('div');
+          div.className = 'marker-item';
+          div.innerHTML = `
+            <span class="small">${escapeHtml(m.label)} @ ${fmtTime(m.t)}</span>
+            <button class="danger" data-idx="${idx}" style="padding:2px 6px;font-size:10px">×</button>
+          `;
+          div.querySelector('button').addEventListener('click', () => removeMarker(idx));
+          div.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'BUTTON') zoomTo(m.t);
+          });
+          els.markerList.appendChild(div);
+        });
+      }
+
+      function renderAnnotations() {
+        els.annotationList.innerHTML = '';
+        if (!state.annotations.length) return;
+        state.annotations.forEach((a, idx) => {
+          const div = document.createElement('div');
+          div.className = 'annotation-item';
+          div.innerHTML = `
+            <span class="small">${escapeHtml(truncate(a.text, 30))} @ ${fmtTime(a.t)}</span>
+            <button class="danger" data-idx="${idx}" style="padding:2px 6px;font-size:10px">×</button>
+          `;
+          div.querySelector('button').addEventListener('click', () => removeAnnotation(idx));
+          div.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'BUTTON') zoomTo(a.t);
+          });
+          els.annotationList.appendChild(div);
+        });
+      }
+
+      // -------------------------------------------------------------------------
+      // Signal interaction
+      // -------------------------------------------------------------------------
+      function toggleSignal(name) {
+        if (state.selected.has(name)) {
+          state.selected.delete(name);
+        } else {
+          state.selected.set(name, { axis: 'left' });
+        }
+        updateSelectionHash();
+        renderSignalList();
+        renderGraph();
+      }
+
+      function toggleAxis(name) {
+        if (!state.selected.has(name)) return;
+        const cur = state.selected.get(name);
+        cur.axis = cur.axis === 'left' ? 'right' : 'left';
+        renderSignalList();
+        renderGraph();
+      }
+
+      els.clearSignals.addEventListener('click', () => {
+        state.selected.clear();
+        updateSelectionHash();
+        renderSignalList();
+        renderGraph();
+      });
+
+      els.selectAllVisible.addEventListener('click', () => {
+        const q = els.signalSearch.value.toLowerCase();
+        for (const name of Object.keys(state.signals).sort()) {
+          if (name.toLowerCase().includes(q)) {
+            if (!state.selected.has(name)) state.selected.set(name, { axis: 'left' });
+          }
+        }
+        updateSelectionHash();
+        renderSignalList();
+        renderGraph();
+      });
+
+      els.signalSearch.addEventListener('input', renderSignalList);
+
+      function updateSelectionHash() {
+        const names = Array.from(state.selected.keys()).join(',');
+        const axes = Array.from(state.selected.entries()).map(([n, s]) => `${n}:${s.axis}`).join(',');
+        const hash = names ? `#s=${encodeURIComponent(axes)}` : '';
+        if (window.location.hash !== hash) {
+          history.replaceState(null, '', window.location.pathname + hash);
+        }
+      }
+
+      function restoreSelectionFromHash() {
+        const hash = window.location.hash.slice(1);
+        if (!hash) return;
+        const params = new URLSearchParams(hash);
+        const s = params.get('s');
+        if (!s) return;
+        for (const part of s.split(',')) {
+          const [name, axis] = part.split(':');
+          if (!name) continue;
+          if (name in state.signals) {
+            state.selected.set(name, { axis: axis === 'right' ? 'right' : 'left' });
+          }
+        }
+      }
+
+      // -------------------------------------------------------------------------
+      // Markers & annotations
+      // -------------------------------------------------------------------------
+      function addMarker(t, label) {
+        state.markers.push({ t: parseFloat(t), label: label || `t=${fmtTime(t)}`, color: '#d64550' });
+        renderMarkers();
+        renderGraph();
+      }
+
+      function removeMarker(idx) {
+        state.markers.splice(idx, 1);
+        renderMarkers();
+        renderGraph();
+      }
+
+      function addAnnotation(t, y, text) {
+        state.annotations.push({ t: parseFloat(t), y: y, text: text || 'note' });
+        renderAnnotations();
+        renderGraph();
+      }
+
+      function removeAnnotation(idx) {
+        state.annotations.splice(idx, 1);
+        renderAnnotations();
+        renderGraph();
+      }
+
+      els.addMarkerBtn.addEventListener('click', () => {
+        const t = state.lastClick.t;
+        if (t === null) { alert('Click on the plot first to set a cursor time.'); return; }
+        const label = prompt('Marker label:', `t=${fmtTime(t)}`);
+        if (label !== null) addMarker(t, label);
+      });
+
+      els.addAnnotationBtn.addEventListener('click', () => {
+        const t = state.lastClick.t;
+        if (t === null) { alert('Click on the plot first to set a cursor time.'); return; }
+        const text = prompt('Annotation text:', 'note');
+        if (text !== null) addAnnotation(t, state.lastClick.y, text);
+      });
+
+      function zoomTo(t) {
+        const range = 0.5;
+        const update = { 'xaxis.range': [t - range, t + range] };
+        Plotly.relayout(els.graph, update);
+      }
+
+      // -------------------------------------------------------------------------
+      // Window controls
+      // -------------------------------------------------------------------------
+      function getWindow() {
+        const t0 = parseFloat(els.t0.value);
+        const t1 = parseFloat(els.t1.value);
+        return { t0: Number.isNaN(t0) ? null : t0, t1: Number.isNaN(t1) ? null : t1 };
+      }
+
+      els.applyWindow.addEventListener('click', () => {
+        const { t0, t1 } = getWindow();
+        const update = {};
+        if (t0 !== null) update['xaxis.range[0]'] = t0;
+        if (t1 !== null) update['xaxis.range[1]'] = t1;
+        Plotly.relayout(els.graph, update);
+      });
+
+      els.fitAll.addEventListener('click', () => {
+        Plotly.relayout(els.graph, { 'xaxis.autorange': true });
+      });
+
+      // -------------------------------------------------------------------------
+      // Graph rendering
+      // -------------------------------------------------------------------------
+      function downsample(x, y, maxPoints) {
+        const n = x.length;
+        if (n <= maxPoints || maxPoints <= 2) return { x, y };
+
+        // Largest Triangle Three Buckets (LTTB)
+        const sampledX = new Float64Array(maxPoints);
+        const sampledY = new Float64Array(maxPoints);
+        sampledX[0] = x[0];
+        sampledY[0] = y[0];
+        sampledX[maxPoints - 1] = x[n - 1];
+        sampledY[maxPoints - 1] = y[n - 1];
+
+        const bucketSize = (n - 2) / (maxPoints - 2);
+
+        for (let i = 0; i < maxPoints - 2; i++) {
+          const start = Math.floor((i + 1) * bucketSize) + 1;
+          const end = Math.min(Math.floor((i + 2) * bucketSize) + 1, n - 1);
+
+          if (start >= end) {
+            const mid = Math.floor((start + end) / 2);
+            sampledX[i + 1] = x[mid];
+            sampledY[i + 1] = y[mid];
+            continue;
+          }
+
+          const nextStart = end;
+          const nextEnd = Math.min(Math.floor((i + 3) * bucketSize) + 1, n);
+          let avgX = x[n - 1], avgY = y[n - 1];
+          if (nextStart < nextEnd) {
+            let sx = 0, sy = 0;
+            for (let k = nextStart; k < nextEnd; k++) { sx += x[k]; sy += y[k]; }
+            avgX = sx / (nextEnd - nextStart);
+            avgY = sy / (nextEnd - nextStart);
+          }
+
+          const ax = sampledX[i], ay = sampledY[i];
+          const bx = avgX, by = avgY;
+          const baseX = bx - ax, baseY = by - ay;
+          const baseNormSq = baseX * baseX + baseY * baseY;
+
+          let bestIdx = start, bestScore = -Infinity;
+          for (let k = start; k < end; k++) {
+            const vx = x[k] - ax, vy = y[k] - ay;
+            let projX, projY;
+            if (baseNormSq === 0) { projX = 0; projY = 0; }
+            else {
+              const t = (vx * baseX + vy * baseY) / baseNormSq;
+              projX = t * baseX; projY = t * baseY;
+            }
+            const perpX = vx - projX, perpY = vy - projY;
+            const score = perpX * perpX + perpY * perpY;
+            if (score > bestScore) { bestScore = score; bestIdx = k; }
+          }
+          sampledX[i + 1] = x[bestIdx];
+          sampledY[i + 1] = y[bestIdx];
+        }
+        return { x: sampledX, y: sampledY };
+      }
+
+      function renderGraph() {
+        if (!Object.keys(state.signals).length && !state.commands.length) {
+          els.graph.innerHTML = `
+            <div class="empty-state">
+              <div>
+                <strong>No telemetry loaded</strong><br>
+                Upload an RTE runtime session <code>.jsonl</code> file from the sidebar.
+              </div>
+            </div>`;
+          return;
+        }
+
+        const traces = [];
+        const hasRight = Array.from(state.selected.values()).some(s => s.axis === 'right');
+        let colorIdx = 0;
+
+        for (const [name, cfg] of state.selected) {
+          const sig = state.signals[name];
+          if (!sig) continue;
+          const ds = downsample(sig.x, sig.y, 5000);
+          traces.push({
+            x: Array.from(ds.x),
+            y: Array.from(ds.y),
+            mode: 'lines',
+            name: name,
+            yaxis: cfg.axis === 'right' ? 'y2' : 'y',
+            line: { color: palette[colorIdx % palette.length], width: 1.4 },
+            hovertemplate: `${name}: %{y:.4g}<extra></extra>`,
+          });
+          colorIdx++;
+        }
+
+        // Vertical markers as shapes
+        const shapes = state.markers.map(m => ({
+          type: 'line',
+          x0: m.t, x1: m.t,
+          y0: 0, y1: 1,
+          yref: 'paper',
+          line: { color: m.color, width: 1.5, dash: 'dash' },
+        }));
+
+        // Annotations
+        const annotations = state.annotations.map(a => ({
+          x: a.t,
+          y: 0.92,
+          xref: 'x',
+          yref: 'paper',
+          text: a.text,
+          showarrow: true,
+          arrowhead: 2,
+          arrowsize: 1,
+          arrowwidth: 1,
+          ax: 0,
+          ay: 30,
+          bgcolor: 'rgba(255,255,255,0.9)',
+          bordercolor: '#999',
+          borderwidth: 1,
+          font: { size: 11 },
+        }));
+
+        // Marker labels
+        state.markers.forEach(m => {
+          annotations.push({
+            x: m.t,
+            y: 1,
+            xref: 'x',
+            yref: 'paper',
+            text: m.label,
+            showarrow: false,
+            yanchor: 'top',
+            font: { size: 10, color: m.color },
+            bgcolor: 'rgba(255,255,255,0.8)',
+          });
+        });
+
+        const layout = {
+          title: {
+            text: `<b>${state.fileName || 'Telemetry'}</b><br><sup>${state.meta ? state.meta.started_at : ''}</sup>`,
+            x: 0.0,
+            xanchor: 'left',
+            font: { size: 18, color: '#1a1a1a' },
+          },
+          font: { family: 'Arial, Helvetica, sans-serif', size: 12, color: '#333333' },
+          template: 'plotly_white',
+          hovermode: 'x unified',
+          margin: { l: 70, r: hasRight ? 70 : 50, t: 80, b: 60 },
+          xaxis: { title: 'time (s)', showgrid: true },
+          yaxis: { title: '', side: 'left', showgrid: true },
+          yaxis2: hasRight ? {
+            title: '', overlaying: 'y', side: 'right', showgrid: false,
+          } : undefined,
+          shapes,
+          annotations,
+          legend: { orientation: 'h', yanchor: 'bottom', y: -0.22, xanchor: 'left', x: 0 },
+        };
+
+        const config = {
+          responsive: true,
+          displayModeBar: true,
+          displaylogo: false,
+          modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+        };
+
+        Plotly.newPlot(els.graph, traces, layout, config);
+
+        // Track clicks for marker/annotation placement
+        els.graph.on('plotly_click', (data) => {
+          const pt = data.points[0];
+          if (pt) {
+            state.lastClick.t = pt.x;
+            state.lastClick.y = pt.y;
+          }
+        });
+      }
+
+      // -------------------------------------------------------------------------
+      // Export
+      // -------------------------------------------------------------------------
+      els.exportPng.addEventListener('click', () => {
+        const width = parseInt(els.exportWidth.value, 10) || 1280;
+        const scale = parseFloat(els.exportScale.value) || 2;
+        Plotly.toImage(els.graph, { format: 'png', width, height: width * 0.6, scale })
+          .then(url => {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (state.fileName || 'rte-telemetry') + '.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          })
+          .catch(err => alert('Export failed: ' + err.message));
+      });
+
+      // -------------------------------------------------------------------------
+      // Helpers
+      // -------------------------------------------------------------------------
+      function fmtTime(t) {
+        if (t === null || t === undefined || Number.isNaN(t)) return '—';
+        return t.toFixed(4);
+      }
+
+      function truncate(str, len) {
+        if (!str) return '';
+        if (str.length <= len) return str;
+        return str.slice(0, len - 1) + '…';
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        if (state.selected.size) Plotly.Plots.resize(els.graph);
+      });
+    })();
+  </script>
+</body>
+</html>

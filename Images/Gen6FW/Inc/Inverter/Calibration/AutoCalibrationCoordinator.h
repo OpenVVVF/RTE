@@ -35,7 +35,8 @@ public:
         OFFSET,
         SETTLE,
         RESISTANCE,
-        INDUCTANCE,
+        INDUCTANCE,       /**< PMSM Ld/Lq (existing InductanceCalibrator). */
+        INDUCTION_PARAMS, /**< Induction-machine sigma_Ls / tau_r. */
         FLUX,
         DONE,
         FAIL
@@ -90,12 +91,46 @@ public:
     float lastResistanceVw() const { return m_r_vw; }
     float lastResistanceAverage() const { return m_r_avg; }
 
+    /**
+     * @brief Override the resistance calibration target current for the next run.
+     *
+     * A value <= 0 disables the override and uses the default RES_MAX_CURRENT_A.
+     * The override is cleared by stop()/fail()/finish().
+     */
+    void setResistanceTargetCurrent(float amps) { m_custom_res_current_a = amps; }
+
+    /**
+     * @brief Override inductance calibration parameters for the next run.
+     *
+     * Any value <= 0 disables that override.  Cleared by stop()/fail()/finish().
+     */
+    void setInductanceParams(float max_a, float ac_a, float freq_hz) {
+        m_custom_ind_max_a = max_a;
+        m_custom_ind_ac_a = ac_a;
+        m_custom_ind_freq_hz = freq_hz;
+    }
+
+    /**
+     * @brief Override induction calibration parameters for the next run.
+     *
+     * Any value <= 0 disables that override.  Cleared by stop()/fail()/finish().
+     */
+    void setInductionParams(float max_flux_a, float ac_voltage_pct,
+                            float ac_freq_hz, float lm_estimate_h) {
+        m_custom_ind_flux_a = max_flux_a;
+        m_custom_ind_ac_voltage_pct = ac_voltage_pct;
+        m_custom_ind_ac_freq_hz = ac_freq_hz;
+        m_custom_ind_lm_h = lm_estimate_h;
+    }
+
     static AutoCalibrationCoordinator& instance();
 
 private:
     void enterState(State state);
     void fail(const char* reason_fmt, ...);
     void finish();
+    bool startInductanceCal();
+    bool startInductionMotorCal();
 
     State m_state = State::IDLE;
     State m_slice_last = State::FLUX;
@@ -114,7 +149,16 @@ private:
     float m_r_avg = 0.0f;
     bool m_inductance_ran = false;
     bool m_flux_ran = false;
+    bool m_induction_ran = false;
     bool m_save_results = true;
+    float m_custom_res_current_a = 0.0f; /**< override for next resistance cal. */
+    float m_custom_ind_max_a = 0.0f;     /**< override for next inductance cal. */
+    float m_custom_ind_ac_a = 0.0f;
+    float m_custom_ind_freq_hz = 0.0f;
+    float m_custom_ind_flux_a = 0.0f;    /**< override for next induction cal. */
+    float m_custom_ind_ac_voltage_pct = 0.0f;
+    float m_custom_ind_ac_freq_hz = 0.0f;
+    float m_custom_ind_lm_h = 0.0f;
 };
 
 AutoCalibrationCoordinator& autoCalibrationCoordinator();

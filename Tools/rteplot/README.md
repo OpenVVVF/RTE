@@ -41,6 +41,33 @@ cd Tools/rteplot
     --t0 5 --t1 35 --logo assets/logo.png
 ```
 
+## Web viewer (embeddable)
+
+`viewer.html` is a self-contained, browser-based telemetry explorer. It has no
+build step and no backend—just open it in a browser or drop it into a
+documentation repo.
+
+```bash
+# from repo root
+firefox Tools/rteplot/viewer.html
+```
+
+What it can do:
+
+- Drag-and-drop (or click to select) any RTE runtime session `.jsonl` file.
+- Search and click signals to add them to an interactive Plotly graph.
+- Toggle a signal onto a secondary y-axis with `Shift+click`.
+- Browse the command log and click a command to drop a marker at its send time.
+- `Shift+click` on the plot to add vertical time markers; plain click sets the
+cursor for adding markers/annotations.
+- Add text annotations and export the current view as PNG.
+- Persist the selected signal set in the URL hash so links/bookmarks preserve
+  the view.
+
+The only external dependency is Plotly.js loaded from a CDN. To use it offline,
+download `plotly-2.27.0.min.js` and update the `<script>` tag at the top of
+`viewer.html`.
+
 ## Recipes
 
 | Recipe           | What it shows                                                              |

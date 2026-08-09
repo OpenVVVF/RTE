@@ -44,8 +44,8 @@ public:
      * @param inj_freq_hz    Injection frequency [Hz] (kept << PWM frequency,
      *                       above rotor-following bandwidth).
      */
-    bool start(float max_current_a = 30.0f, float ac_current_a = 3.0f,
-               float inj_freq_hz = 150.0f);
+    bool start(float max_current_a = 30.0f, float ac_current_a = 2.0f,
+               float inj_freq_hz = 75.0f);
     void stop();
 
     /** Main-loop state machine; call every iteration. */
@@ -110,7 +110,7 @@ private:
     float m_max_current_a = 30.0f;
     float m_ac_current_a = 1.5f;
     float m_inj_freq_hz = 150.0f;
-    float m_overcurrent_a = 100.0f;  /* abort threshold on measured dq */
+    float m_overcurrent_a = 200.0f;  /* abort threshold on measured dq */
 
     /* Derived at start(): sample counts for the measurement window. */
     uint32_t m_skip_samples = 0;
@@ -122,12 +122,22 @@ private:
     volatile bool m_abort_requested = false;
     volatile float m_abort_current_a = 0.0f;
 
+    /* Overcurrent guard: instantaneous samples are noisy, so we filter the
+     * current and require several consecutive over-threshold samples before
+     * aborting.  A separate hard limit still catches genuine shorts. */
+    float m_i_filt = 0.0f;
+    static constexpr float OC_FILTER_ALPHA = 0.3f;
+    static constexpr int   OC_FILTER_PERSIST = 3;
+    int m_oc_count = 0;
+    float m_overcurrent_hard_a = 300.0f;
+
     /* Current-loop gains saved and restored around the run: the calibration
      * needs more loop bandwidth at the injection frequency than the
      * (deliberately conservative) running gains provide. */
     float m_orig_kp = 0.0f;
     float m_orig_ki = 0.0f;
     void restoreGains();
+    void applyCalibrationGains();
 
     /* The switching frequency is a runtime variable and must not be assumed:
      * the calibrator pins a known value for its measurement and restores the
@@ -141,6 +151,15 @@ private:
     bool m_lq_negative_half = false;
     int m_retries_left = 0;      /* amplitude auto-retry for the current point */
     MeasurePoint m_mp = {};
+    float m_prev_bias_a = 0.0f;  /* previous bias for smooth settle ramp */
+
+    /* AC injection ramp: scale amplitude from 0 to 1 over the first cycles. */
+    uint32_t m_samples_per_cycle = 0;
+    static constexpr uint32_t AC_RAMP_CYCLES = 2;
+
+    /* D-axis holding current used during Lq measurement to keep the rotor
+     * aligned against q-axis torque (no torque from d). */
+    float m_id_hold_a = 0.0f;
 
     /* Goertzel accumulator (ISR context). */
     float m_osc_c = 1.0f;        /* oscillator cos/sin at injection freq */
@@ -152,6 +171,7 @@ private:
     double m_v_re = 0.0, m_v_im = 0.0;
     uint32_t m_n = 0;
     float m_peak_abs_i = 0.0f;   /* overcurrent guard */
+    float m_peak_filt_i = 0.0f;  /* debug: peak filtered current */
 
     /* Results. */
     float m_ld0 = 0.0f;

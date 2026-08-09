@@ -26,6 +26,7 @@ constexpr const char* KEY_ENC_FIT_AS     = "Motor.Encoder.SinCos.Fit.As";
 constexpr const char* KEY_ENC_FIT_AC     = "Motor.Encoder.SinCos.Fit.Ac";
 constexpr const char* KEY_ENC_FIT_PHI    = "Motor.Encoder.SinCos.Fit.Phi";
 constexpr const char* KEY_ENC_FIT_VALID  = "Motor.Encoder.SinCos.Fit.Valid";
+constexpr const char* KEY_ENC_BREAK_MOD  = "Motor.Encoder.SinCos.BreakMod";
 constexpr const char* KEY_RES_UV         = "Motor.Resistance.Uv";
 constexpr const char* KEY_RES_UW         = "Motor.Resistance.Uw";
 constexpr const char* KEY_RES_VW         = "Motor.Resistance.Vw";
@@ -33,10 +34,17 @@ constexpr const char* KEY_RES_AVG        = "Motor.Resistance.Avg";
 constexpr const char* KEY_IND_LD         = "Motor.PMSM.Inductance.Ld";
 constexpr const char* KEY_IND_LQ         = "Motor.PMSM.Inductance.Lq";
 constexpr const char* KEY_FLUX_WB        = "Motor.PMSM.FluxLinkage.Wb";
+constexpr const char* KEY_IND_SIGMA_LS   = "Motor.Induction.SigmaLs";
+constexpr const char* KEY_IND_TAU_R      = "Motor.Induction.TauR";
+constexpr const char* KEY_IND_LM         = "Motor.Induction.Lm";
+constexpr const char* KEY_IND_LR         = "Motor.Induction.Lr";
+constexpr const char* KEY_IND_RR         = "Motor.Induction.Rr";
+constexpr const char* KEY_IND_L_LEAK     = "Motor.Induction.LLeak";
 constexpr const char* KEY_MOTOR_TYPE     = "Motor.Type";
 constexpr const char* KEY_ENCODER_TYPE   = "Motor.Encoder.Type";
 
-constexpr float MOTOR_TYPE_PMSM    = 1.0f;
+constexpr float MOTOR_TYPE_PMSM     = static_cast<float>(MotorType::PmsmIpm);
+constexpr float MOTOR_TYPE_INDUCTION= static_cast<float>(MotorType::Induction);
 constexpr float ENCODER_TYPE_SINCOS = 1.0f;
 
 void setIfValid(const char* key, float value) {
@@ -56,6 +64,15 @@ void ensureBaseInfo() {
     if (!RteParamStore::get(KEY_ENCODER_TYPE, &dummy)) {
         RteParamStore::set(KEY_ENCODER_TYPE, ENCODER_TYPE_SINCOS);
     }
+}
+
+/** Read the stored motor type, falling back to PMSM if unset or invalid. */
+MotorType storedMotorType() {
+    if (!RteParamStore::isReady()) return MotorType::PmsmIpm;
+    float v = 0.0f;
+    if (!RteParamStore::get(KEY_MOTOR_TYPE, &v)) return MotorType::PmsmIpm;
+    if (v < 0.0f || v > static_cast<float>(MotorType::SlipRing)) return MotorType::PmsmIpm;
+    return static_cast<MotorType>(v);
 }
 
 void savePoleResults(float poles, float encoderCyclesPerRev) {
@@ -89,6 +106,19 @@ void saveInductanceResults(float ldHenry, float lqHenry) {
     setIfValid(KEY_IND_LQ, lqHenry);
 }
 
+void saveInductionResults(float sigmaLsHenry, float rotorTauMs,
+                          float lmHenry, float lrHenry,
+                          float rrOhm, float lLeakHenry) {
+    if (!RteParamStore::isReady()) return;
+    RteParamStore::set(KEY_MOTOR_TYPE, MOTOR_TYPE_INDUCTION);
+    setIfValid(KEY_IND_SIGMA_LS, sigmaLsHenry);
+    setIfValid(KEY_IND_TAU_R, rotorTauMs);
+    setIfValid(KEY_IND_LM, lmHenry);
+    setIfValid(KEY_IND_LR, lrHenry);
+    setIfValid(KEY_IND_RR, rrOhm);
+    setIfValid(KEY_IND_L_LEAK, lLeakHenry);
+}
+
 void saveFluxResults(float fluxWb) {
     if (!RteParamStore::isReady()) return;
     setIfValid(KEY_FLUX_WB, fluxWb);
@@ -117,6 +147,11 @@ bool loadEncoderBounds() {
                                   static_cast<uint16_t>(cMin),
                                   static_cast<uint16_t>(cMax));
     return true;
+}
+
+void saveBreakaway(float breakawayMod) {
+    if (!RteParamStore::isReady()) return;
+    setIfValid(KEY_ENC_BREAK_MOD, breakawayMod);
 }
 
 void saveEncoderFit(const EncoderADC::SinCosFit& fit) {
@@ -153,19 +188,28 @@ bool loadEncoderFit() {
 
 bool loadMotorCalibration() {
     if (!RteParamStore::isReady()) return false;
-    float poles = 0.0f, cycles = 0.0f, offset_deg = 0.0f, sign = 0.0f;
-    if (!RteParamStore::get("Motor.Poles", &poles) || poles <= 0.0f ||
-        !RteParamStore::get("Motor.Encoder.SinCos.CyclesRev", &cycles) || cycles <= 0.0f ||
-        !RteParamStore::get("Motor.Encoder.SinCos.OffsetDeg", &offset_deg) ||
-        !RteParamStore::get("Motor.Encoder.SinCos.Sign", &sign)) {
-        return false;
-    }
     MotorCalibration& mc = motorCalibration();
-    mc.pole_count = poles;
-    mc.encoder_cycles_per_rev = cycles;
-    /* KV stores electrical degrees; the struct wants mechanical. */
-    mc.encoder_offset_deg = offset_deg / (poles * 0.5f);
-    mc.encoder_sign = (sign >= 0.0f) ? 1.0f : -1.0f;
+
+    /* Motor type drives calibration branching and must always be refreshed,
+     * even for encoderless motors that have no poles/encoder data yet. */
+    mc.motor_type = storedMotorType();
+
+    /* Encoder-dependent fields are only loaded when a stored encoder profile
+     * exists.  Encoderless induction setups skip these. */
+    float poles = 0.0f, cycles = 0.0f, offset_deg = 0.0f, sign = 0.0f;
+    bool have_encoder =
+        RteParamStore::get("Motor.Poles", &poles) && poles > 0.0f &&
+        RteParamStore::get("Motor.Encoder.SinCos.CyclesRev", &cycles) && cycles > 0.0f &&
+        RteParamStore::get("Motor.Encoder.SinCos.OffsetDeg", &offset_deg) &&
+        RteParamStore::get("Motor.Encoder.SinCos.Sign", &sign);
+    if (have_encoder) {
+        mc.pole_count = poles;
+        mc.encoder_cycles_per_rev = cycles;
+        /* KV stores electrical degrees; the struct wants mechanical. */
+        mc.encoder_offset_deg = offset_deg / (poles * 0.5f);
+        mc.encoder_sign = (sign >= 0.0f) ? 1.0f : -1.0f;
+    }
+
     float r = 0.0f;
     if (RteParamStore::get("Motor.Resistance.Avg", &r) && r > 0.0f) {
         mc.r_phase_uv = r;
@@ -173,7 +217,21 @@ bool loadMotorCalibration() {
         mc.r_phase_vw = r;
         mc.r_phase_avg = r;
     }
-    mc.valid = true;
+
+    float v = 0.0f;
+    if (RteParamStore::get(KEY_IND_SIGMA_LS, &v) && v > 0.0f) mc.sigma_ls_henry = v;
+    if (RteParamStore::get(KEY_IND_TAU_R, &v) && v > 0.0f) mc.rotor_time_constant_ms = v;
+    if (RteParamStore::get(KEY_IND_LM, &v) && v > 0.0f) mc.lm_henry = v;
+    if (RteParamStore::get(KEY_IND_LR, &v) && v > 0.0f) mc.lr_henry = v;
+    if (RteParamStore::get(KEY_IND_RR, &v) && v > 0.0f) mc.rr_ohm = v;
+    if (RteParamStore::get(KEY_IND_L_LEAK, &v) && v > 0.0f) mc.l_leak_henry = v;
+
+    /* Mark valid for FOC when the encoder prerequisites are present; the
+     * resistance stage of an encoderless induction run will set valid=true
+     * itself once it has measured R. */
+    if (have_encoder) {
+        mc.valid = true;
+    }
     return true;
 }
 

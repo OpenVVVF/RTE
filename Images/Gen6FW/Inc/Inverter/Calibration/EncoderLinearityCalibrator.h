@@ -118,7 +118,7 @@ private:
     static constexpr int MAX_HARMONIC = 16;
     static constexpr float DEFAULT_ROTATE_MOD = 0.0f;  /* use breakaway */
     static constexpr float DEFAULT_STEP_SIZE_MECH_DEG = 0.5f;
-    static constexpr float BREAKAWAY_MARGIN = 1.20f;   /* 20 % above breakaway */
+    static constexpr float BREAKAWAY_MARGIN = 1.00f;   /* rotation = breakaway (no headroom) */
     static constexpr float MAX_ROTATE_MOD = 0.35f;
     static constexpr float ROTATE_FREQUENCY_HZ = 1.0f;  /* for breakaway only */
     /* The settle check only needs to prove the rotor STOPPED — the residual is
