@@ -10,6 +10,8 @@
 #include "Inverter/Calibration/EncoderLinearityCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Calibration/InductanceCalibrator.h"
+#include "Inverter/Calibration/InductionMotorCalibrator.h"
+#include "Inverter/Calibration/InductionVHzCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/FocControlManager.h"
@@ -138,6 +140,10 @@ static void init()
      * the gate-driver/isolated rails have settled with PWM running. */
     Inverter::dcLinkCurrentSensor().init();
 
+    /* Open-loop controller (used by shell commands for scalar induction control
+     * and vector scan). */
+    Inverter::openLoopController().init();
+
     /* UART command shell for start/stop/freq/mod. */
     Inverter::commandShell().init();
 
@@ -265,6 +271,8 @@ static void loop()
     Inverter::encoderLinearityCalibrator().update();
     Inverter::resistanceCalibrator().update();
     Inverter::inductanceCalibrator().update();
+    Inverter::inductionMotorCalibrator().update();
+    Inverter::inductionVHzCalibrator().update();
     Inverter::fluxLinkageCalibrator().update();
 
     /* Legacy FOC manager (forced-angle diagnostics, offset experiments). */

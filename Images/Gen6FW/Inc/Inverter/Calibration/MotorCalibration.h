@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Inverter/Drivers/Storage/MotorConfigStore.h"
+
 #include <cstdint>
 
 namespace Inverter {
@@ -32,6 +34,16 @@ struct MotorCalibration {
     float ld_henry = 0.0f;                /**< d-axis inductance (0 = not calibrated). */
     float lq_henry = 0.0f;                /**< q-axis inductance (0 = not calibrated). */
     float flux_linkage_wb = 0.0f;         /**< PM flux linkage (0 = not calibrated). */
+
+    /* Induction-machine parameters (0 = not calibrated). */
+    MotorType motor_type = MotorType::PmsmIpm; /**< Motor family for calibration branching. */
+    float sigma_ls_henry = 0.0f;          /**< Stator transient (leakage) inductance [H]. */
+    float rotor_time_constant_ms = 0.0f;  /**< Rotor time constant Lr/Rr' [ms]. */
+    float lm_henry = 0.0f;                /**< Magnetizing inductance [H]. */
+    float lr_henry = 0.0f;                /**< Rotor inductance referred to stator [H]. */
+    float rr_ohm = 0.0f;                  /**< Rotor resistance referred to stator [ohm]. */
+    float l_leak_henry = 0.0f;            /**< Stator/rotor leakage inductance (Lls=Llr') [H]. */
+
     uint32_t timestamp_ms = 0;            /**< HAL tick when the calibration finished. */
     bool valid = true;                    /**< True after a successful calibration. */
 

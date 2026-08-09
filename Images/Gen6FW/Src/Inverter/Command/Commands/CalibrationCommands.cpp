@@ -7,11 +7,15 @@
 #include "Inverter/Calibration/EncoderLinearityCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Calibration/InductanceCalibrator.h"
+#include "Inverter/Calibration/InductionMotorCalibrator.h"
+#include "Inverter/Calibration/InductionVHzCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
 #include "Inverter/Calibration/BreakawayCalibrator.h"
 #include "Inverter/Calibration/CalKvStore.h"
+#include "Inverter/Calibration/MotorCalibration.h"
+#include "Inverter/Drivers/Storage/MotorConfigStore.h"
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
@@ -19,6 +23,7 @@
 #include <cstring>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 
 using Inverter::OpenLoopController;
 using Inverter::PoleEstimator;
@@ -27,17 +32,23 @@ using Inverter::EncoderOffsetCalibrator;
 using Inverter::EncoderLinearityCalibrator;
 using Inverter::ResistanceCalibrator;
 using Inverter::InductanceCalibrator;
+using Inverter::InductionMotorCalibrator;
+using Inverter::InductionVHzCalibrator;
 using Inverter::FluxLinkageCalibrator;
 using Inverter::EncoderCycleCalibrator;
 using Inverter::AutoCalibrationCoordinator;
 using Inverter::EncoderADC;
+using Inverter::MotorType;
 using Inverter::openLoopController;
 using Inverter::poleCalibrator;
 using Inverter::encoderOffsetCalibrator;
 using Inverter::encoderLinearityCalibrator;
 using Inverter::resistanceCalibrator;
 using Inverter::inductanceCalibrator;
+using Inverter::inductionMotorCalibrator;
+using Inverter::inductionVHzCalibrator;
 using Inverter::fluxLinkageCalibrator;
+using Inverter::motorCalibration;
 using Inverter::autoCalibrationCoordinator;
 using Inverter::breakawayCalibrator;
 using Inverter::encoderADC;
@@ -257,59 +268,6 @@ public:
     }
 };
 
-class IndCalCommand : public CommandInterface {
-public:
-    IndCalCommand()
-      : CommandInterface("indcal", "Ld/Lq inductance calibration (biased-AC injection)",
-            {ArgSpec{"subcmd", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
-             ArgSpec{"max_a", "", 0.0f, 200.0f, 0.0f, false, ArgSpec::FLOAT},
-             ArgSpec{"ac_a", "", 0.0f, 10.0f, 0.0f, false, ArgSpec::FLOAT},
-             ArgSpec{"freq_hz", "", 0.0f, 400.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
-
-    void execute(const ArgValue* args, CommandContext&) override {
-        InductanceCalibrator& ic = inductanceCalibrator();
-        const char* sub = args[0].s_val;
-
-        if (stringsEqual(sub, "stop")) {
-            ic.stop();
-            return;
-        }
-
-        if (stringsEqual(sub, "status")) {
-            Telemetry::printf("[CAL] indcal: state=%s Ld0=%.1f uH Lq0=%.1f uH points=%d",
-                              ic.stateName(),
-                              static_cast<double>(ic.lastLd() * 1.0e6),
-                              static_cast<double>(ic.lastLq() * 1.0e6),
-                              ic.pointCount());
-            for (int i = 0; i < ic.pointCount(); ++i) {
-                if (ic.ldPoint(i) > 0.0f) {
-                    Telemetry::printf("[CAL] indcal:   Ld(%5.1f A) = %7.1f uH",
-                                      static_cast<double>(ic.biasLdPoint(i)),
-                                      static_cast<double>(ic.ldPoint(i) * 1.0e6));
-                }
-                if (ic.lqPoint(i) > 0.0f) {
-                    Telemetry::printf("[CAL] indcal:   Lq(%5.1f A) = %7.1f uH",
-                                      static_cast<double>(ic.biasLqPoint(i)),
-                                      static_cast<double>(ic.lqPoint(i) * 1.0e6));
-                }
-            }
-            return;
-        }
-
-        if (stringsEqual(sub, "start")) {
-            const float maxA = args[1].present ? args[1].f_val : 30.0f;
-            const float acA = args[2].present ? args[2].f_val : 3.0f;
-            const float freq = args[3].present ? args[3].f_val : 150.0f;
-            if (!ic.start(maxA, acA, freq)) {
-                Telemetry::printf("[CAL] indcal start failed");
-            }
-            return;
-        }
-
-        Telemetry::printf("[CAL] indcal: unknown subcommand '%s' (start/stop/status)", sub);
-    }
-};
-
 class FluxCalCommand : public CommandInterface {
 public:
     FluxCalCommand()
@@ -365,10 +323,18 @@ static EncOffsetCommand  sEncOffsetCmd;
  *   cal stop / cal status        Abort / show progress.
  *   cal Motor.Poles              Pole count (+ encoder cycle count).
  *   cal Motor.Encoder[.SinCos]   Encoder offset + sign.
- *   cal Motor.Resistance         Phase resistances.
+ *   cal Motor.Resistance [I_A]   Phase resistances. Optional target current;
+ *                                default uses the firmware default. Append
+ *                                --force to skip the inactive-phase check.
  *   cal Motor.PMSM               Inductance then flux linkage.
- *   cal Motor.PMSM.Inductance    Ld/Lq only.
+ *   cal Motor.PMSM.Inductance [I_A]  Ld/Lq only. Optional max bias current;
+ *                                    default uses firmware default.
  *   cal Motor.PMSM.FluxLinkage   PM flux linkage only.
+ *   cal Motor.Induction [I_A]    Induction-machine sigma_Ls / tau_r. Optional
+ *                                flux current; default uses firmware default.
+ *   cal Motor.Induction.VHz [f]  Encoderless V/Hz spin Ls sweep. Optional
+ *                                electrical frequency in Hz (default 5).
+ *                                Append --wye if the motor is not delta.
  *
  * Results are stored in the RTE KV store under the same Motor.* paths and
  * picked up by graph config nodes at boot.
@@ -376,14 +342,16 @@ static EncOffsetCommand  sEncOffsetCmd;
 class CalCommand : public CommandInterface {
 public:
     CalCommand()
-      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path> [--no-save]",
+      : CommandInterface("cal", "Calibration: cal list/all/stop/status/<path> [target_A] [--no-save] [--force]",
             {ArgSpec{"path", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
-             ArgSpec{"flags", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING}}) {}
+             ArgSpec{"flags", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::STRING},
+             ArgSpec{"target_a", "", 0.0f, 200.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         const char* path = args[0].s_val;
         const char* flags = args[1].present ? args[1].s_val : "";
-        const bool save_results = !stringsEqual(flags, "--no-save");
+        const bool save_results = std::strstr(flags, "--no-save") == nullptr;
+        const bool force_mode = std::strstr(flags, "--force") != nullptr;
         using S = AutoCalibrationCoordinator::State;
 
         if (stringsEqual(path, "list")) {
@@ -433,13 +401,67 @@ public:
             }
             encoderLinearityCalibrator().start(poles, cycles);
         } else if (stringsEqual(path, "Motor.Resistance")) {
+            resistanceCalibrator().setForceMode(force_mode);
+            if (args[2].present) {
+                autoCalibrationCoordinator().setResistanceTargetCurrent(args[2].f_val);
+            }
             startRun(S::SETTLE, S::RESISTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM")) {
             startRun(S::INDUCTANCE, S::FLUX, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.Inductance")) {
+            if (args[2].present) {
+                autoCalibrationCoordinator().setInductanceParams(args[2].f_val, 0.0f, 0.0f);
+            }
             startRun(S::INDUCTANCE, S::INDUCTANCE, path, save_results);
         } else if (stringsEqual(path, "Motor.PMSM.FluxLinkage")) {
             startRun(S::FLUX, S::FLUX, path, save_results);
+        } else if (stringsEqual(path, "Motor.Induction")) {
+            /* Ensure the coordinator branches to the induction parameter-identification
+             * routine rather than the PMSM Ld/Lq + flux-linkage path. */
+            if (motorCalibration().motor_type != MotorType::Induction) {
+                motorCalibration().motor_type = MotorType::Induction;
+                Telemetry::printf("[CAL] motor type set to induction for this run");
+            }
+            if (args[2].present) {
+                autoCalibrationCoordinator().setInductionParams(args[2].f_val, 0.0f, 0.0f, 0.0f);
+            }
+            startRun(S::SETTLE, S::INDUCTION_PARAMS, path, save_results);
+        } else if (stringsEqual(path, "Motor.Induction.VHz")) {
+            if (motorCalibration().motor_type != MotorType::Induction) {
+                motorCalibration().motor_type = MotorType::Induction;
+                Telemetry::printf("[CAL] motor type set to induction for this run");
+            }
+            /* Accept either `cal ...VHz 20` or `cal ...VHz --wye 20`.
+             * args[1] is the string slot, so a bare number lands there. */
+            float freq_hz = 5.0f;
+            bool wye = false;
+
+            if (args[1].present) {
+                if (std::strstr(args[1].s_val, "--wye") != nullptr) {
+                    wye = true;
+                } else {
+                    /* atof is safer than sscanf in newlib-nano. */
+                    const float parsed = static_cast<float>(std::atof(args[1].s_val));
+                    if (parsed > 0.0f) {
+                        freq_hz = parsed;
+                    }
+                }
+            }
+            if (args[2].present) {
+                freq_hz = args[2].f_val;
+                if (std::strstr(args[2].s_val, "--wye") != nullptr) {
+                    wye = true;
+                }
+            }
+            wye = wye || (std::strstr(flags, "--wye") != nullptr);
+            if (inductionVHzCalibrator().start(freq_hz, 0.35f, 10, 1000U, 2000U,
+                                               80.0f, !wye)) {
+                Telemetry::printf("[CAL] %s: started f=%.1f Hz (%s)", path,
+                                  static_cast<double>(freq_hz),
+                                  wye ? "wye" : "delta");
+            } else {
+                Telemetry::printf("[CAL] %s: failed to start", path);
+            }
         } else {
             Telemetry::printf("[CAL] unknown routine '%s' (try 'cal list')", path);
         }
@@ -499,12 +521,22 @@ private:
         printStored("Motor.PMSM.Inductance.Ld", "d-axis inductance, H");
         printStored("Motor.PMSM.Inductance.Lq", "q-axis inductance, H");
         printStored("Motor.PMSM.FluxLinkage.Wb", "PM flux linkage, Wb");
+        Telemetry::printf("[CAL]   Motor.Induction");
+        Telemetry::printf("[CAL]   Motor.Induction.VHz [freq_hz]  V/Hz spin Ls sweep (encoderless)");
+        printStored("Motor.Type", "1=PMSM 3=induction");
+        printStored("Motor.Induction.SigmaLs", "stator transient inductance, H");
+        printStored("Motor.Induction.TauR", "rotor time constant, ms");
+        printStored("Motor.Induction.Lm", "magnetizing inductance, H");
+        printStored("Motor.Induction.Lr", "rotor inductance, H");
+        printStored("Motor.Induction.Rr", "rotor resistance, ohm");
+        printStored("Motor.Induction.LLeak", "leakage inductance, H");
     }
 
     void printStatus() const {
         AutoCalibrationCoordinator& coord = autoCalibrationCoordinator();
-        Telemetry::printf("[CAL] state=%s poles=%.2f enc_cycles=%.2f offset=%.3fdeg sign=%.0f R=%.4f",
+        Telemetry::printf("[CAL] state=%s type=%s poles=%.2f enc_cycles=%.2f offset=%.3fdeg sign=%.0f R=%.4f",
                           coord.stateName(),
+                          Inverter::MotorConfigStore::typeName(motorCalibration().motor_type),
                           static_cast<double>(coord.lastPoles()),
                           static_cast<double>(coord.lastEncoderCyclesPerRev()),
                           static_cast<double>(coord.lastEncoderOffset()),
@@ -614,7 +646,6 @@ public:
 };
 
 static ResCalCommand     sResCalCmd;
-static IndCalCommand     sIndCalCmd;
 static FluxCalCommand    sFluxCalCmd;
 static MotorCalCommand   sMotorCalCmd;
 static EncFitCommand     sEncFitCmd;

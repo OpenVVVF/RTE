@@ -5,6 +5,7 @@
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -33,6 +34,16 @@ float BreakawayCalibrator::voltageToMod(float v_v, float vdc_v) {
 
 float BreakawayCalibrator::modToVoltage(float m, float vdc_v) {
     return m * vdc_v * 0.5f;
+}
+
+static float maxPhaseCurrent() {
+    const float iu = phaseCurrentADC().lastU();
+    const float iv = phaseCurrentADC().lastV();
+    const float iw = -(iu + iv);
+    float max_i = std::fabs(iu);
+    if (std::fabs(iv) > max_i) max_i = std::fabs(iv);
+    if (std::fabs(iw) > max_i) max_i = std::fabs(iw);
+    return max_i;
 }
 
 bool BreakawayCalibrator::start(float max_voltage, float step_voltage,
@@ -161,9 +172,10 @@ void BreakawayCalibrator::advanceVoltageStep() {
         m_mod = max_mod;
     }
     m_step_enter_ms = HAL_GetTick();
-    Telemetry::printf("[CAL] BREAK: step mod=%.3f (%.2f V)",
+    Telemetry::printf("[CAL] BREAK: step mod=%.3f (%.2f V) I=%.1f A",
                       static_cast<double>(m_mod),
-                      static_cast<double>(modToVoltage(m_mod, vdc)));
+                      static_cast<double>(modToVoltage(m_mod, vdc)),
+                      static_cast<double>(maxPhaseCurrent()));
 }
 
 void BreakawayCalibrator::updateRampFwd() {
@@ -214,10 +226,11 @@ void BreakawayCalibrator::updateRampFwd() {
         m_breakaway_voltage = modToVoltage(m_mod, vdc);
         m_forward_final_cycles = cycles;
         CalKvStore::saveBreakaway(m_breakaway_mod);
-        Telemetry::printf("[CAL] BREAK: forward breakaway at mod=%.3f (%.2f V), moved=%.3f cycles",
+        Telemetry::printf("[CAL] BREAK: forward breakaway at mod=%.3f (%.2f V), moved=%.3f cycles, I=%.1f A",
                           static_cast<double>(m_breakaway_mod),
                           static_cast<double>(m_breakaway_voltage),
-                          static_cast<double>(moved_since_trusted));
+                          static_cast<double>(moved_since_trusted),
+                          static_cast<double>(maxPhaseCurrent()));
         Telemetry::printf("[CAL] BREAK: pausing %.1f s before reverse check",
                           static_cast<double>(PAUSE_AFTER_FWD_MS) * 0.001);
         enterState(State::PAUSE_AFTER_FWD);

@@ -123,6 +123,27 @@ bool ParseOptions(const std::vector<std::string>& args, Options& options,
         else if (arg == "--auto-gpio") options.autoGpio = true;
         else { error = "unknown option: " + arg; return false; }
     }
+
+    /* Resolve any relative paths to absolute against the process's starting cwd.
+     * This keeps later code (emitter, builder, subprocess runners) from
+     * interpreting them relative to a changed working directory. */
+    auto normalize = [](std::optional<fs::path>& p) {
+        if (!p || p->is_absolute()) return;
+        std::error_code ec;
+        fs::path abs = fs::weakly_canonical(fs::absolute(*p, ec), ec);
+        if (ec || abs.empty()) abs = fs::absolute(*p);
+        p = std::move(abs);
+    };
+    normalize(options.graph);
+    normalize(options.templates);
+    normalize(options.baseSource);
+    normalize(options.output);
+    normalize(options.sourceOutput);
+    normalize(options.buildDir);
+    normalize(options.firmware);
+    normalize(options.programmer);
+    normalize(options.session);
+
     return true;
 }
 

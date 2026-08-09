@@ -50,9 +50,17 @@ struct MotorConfigData {
     float ind_ld_h[8];            /**< Differential Ld at each bias [H]. */
     float ind_bias_lq_a[8];       /**< q bias level of each Lq point [A] (v4+). */
     float ind_lq_h[8];            /**< Differential Lq at each bias [H]. */
+
+    /* Induction-machine parameters (v5+). */
+    float ind_sigma_ls_h;         /**< Stator transient inductance [H]. */
+    float ind_rotor_tau_ms;       /**< Rotor time constant [ms]. */
+    float ind_lm_h;               /**< Magnetizing inductance [H]. */
+    float ind_lr_h;               /**< Rotor inductance referred to stator [H]. */
+    float ind_rr_ohm;             /**< Rotor resistance referred to stator [ohm]. */
+    float ind_l_leak_h;           /**< Stator/rotor leakage inductance [H]. */
 };
 
-constexpr uint16_t MOTOR_CONFIG_VERSION = 4U;
+constexpr uint16_t MOTOR_CONFIG_VERSION = 5U;
 
 /**
  * @brief Motor configuration persistence: FRAM <-> runtime.

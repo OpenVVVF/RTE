@@ -4,6 +4,7 @@
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -20,7 +21,7 @@ static constexpr float HOLD_MAX_MOD = 0.50f;
  * modulation step makes the ramp behave similarly at 20 V and 120 V. */
 static constexpr float BREAKAWAY_STEP_V = 0.50f;        /* V per ramp period */
 static constexpr float BREAKAWAY_MAX_V = 10.0f;         /* peak phase voltage */
-static constexpr float ROTATE_HEADROOM_FACTOR = 1.50f;  /* rotation = breakaway * this */
+static constexpr float ROTATE_HEADROOM_FACTOR = 1.00f;  /* rotation = breakaway (no headroom) */
 static constexpr float CAL_MAX_VOLTAGE_V = 25.0f;       /* hard voltage ceiling */
 
 static constexpr uint32_t WARMUP_MS = 5000U;
@@ -51,6 +52,16 @@ static float voltageToMod(float v_v, float vdc_v) {
 
 static float modToVoltage(float m, float vdc_v) {
     return m * vdc_v * 0.5f;
+}
+
+static float maxPhaseCurrent() {
+    const float iu = phaseCurrentADC().lastU();
+    const float iv = phaseCurrentADC().lastV();
+    const float iw = -(iu + iv);
+    float max_i = std::fabs(iu);
+    if (std::fabs(iv) > max_i) max_i = std::fabs(iv);
+    if (std::fabs(iw) > max_i) max_i = std::fabs(iw);
+    return max_i;
 }
 
 EncoderOffsetCalibrator& EncoderOffsetCalibrator::instance() {
@@ -143,9 +154,9 @@ void EncoderOffsetCalibrator::enterState(State state) {
             const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
             float target = m_mod;
             const float floor_mod = voltageToMod(v_breakaway, vdc);
-            /* Never warm up at a voltage below breakaway; keep a small headroom
-             * so the rotor stays locked. */
-            const float min_target_mod = voltageToMod(v_breakaway * 1.05f, vdc);
+            /* Rotation voltage equals breakaway; extra headroom is not needed
+             * and increases phase current on low-resistance motors. */
+            const float min_target_mod = voltageToMod(v_breakaway * 1.00f, vdc);
             if (target < min_target_mod) {
                 target = min_target_mod;
             }
@@ -172,7 +183,7 @@ void EncoderOffsetCalibrator::enterState(State state) {
             const float v_breakaway = modToVoltage(m_breakaway_mod, vdc);
             const float floor_mod = voltageToMod(v_breakaway, vdc);
             float target = m_mod;
-            const float min_target_mod = voltageToMod(v_breakaway * 1.05f, vdc);
+            const float min_target_mod = voltageToMod(v_breakaway * 1.00f, vdc);
             if (target < min_target_mod) {
                 target = min_target_mod;
             }
@@ -400,12 +411,13 @@ void EncoderOffsetCalibrator::update() {
                 (moved_field > 5.0f) ? (std::fabs(moved_enc) / moved_field) : 0.0f;
             if ((now_ms - m_last_dbg_ms) >= 500U) {
                 m_last_dbg_ms = now_ms;
-                Telemetry::printf("[CAL] ENC DBG: warmup: enc_mech=%.3f mod=%.3f enc_moved=%.1f fld_moved=%.1f lock=%.2f ms=%lu",
+                Telemetry::printf("[CAL] ENC DBG: warmup: enc_mech=%.3f mod=%.3f enc_moved=%.1f fld_moved=%.1f lock=%.2f I=%.1f A ms=%lu",
                                   static_cast<double>(enc_mech),
                                   static_cast<double>(m_ramp.applied()),
                                   static_cast<double>(moved_enc),
                                   static_cast<double>(moved_field),
                                   static_cast<double>(warmup_lock_ratio),
+                                  static_cast<double>(maxPhaseCurrent()),
                                   static_cast<unsigned long>(now_ms - m_state_start_ms));
             }
 
@@ -512,11 +524,12 @@ void EncoderOffsetCalibrator::update() {
 
             if ((now_ms - m_last_dbg_ms) >= 500U) {
                 m_last_dbg_ms = now_ms;
-                Telemetry::printf("[CAL] ENC DBG: rotate: enc_mech=%.3f fld_mech=%.3f moved=%.1f samples=%d",
+                Telemetry::printf("[CAL] ENC DBG: rotate: enc_mech=%.3f fld_mech=%.3f moved=%.1f samples=%d I=%.1f A",
                                   static_cast<double>(encoder_mech),
                                   static_cast<double>(field_mech),
                                   static_cast<double>(moved_field),
-                                  m_sample_count);
+                                  m_sample_count,
+                                  static_cast<double>(maxPhaseCurrent()));
             }
 
             if (!m_offset_acquisition_active) {

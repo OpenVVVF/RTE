@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Storage/MotorConfigStore.h"
 
 #include <cstdint>
 
@@ -19,6 +20,9 @@ namespace CalKvStore {
 /** Create Motor.Type (1=PMSM) and Motor.Encoder.Type (1=SinCos) if absent. */
 void ensureBaseInfo();
 
+/** Read the stored motor type, falling back to PMSM if unset or invalid. */
+MotorType storedMotorType();
+
 void savePoleResults(float poles, float encoderCyclesPerRev);
 
 /** offsetMechDeg is converted to electrical degrees (x pole pairs) and stored
@@ -29,6 +33,10 @@ void saveEncoderResults(float offsetMechDeg, float sign, float cyclesPerRev,
 void saveResistanceResults(float uv, float uw, float vw, float avg);
 
 void saveInductanceResults(float ldHenry, float lqHenry);
+
+void saveInductionResults(float sigmaLsHenry, float rotorTauMs,
+                          float lmHenry, float lrHenry,
+                          float rrOhm, float lLeakHenry);
 
 void saveFluxResults(float fluxWb);
 

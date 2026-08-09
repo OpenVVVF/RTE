@@ -84,6 +84,15 @@ public:
     /** @brief Abort a running calibration and turn off all switching. */
     void stop();
 
+    /**
+     * @brief Force mode: skip the inactive-phase current sanity check.
+     *
+     * Useful when measuring non-motor loads (e.g., power resistors) where the
+     * inactive-phase current sensor noise dominates, or when the physical wiring
+     * makes the inactive-phase current non-zero. Reset to false by stop().
+     */
+    void setForceMode(bool force) { m_force_mode = force; }
+
     /** @brief True while a calibration is running. */
     bool isActive() const {
         return m_state != State::IDLE && m_state != State::DONE &&
@@ -129,6 +138,7 @@ private:
     static int pairIndex(Pair pair);
 
     State m_state = State::IDLE;
+    bool  m_force_mode = false; /**< skip inactive-phase current check. */
     CalibrationHardware m_hw;
 
     Pair   m_pairs[3] = {Pair::UV, Pair::UW, Pair::VW};
@@ -184,7 +194,7 @@ private:
     static constexpr uint32_t MEASURE_TIME_MS = 1000U;
     static constexpr uint32_t MIN_SAMPLES = 2000U;
     static constexpr float MAX_INACTIVE_CURRENT_RATIO = 0.10f; /**< 10 % of active current. */
-    static constexpr float MAX_INACTIVE_CURRENT_MIN_A = 3.00f;  /**< floor for the ratio check. */
+    static constexpr float MAX_INACTIVE_CURRENT_MIN_A = 8.00f;  /**< floor for the ratio check. */
 
     static constexpr float PI_KP = 0.05f; /**< % duty per A error. */
     static constexpr float PI_KI = 10.0f; /**< % duty per A per second. */

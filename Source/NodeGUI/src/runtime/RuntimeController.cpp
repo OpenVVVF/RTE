@@ -200,6 +200,7 @@ void RuntimeController::DrainQueue() {
                     store_.AddString(v.key, v.value);
                 } else if constexpr (std::is_same_v<T, ConsoleItem>) {
                     store_.AddConsoleLine(v.text);
+                    store_.MarkLastCommandReceived();
                 } else {
                     store_.SetStats(v.rxHz,
                                     v.rxBytesPerSec,

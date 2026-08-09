@@ -7,6 +7,7 @@
 #include "Inverter/Calibration/InductanceCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Calibration/EncoderCycleCalibrator.h"
+#include "Inverter/Calibration/InductionMotorCalibrator.h"
 #include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FocControlManager.h"
@@ -38,8 +39,10 @@ static constexpr float MAX_MODULATION = 0.35f;
 static constexpr float OFFSET_MAX_MODULATION = 1.0f;   /* allow full inverter range for offset rotation; EncoderOffsetCalibrator clamps by voltage */
 static constexpr float POLE_ROTATE_MOD_FACTOR = 1.00f;
 static constexpr float OFFSET_ROTATE_MOD_FACTOR = 1.00f;
-static constexpr float RES_MAX_CURRENT_A = 30.0f;
-static constexpr float RES_OC_LIMIT_A = 100.0f;
+static constexpr float RES_MAX_CURRENT_A = 80.0f;
+static constexpr float RES_OC_LIMIT_A = 120.0f;
+static constexpr float IND_MAX_CURRENT_A = 30.0f;
+static constexpr float FLUX_MAX_CURRENT_A = 20.0f;
 static constexpr uint32_t RES_TIMEOUT_MS = 30000U;
 static constexpr uint32_t SETTLE_BEFORE_RES_MS = 2000U;
 
@@ -52,8 +55,9 @@ const char* AutoCalibrationCoordinator::stateName() const {
         case State::OFFSET:      return "OFFSET";
         case State::SETTLE:      return "SETTLE";
         case State::RESISTANCE:  return "RESISTANCE";
-        case State::INDUCTANCE:  return "INDUCTANCE";
-        case State::FLUX:        return "FLUX";
+        case State::INDUCTANCE:       return "INDUCTANCE";
+        case State::INDUCTION_PARAMS: return "INDUCTION_PARAMS";
+        case State::FLUX:             return "FLUX";
         case State::DONE:        return "DONE";
         case State::FAIL:        return "FAIL";
     }
@@ -84,8 +88,19 @@ void AutoCalibrationCoordinator::fail(const char* reason_fmt, ...) {
     if (resistanceCalibrator().isActive()) {
         resistanceCalibrator().stop();
     }
+    if (inductionMotorCalibrator().isActive()) {
+        inductionMotorCalibrator().stop();
+    }
 
     encoderADC().learnBounds(false);
+    m_custom_res_current_a = 0.0f;
+    m_custom_ind_max_a = 0.0f;
+    m_custom_ind_ac_a = 0.0f;
+    m_custom_ind_freq_hz = 0.0f;
+    m_custom_ind_flux_a = 0.0f;
+    m_custom_ind_ac_voltage_pct = 0.0f;
+    m_custom_ind_ac_freq_hz = 0.0f;
+    m_custom_ind_lm_h = 0.0f;
     enterState(State::FAIL);
 }
 
@@ -104,9 +119,20 @@ void AutoCalibrationCoordinator::stop() {
     if (resistanceCalibrator().isActive()) {
         resistanceCalibrator().stop();
     }
+    if (inductionMotorCalibrator().isActive()) {
+        inductionMotorCalibrator().stop();
+    }
 
     encoderADC().learnBounds(false);
     Telemetry::printf("[CAL] AUTO: stopped by user");
+    m_custom_res_current_a = 0.0f;
+    m_custom_ind_max_a = 0.0f;
+    m_custom_ind_ac_a = 0.0f;
+    m_custom_ind_freq_hz = 0.0f;
+    m_custom_ind_flux_a = 0.0f;
+    m_custom_ind_ac_voltage_pct = 0.0f;
+    m_custom_ind_ac_freq_hz = 0.0f;
+    m_custom_ind_lm_h = 0.0f;
     enterState(State::IDLE);
 }
 
@@ -130,6 +156,7 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_r
         encoderOffsetCalibrator().isActive() ||
         resistanceCalibrator().isActive() ||
         inductanceCalibrator().isActive() ||
+        inductionMotorCalibrator().isActive() ||
         fluxLinkageCalibrator().isActive()) {
         Telemetry::printf("[CAL] AUTO: another calibration is active");
         return false;
@@ -193,9 +220,12 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_r
         return false;
     }
 
+    const float res_current_a = (m_custom_res_current_a > 0.0f)
+                                    ? m_custom_res_current_a
+                                    : RES_MAX_CURRENT_A;
     Telemetry::printf("[CAL] AUTO: starting (max_mod=%.2f res_I=%.1f A)",
                       static_cast<double>(MAX_MODULATION),
-                      static_cast<double>(RES_MAX_CURRENT_A));
+                      static_cast<double>(res_current_a));
 
     switch (first) {
         case State::POLE:
@@ -225,7 +255,7 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_r
             return true;
 
         case State::INDUCTANCE:
-            m_inductance_ran = inductanceCalibrator().start(RES_MAX_CURRENT_A);
+            m_inductance_ran = startInductanceCal();
             if (!m_inductance_ran) {
                 Telemetry::printf("[CAL] AUTO: failed to start inductance calibration");
                 return false;
@@ -233,8 +263,17 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_r
             enterState(State::INDUCTANCE);
             return true;
 
+        case State::INDUCTION_PARAMS:
+            m_induction_ran = startInductionMotorCal();
+            if (!m_induction_ran) {
+                Telemetry::printf("[CAL] AUTO: failed to start induction calibration");
+                return false;
+            }
+            enterState(State::INDUCTION_PARAMS);
+            return true;
+
         case State::FLUX:
-            m_flux_ran = fluxLinkageCalibrator().start(RES_MAX_CURRENT_A * 0.67f);
+            m_flux_ran = fluxLinkageCalibrator().start(FLUX_MAX_CURRENT_A);
             if (!m_flux_ran) {
                 Telemetry::printf("[CAL] AUTO: failed to start flux linkage calibration");
                 return false;
@@ -284,7 +323,33 @@ void AutoCalibrationCoordinator::finish() {
     }
 
     encoderADC().learnBounds(false);
+    m_custom_res_current_a = 0.0f;
+    m_custom_ind_max_a = 0.0f;
+    m_custom_ind_ac_a = 0.0f;
+    m_custom_ind_freq_hz = 0.0f;
+    m_custom_ind_flux_a = 0.0f;
+    m_custom_ind_ac_voltage_pct = 0.0f;
+    m_custom_ind_ac_freq_hz = 0.0f;
+    m_custom_ind_lm_h = 0.0f;
     enterState(State::DONE);
+}
+
+bool AutoCalibrationCoordinator::startInductanceCal() {
+    if (m_custom_ind_max_a > 0.0f) {
+        const float ac_a = (m_custom_ind_ac_a > 0.0f) ? m_custom_ind_ac_a : 3.0f;
+        const float freq_hz = (m_custom_ind_freq_hz > 0.0f) ? m_custom_ind_freq_hz : 75.0f;
+        return inductanceCalibrator().start(m_custom_ind_max_a, ac_a, freq_hz);
+    }
+    return inductanceCalibrator().start(IND_MAX_CURRENT_A);
+}
+
+bool AutoCalibrationCoordinator::startInductionMotorCal() {
+    const float flux_a = (m_custom_ind_flux_a > 0.0f) ? m_custom_ind_flux_a : IND_MAX_CURRENT_A;
+    const float ac_pct = (m_custom_ind_ac_voltage_pct > 0.0f) ? m_custom_ind_ac_voltage_pct : 5.0f;
+    const float freq_hz = (m_custom_ind_ac_freq_hz > 0.0f) ? m_custom_ind_ac_freq_hz : 100.0f;
+    const float lm_h = (m_custom_ind_lm_h > 0.0f) ? m_custom_ind_lm_h : 0.0f;
+    return inductionMotorCalibrator().start(flux_a, ac_pct, freq_hz,
+                                            3000U, 2000U, lm_h);
 }
 
 void AutoCalibrationCoordinator::update() {
@@ -386,7 +451,10 @@ void AutoCalibrationCoordinator::update() {
                 return; /* still settling */
             }
 
-            if (!resistanceCalibrator().startCurrentCtrl(RES_MAX_CURRENT_A,
+            const float res_current_a = (m_custom_res_current_a > 0.0f)
+                                            ? m_custom_res_current_a
+                                            : RES_MAX_CURRENT_A;
+            if (!resistanceCalibrator().startCurrentCtrl(res_current_a,
                                                          ResistanceCalibrator::Pair::UV,
                                                          true, RES_TIMEOUT_MS,
                                                          RES_OC_LIMIT_A)) {
@@ -452,15 +520,62 @@ void AutoCalibrationCoordinator::update() {
                 break;
             }
 
-            /* Measure dq inductances (biased-AC injection).  The FRAM save
-             * happens after this stage so it includes the inductances. */
-            Telemetry::printf("[CAL] AUTO: enter INDUCTANCE");
-            m_inductance_ran = inductanceCalibrator().start(RES_MAX_CURRENT_A);
-            if (!m_inductance_ran) {
-                Telemetry::printf("[CAL] AUTO: WARNING: inductance cal failed to start; "
-                                  "continuing without it");
+            /* Branch on motor type for the parameter-identification stage. */
+            const MotorType mt = motorCalibration().motor_type;
+            if (mt == MotorType::Induction) {
+                Telemetry::printf("[CAL] AUTO: enter INDUCTION_PARAMS");
+                m_induction_ran = startInductionMotorCal();
+                if (!m_induction_ran) {
+                    Telemetry::printf("[CAL] AUTO: WARNING: induction cal failed to start; "
+                                      "continuing without it");
+                }
+                enterState(State::INDUCTION_PARAMS);
+            } else {
+                /* Default PMSM path. */
+                Telemetry::printf("[CAL] AUTO: enter INDUCTANCE");
+                m_inductance_ran = startInductanceCal();
+                if (!m_inductance_ran) {
+                    Telemetry::printf("[CAL] AUTO: WARNING: inductance cal failed to start; "
+                                      "continuing without it");
+                }
+                enterState(State::INDUCTANCE);
             }
-            enterState(State::INDUCTANCE);
+            break;
+        }
+
+        case State::INDUCTION_PARAMS: {
+            InductionMotorCalibrator& ic = inductionMotorCalibrator();
+            if (ic.isActive()) {
+                return; /* still running */
+            }
+
+            if (m_induction_ran && ic.isDone() && ic.sigmaLsHenry() > 0.0f) {
+                MotorCalibration& mc = motorCalibration();
+                mc.motor_type = MotorType::Induction;
+                mc.sigma_ls_henry = ic.sigmaLsHenry();
+                mc.rotor_time_constant_ms = ic.rotorTauMs();
+                if (ic.lmHenry() > 0.0f) mc.lm_henry = ic.lmHenry();
+                if (ic.lrHenry() > 0.0f) mc.lr_henry = ic.lrHenry();
+                if (ic.rrOhm() > 0.0f) mc.rr_ohm = ic.rrOhm();
+                if (ic.lLeakHenry() > 0.0f) mc.l_leak_henry = ic.lLeakHenry();
+                CalKvStore::saveInductionResults(mc.sigma_ls_henry, mc.rotor_time_constant_ms,
+                                                 mc.lm_henry, mc.lr_henry,
+                                                 mc.rr_ohm, mc.l_leak_henry);
+                Telemetry::printf("[CAL] AUTO: sigma_Ls=%.1f uH tau_r=%.1f ms",
+                                  static_cast<double>(mc.sigma_ls_henry * 1.0e6),
+                                  static_cast<double>(mc.rotor_time_constant_ms));
+            } else {
+                Telemetry::printf("[CAL] AUTO: WARNING: induction calibration "
+                                  "incomplete; sigma_Ls/tau_r left unset");
+            }
+
+            if (m_slice_last == State::INDUCTION_PARAMS) {
+                finish();
+                break;
+            }
+
+            /* Induction profile ends here (no flux linkage stage). */
+            finish();
             break;
         }
 
@@ -491,7 +606,7 @@ void AutoCalibrationCoordinator::update() {
             /* Measure the PM flux linkage (back-EMF speed sweep).  The FRAM
              * save happens after this stage so it includes everything. */
             Telemetry::printf("[CAL] AUTO: enter FLUX");
-            m_flux_ran = fluxLinkageCalibrator().start(RES_MAX_CURRENT_A * 0.67f);
+            m_flux_ran = fluxLinkageCalibrator().start(FLUX_MAX_CURRENT_A);
             if (!m_flux_ran) {
                 Telemetry::printf("[CAL] AUTO: WARNING: flux cal failed to start; "
                                   "continuing without it");
@@ -539,6 +654,8 @@ void AutoCalibrationCoordinator::update() {
             Telemetry::printf("[CAL] AUTO:   R_ll_avg             = %.4f ohm  (%.2f mohm)",
                               static_cast<double>(m_r_avg * 2.0f),
                               static_cast<double>(m_r_avg * 2000.0f));
+            Telemetry::printf("[CAL] AUTO:   motor type           = %s",
+                              MotorConfigStore::typeName(motorCalibration().motor_type));
             if (motorCalibration().ld_henry > 0.0f) {
                 Telemetry::printf("[CAL] AUTO:   Ld / Lq (0 A)      = %.1f / %.1f uH",
                                   static_cast<double>(motorCalibration().ld_henry * 1.0e6),
@@ -547,6 +664,11 @@ void AutoCalibrationCoordinator::update() {
             if (motorCalibration().flux_linkage_wb > 0.0f) {
                 Telemetry::printf("[CAL] AUTO:   flux linkage       = %.5f Wb",
                                   static_cast<double>(motorCalibration().flux_linkage_wb));
+            }
+            if (motorCalibration().sigma_ls_henry > 0.0f) {
+                Telemetry::printf("[CAL] AUTO:   sigma_Ls / tau_r   = %.1f uH / %.1f ms",
+                                  static_cast<double>(motorCalibration().sigma_ls_henry * 1.0e6),
+                                  static_cast<double>(motorCalibration().rotor_time_constant_ms));
             }
             Telemetry::printf("[CAL] AUTO: ===========================================");
             break;

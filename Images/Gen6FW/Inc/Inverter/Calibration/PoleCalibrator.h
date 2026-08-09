@@ -37,7 +37,7 @@ public:
      * @param torque_margin  Multiplier applied to the found breakaway modulation
      *                       to ensure continuous rotation during counting.
      */
-    bool start(float max_mod = 0.50f, float torque_margin = 1.30f);
+    bool start(float max_mod = 0.50f, float torque_margin = 1.00f);
 
     /**
      * @brief Non-blocking state-machine update.  Call at ~100 Hz from the main
