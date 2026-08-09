@@ -1,5 +1,54 @@
 {
-  "bridges": [],
+  "bridges": [
+    {
+      "consumer": {
+        "nodeId": "LogIu",
+        "portName": "Value"
+      },
+      "id": "b_iu",
+      "producer": {
+        "nodeId": "PhaseCurrents1",
+        "portName": "I_A"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "LogIv",
+        "portName": "Value"
+      },
+      "id": "b_iv",
+      "producer": {
+        "nodeId": "PhaseCurrents1",
+        "portName": "I_B"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "consumer": {
+        "nodeId": "LogIw",
+        "portName": "Value"
+      },
+      "id": "b_iw",
+      "producer": {
+        "nodeId": "PhaseCurrents1",
+        "portName": "I_C"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    }
+  ],
   "connections": [
     {
       "from": {
@@ -3319,6 +3368,58 @@
         "y": 643.8527999999999
       },
       "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogIu",
+      "parameters": {
+        "Key": "Iu"
+      },
+      "position": {
+        "x": 568.4000000000001,
+        "y": 778.8
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogIv",
+      "parameters": {
+        "Key": "Iv"
+      },
+      "position": {
+        "x": 713.4000000000001,
+        "y": 902.8000000000002
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "app_loop",
+      "id": "LogIw",
+      "parameters": {
+        "Key": "Iw"
+      },
+      "position": {
+        "x": 779.4000000000001,
+        "y": 1055.8000000000002
+      },
+      "type": "Debug.TelemetryLog"
+    },
+    {
+      "displayName": "",
+      "domain": "adc_isr",
+      "id": "PhaseCurrents1",
+      "parameters": {
+        "InvertPolarity": "0.0"
+      },
+      "position": {
+        "x": 205.4000000000001,
+        "y": 815.8
+      },
+      "type": "Sensors.PhaseCurrents"
     }
   ],
   "schemaVersion": 1

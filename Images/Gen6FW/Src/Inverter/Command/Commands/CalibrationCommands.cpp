@@ -433,7 +433,7 @@ public:
             }
             /* Accept either `cal ...VHz 20` or `cal ...VHz --wye 20`.
              * args[1] is the string slot, so a bare number lands there. */
-            float freq_hz = 5.0f;
+            float freq_hz = 10.0f;
             bool wye = false;
 
             if (args[1].present) {
@@ -454,7 +454,7 @@ public:
                 }
             }
             wye = wye || (std::strstr(flags, "--wye") != nullptr);
-            if (inductionVHzCalibrator().start(freq_hz, 0.35f, 10, 1000U, 2000U,
+            if (inductionVHzCalibrator().start(freq_hz, 0.50f, 5, 1000U, 2000U,
                                                80.0f, !wye)) {
                 Telemetry::printf("[CAL] %s: started f=%.1f Hz (%s)", path,
                                   static_cast<double>(freq_hz),
