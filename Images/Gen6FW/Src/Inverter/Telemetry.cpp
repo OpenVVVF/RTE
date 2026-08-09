@@ -234,12 +234,16 @@ struct LogItem {
     } v;
 };
 
-static DynamicKey g_dyn[MAX_DYNAMIC_KEYS];
+/* Large telemetry buffers live in AXI SRAM (RAM_D1).  DTCMRAM is scarce and
+ * CPU-only; these queues are not DMA targets, but RAM_D1 is still CPU-accessible
+ * and frees the fast DTCM for control-loop/ISR state.  They are explicitly reset
+ * in Telemetry::init() because .dma_buffers is NOLOAD. */
+static DynamicKey g_dyn[MAX_DYNAMIC_KEYS] __attribute__((section(".dma_buffers")));
 static uint16_t   g_next_dyn_id = DYNAMIC_ID_BASE;
 
-static RingQueue<DefineItem, DEFINE_QUEUE_CAP> g_define_q;
-static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_log_q;
-static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_str_q;
+static RingQueue<DefineItem, DEFINE_QUEUE_CAP> g_define_q __attribute__((section(".dma_buffers")));
+static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_log_q    __attribute__((section(".dma_buffers")));
+static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_str_q    __attribute__((section(".dma_buffers")));
 
 // ============================================================
 // Runtime state
