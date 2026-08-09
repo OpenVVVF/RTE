@@ -68,7 +68,12 @@ install(DIRECTORY Images/Gen6FW/ DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/Images
     PATTERN "*.pyc" EXCLUDE
     PATTERN ".vscode" EXCLUDE
 )
-install(FILES README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte)
+# The installed Gen6 base image resolves this portable C wire-format core at
+# ../../Lib/InverterProtocol when the CLI emits and builds outside the repo.
+install(DIRECTORY Lib/InverterProtocol/ DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/Lib/InverterProtocol
+    PATTERN "tests" EXCLUDE
+)
+install(FILES README.md CAN_TRACE.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     install(FILES packaging/udev/60-rte-mcp2221.rules
         DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/udev

@@ -1,5 +1,6 @@
 #include "Builder.h"
 #include "Emitter.h"
+#include "TraceCli.h"
 
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Flasher.h>
@@ -47,6 +48,8 @@ void Usage() {
         << "  flash --firmware FILE [--serial PORT | --session FILE] [--manual-boot]\n"
         << "  mcp2221 enter|exit|release\n"
         << "  device status|telemetry|console|command [--session FILE]\n"
+        << "  trace record --interface can0 --output FILE [--seconds N] [--id-base ID]\n"
+        << "  trace export --input FILE --output CSV\n"
         << "  mcp [--workspace PATH] [--session FILE]\n";
 }
 
@@ -610,6 +613,7 @@ int Dispatch(const Parsed& parsed) {
     }
     if (parsed.command == "device") return Device(parsed.args, parsed.format);
     if (parsed.command == "mcp2221") return Mcp2221(parsed.args, parsed.format);
+    if (parsed.command == "trace") return RunTraceCommand(parsed.args);
     if (parsed.command == "mcp") return Mcp(parsed.args);
     Usage();
     return 2;

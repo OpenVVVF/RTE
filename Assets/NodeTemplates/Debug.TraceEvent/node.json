@@ -1,0 +1,19 @@
+{
+  "id": "Debug.TraceEvent",
+  "displayName": "Trace on Change",
+  "defaultName": "TraceEvent",
+  "description": "Sends a snapshot once, then sends this value only when it changes. Use sparse channel IDs 8 through 31.",
+  "maxInstances": 24,
+  "isEntryPoint": false,
+  "domain": "app_loop",
+  "inputPorts": [
+    {"name":"Value","description":"Setpoint, constant, or other user-applied value.","direction":"input","type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}}
+  ],
+  "outputPorts": [],
+  "parameterTypes": {
+    "Key":{"description":"Sparse channel name.","quantity":"string","frame":"scalar","dtype":"f32"},
+    "Channel":{"description":"Unique sparse channel ID from 8 through 31.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "LastValue":{"description":"Internal last successfully transmitted value.","quantity":"dimensionless","frame":"scalar","dtype":"f32"},
+    "Initialized":{"description":"Internal initial-snapshot state.","quantity":"dimensionless","frame":"scalar","dtype":"f32"}
+  }
+}

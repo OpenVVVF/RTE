@@ -258,6 +258,17 @@ bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
  */
 int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out);
 
+/* Supplemental high-rate trace.  This does not use or modify Telemetry. */
+void platform_trace_configure8(
+    const char* key0, float scale0, const char* key1, float scale1,
+    const char* key2, float scale2, const char* key3, float scale3,
+    const char* key4, float scale4, const char* key5, float scale5,
+    const char* key6, float scale6, const char* key7, float scale7);
+void platform_trace_capture8(float value0, float value1, float value2, float value3,
+                             float value4, float value5, float value6, float value7);
+bool platform_trace_register_event(uint8_t channel, const char* key);
+bool platform_trace_event(uint8_t channel, float value, bool snapshot);
+
 /* --------------------------------------------------------------------------
  * Safety / faults
  * -------------------------------------------------------------------------- */

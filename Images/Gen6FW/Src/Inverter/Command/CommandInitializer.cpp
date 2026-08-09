@@ -10,6 +10,7 @@ void registerCalibrationCommands(CommandManager& mgr);
 void registerFocCommands(CommandManager& mgr);
 void registerCanCommands(CommandManager& mgr);
 void registerOpenLoopCommands(CommandManager& mgr);
+void registerTraceCommands(CommandManager& mgr);
 
 /* TIME_DOMAIN: APPLICATION_COMMAND_REGISTRATION
  *   Registers all shell commands at boot.  Commands execute in main-loop context.
@@ -28,4 +29,5 @@ void initializeCommands() {
     registerFocCommands(mgr);
     registerCanCommands(mgr);
     registerOpenLoopCommands(mgr);
+    registerTraceCommands(mgr);
 }

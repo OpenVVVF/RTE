@@ -237,6 +237,25 @@ KV bit rate (`Can.BitRate`, default 500 kbit/s).
   0x700/0x701 (`Can.Proto.IdBase`).
 - `Tools/can_session_client.py` — dependency-free socketcan test client
   that runs the full attach/capability/telemetry/command dance.
+- **High-rate trace is supplemental**: the existing telemetry and session
+  protocol remain the control plane. Add `Debug.Trace8` to a `tim_isr` graph
+  for eight continuously sampled signals; add `Debug.TraceEvent` in
+  `app_loop` for setpoints/constants that should emit one initial snapshot and
+  then only emit when their applied value changes. The ISR path only copies a
+  fixed sample into an SPSC ring. Foreground code quantizes three samples into
+  each 64-byte CAN-FD frame, and low-priority FDCAN IT1 drains transmission.
+  Sequence numbers and status frames expose all sample/frame loss.
+  See [CAN_TRACE.md](CAN_TRACE.md) for the short setup and capture guide.
+- Trace is disabled by default. Configure `Can.Trace.En=1`,
+  `Can.Trace.Bus=1|2`, `Can.Trace.DataKBaud=3000`, and optionally
+  `Can.Trace.IdBase=1664` / `Can.Trace.AutoStart=1`, then reboot. The selected
+  controller accepts classic traffic and FD+BRS; trace IDs use `IdBase` through
+  `IdBase+3`. Prefer a dedicated bus at 500 kbit/s nominal / 3 Mbit/s data.
+  Shell controls are `trace status|start|stop`.
+- CLI capture: `rte trace record --interface can0 --output run.rtecap
+  --seconds 10`, followed by `rte trace export --input run.rtecap --output
+  run.csv`. Live capture uses Linux SocketCAN; the binary capture format and
+  CSV export are portable. `--seconds 0` records until Ctrl-C.
 - Flashing over CAN: not pursued on this board. The H723 ROM FDCAN
   bootloader listens on PD0/PD1, which is not where Gen6 routes CAN; the
   planned dual-MCU hardware will let the MCUs reflash each other instead.

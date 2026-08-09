@@ -28,6 +28,7 @@
 #include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
+#include "Inverter/Drivers/Logging/TraceRecorder.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Drivers/Storage/MotorConfigStore.h"
 #include "Inverter/Drivers/PWM/pwm.h"
@@ -173,6 +174,9 @@ static void init()
     /* CAN session protocol (KV Can.Proto.*; no-op unless enabled). */
     Inverter::canSession().init();
 
+    /* Independent, opt-in high-rate CAN-FD trace plane. */
+    Inverter::traceRecorder().init();
+
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
     // RTE_EMIT: app_loop init
@@ -250,6 +254,7 @@ static void loop()
     Inverter::appSensors().update();
 
     /* CAN: drain TX queues, bus-off recovery, session heartbeat watch. */
+    Inverter::traceRecorder().update();
     Inverter::canBus().update();
     Inverter::canSession().update();
 
