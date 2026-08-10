@@ -7,6 +7,20 @@
 namespace Inverter {
 
 /**
+ * @brief Phase-wire swap modes.
+ *
+ * Corrects for motor leads plugged in the wrong order.  The swap is applied
+ * to both the PWM voltage outputs and the phase-current feedback so that the
+ * control algorithm still sees a consistent UVW coordinate system.
+ */
+enum class PhaseSwap : uint8_t {
+    None  = 0, /**< Normal UVW wiring. */
+    SwapUV = 1, /**< Swap U and V (wired VUW). */
+    SwapVW = 2, /**< Swap V and W (wired UWV). */
+    SwapUW = 3, /**< Swap U and W (wired WVU). */
+};
+
+/**
  * @brief Latest successfully calibrated motor parameters.
  *
  * Updated automatically when the automatic motor profiling routine finishes.
@@ -27,6 +41,8 @@ struct MotorCalibration {
     float encoder_cycles_per_rev = 1.0f;  /**< Encoder electrical cycles per mech rev. */
     float encoder_offset_deg = 13.106f;   /**< Encoder offset, mechanical degrees. */
     float encoder_sign = -1.0f;           /**< +1 or -1: encoder direction vs rotor field. */
+    PhaseSwap phase_swap = PhaseSwap::None; /**< Phase-wire swap correction. */
+
     float r_phase_uv = 0.0144f;           /**< Per-phase resistance from UV pair [ohm]. */
     float r_phase_uw = 0.0150f;           /**< Per-phase resistance from UW pair [ohm]. */
     float r_phase_vw = 0.0141f;           /**< Per-phase resistance from VW pair [ohm]. */

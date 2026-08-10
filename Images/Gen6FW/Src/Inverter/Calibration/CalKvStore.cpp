@@ -41,6 +41,7 @@ constexpr const char* KEY_IND_LR         = "Motor.Induction.Lr";
 constexpr const char* KEY_IND_RR         = "Motor.Induction.Rr";
 constexpr const char* KEY_IND_L_LEAK     = "Motor.Induction.LLeak";
 constexpr const char* KEY_MOTOR_TYPE     = "Motor.Type";
+constexpr const char* KEY_PHASE_SWAP     = "Motor.PhaseSwap";
 constexpr const char* KEY_ENCODER_TYPE   = "Motor.Encoder.Type";
 
 constexpr float MOTOR_TYPE_PMSM     = static_cast<float>(MotorType::PmsmIpm);
@@ -193,6 +194,15 @@ bool loadMotorCalibration() {
     /* Motor type drives calibration branching and must always be refreshed,
      * even for encoderless motors that have no poles/encoder data yet. */
     mc.motor_type = storedMotorType();
+
+    /* Phase-wire swap is independent of encoder presence; apply it from the
+     * KV store whenever it has been configured. */
+    float phase_swap = 0.0f;
+    if (RteParamStore::get(KEY_PHASE_SWAP, &phase_swap)) {
+        if (phase_swap >= 0.0f && phase_swap <= 3.0f) {
+            mc.phase_swap = static_cast<PhaseSwap>(static_cast<uint8_t>(phase_swap));
+        }
+    }
 
     /* Encoder-dependent fields are only loaded when a stored encoder profile
      * exists.  Encoderless induction setups skip these. */

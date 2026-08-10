@@ -12,6 +12,7 @@
 #include "Inverter/Drivers/Sensors/PoleEstimator.h"
 #include "Inverter/Drivers/Sensors/SpikeRecorder.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -29,6 +30,35 @@ static PhaseCurrentADC s_instance;
 
 PhaseCurrentADC& phaseCurrentADC() {
     return s_instance;
+}
+
+/**
+ * @brief Remap measured physical U/V currents to the logical UVW frame
+ *        requested by the control algorithm, accounting for Motor.PhaseSwap.
+ *
+ * W is reconstructed from U+V by the caller; this helper only produces the
+ * logical U and V that preserve the zero-sequence constraint.
+ */
+static void applyPhaseSwap(float iu_phys_a, float iv_phys_a,
+                           float& iu_log_a, float& iv_log_a) {
+    switch (motorCalibration().phase_swap) {
+        case PhaseSwap::SwapUV:
+            iu_log_a = iv_phys_a;
+            iv_log_a = iu_phys_a;
+            break;
+        case PhaseSwap::SwapVW:
+            iu_log_a = iu_phys_a;
+            iv_log_a = -(iu_phys_a + iv_phys_a);
+            break;
+        case PhaseSwap::SwapUW:
+            iu_log_a = -(iu_phys_a + iv_phys_a);
+            iv_log_a = iv_phys_a;
+            break;
+        default:
+            iu_log_a = iu_phys_a;
+            iv_log_a = iv_phys_a;
+            break;
+    }
 }
 
 static ADC_InjectionConfTypeDef makeInjectedConfig(uint32_t channel, uint32_t rank,
@@ -416,8 +446,12 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
     m_iu = countsToCurrent(m_raw_u_sig, m_raw_u_ref);
     m_iv = countsToCurrent(m_raw_v_sig, m_raw_v_ref);
 
-    m_current_u = m_iu - m_offset_u;
-    m_current_v = m_iv - m_offset_v;
+    const float iu_phys = m_iu - m_offset_u;
+    const float iv_phys = m_iv - m_offset_v;
+    float iu_log = 0.0f, iv_log = 0.0f;
+    applyPhaseSwap(iu_phys, iv_phys, iu_log, iv_log);
+    m_current_u = iu_log;
+    m_current_v = iv_log;
 
     /* The generated adc_isr domain (hw.phase_currents) handles observer
      * correction and RLS estimation from the micro-burst.  The base image
@@ -503,10 +537,12 @@ bool PhaseCurrentADC::sampleBurst(BurstSample& out) {
     }
 
     __disable_irq();
-    out.point[0].iu_a = countsToCurrent(m_raw_burst_u_sig[0], m_raw_burst_u_ref[0]) - m_offset_u;
-    out.point[0].iv_a = countsToCurrent(m_raw_burst_v_sig[0], m_raw_burst_v_ref[0]) - m_offset_v;
-    out.point[1].iu_a = countsToCurrent(m_raw_burst_u_sig[1], m_raw_burst_u_ref[1]) - m_offset_u;
-    out.point[1].iv_a = countsToCurrent(m_raw_burst_v_sig[1], m_raw_burst_v_ref[1]) - m_offset_v;
+    const float iu0_phys = countsToCurrent(m_raw_burst_u_sig[0], m_raw_burst_u_ref[0]) - m_offset_u;
+    const float iv0_phys = countsToCurrent(m_raw_burst_v_sig[0], m_raw_burst_v_ref[0]) - m_offset_v;
+    const float iu1_phys = countsToCurrent(m_raw_burst_u_sig[1], m_raw_burst_u_ref[1]) - m_offset_u;
+    const float iv1_phys = countsToCurrent(m_raw_burst_v_sig[1], m_raw_burst_v_ref[1]) - m_offset_v;
+    applyPhaseSwap(iu0_phys, iv0_phys, out.point[0].iu_a, out.point[0].iv_a);
+    applyPhaseSwap(iu1_phys, iv1_phys, out.point[1].iu_a, out.point[1].iv_a);
     /* The two points in one burst are one rank apart; at 48 MHz ADC clock
      * with 8.5-cycle sampling this is roughly 0.46 us.  We store a nominal
      * midpoint timestamp for both points. */
@@ -525,10 +561,12 @@ bool PhaseCurrentADC::latestBurst(BurstSample& out) const {
     }
 
     __disable_irq();
-    out.point[0].iu_a = countsToCurrent(m_raw_burst_u_sig[0], m_raw_burst_u_ref[0]) - m_offset_u;
-    out.point[0].iv_a = countsToCurrent(m_raw_burst_v_sig[0], m_raw_burst_v_ref[0]) - m_offset_v;
-    out.point[1].iu_a = countsToCurrent(m_raw_burst_u_sig[1], m_raw_burst_u_ref[1]) - m_offset_u;
-    out.point[1].iv_a = countsToCurrent(m_raw_burst_v_sig[1], m_raw_burst_v_ref[1]) - m_offset_v;
+    const float iu0_phys = countsToCurrent(m_raw_burst_u_sig[0], m_raw_burst_u_ref[0]) - m_offset_u;
+    const float iv0_phys = countsToCurrent(m_raw_burst_v_sig[0], m_raw_burst_v_ref[0]) - m_offset_v;
+    const float iu1_phys = countsToCurrent(m_raw_burst_u_sig[1], m_raw_burst_u_ref[1]) - m_offset_u;
+    const float iv1_phys = countsToCurrent(m_raw_burst_v_sig[1], m_raw_burst_v_ref[1]) - m_offset_v;
+    applyPhaseSwap(iu0_phys, iv0_phys, out.point[0].iu_a, out.point[0].iv_a);
+    applyPhaseSwap(iu1_phys, iv1_phys, out.point[1].iu_a, out.point[1].iv_a);
     out.point[0].time_us = m_last_burst_us;
     out.point[1].time_us = m_last_burst_us;
     out.valid = true;

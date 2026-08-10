@@ -13,6 +13,7 @@
 #include "Inverter/LoopStats.h"
 #include "Inverter/platform_api.h"
 #include "Inverter/Control/ControlSupervisor.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
 #include <stdbool.h>
@@ -146,6 +147,32 @@ void PWM_SetDutyCycle(uint8_t phase, float duty_percent)
 
 void PWM_SetThreePhaseDuty(float duty_u, float duty_v, float duty_w)
 {
+    /* Apply any configured phase-wire swap so the control algorithm's UVW
+     * coordinates map to the actual motor terminals. */
+    using Inverter::PhaseSwap;
+    switch (Inverter::motorCalibration().phase_swap) {
+        case PhaseSwap::SwapUV: {
+            const float tmp = duty_u;
+            duty_u = duty_v;
+            duty_v = tmp;
+            break;
+        }
+        case PhaseSwap::SwapVW: {
+            const float tmp = duty_v;
+            duty_v = duty_w;
+            duty_w = tmp;
+            break;
+        }
+        case PhaseSwap::SwapUW: {
+            const float tmp = duty_u;
+            duty_u = duty_w;
+            duty_w = tmp;
+            break;
+        }
+        default:
+            break;
+    }
+
     PWM_SetDutyCycle(0, duty_u);
     PWM_SetDutyCycle(1, duty_v);
     PWM_SetDutyCycle(2, duty_w);

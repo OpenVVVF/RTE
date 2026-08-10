@@ -195,6 +195,11 @@ private:
                 if (value >= 0.0f && value <= static_cast<float>(Inverter::MotorType::SlipRing)) {
                     mc.motor_type = static_cast<Inverter::MotorType>(static_cast<uint32_t>(value));
                 }
+            } else if (strcasecmp(key, "Motor.PhaseSwap") == 0) {
+                Inverter::MotorCalibration& mc = Inverter::motorCalibration();
+                if (value >= 0.0f && value <= 3.0f) {
+                    mc.phase_swap = static_cast<Inverter::PhaseSwap>(static_cast<uint8_t>(value));
+                }
             }
             reportFlush("config value saved to FRAM", 1);
             return;

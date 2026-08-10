@@ -43,6 +43,29 @@ The active runtime type is shown by:
 cal status
 ```
 
+## Phase-wire swap
+
+If the motor leads are plugged in the wrong order, the drive can electronically
+swap two phases instead of rewiring.  The swap is applied to both the PWM
+voltage outputs and the phase-current feedback, so the FOC algorithm still sees
+a consistent UVW coordinate system.
+
+| Value | Swap | Example wiring |
+|-------|------|----------------|
+| 0     | none | UVW (default)  |
+| 1     | U↔V  | VUW            |
+| 2     | V↔W  | UWV            |
+| 3     | U↔W  | WVU            |
+
+Set from the shell:
+
+```
+config set Motor.PhaseSwap 1
+```
+
+The value is read from FRAM at boot, so a power cycle is required after changing
+it.  Use `0` for normal wiring.
+
 ## Calibration command families
 
 The `cal` command is now strictly partitioned by motor family.  Running a routine
