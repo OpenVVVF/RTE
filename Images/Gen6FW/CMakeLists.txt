@@ -185,8 +185,51 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # printf implementation so Telemetry::printf("%.3f", ...) works.
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
 
+# Emit a linker map so memory-analysis tooling can attribute DTCMRAM/RAM_Dx
+# usage to individual symbols and object files.
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map
+)
+
 # Generate a raw binary after linking so the .bin is always in sync with the .elf.
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.bin
     COMMENT "Generating ${CMAKE_PROJECT_NAME}.bin"
 )
+
+# ---------------------------------------------------------------------------
+# DTCMRAM usage analysis
+# ---------------------------------------------------------------------------
+# Locate analyze_memory.py.  In-tree IVP_CORE_DIR points at the repo's
+# Lib/InverterProtocol, so ../../Tools/analyze_memory.py is correct.  Emitted
+# builds receive an absolute IVP_CORE_DIR from RTEFirmwareBuilder and the same
+# relative derivation still reaches the repo root.
+set(RTE_MEMORY_ANALYZER "" CACHE FILEPATH "Path to Tools/analyze_memory.py")
+if(NOT RTE_MEMORY_ANALYZER)
+    if(DEFINED IVP_CORE_DIR)
+        set(_derived_analyzer "${IVP_CORE_DIR}/../../Tools/analyze_memory.py")
+        if(EXISTS "${_derived_analyzer}")
+            set(RTE_MEMORY_ANALYZER "${_derived_analyzer}")
+        endif()
+    endif()
+    if(NOT RTE_MEMORY_ANALYZER)
+        set(_default_analyzer "${CMAKE_CURRENT_SOURCE_DIR}/../../Tools/analyze_memory.py")
+        if(EXISTS "${_default_analyzer}")
+            set(RTE_MEMORY_ANALYZER "${_default_analyzer}")
+        endif()
+    endif()
+endif()
+
+set(RTE_DTCM_BUDGET "118000" CACHE STRING "DTCMRAM budget in bytes (default leaves 10 KB headroom)")
+
+if(RTE_MEMORY_ANALYZER AND EXISTS "${RTE_MEMORY_ANALYZER}")
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND python3 "${RTE_MEMORY_ANALYZER}"
+                "$<TARGET_FILE:${CMAKE_PROJECT_NAME}>"
+                --map "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map"
+                --budget-dtcm ${RTE_DTCM_BUDGET}
+        COMMENT "Analyzing DTCMRAM usage"
+    )
+else()
+    message(STATUS "DTCMRAM analyzer not found; skipping memory-budget check.")
+endif()
