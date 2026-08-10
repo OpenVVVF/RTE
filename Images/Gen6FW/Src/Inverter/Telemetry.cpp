@@ -46,7 +46,7 @@ static constexpr uint16_t MAX_DYNAMIC_KEYS      = 128;
 static constexpr uint16_t MAX_SENSOR_BINDINGS   = 256;
 
 static constexpr uint16_t LOG_QUEUE_CAP         = 512;
-static constexpr uint16_t DEFINE_QUEUE_CAP      = 256;
+static constexpr uint16_t DEFINE_QUEUE_CAP      = 512;
 
 static constexpr uint8_t  KEY_MAXLEN            = 32;
 static constexpr uint8_t  STR_MAXLEN            = 48;
