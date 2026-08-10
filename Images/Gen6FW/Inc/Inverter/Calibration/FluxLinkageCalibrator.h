@@ -68,8 +68,10 @@ private:
     uint32_t m_ramp_start_ms = 0;
     uint32_t m_last_sample_ms = 0;
     int m_nsamp = 0;
-    float m_samp_psi[MAX_SAMPLES] = {};
-    float m_samp_rpm[MAX_SAMPLES] = {};
+    /* Sample buffers are large (~2 KB) and only used during commissioning.
+     * Keep them in AXI SRAM (RAM_D1) so DTCM stays free for runtime state. */
+    static float m_samp_psi[MAX_SAMPLES];
+    static float m_samp_rpm[MAX_SAMPLES];
 
     /* Results. */
     float m_flux_wb = 0.0f;
