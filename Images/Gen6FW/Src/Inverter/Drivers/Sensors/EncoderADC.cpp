@@ -22,6 +22,10 @@ static uint16_t s_enc_dma_buffer[2] __attribute__((section(".dma_buffers")));
 EncoderADC::FitAccumulator EncoderADC::s_fit_acc __attribute__((section(".dma_buffers")));
 EncoderADC::SinCosFit EncoderADC::s_fit __attribute__((section(".dma_buffers")));
 
+/* Angle-linearity trace ring: diagnostic-only, lives in RAM_D2 to free DTCM. */
+EncoderADC::TraceEntry EncoderADC::m_trace[EncoderADC::TRACE_LEN]
+    __attribute__((section(".trace_buffers")));
+
 EncoderADC& encoderADC() {
     return s_instance;
 }
@@ -145,6 +149,8 @@ bool EncoderADC::init() {
     /* NOLOAD-section state must be zeroed explicitly; the C runtime does not
      * do it for us. */
     initializeFitState();
+    m_trace_head = 0;
+    m_trace_decim = 0;
 
     if (!configureAdcChannels()) return false;
     if (!initTimer()) return false;
