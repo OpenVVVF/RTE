@@ -53,6 +53,40 @@ jobs:
         shell: bash
         run: ctest --test-dir build --output-on-failure
 
+      # Firmware builds only run on Linux in this matrix.  They exercise the
+      # Gen6 base image, the linker map generation, and the DTCMRAM budget
+      # check via analyze_memory.py.
+      - name: Install ARM toolchain
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Build foc-demo firmware
+        if: runner.os == 'Linux'
+        shell: bash
+        run: >-
+          ./build/bin/RTEFirmwareBuilder
+          --fw-src Images/Gen6FW
+          --build-dir build/foc-demo-fw
+          --graph Assets/Examples/foc_demo.json
+          --base-src Images/Gen6FW
+          --output build/foc-demo-fw-src
+          --clean
+          --build-type Release
+
+      - name: Build induction-vhz firmware
+        if: runner.os == 'Linux'
+        shell: bash
+        run: >-
+          ./build/bin/RTEFirmwareBuilder
+          --fw-src Images/Gen6FW
+          --build-dir build/induction-vhz-fw
+          --graph Assets/Examples/induction_vhz.json
+          --base-src Images/Gen6FW
+          --output build/induction-vhz-fw-src
+          --clean
+          --build-type Release
+
       - name: Stage portable install
         shell: bash
         run: cmake --install build --prefix "${{ github.workspace }}/stage"
