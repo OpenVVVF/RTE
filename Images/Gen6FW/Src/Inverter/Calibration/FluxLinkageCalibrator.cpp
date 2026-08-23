@@ -31,6 +31,12 @@ constexpr float    MIN_RPM           = 40.0f;  /* back-EMF well above noise */
 
 } // namespace
 
+/* Large commissioning buffers live in AXI SRAM, not scarce DTCMRAM. */
+float FluxLinkageCalibrator::m_samp_psi[FluxLinkageCalibrator::MAX_SAMPLES]
+    __attribute__((section(".dma_buffers")));
+float FluxLinkageCalibrator::m_samp_rpm[FluxLinkageCalibrator::MAX_SAMPLES]
+    __attribute__((section(".dma_buffers")));
+
 FluxLinkageCalibrator& FluxLinkageCalibrator::instance() {
     return s_instance;
 }
@@ -124,6 +130,8 @@ bool FluxLinkageCalibrator::start(float max_iq_a) {
     m_n_points = 0;
     m_nsamp = 0;
     m_last_sample_ms = 0;
+    std::memset(m_samp_psi, 0, sizeof(m_samp_psi));
+    std::memset(m_samp_rpm, 0, sizeof(m_samp_rpm));
     for (int i = 0; i < MAX_POINTS; ++i) {
         m_iq[i] = m_rpm[i] = m_flux[i] = 0.0f;
     }
@@ -173,7 +181,7 @@ void FluxLinkageCalibrator::update() {
             const uint32_t elapsed = now - m_ramp_start_ms;
             const float ramp_frac = (elapsed >= RAMP_MS) ? 1.0f
                 : static_cast<float>(elapsed) / static_cast<float>(RAMP_MS);
-            focControlManager().setIq(m_max_iq_a);
+            focControlManager().setIq(ramp_frac * m_max_iq_a);
 
             const float rpm = encoderADC().rpmMech();
             const float vq = focControlManager().controller().Vq_V;

@@ -8,7 +8,7 @@ can be targeted by writing your own base image**: the HAL/driver layer,
 plus the small `platform_api` contract the generated code calls.
 
 This repo holds the STM32H723 base firmware image, the node-graph
-libraries, the Qt NodeGUI editor, and the tools that turn a graph into a
+libraries, the RTE Studio editor, and the tools that turn a graph into a
 flashable firmware binary. A plant/inverter simulator based on
 [ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
 exercised in closed loop before touching hardware.
@@ -33,7 +33,9 @@ RTE/
 │   ├── RTELogger/          # Shared logging used by the host tools
 │   └── InverterProtocol/   # Shared host/device telemetry + command protocol
 └── Source/
-    ├── NodeGUI/            # Qt6 + QtNodes node editor
+    ├── NodeGUI/            # RTE Studio (Qt6 + QtNodes; source path kept stable)
+    ├── RTEAutomation/      # Portable generation/build/flash/session library
+    ├── RTECLI/             # Unified `rte` automation and MCP executable
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
     └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
 ```
@@ -56,7 +58,8 @@ implementation.
 
 ## Build host tools
 
-Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for NodeGUI). Clone with
+Requires CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 (for RTE Studio).
+Clone with
 `--recurse-submodules` (or run `git submodule update --init --recursive`) so the
 QtNodes dependency under `Source/NodeGUI/third_party` is present.
 
@@ -65,11 +68,23 @@ cmake -B build -G Ninja
 cmake --build build -j8
 ```
 
-### NodeGUI
+On Linux, install the included udev rule once so non-root IDE/CLI processes can
+control MCP2221A GPIO, then unplug and reconnect the adapter:
 
 ```bash
-cmake --build build --target NodeGUI -j8
-./build/Source/NodeGUI/NodeGUI Assets/Examples/foc_demo.json
+sudo install -m 0644 packaging/udev/60-rte-mcp2221.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+```
+
+Host executables are always placed in `build/bin`; static libraries are placed
+in `build/lib`. Firmware generated from a graph defaults to the platform user
+cache, not to a nested directory in this checkout.
+
+### RTE Studio
+
+```bash
+cmake --build build --target RTEStudio -j8
+./build/bin/rte-studio Assets/Examples/foc_demo.json
 ```
 
 On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
@@ -111,48 +126,47 @@ Message types include the existing telemetry frames (`TELEMETRY_DATA`,
 
 ```bash
 cmake --build build --target InverterProtocol_tests
-./build/Lib/InverterProtocol/InverterProtocol_tests
+./build/bin/InverterProtocol_tests
 ```
 
 ## Build the STM32 firmware
 
-`RTEFirmwareBuilder` handles CMake configuration, ARM toolchain detection, and
-the optional `RTECodeEmitter` step. If you do not have `arm-none-eabi-gcc/g++`
-installed, run the bundled installer first:
+The unified `rte` CLI handles validation, generation, CMake configuration,
+ARM toolchain detection, building, flashing, live Studio access, and MCP. The
+older `RTECodeEmitter` and `RTEFirmwareBuilder` commands remain compatibility
+wrappers for one release.
+If you do not have `arm-none-eabi-gcc/g++` installed, run the bundled installer
+first:
 
 ```bash
-./scripts/install_stm32_toolchain.sh
+./Tools/install_stm32_toolchain.sh
 ```
 
 Then build the baseline firmware:
 
 ```bash
-./build/Source/RTEFirmwareBuilder/RTEFirmwareBuilder \
-    --fw-src    Images/Gen6FW \
-    --build-dir build/rtetest-fw \
+./build/bin/rte build \
     --graph     Images/Gen6FW/baseline_graph.json \
-    --base-src  Images/Gen6FW \
-    --output    build/rtetest-fw-src \
-    --verbosity info
+    --base-source Images/Gen6FW
 ```
 
-After a successful build:
-
-```
-build/rtetest-fw/
-├── STM32CubeMX.elf
-└── STM32CubeMX.bin
-```
+After a successful default build, the CLI prints the artifact path and writes a
+manifest under the user cache (`~/.cache/rte/projects/...` on Linux,
+`~/Library/Caches/RTE/...` on macOS, and Local AppData on Windows). Override
+`--source-output` and `--build-dir` when a fixed workspace is required.
 
 ## Tools
 
-- `NodeGUI` — Qt node editor for NodeAPI graphs (open/save, domains, bridges,
-  parameter edit, auto-arrange).
+- `rte-studio` — lightweight editor and owner of live device/telemetry state.
+- `rte` — portable automation backend and MCP stdio server (`rte mcp`).
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the
   firmware, generates domain code, and inserts it at `// RTE_EMIT:` markers.
 - `RTEFirmwareBuilder` — wraps CMake, auto-detects the ARM toolchain, optionally
-  runs `RTECodeEmitter`, and builds the STM32 firmware.
+  runs code generation, and builds the STM32 firmware (compatibility command).
+
+See [Automation backend](docs/automation-backend.md) for component boundaries,
+the cache layout, CLI examples, MCP setup, and the external-write security gate.
 
 ## Calibration
 
@@ -215,12 +229,33 @@ KV bit rate (`Can.BitRate`, default 500 kbit/s).
   and keeps the session alive with heartbeats (timeout drops it — fail-safe
   on host loss). Telemetry streams to the session only while granted
   (decimated, `Can.Proto.TelemDiv`); shell commands ride the same transport
-  into the shared `CommandManager`. Packets use the shared
+  into the shared `CommandManager` only when explicitly enabled with
+  `Can.Proto.AllowCmd=1` (default off while authentication is not implemented).
+  Packets use the shared
   `Lib/InverterProtocol` format segmented over classic CAN frames; AUTH
   message IDs are reserved for a future password gate. IDs default
   0x700/0x701 (`Can.Proto.IdBase`).
 - `Tools/can_session_client.py` — dependency-free socketcan test client
   that runs the full attach/capability/telemetry/command dance.
+- **High-rate trace is supplemental**: the existing telemetry and session
+  protocol remain the control plane. Add `Debug.Trace8` to a `tim_isr` graph
+  for eight continuously sampled signals; add `Debug.TraceEvent` in
+  `app_loop` for setpoints/constants that should emit one initial snapshot and
+  then only emit when their applied value changes. The ISR path only copies a
+  fixed sample into an SPSC ring. Foreground code quantizes three samples into
+  each 64-byte CAN-FD frame, and low-priority FDCAN IT1 drains transmission.
+  Sequence numbers and status frames expose all sample/frame loss.
+  See [CAN_TRACE.md](CAN_TRACE.md) for the short setup and capture guide.
+- Trace is disabled by default. Configure `Can.Trace.En=1`,
+  `Can.Trace.Bus=1|2`, `Can.Trace.DataKBaud=3000`, and optionally
+  `Can.Trace.IdBase=1664` / `Can.Trace.AutoStart=1`, then reboot. The selected
+  controller accepts classic traffic and FD+BRS; trace IDs use `IdBase` through
+  `IdBase+3`. Prefer a dedicated bus at 500 kbit/s nominal / 3 Mbit/s data.
+  Shell controls are `trace status|start|stop`.
+- CLI capture: `rte trace record --interface can0 --output run.rtecap
+  --seconds 10`, followed by `rte trace export --input run.rtecap --output
+  run.csv`. Live capture uses Linux SocketCAN; the binary capture format and
+  CSV export are portable. `--seconds 0` records until Ctrl-C.
 - Flashing over CAN: not pursued on this board. The H723 ROM FDCAN
   bootloader listens on PD0/PD1, which is not where Gen6 routes CAN; the
   planned dual-MCU hardware will let the MCUs reflash each other instead.

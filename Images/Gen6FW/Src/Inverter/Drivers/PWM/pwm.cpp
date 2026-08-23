@@ -13,6 +13,7 @@
 #include "Inverter/LoopStats.h"
 #include "Inverter/platform_api.h"
 #include "Inverter/Control/ControlSupervisor.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
 #include <stdbool.h>
@@ -146,6 +147,32 @@ void PWM_SetDutyCycle(uint8_t phase, float duty_percent)
 
 void PWM_SetThreePhaseDuty(float duty_u, float duty_v, float duty_w)
 {
+    /* Apply any configured phase-wire swap so the control algorithm's UVW
+     * coordinates map to the actual motor terminals. */
+    using Inverter::PhaseSwap;
+    switch (Inverter::motorCalibration().phase_swap) {
+        case PhaseSwap::SwapUV: {
+            const float tmp = duty_u;
+            duty_u = duty_v;
+            duty_v = tmp;
+            break;
+        }
+        case PhaseSwap::SwapVW: {
+            const float tmp = duty_v;
+            duty_v = duty_w;
+            duty_w = tmp;
+            break;
+        }
+        case PhaseSwap::SwapUW: {
+            const float tmp = duty_u;
+            duty_u = duty_w;
+            duty_w = tmp;
+            break;
+        }
+        default:
+            break;
+    }
+
     PWM_SetDutyCycle(0, duty_u);
     PWM_SetDutyCycle(1, duty_v);
     PWM_SetDutyCycle(2, duty_w);
@@ -345,7 +372,7 @@ bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
  */
 void PWM_StartSPWM(float fundamental_freq_hz, float modulation_index)
 {
-    if (fundamental_freq_hz < 0.0f) fundamental_freq_hz = 0.0f;
+    /* Negative frequency reverses the rotation direction. */
     if (modulation_index < 0.0f) modulation_index = 0.0f;
     if (modulation_index > SVPWM_M_MAX) modulation_index = SVPWM_M_MAX;
 
@@ -373,7 +400,7 @@ void PWM_StopSPWM(void)
 
 void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
 {
-    if (fundamental_freq_hz < 0.0f) fundamental_freq_hz = 0.0f;
+    /* Negative frequency reverses the rotation direction. */
     if (modulation_index < 0.0f) modulation_index = 0.0f;
     if (modulation_index > SVPWM_M_MAX) modulation_index = SVPWM_M_MAX;
 
@@ -442,11 +469,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     PWM_SetThreePhaseDuty(du, dv, dw);
 
-    /* Advance angle by one PWM period. */
+    /* Advance angle by one PWM period.  Negative frequency reverses direction;
+     * keep the angle in [0, 2pi) and count net forward cycles only. */
     angle += TWO_PI * spwm_fundamental_freq_hz / pwm_switching_freq_hz;
     if (angle >= TWO_PI) {
         angle -= TWO_PI;
         ++spwm_elec_cycles;
+    } else if (angle < 0.0f) {
+        angle += TWO_PI;
     }
     spwm_angle = angle;
 }

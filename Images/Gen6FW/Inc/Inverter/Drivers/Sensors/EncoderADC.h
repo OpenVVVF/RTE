@@ -379,7 +379,12 @@ private:
     };
     static constexpr size_t   TRACE_LEN = 1024;
     static constexpr uint8_t  TRACE_DECIM = 10;
-    TraceEntry m_trace[TRACE_LEN] = {};
+    /* The angle-linearity trace ring is large (~8 KB) and only used for the
+     * offline enc_trace diagnostic command.  Keep it out of scarce DTCMRAM
+     * by placing it in the ISR trace section (RAM_D2).  It is not initialized
+     * by the C runtime (NOLOAD), but m_trace_head/m_trace_decim are reset in
+     * init() and the ring contents are overwritten before any read. */
+    static TraceEntry m_trace[TRACE_LEN];
     size_t     m_trace_head = 0;
     uint8_t    m_trace_decim = 0;
 

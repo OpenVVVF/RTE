@@ -2,6 +2,7 @@
 #include "Inverter/Command/CommandContext.h"
 #include "Inverter/Command/CommandManager.h"
 #include "Inverter/Drivers/CAN/CanBus.h"
+#include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Telemetry.h"
 
 #include <cstdio>
@@ -37,6 +38,7 @@ public:
         if (strcasecmp(sub, "status") == 0) {
             Inverter::canBus().printStatus(0);
             Inverter::canBus().printStatus(1);
+            Inverter::canSession().printStatus();
             return;
         }
         if (strcasecmp(sub, "rxdump") == 0) {
@@ -49,12 +51,27 @@ public:
                 Telemetry::printf("[SHELL] usage: can send <bus 1|2> <id> [b0..b7]");
                 return;
             }
-            const uint8_t bus = args[1].f_val >= 1.5f ? 1 : 0;
+            if ((args[1].f_val != 1.0f && args[1].f_val != 2.0f) ||
+                !(args[2].f_val >= 0.0f && args[2].f_val <= 2047.0f)) {
+                Telemetry::printf("[SHELL] bus must be 1|2 and standard id 0..2047");
+                return;
+            }
+            const uint8_t bus = static_cast<uint8_t>(args[1].f_val) - 1;
             const uint32_t id = static_cast<uint32_t>(args[2].f_val);
+            if (args[2].f_val != static_cast<float>(id)) {
+                Telemetry::printf("[SHELL] CAN id must be an integer");
+                return;
+            }
             uint8_t data[8] = {};
             uint8_t dlc = 0;
             for (uint8_t i = 0; i < 8 && args[3 + i].present; ++i) {
-                data[i] = static_cast<uint8_t>(static_cast<int32_t>(args[3 + i].f_val) & 0xFF);
+                const float byte = args[3 + i].f_val;
+                if (!(byte >= 0.0f && byte <= 255.0f) ||
+                    byte != static_cast<float>(static_cast<uint8_t>(byte))) {
+                    Telemetry::printf("[SHELL] data bytes must be integers 0..255");
+                    return;
+                }
+                data[i] = static_cast<uint8_t>(byte);
                 dlc = i + 1;
             }
             if (Inverter::canBus().send(bus, id, false, data, dlc)) {

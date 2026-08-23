@@ -13,6 +13,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/CurrentObserver.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/Drivers/Logging/TraceRecorder.h"
 
 #include "main.h"
 #include "adc.h"
@@ -179,10 +180,18 @@ float platform_get_rpm_mech(void) {
 }
 
 float platform_get_rpm_elec(void) {
-    /* Electrical RPM = mechanical RPM * pole pairs.  Use the calibrated pole
-     * count; default to 5 pairs (10-pole motor) if not calibrated. */
-    const float pole_pairs = Inverter::MotorCalibration::instance().pole_count * 0.5f;
-    return Inverter::encoderADC().rpmMech() * pole_pairs;
+    /* Electrical RPM = mechanical RPM * pole pairs, signed so it follows the
+     * same convention as the sign-corrected electrical angle used by the
+     * generated control graph (ElecAngle applies Motor.Encoder.SinCos.Sign).
+     * The raw encoder RPM is in the physical encoder-count direction; if the
+     * encoder is mounted opposite to the rotor field, encoder_sign is -1 and
+     * the electrical angle increases while the raw encoder counts decrease.
+     * Without the sign correction here, feed-forward terms see the wrong speed
+     * sign and produce braking/cross-coupling voltages instead of assisting. */
+    const auto& cal = Inverter::MotorCalibration::instance();
+    const float pole_pairs = cal.pole_count * 0.5f;
+    const float encoder_sign = (cal.encoder_sign >= 0.0f) ? 1.0f : -1.0f;
+    return Inverter::encoderADC().rpmMech() * pole_pairs * encoder_sign;
 }
 
 uint32_t platform_get_encoder_raw_sin(void) {
@@ -306,15 +315,22 @@ bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
                        const uint8_t* data, uint8_t dlc) {
     /* Graph/shell-facing bus numbering is 1-based (1 = "A"/FDCAN1,
      * 2 = "B"/FDCAN2); the driver is 0-based. */
-    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
-    return Inverter::canBus().send(b, id, ext, data, dlc);
+    if (bus < 1 || bus > Inverter::CanBus::NUM_BUSES) {
+        return false;
+    }
+    return Inverter::canBus().send(bus - 1, id, ext, data, dlc);
 }
 
 int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out) {
-    const uint8_t b = (bus >= 1) ? (bus - 1) : 0;
+    if (bus < 1 || bus > Inverter::CanBus::NUM_BUSES) {
+        if (seq_out != nullptr) {
+            *seq_out = 0;
+        }
+        return -1;
+    }
     Inverter::CanBus::Frame f;
     uint32_t seq = 0;
-    if (!Inverter::canBus().rxLatest(b, id, f, &seq)) {
+    if (!Inverter::canBus().rxLatest(bus - 1, id, false, f, &seq)) {
         if (seq_out != nullptr) {
             *seq_out = seq;
         }
@@ -330,6 +346,31 @@ int platform_can_rx(uint8_t bus, uint32_t id, uint8_t* data, uint32_t* seq_out) 
         *seq_out = seq;
     }
     return n;
+}
+
+void platform_trace_configure8(
+    const char* key0, float scale0, const char* key1, float scale1,
+    const char* key2, float scale2, const char* key3, float scale3,
+    const char* key4, float scale4, const char* key5, float scale5,
+    const char* key6, float scale6, const char* key7, float scale7) {
+    const char* keys[8] = {key0, key1, key2, key3, key4, key5, key6, key7};
+    const float scales[8] = {scale0, scale1, scale2, scale3,
+                             scale4, scale5, scale6, scale7};
+    Inverter::traceRecorder().configure8(keys, scales);
+}
+
+void platform_trace_capture8(float value0, float value1, float value2, float value3,
+                             float value4, float value5, float value6, float value7) {
+    Inverter::traceRecorder().capture8(value0, value1, value2, value3,
+                                       value4, value5, value6, value7);
+}
+
+bool platform_trace_event(uint8_t channel, float value, bool snapshot) {
+    return Inverter::traceRecorder().publishEvent(channel, value, snapshot);
+}
+
+bool platform_trace_register_event(uint8_t channel, const char* key) {
+    return Inverter::traceRecorder().registerEventChannel(channel, key);
 }
 
 /* --------------------------------------------------------------------------

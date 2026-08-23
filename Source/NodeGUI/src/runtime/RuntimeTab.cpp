@@ -27,7 +27,7 @@ namespace {
 constexpr int kMaxRecentPresets = 10;
 
 QSettings MakeSettings() {
-    return QSettings(QStringLiteral("RTE"), QStringLiteral("NodeGUI"));
+    return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
 }
 
 }  // namespace

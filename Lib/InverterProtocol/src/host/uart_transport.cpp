@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#ifdef __APPLE__
+#include <IOKit/serial/ioss.h>
+#endif
 #endif
 
 namespace ivp {
@@ -56,11 +59,10 @@ void SerialPort::close() {
 }
 
 bool SerialPort::open(const std::string& port, int baud) {
-    (void)baud; /* The existing device link runs at 460800. */
     close();
 
 #ifdef _WIN32
-    std::string full = "\\\\.\\" + port;
+    std::string full = port.rfind("\\\\.\\", 0) == 0 ? port : "\\\\.\\" + port;
     HANDLE h = CreateFileA(full.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
                            nullptr, OPEN_EXISTING, 0, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
@@ -69,7 +71,7 @@ bool SerialPort::open(const std::string& port, int baud) {
     dcb.DCBlength = sizeof(dcb);
     if (!GetCommState(h, &dcb)) { CloseHandle(h); return false; }
 
-    dcb.BaudRate = 460800;
+    dcb.BaudRate = static_cast<DWORD>(baud);
     dcb.ByteSize = 8;
     dcb.Parity   = NOPARITY;
     dcb.StopBits = ONESTOPBIT;
@@ -92,8 +94,18 @@ bool SerialPort::open(const std::string& port, int baud) {
     termios tty{};
     if (tcgetattr(fd, &tty) != 0) { ::close(fd); return false; }
 
-    cfsetispeed(&tty, B460800);
-    cfsetospeed(&tty, B460800);
+#ifdef __APPLE__
+    cfsetispeed(&tty, B9600);
+    cfsetospeed(&tty, B9600);
+#else
+    speed_t speed = B460800;
+    if (baud == 230400) speed = B230400;
+#ifdef B115200
+    else if (baud == 115200) speed = B115200;
+#endif
+    cfsetispeed(&tty, speed);
+    cfsetospeed(&tty, speed);
+#endif
     cfmakeraw(&tty);
 
     tty.c_cflag |= (CLOCAL | CREAD);
@@ -103,6 +115,14 @@ bool SerialPort::open(const std::string& port, int baud) {
     tty.c_cc[VTIME] = 1;
 
     if (tcsetattr(fd, TCSANOW, &tty) != 0) { ::close(fd); return false; }
+
+#ifdef __APPLE__
+    speed_t requested = static_cast<speed_t>(baud);
+    if (ioctl(fd, IOSSIOSPEED, &requested) == -1 && errno != ENOTTY) {
+        ::close(fd);
+        return false;
+    }
+#endif
 
     tcflush(fd, TCIOFLUSH);
     impl_->fd = fd;

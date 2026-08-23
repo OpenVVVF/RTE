@@ -53,6 +53,40 @@ void InductanceCalibrator::restoreGains() {
     }
 }
 
+void InductanceCalibrator::applyCalibrationGains() {
+    /* Save original gains first (the getters are public and cheap). */
+    m_orig_kp = focControlManager().kp();
+    m_orig_ki = focControlManager().ki();
+    if (m_orig_kp <= 0.0f) {
+        m_orig_kp = 0.03f;
+        m_orig_ki = 10.0f;
+    }
+
+    /* PI design for an R-L plant with deliberate phase lead.  We intentionally
+     * do NOT cancel the plant pole; instead we place the controller zero well
+     * below the plant pole so the loop has generous phase margin at crossover.
+     * A stable loop is more important here than textbook pole-zero cancellation.
+     */
+    const MotorCalibration& mc = motorCalibration();
+    constexpr float SEED_L_H = 100.0e-6f;
+    constexpr float WB_RAD_S = 600.0f;   /* crossover ~95 Hz */
+    constexpr float WZ_RAD_S = 25.0f;    /* controller zero, << plant pole */
+    float kp = SEED_L_H * WB_RAD_S;
+    float ki = kp * WZ_RAD_S;
+
+    if (kp < 0.005f) kp = 0.005f;
+    if (kp > 0.20f)  kp = 0.20f;
+    if (ki < 0.5f)   ki = 0.5f;
+    if (ki > 50.0f)  ki = 50.0f;
+
+    focControlManager().setKp(kp);
+    focControlManager().setKi(ki);
+    Telemetry::printf("[CAL] IND: gains Kp=%.4f Ki=%.2f (seed L=%.1f uH R=%.4f ohm)",
+                      static_cast<double>(kp), static_cast<double>(ki),
+                      static_cast<double>(SEED_L_H * 1.0e6f),
+                      static_cast<double>(mc.r_phase_avg));
+}
+
 void InductanceCalibrator::restoreSwitchingFrequency() {
     if (m_saved_switching_hz > 0.0f) {
         PWM_SetFrequency(static_cast<uint32_t>(m_saved_switching_hz + 0.5f));
@@ -149,7 +183,7 @@ bool InductanceCalibrator::start(float max_current_a, float ac_current_a,
         return false;
     }
     if (max_current_a < 5.0f || max_current_a > 200.0f ||
-        ac_current_a <= 0.0f || ac_current_a > 10.0f ||
+        ac_current_a <= 0.0f || ac_current_a > 4.0f ||
         inj_freq_hz < 10.0f || inj_freq_hz > 400.0f) {
         Telemetry::printf("[CAL] IND: bad parameters");
         return false;
@@ -166,6 +200,14 @@ bool InductanceCalibrator::start(float max_current_a, float ac_current_a,
     }
     m_fail_reason[0] = '\0';
     m_retries_left = 2;
+    m_prev_bias_a = 0.0f;
+    m_mp = {};
+
+    /* D-axis hold during Lq: enough to keep the rotor aligned, not so much
+     * that it dominates saturation.  Cap at 5 A. */
+    m_id_hold_a = 0.10f * m_max_current_a;
+    if (m_id_hold_a > 5.0f) m_id_hold_a = 5.0f;
+    if (m_id_hold_a < 1.0f) m_id_hold_a = 1.0f;
 
     /* Pin a known switching frequency for the measurement (the runtime
      * frequency is user-defined and may be anything); restored on exit. */
@@ -179,12 +221,15 @@ bool InductanceCalibrator::start(float max_current_a, float ac_current_a,
     const float step = 2.0f * 3.14159265358979323846f * m_inj_freq_hz / fs;
     m_osc_dc = std::cos(step);
     m_osc_ds = std::sin(step);
-    const uint32_t samples_per_cycle =
-        static_cast<uint32_t>(fs / m_inj_freq_hz + 0.5f);
-    m_skip_samples = samples_per_cycle * static_cast<uint32_t>(SKIP_CYCLES);
-    m_target_samples = samples_per_cycle * static_cast<uint32_t>(MEASURE_CYCLES - SKIP_CYCLES);
+    m_samples_per_cycle = static_cast<uint32_t>(fs / m_inj_freq_hz + 0.5f);
+    if (m_samples_per_cycle < 2U) m_samples_per_cycle = 2U;
+    m_skip_samples = m_samples_per_cycle * static_cast<uint32_t>(SKIP_CYCLES);
+    m_target_samples = m_samples_per_cycle * static_cast<uint32_t>(MEASURE_CYCLES - SKIP_CYCLES);
 
     m_abort_requested = false;
+    m_i_filt = 0.0f;
+    m_oc_count = 0;
+    m_overcurrent_hard_a = 2.5f * m_overcurrent_a;
 
     /* The calibrator runs its own stage of motorcal, so the "calibration
      * active" guard must be bypassed (the coordinator is waiting on us). */
@@ -193,13 +238,14 @@ bool InductanceCalibrator::start(float max_current_a, float ac_current_a,
         return false;
     }
     focControlManager().setSampleCallback(focSampleTrampoline, nullptr);
-    m_orig_kp = 0.0f;
+    applyCalibrationGains();
 
-    Telemetry::printf("[CAL] IND: biased-AC injection: max=%.1f A ac=%.2f A f=%.1f Hz "
+    Telemetry::printf("[CAL] IND: biased-AC injection: max=%.1f A ac=%.2f A f=%.1f Hz id_hold=%.2f A "
                       "R=%.4f ohm",
                       static_cast<double>(m_max_current_a),
                       static_cast<double>(m_ac_current_a),
                       static_cast<double>(m_inj_freq_hz),
+                      static_cast<double>(m_id_hold_a),
                       static_cast<double>(mc.r_phase_avg));
 
     /* No alignment phase: in the closed-loop encoder frame, constant d
@@ -231,9 +277,11 @@ void InductanceCalibrator::resetGoertzel() {
     m_v_re = m_v_im = 0.0;
     m_n = 0;
     m_peak_abs_i = 0.0f;
+    m_peak_filt_i = 0.0f;
 }
 
 void InductanceCalibrator::armSetpoints(const MeasurePoint& mp, bool ac_on) {
+    m_prev_bias_a = m_mp.bias_a;
     m_mp = mp;
     m_settle_n = 0;
     if (!ac_on) {
@@ -303,11 +351,11 @@ void InductanceCalibrator::finishMeasure() {
 
     /* Amplitude auto-retry: if the loop tracked the command too weakly
      * (small-signal distortion dominates at tiny amplitudes), double the AC
-     * amplitude and repeat the point. */
-    if (i_amp < 1.5f && m_ac_current_a < 10.0f && m_retries_left > 0) {
+     * amplitude and repeat the point.  Cap at 4 A to avoid overshoot. */
+    if (i_amp < 1.0f && m_ac_current_a < 4.0f && m_retries_left > 0) {
         --m_retries_left;
         m_ac_current_a *= 2.0f;
-        if (m_ac_current_a > 10.0f) m_ac_current_a = 10.0f;
+        if (m_ac_current_a > 4.0f) m_ac_current_a = 4.0f;
         Telemetry::printf("[CAL] IND: weak response (I=%.2f A); retry with ac=%.1f A",
                           static_cast<double>(i_amp), static_cast<double>(m_ac_current_a));
         if (m_mp.axis_q) {
@@ -320,14 +368,18 @@ void InductanceCalibrator::finishMeasure() {
 
     const float l = computeInductance(i_amp, v_amp);
 
-    /* Quality gate: below ~1.5 A of actual AC the measurement is dominated
+    /* Quality gate: below ~1.0 A of actual AC the measurement is dominated
      * by small-signal distortion.  Skip the point rather than store junk. */
-    const bool weak = (i_amp < 1.5f);
+    const bool weak = (i_amp < 1.0f);
 
     if (!m_mp.axis_q) {
         if (weak) {
-            Telemetry::printf("[CAL] IND: Ld(%5.1f A) skipped (I=%.2f A too weak)",
-                              static_cast<double>(m_mp.bias_a), static_cast<double>(i_amp));
+            Telemetry::printf("[CAL] IND: Ld(%5.1f A) skipped (I=%.2f A too weak "
+                              "iac_cmd=%.2f peak=%.2f filt=%.2f)",
+                              static_cast<double>(m_mp.bias_a), static_cast<double>(i_amp),
+                              static_cast<double>(m_ac_current_a),
+                              static_cast<double>(m_peak_abs_i),
+                              static_cast<double>(m_peak_filt_i));
         } else {
             if (l <= 0.0f) {
                 fail("Ld point %d: nonphysical result (I=%.2f A V=%.2f V)",
@@ -336,9 +388,13 @@ void InductanceCalibrator::finishMeasure() {
             }
             m_bias_ld[k] = m_mp.bias_a;
             m_ld[k] = l;
-            Telemetry::printf("[CAL] IND: Ld(%5.1f A) = %8.1f uH  (I=%.2f V=%.2f)",
+            Telemetry::printf("[CAL] IND: Ld(%5.1f A) = %8.1f uH  (I=%.2f V=%.2f "
+                              "iac_cmd=%.2f peak=%.2f filt=%.2f)",
                               static_cast<double>(m_mp.bias_a), static_cast<double>(l * 1.0e6),
-                              static_cast<double>(i_amp), static_cast<double>(v_amp));
+                              static_cast<double>(i_amp), static_cast<double>(v_amp),
+                              static_cast<double>(m_ac_current_a),
+                              static_cast<double>(m_peak_abs_i),
+                              static_cast<double>(m_peak_filt_i));
         }
         m_retries_left = 2;
         if (k + 1 < MAX_POINTS) {
@@ -352,8 +408,12 @@ void InductanceCalibrator::finishMeasure() {
 
     /* q-axis: one measurement per bias level (single polarity). */
     if (weak) {
-        Telemetry::printf("[CAL] IND: Lq(%5.1f A) too weak (I=%.2f A); skipping point",
-                          static_cast<double>(m_mp.bias_a), static_cast<double>(i_amp));
+        Telemetry::printf("[CAL] IND: Lq(%5.1f A) too weak (I=%.2f A); skipping point "
+                          "iac_cmd=%.2f peak=%.2f filt=%.2f)",
+                          static_cast<double>(m_mp.bias_a), static_cast<double>(i_amp),
+                          static_cast<double>(m_ac_current_a),
+                          static_cast<double>(m_peak_abs_i),
+                          static_cast<double>(m_peak_filt_i));
         if (k + 1 < MAX_POINTS) {
             beginLqHalf(k + 1, false);
         } else {
@@ -362,9 +422,13 @@ void InductanceCalibrator::finishMeasure() {
         return;
     }
 
-    Telemetry::printf("[CAL] IND: Lq(%5.1f A) = %8.1f uH  (I=%.2f V=%.2f)",
+    Telemetry::printf("[CAL] IND: Lq(%5.1f A) = %8.1f uH  (I=%.2f V=%.2f "
+                      "iac_cmd=%.2f peak=%.2f filt=%.2f)",
                       static_cast<double>(m_mp.bias_a), static_cast<double>(l * 1.0e6),
-                      static_cast<double>(i_amp), static_cast<double>(v_amp));
+                      static_cast<double>(i_amp), static_cast<double>(v_amp),
+                      static_cast<double>(m_ac_current_a),
+                      static_cast<double>(m_peak_abs_i),
+                      static_cast<double>(m_peak_filt_i));
 
     if (l <= 0.0f) {
         Telemetry::printf("[CAL] IND: Lq point %d dropped (nonphysical)", k);
@@ -387,32 +451,64 @@ void InductanceCalibrator::onFocSample(float id, float iq, float vd, float vq) {
         return;
     }
 
-    /* Drive the setpoints.  During settle the bias ramps in over the settle
-     * window so the rotor follows quasi-statically instead of ringing from
-     * a torque step; the AC rides on top during measurement. */
+    /* Drive the setpoints.  During settle the bias ramps from the previous
+     * point's bias to the new one so the current setpoint does not step to
+     * zero between points.  The AC rides on top during measurement. */
     float bias = m_mp.bias_a;
     if (!measuring) {
         const uint32_t ramp_n = static_cast<uint32_t>(m_fs * (m_mp.settle_ms * 1.0e-3f));
         if (ramp_n > 0U && m_settle_n < ramp_n) {
-            bias *= static_cast<float>(m_settle_n) / static_cast<float>(ramp_n);
+            const float frac = static_cast<float>(m_settle_n) / static_cast<float>(ramp_n);
+            bias = m_prev_bias_a + (m_mp.bias_a - m_prev_bias_a) * frac;
         }
         ++m_settle_n;
     }
-    const float ac = m_ac_current_a * m_osc_s;
+
+    /* Ramp AC amplitude from zero to full over the first cycle to avoid
+     * exciting the current-loop transient. */
+    float ac_scale = 1.0f;
+    if (measuring && m_samples_per_cycle > 0U) {
+        const float cycles = static_cast<float>(m_osc_n) / static_cast<float>(m_samples_per_cycle);
+        if (cycles < static_cast<float>(AC_RAMP_CYCLES)) {
+            ac_scale = cycles / static_cast<float>(AC_RAMP_CYCLES);
+            if (ac_scale < 0.0f) ac_scale = 0.0f;
+        }
+    }
+    const float ac = m_ac_current_a * m_osc_s * ac_scale;
+
     if (m_mp.axis_q) {
-        /* Lq: free-spinning rotor, no d-hold current. */
-        focControlManager().setId(0.0f);
+        /* Lq: hold a small d-axis current to keep the rotor aligned while the
+         * q-axis bias + AC creates torque.  d-current produces no torque. */
+        focControlManager().setId(m_id_hold_a);
         focControlManager().setIq(measuring ? (bias + ac) : bias);
     } else {
         focControlManager().setId(measuring ? (bias + ac) : bias);
         focControlManager().setIq(0.0f);
     }
 
-    /* Safety: instantaneous overcurrent guard on the regulated dq currents.
+    /* Safety: filtered overcurrent guard on the regulated dq currents.
+     * Instantaneous samples are noisy; require several consecutive over-threshold
+     * samples before aborting.  A hard instantaneous limit still catches shorts.
      * fail() must not run in ISR context, so hand off to the main loop. */
-    const float abs_i = std::fabs(m_mp.axis_q ? iq : id);
+    const float i_now = m_mp.axis_q ? iq : id;
+    const float abs_i = std::fabs(i_now);
     if (abs_i > m_peak_abs_i) m_peak_abs_i = abs_i;
-    if (abs_i > m_overcurrent_a) {
+
+    m_i_filt += OC_FILTER_ALPHA * (abs_i - m_i_filt);
+    if (m_i_filt > m_peak_filt_i) m_peak_filt_i = m_i_filt;
+    if (m_i_filt > m_overcurrent_a) {
+        if (++m_oc_count >= OC_FILTER_PERSIST) {
+            m_abort_current_a = m_i_filt;
+            m_abort_requested = true;
+            focControlManager().setId(0.0f);
+            focControlManager().setIq(0.0f);
+            return;
+        }
+    } else if (abs_i < m_overcurrent_hard_a) {
+        m_oc_count = 0;
+    }
+
+    if (abs_i > m_overcurrent_hard_a) {
         m_abort_current_a = abs_i;
         m_abort_requested = true;
         focControlManager().setId(0.0f);

@@ -57,7 +57,7 @@ _estack = ORIGIN(DTCMRAM) + LENGTH(DTCMRAM);    /* end of RAM */
 _sstack = _estack - _Min_Stack_Size;
 /* Generate a link error if heap and stack don't fit into RAM */
 _Min_Heap_Size = 0x1000;      /* required amount of heap  */
-_Min_Stack_Size = 0x2000; /* required amount of stack */
+_Min_Stack_Size = 0x1FE0; /* required amount of stack */
 
 /* Specify the memory areas */
 MEMORY
@@ -205,6 +205,15 @@ SECTIONS
     *(.dma_buffers*)
     . = ALIGN(32);
   } >RAM_D1
+
+  /* ISR trace samples use a dedicated SPSC area outside control-loop DTCM. */
+  .trace_buffers (NOLOAD) :
+  {
+    . = ALIGN(32);
+    *(.trace_buffers)
+    *(.trace_buffers*)
+    . = ALIGN(32);
+  } >RAM_D2
 
 
   /* Remove information from the standard libraries */

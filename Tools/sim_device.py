@@ -13,12 +13,12 @@ CRC16-CCITT) on it, exactly like the firmware does:
 NodeGUI needs no changes — point it at the printed slave path:
 
     ./Tools/sim_device.py &
-    ./build/Source/NodeGUI/NodeGUI --serial /dev/pts/N
+    ./build/bin/rte-studio --serial /dev/pts/N
 
 or use --link to get a stable path:
 
     ./Tools/sim_device.py --link /tmp/fake_device &
-    ./build/Source/NodeGUI/NodeGUI --serial /tmp/fake_device
+    ./build/bin/rte-studio --serial /tmp/fake_device
 
 Ctrl-C to stop. Requires Python 3.8+, stdlib only.
 """

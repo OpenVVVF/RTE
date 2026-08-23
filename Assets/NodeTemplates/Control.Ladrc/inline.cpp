@@ -44,9 +44,10 @@ Z2 = z2;
 const float u0 = wc * (r - z1);
 float u = (u0 - z2) / b0;
 
-/* Same Vdc-aware clamp convention as Control.Pi. */
+/* Same Vdc-aware clamp convention as Control.Pi: allow overmodulation up
+ * to the six-step boundary (2*Vdc/3). */
 const float vdc = platform_get_dc_link_voltage();
-const float dynamic_max = (vdc / 1.7320508075688772f) * 0.95f;
+const float dynamic_max = vdc * 2.0f / 3.0f;
 float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;
 float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;
 if (u > max_limit) u = max_limit;

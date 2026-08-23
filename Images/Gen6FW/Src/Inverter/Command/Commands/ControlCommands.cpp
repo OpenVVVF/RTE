@@ -6,6 +6,8 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
+#include "Inverter/Drivers/Storage/MotorConfigStore.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Telemetry.h"
 
 #include "../../../generated/domain_tim_isr_generated.h"
@@ -184,6 +186,20 @@ private:
             if (!Inverter::RteParamStore::set(key, value)) {
                 Telemetry::printf("[SHELL] ERROR: KV store full or invalid key '%s'", key);
                 return;
+            }
+            /* Motor.Type also drives runtime calibration branching, so keep the
+             * RAM struct in sync immediately (the KV-store load path may be
+             * skipped when encoder prerequisites are absent). */
+            if (strcasecmp(key, "Motor.Type") == 0) {
+                Inverter::MotorCalibration& mc = Inverter::motorCalibration();
+                if (value >= 0.0f && value <= static_cast<float>(Inverter::MotorType::SlipRing)) {
+                    mc.motor_type = static_cast<Inverter::MotorType>(static_cast<uint32_t>(value));
+                }
+            } else if (strcasecmp(key, "Motor.PhaseSwap") == 0) {
+                Inverter::MotorCalibration& mc = Inverter::motorCalibration();
+                if (value >= 0.0f && value <= 3.0f) {
+                    mc.phase_swap = static_cast<Inverter::PhaseSwap>(static_cast<uint8_t>(value));
+                }
             }
             reportFlush("config value saved to FRAM", 1);
             return;

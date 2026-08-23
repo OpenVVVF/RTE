@@ -14,6 +14,11 @@
 
 #include <cmath>
 
+static bool stringsEqual(const char* a, const char* b) {
+    while (*a && *a == *b) { ++a; ++b; }
+    return *a == *b;
+}
+
 using Inverter::dcLinkVoltageSensor;
 using Inverter::encoderADC;
 using Inverter::FocControlManager;
@@ -228,6 +233,84 @@ public:
     }
 };
 
+/**
+ * @brief Induction-motor scalar (V/Hz) control.
+ *
+ * The simplest way to spin an induction machine: apply a rotating voltage vector
+ * whose magnitude is roughly proportional to frequency.  This is not field-oriented
+ * control — there is no current loop and no slip control — but it will spin the
+ * rotor if the V/Hz ratio is in the right ballpark.
+ */
+class InductionCommand : public CommandInterface {
+public:
+    InductionCommand()
+      : CommandInterface("induction",
+            "Induction motor scalar control: induction start <freq_hz> <mod_idx> | stop | demo",
+            {ArgSpec{"subcmd", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
+             ArgSpec{"freq_hz", "Hz", -200.0f, 200.0f, 0.0f, false, ArgSpec::FLOAT},
+             ArgSpec{"mod_idx", "", 0.0f, 1.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const char* sub = args[0].s_val;
+
+        if (stringsEqual(sub, "stop")) {
+            openLoopController().stop();
+            Telemetry::printf("[SHELL] induction stopped");
+            return;
+        }
+
+        if (stringsEqual(sub, "start")) {
+            if (!args[1].present || !args[2].present) {
+                Telemetry::printf("[SHELL] usage: induction start <freq_hz> <mod_idx>");
+                return;
+            }
+            const float freq = args[1].f_val;
+            const float mod = args[2].f_val;
+            if (focControlManager().isRunning()) {
+                focControlManager().stop();
+                Telemetry::printf("[SHELL] stopped FOC first");
+            }
+            openLoopController().start(freq, mod);
+            Telemetry::printf("[SHELL] induction start f=%.2f Hz mod=%.3f", static_cast<double>(freq), static_cast<double>(mod));
+            return;
+        }
+
+        if (stringsEqual(sub, "demo")) {
+            if (focControlManager().isRunning()) {
+                focControlManager().stop();
+                Telemetry::printf("[SHELL] stopped FOC first");
+            }
+            Telemetry::printf("[SHELL] induction demo: ramping 0 -> 30 Hz, mod 0.02 -> 0.20");
+            openLoopController().start(0.0f, 0.02f);
+            constexpr float F_MAX = 30.0f;
+            constexpr float M_MAX = 0.20f;
+            constexpr uint32_t RAMP_MS = 6000U;
+            constexpr uint32_t HOLD_MS = 3000U;
+            constexpr uint32_t STEP_MS = 100U;
+            const uint32_t steps = RAMP_MS / STEP_MS;
+            for (uint32_t i = 0; i <= steps; ++i) {
+                const float frac = static_cast<float>(i) / static_cast<float>(steps);
+                openLoopController().setFrequency(frac * F_MAX);
+                openLoopController().setModulationIndex(0.02f + frac * (M_MAX - 0.02f));
+                HAL_Delay(STEP_MS);
+            }
+            Telemetry::printf("[SHELL] induction demo: holding 30 Hz / mod 0.20");
+            HAL_Delay(HOLD_MS);
+            for (uint32_t i = 0; i <= steps; ++i) {
+                const float frac = 1.0f - static_cast<float>(i) / static_cast<float>(steps);
+                openLoopController().setFrequency(frac * F_MAX);
+                openLoopController().setModulationIndex(0.02f + frac * (M_MAX - 0.02f));
+                HAL_Delay(STEP_MS);
+            }
+            openLoopController().stop();
+            Telemetry::printf("[SHELL] induction demo done");
+            return;
+        }
+
+        Telemetry::printf("[SHELL] induction: unknown subcommand '%s' (start/stop/demo)", sub);
+    }
+};
+
 static StartCommand    sStartCmd;
 static StopCommand     sStopCmd;
 static FreqCommand     sFreqCmd;
@@ -236,6 +319,8 @@ static SwFreqCommand   sSwFreqCmd;
 static StatusCommand   sStatusCmd;
 static RampCurrentLimitCommand sRampCurrentLimitCmd;
 static VectorScanCommand sVectorScanCmd;
+/* Induction command object is larger than the others; keep it out of DTCM. */
+static InductionCommand sInductionCmd __attribute__((section(".dma_buffers")));
 
 #include "Inverter/Command/CommandManager.h"
 
@@ -248,4 +333,5 @@ void registerOpenLoopCommands(CommandManager& mgr) {
     mgr.registerCommand(&sStatusCmd);
     mgr.registerCommand(&sRampCurrentLimitCmd);
     mgr.registerCommand(&sVectorScanCmd);
+    mgr.registerCommand(&sInductionCmd);
 }

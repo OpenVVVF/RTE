@@ -43,7 +43,7 @@ adc_isr domain:
 
 ```bash
 cd /home/aidan/Desktop/RTE
-./build/Source/RTECodeEmitter/RTECodeEmitter \
+./build/bin/RTECodeEmitter \
   --base-src Images/Gen6FW \
   --graph Assets/Examples/foc_chain.json \
   --output /tmp/foc_out \

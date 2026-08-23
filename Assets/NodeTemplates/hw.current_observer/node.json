@@ -2,12 +2,14 @@
   "id": "hw.current_observer",
   "displayName": "Current Observer",
   "defaultName": "Observer",
+  "description": "Corrects and predicts phase currents using burst measurements and the applied voltage vector.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "tim_isr",
   "inputPorts": [
     {
       "name": "I_A_Meas",
+      "description": "Measured phase-A current used to correct the observer.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -17,6 +19,7 @@
     },
     {
       "name": "I_B_Meas",
+      "description": "Measured phase-B current used to correct the observer.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -26,6 +29,7 @@
     },
     {
       "name": "I_C_Meas",
+      "description": "Measured phase-C current used to correct the observer.",
       "direction": "input",
       "type": {
         "quantity": "current",
@@ -35,6 +39,7 @@
     },
     {
       "name": "Diudt",
+      "description": "Estimated phase-U current slope from the ADC sample burst.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -44,6 +49,7 @@
     },
     {
       "name": "Divdt",
+      "description": "Estimated phase-V current slope from the ADC sample burst.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -53,6 +59,7 @@
     },
     {
       "name": "BurstTimeUs",
+      "description": "Elapsed time in microseconds across the ADC sample burst.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -62,6 +69,7 @@
     },
     {
       "name": "V_Alpha",
+      "description": "Previously applied alpha-axis voltage used for prediction.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -71,6 +79,7 @@
     },
     {
       "name": "V_Beta",
+      "description": "Previously applied beta-axis voltage used for prediction.",
       "direction": "input",
       "type": {
         "quantity": "voltage",
@@ -80,6 +89,7 @@
     },
     {
       "name": "ThetaElec",
+      "description": "Electrical rotor angle used by the observer prediction.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -91,6 +101,7 @@
   "outputPorts": [
     {
       "name": "I_A",
+      "description": "Observer-estimated phase-A current.",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -100,6 +111,7 @@
     },
     {
       "name": "I_B",
+      "description": "Observer-estimated phase-B current.",
       "direction": "output",
       "type": {
         "quantity": "current",
@@ -109,6 +121,7 @@
     },
     {
       "name": "I_C",
+      "description": "Observer-estimated phase-C current.",
       "direction": "output",
       "type": {
         "quantity": "current",

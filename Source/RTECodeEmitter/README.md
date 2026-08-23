@@ -175,7 +175,7 @@ cmake -B build -G Ninja
 cmake --build build -j8
 
 # 2. Run the emitter
-./build/Source/RTECodeEmitter/RTECodeEmitter \
+./build/bin/RTECodeEmitter \
     --base-src  Source/RTECodeEmitter/examples/base_firmware \
     --graph     Source/RTECodeEmitter/examples/sample_graph.json \
     --output    /tmp/rtest_output \

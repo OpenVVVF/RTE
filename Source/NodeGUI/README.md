@@ -1,4 +1,4 @@
-# NodeGUI
+# RTE Studio
 
 A minimal Qt6 + QtNodes viewer for NodeAPI graph files.
 
@@ -14,7 +14,7 @@ From the RTE root:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target NodeGUI -j8
+cmake --build build --target RTEStudio -j8
 ```
 
 If this is the first time building after cloning, fetch the QtNodes submodule:
@@ -28,7 +28,7 @@ git submodule update --init --recursive
 Open a graph from the command line:
 
 ```sh
-./build/Source/NodeGUI/NodeGUI /home/aidan/Desktop/RTE/Assets/Examples/foc_demo.json
+./build/bin/rte-studio Assets/Examples/foc_demo.json
 ```
 
 Or launch with no arguments and use `File → Open`.
@@ -50,11 +50,12 @@ Or launch with no arguments and use `File → Open`.
   domain, then drag its background to move every node in that domain together.
 - The Runtime screen's `Export Session…` button writes a chronological JSONL
   event stream with all float and string telemetry samples, console output,
-  sent console commands, connection statistics, and session metadata captured
-  since the runtime started. Its final record includes per-signal sample count,
-  minimum, maximum, and mean. Clearing the visible console does not discard
-  export data. `Clear Session` resets the plots, latest telemetry, console,
-  command history, statistics, and export archive after confirmation.
+  sent console commands (with both send and first-response timestamps),
+  connection statistics, and session metadata captured since the runtime
+  started. Its final record includes per-signal sample count, minimum, maximum,
+  and mean. Clearing the visible console does not discard export data.
+  `Clear Session` resets the plots, latest telemetry, console, command history,
+  statistics, and export archive after confirmation.
 - `View → Auto Arrange` lays out the graph left-to-right by dependency flow, grouping nodes by timing domain so cross-domain bridges run between groups.
 - `File → Save` / `File → Save As` writes the graph back to JSON, including any manual or auto-arranged node positions.
 - `Edit → Undo` / `Redo` restores complete graph snapshots, including nodes,

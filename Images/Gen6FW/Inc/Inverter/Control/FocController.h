@@ -27,6 +27,12 @@ struct FocInputs {
 struct FocSetpoints {
     float id_a = 0.0f;
     float iq_a = 0.0f;
+    // CALIBRATION-ONLY feed-forward voltages. The base-image FOC controller is
+    // a calibration/test fallback; normal runtime control (current loops,
+    // modulation, feed-forward, etc.) is provided by the generated node-graph
+    // control law. These fields are intentionally not exposed through
+    // FocControlManager because runtime feed-forward is handled by the node
+    // graph, not this base-image controller.
     float vd_ff_v = 0.0f;
     float vq_ff_v = 0.0f;
 };

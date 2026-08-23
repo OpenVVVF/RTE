@@ -1,13 +1,8 @@
 #include "LegacyTelemetryClient.h"
-#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <vector>
-
-#include <fcntl.h>
-#include <unistd.h>
-#include <termios.h>
 
 namespace NodeGUI::runtime {
 
@@ -97,74 +92,6 @@ inline float rd_f32(const uint8_t*& p, const uint8_t* end) {
 }
 
 } // namespace
-
-// ---------------- SerialPort ----------------
-LegacyTelemetryClient::SerialPort::~SerialPort() { close(); }
-
-bool LegacyTelemetryClient::SerialPort::isOpen() const {
-    return h_ >= 0;
-}
-
-void LegacyTelemetryClient::SerialPort::close() {
-    if (h_ >= 0) {
-        ::close(h_);
-        h_ = -1;
-    }
-}
-
-bool LegacyTelemetryClient::SerialPort::open(const std::string& port, int baud) {
-    (void)baud; // fixed at 460800 below
-    close();
-
-    int fd = ::open(port.c_str(), O_RDWR | O_NOCTTY);
-    if (fd < 0) return false;
-
-    termios tty{};
-    if (tcgetattr(fd, &tty) != 0) { ::close(fd); return false; }
-
-    cfsetispeed(&tty, B460800);
-    cfsetospeed(&tty, B460800);
-    cfmakeraw(&tty);
-
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~CRTSCTS;
-    tty.c_cflag &= ~HUPCL;          // Don't drop DTR on close (avoid device reset on reconnect)
-    tty.c_cc[VMIN]  = 0;
-    tty.c_cc[VTIME] = 1;
-
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) { ::close(fd); return false; }
-
-    // Flush any stale data in both directions before use.
-    tcflush(fd, TCIOFLUSH);
-    h_ = fd;
-    return true;
-}
-
-int LegacyTelemetryClient::SerialPort::read(uint8_t* buf, int cap) {
-    if (!isOpen()) return 0;
-    int n = (int)::read(h_, buf, (size_t)cap);
-    return n > 0 ? n : 0;
-}
-
-bool LegacyTelemetryClient::SerialPort::write(const uint8_t* data, int n) {
-    if (!isOpen() || !data || n <= 0) return false;
-    int total = 0;
-    while (total < n) {
-        int wrote = (int)::write(h_, data + total, (size_t)(n - total));
-        if (wrote < 0) {
-            if (errno == EINTR) continue;
-            return false;
-        }
-        if (wrote == 0) return false;
-        total += wrote;
-    }
-    return true;
-}
-
-bool LegacyTelemetryClient::SerialPort::drain() {
-    if (!isOpen()) return false;
-    return ::tcdrain(h_) == 0;
-}
 
 // ---------------- LegacyTelemetryClient ----------------
 LegacyTelemetryClient::~LegacyTelemetryClient() { stop(); }

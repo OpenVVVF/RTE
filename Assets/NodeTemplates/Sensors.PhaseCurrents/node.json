@@ -40,6 +40,7 @@
     },
     {
       "name": "Diudt",
+      "description": "Estimated phase-U current slope from the ADC sample burst.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -49,6 +50,7 @@
     },
     {
       "name": "Divdt",
+      "description": "Estimated phase-V current slope from the ADC sample burst.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -58,6 +60,7 @@
     },
     {
       "name": "BurstTimeUs",
+      "description": "Elapsed time in microseconds across the ADC sample burst.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

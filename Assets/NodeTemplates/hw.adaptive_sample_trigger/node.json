@@ -2,12 +2,14 @@
   "id": "hw.adaptive_sample_trigger",
   "displayName": "Adaptive Sample Trigger",
   "defaultName": "SampleTrigger",
+  "description": "Schedules the next phase-current ADC burst in the quietest available PWM window.",
   "maxInstances": 1,
   "isEntryPoint": false,
   "domain": "tim_isr",
   "inputPorts": [
     {
       "name": "Duty_A",
+      "description": "Normalized phase-A PWM duty command for the upcoming period.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -17,6 +19,7 @@
     },
     {
       "name": "Duty_B",
+      "description": "Normalized phase-B PWM duty command for the upcoming period.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -26,6 +29,7 @@
     },
     {
       "name": "Duty_C",
+      "description": "Normalized phase-C PWM duty command for the upcoming period.",
       "direction": "input",
       "type": {
         "quantity": "dimensionless",
@@ -37,6 +41,7 @@
   "outputPorts": [
     {
       "name": "GapTicks",
+      "description": "Available quiet-window width in PWM timer ticks.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",

@@ -234,12 +234,16 @@ struct LogItem {
     } v;
 };
 
-static DynamicKey g_dyn[MAX_DYNAMIC_KEYS];
+/* Large telemetry buffers live in AXI SRAM (RAM_D1).  DTCMRAM is scarce and
+ * CPU-only; these queues are not DMA targets, but RAM_D1 is still CPU-accessible
+ * and frees the fast DTCM for control-loop/ISR state.  They are explicitly reset
+ * in Telemetry::init() because .dma_buffers is NOLOAD. */
+static DynamicKey g_dyn[MAX_DYNAMIC_KEYS] __attribute__((section(".dma_buffers")));
 static uint16_t   g_next_dyn_id = DYNAMIC_ID_BASE;
 
-static RingQueue<DefineItem, DEFINE_QUEUE_CAP> g_define_q;
-static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_log_q;
-static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_str_q;
+static RingQueue<DefineItem, DEFINE_QUEUE_CAP> g_define_q __attribute__((section(".dma_buffers")));
+static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_log_q    __attribute__((section(".dma_buffers")));
+static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_str_q    __attribute__((section(".dma_buffers")));
 
 // ============================================================
 // Runtime state
@@ -332,6 +336,18 @@ static void reserve_print_key() {
     if (idx >= 0) return;
 
     idx = alloc_dyn_key(key, h, VT_STR);
+    if (idx < 0) return;
+
+    enqueue_define(g_dyn[idx].id, g_dyn[idx].type, g_dyn[idx].key, g_dyn[idx].key_len);
+}
+
+static void reserve_float_key(const char* key) {
+    const uint32_t h = fnv1a(key);
+
+    int idx = find_dyn_key(key, h);
+    if (idx >= 0) return;
+
+    idx = alloc_dyn_key(key, h, VT_F32);
     if (idx < 0) return;
 
     enqueue_define(g_dyn[idx].id, g_dyn[idx].type, g_dyn[idx].key, g_dyn[idx].key_len);
@@ -655,6 +671,12 @@ void init(UART_HandleTypeDef* uart) {
 
     init_dwt_timebase();
     reserve_print_key();
+
+    /* Pre-register keys that are logged from ISRs (e.g. tim_isr domain) so the
+     * fast-path update never has to allocate from interrupt context. */
+    reserve_float_key("Iu");
+    reserve_float_key("Iv");
+    reserve_float_key("Iw");
 }
 
 bool log(const char* key, float value) {

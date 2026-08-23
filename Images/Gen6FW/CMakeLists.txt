@@ -62,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${IVP_CORE_DIR}/src/protocol.c
     ${IVP_CORE_DIR}/src/packet_builder.c
     ${IVP_CORE_DIR}/src/packet_parser.c
+    ${IVP_CORE_DIR}/src/trace_protocol.c
     Src/Inverter/InverterMain.cpp
     Src/Inverter/LoopStats.cpp
     Src/Inverter/platform_api.cpp
@@ -79,6 +80,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/CalibrationCommands.cpp
     Src/Inverter/Command/Commands/FocCommands.cpp
     Src/Inverter/Command/Commands/CanCommands.cpp
+    Src/Inverter/Command/Commands/OpenLoopCommands.cpp
+    Src/Inverter/Command/Commands/TraceCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
     Src/Inverter/Control/FocControlManager.cpp
@@ -88,12 +91,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Control/CurrentObserver.cpp
     Src/Inverter/Control/MotorParameterEstimator.cpp
     Src/Inverter/Calibration/AutoCalibrationCoordinator.cpp
+    Src/Inverter/Calibration/BreakawayCalibrator.cpp
     Src/Inverter/Calibration/CalKvStore.cpp
     Src/Inverter/Calibration/EncoderCycleCalibrator.cpp
     Src/Inverter/Calibration/EncoderLinearityCalibrator.cpp
     Src/Inverter/Calibration/EncoderOffsetCalibrator.cpp
     Src/Inverter/Calibration/FluxLinkageCalibrator.cpp
     Src/Inverter/Calibration/InductanceCalibrator.cpp
+    Src/Inverter/Calibration/InductionMotorCalibrator.cpp
+    Src/Inverter/Calibration/InductionVHzCalibrator.cpp
     Src/Inverter/Calibration/MotorCalibration.cpp
     Src/Inverter/Calibration/PoleCalibrator.cpp
     Src/Inverter/Calibration/ResistanceCalibrator.cpp
@@ -112,6 +118,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Storage/FramStore.cpp
     Src/Inverter/Drivers/Logging/ontime_logger.c
     Src/Inverter/Drivers/Logging/SupplyMonitor.cpp
+    Src/Inverter/Drivers/Logging/TraceRecorder.cpp
     Src/Inverter/Drivers/PWM/pwm.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensor.cpp
     Src/Inverter/Drivers/Sensors/CurrentSensorTest.cpp
@@ -178,8 +185,51 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 # printf implementation so Telemetry::printf("%.3f", ...) works.
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
 
+# Emit a linker map so memory-analysis tooling can attribute DTCMRAM/RAM_Dx
+# usage to individual symbols and object files.
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map
+)
+
 # Generate a raw binary after linking so the .bin is always in sync with the .elf.
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.bin
     COMMENT "Generating ${CMAKE_PROJECT_NAME}.bin"
 )
+
+# ---------------------------------------------------------------------------
+# DTCMRAM usage analysis
+# ---------------------------------------------------------------------------
+# Locate analyze_memory.py.  In-tree IVP_CORE_DIR points at the repo's
+# Lib/InverterProtocol, so ../../Tools/analyze_memory.py is correct.  Emitted
+# builds receive an absolute IVP_CORE_DIR from RTEFirmwareBuilder and the same
+# relative derivation still reaches the repo root.
+set(RTE_MEMORY_ANALYZER "" CACHE FILEPATH "Path to Tools/analyze_memory.py")
+if(NOT RTE_MEMORY_ANALYZER)
+    if(DEFINED IVP_CORE_DIR)
+        set(_derived_analyzer "${IVP_CORE_DIR}/../../Tools/analyze_memory.py")
+        if(EXISTS "${_derived_analyzer}")
+            set(RTE_MEMORY_ANALYZER "${_derived_analyzer}")
+        endif()
+    endif()
+    if(NOT RTE_MEMORY_ANALYZER)
+        set(_default_analyzer "${CMAKE_CURRENT_SOURCE_DIR}/../../Tools/analyze_memory.py")
+        if(EXISTS "${_default_analyzer}")
+            set(RTE_MEMORY_ANALYZER "${_default_analyzer}")
+        endif()
+    endif()
+endif()
+
+set(RTE_DTCM_BUDGET "118000" CACHE STRING "DTCMRAM budget in bytes (default leaves 10 KB headroom)")
+
+if(RTE_MEMORY_ANALYZER AND EXISTS "${RTE_MEMORY_ANALYZER}")
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND python3 "${RTE_MEMORY_ANALYZER}"
+                "$<TARGET_FILE:${CMAKE_PROJECT_NAME}>"
+                --map "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.map"
+                --budget-dtcm ${RTE_DTCM_BUDGET}
+        COMMENT "Analyzing DTCMRAM usage"
+    )
+else()
+    message(STATUS "DTCMRAM analyzer not found; skipping memory-budget check.")
+endif()

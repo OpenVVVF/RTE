@@ -3,12 +3,15 @@
 #include "Inverter/LoopStats.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+#include "Inverter/Calibration/BreakawayCalibrator.h"
 #include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/EncoderOffsetCalibrator.h"
 #include "Inverter/Calibration/EncoderLinearityCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Calibration/InductanceCalibrator.h"
+#include "Inverter/Calibration/InductionMotorCalibrator.h"
+#include "Inverter/Calibration/InductionVHzCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/FocControlManager.h"
@@ -25,6 +28,7 @@
 #include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
+#include "Inverter/Drivers/Logging/TraceRecorder.h"
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Drivers/Storage/MotorConfigStore.h"
 #include "Inverter/Drivers/PWM/pwm.h"
@@ -115,9 +119,6 @@ static void init()
     Telemetry::init();
     Telemetry::set_period_us(10000);  /* 100 Hz data frames */
 
-    /* CAN error-status notifications (FDCAN2 is the active interface). */
-    (void)Inverter::fdcanFaultInit();
-
     /* Supply rail monitoring (PVD/AVD/VOSRDY). */
     (void)Inverter::supplyMonitorInit();
 
@@ -139,6 +140,10 @@ static void init()
     /* DC-link current sensor: start the zero-offset capture only now, after
      * the gate-driver/isolated rails have settled with PWM running. */
     Inverter::dcLinkCurrentSensor().init();
+
+    /* Open-loop controller (used by shell commands for scalar induction control
+     * and vector scan). */
+    Inverter::openLoopController().init();
 
     /* UART command shell for start/stop/freq/mod. */
     Inverter::commandShell().init();
@@ -162,8 +167,15 @@ static void init()
     /* CAN buses (KV enables; no-op when both disabled). */
     Inverter::canBus().init();
 
+    /* Register error notifications only after CanBus has applied timing by
+     * deinitializing/reinitializing each enabled peripheral. */
+    (void)Inverter::fdcanFaultInit();
+
     /* CAN session protocol (KV Can.Proto.*; no-op unless enabled). */
     Inverter::canSession().init();
+
+    /* Independent, opt-in high-rate CAN-FD trace plane. */
+    Inverter::traceRecorder().init();
 
     /* RTE codegen: initialize all generated timing domains after base-image
      * hardware and services are ready. */
@@ -242,6 +254,7 @@ static void loop()
     Inverter::appSensors().update();
 
     /* CAN: drain TX queues, bus-off recovery, session heartbeat watch. */
+    Inverter::traceRecorder().update();
     Inverter::canBus().update();
     Inverter::canSession().update();
 
@@ -257,11 +270,14 @@ static void loop()
      * calibrator state machine.  All early-out when inactive. */
     Inverter::openLoopController().update();
     Inverter::autoCalibrationCoordinator().update();
+    Inverter::breakawayCalibrator().update();
     Inverter::poleCalibrator().update();
     Inverter::encoderOffsetCalibrator().update();
     Inverter::encoderLinearityCalibrator().update();
     Inverter::resistanceCalibrator().update();
     Inverter::inductanceCalibrator().update();
+    Inverter::inductionMotorCalibrator().update();
+    Inverter::inductionVHzCalibrator().update();
     Inverter::fluxLinkageCalibrator().update();
 
     /* Legacy FOC manager (forced-angle diagnostics, offset experiments). */

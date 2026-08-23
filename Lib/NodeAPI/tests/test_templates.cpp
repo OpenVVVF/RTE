@@ -29,7 +29,7 @@ TEST(NodeTemplates, LoadsPhaseCurrentsTemplate) {
     EXPECT_EQ(type->displayName, "Phase Currents");
     EXPECT_EQ(type->domain, "");
     EXPECT_EQ(type->inputPorts.size(), 0u);
-    EXPECT_EQ(type->outputPorts.size(), 3u);
+    EXPECT_EQ(type->outputPorts.size(), 6u);
 
     const auto ia = type->FindOutputPort("I_A");
     ASSERT_TRUE(ia.has_value());
@@ -129,9 +129,10 @@ TEST(NodeTemplates, LoadsControlBlocks) {
 
     const auto pi = graph.FindNodeType("Control.Pi");
     ASSERT_TRUE(pi.has_value());
-    EXPECT_EQ(pi->inputPorts.size(), 2u);
+    EXPECT_EQ(pi->inputPorts.size(), 3u);
     EXPECT_EQ(pi->outputPorts.size(), 1u);
     EXPECT_NE(pi->inlineCode.find("Integral += error"), std::string::npos);
+    EXPECT_TRUE(pi->FindInputPort("Feedforward").has_value());
 
     const auto clarke = graph.FindNodeType("Transforms.Clarke");
     ASSERT_TRUE(clarke.has_value());

@@ -297,6 +297,8 @@ double WriteEvents(QTextStream& stream,
             const auto& command = session.commands[cursor.index];
             stream << "{\"type\":\"command\",\"t\":";
             WriteTime(stream, command.tsec);
+            stream << ",\"received_t\":";
+            WriteTime(stream, command.receivedTsec);
             stream << ",\"source\":" << JsonString(command.source)
                    << ",\"text\":" << JsonString(command.text)
                    << ",\"sent\":"
@@ -335,7 +337,7 @@ bool ExportRuntimeSession(const QString& path,
 
     stream << "{\"type\":\"session_start\""
            << ",\"format\":\"rte-runtime-session-jsonl\""
-           << ",\"version\":2"
+           << ",\"version\":3"
            << ",\"t\":0"
            << ",\"started_at_utc\":"
            << JsonString(startedAt.toString(Qt::ISODateWithMs))

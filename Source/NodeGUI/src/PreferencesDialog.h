@@ -20,6 +20,7 @@ struct AppPreferences {
     bool confirmNewGraph = true;
     bool automaticallyShowBuildLogs = true;
     bool rememberWindowGeometry = true;
+    bool allowExternalDeviceWrites = false;
     int undoHistoryLimit = 100;
     int buildLogLineLimit = 5000;
     QString firmwareBuildType = QStringLiteral("Release");
@@ -61,6 +62,7 @@ private:
     QCheckBox* confirmNewGraphCheck_ = nullptr;
     QCheckBox* showBuildLogsCheck_ = nullptr;
     QCheckBox* rememberWindowGeometryCheck_ = nullptr;
+    QCheckBox* allowExternalDeviceWritesCheck_ = nullptr;
     QSpinBox* undoHistoryLimitSpin_ = nullptr;
     QSpinBox* buildLogLineLimitSpin_ = nullptr;
     QComboBox* buildTypeCombo_ = nullptr;

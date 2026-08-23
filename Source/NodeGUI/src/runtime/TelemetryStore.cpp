@@ -1,6 +1,7 @@
 #include "TelemetryStore.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace NodeGUI::runtime {
 
@@ -48,7 +49,22 @@ void TelemetryStore::AddCommand(const std::string& text,
                                 bool sent) {
     std::lock_guard lock(mtx_);
     sessionCommands_.push_back(
-        SessionCommand{SessionElapsedSeconds(), source, text, sent});
+        SessionCommand{SessionElapsedSeconds(),
+                       std::numeric_limits<double>::quiet_NaN(),
+                       source,
+                       text,
+                       sent});
+}
+
+void TelemetryStore::MarkLastCommandReceived() {
+    std::lock_guard lock(mtx_);
+    for (auto it = sessionCommands_.rbegin(); it != sessionCommands_.rend();
+         ++it) {
+        if (std::isnan(it->receivedTsec)) {
+            it->receivedTsec = SessionElapsedSeconds();
+            return;
+        }
+    }
 }
 
 void TelemetryStore::ClearConsole() {

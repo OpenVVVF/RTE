@@ -7,6 +7,7 @@ Exercises the Gen6FW CAN session layer end-to-end:
   re-attach.
 
 Usage: python3 Tools/can_session_client.py [can0] [--id-base 0x700] [--timeout 12]
+       Add --commands only when Can.Proto.AllowCmd=1 is intentionally enabled.
 """
 
 import argparse
@@ -142,6 +143,8 @@ def main():
     ap.add_argument("iface", nargs="?", default="can0")
     ap.add_argument("--id-base", type=lambda x: int(x, 0), default=0x700)
     ap.add_argument("--timeout", type=float, default=12.0)
+    ap.add_argument("--commands", action="store_true",
+                    help="request and exercise the command capability")
     args = ap.parse_args()
 
     tp = CanTransport(args.iface, args.id_base)
@@ -155,6 +158,7 @@ def main():
     attached = False
     granted = 0
     cmd_done = False
+    cmd_sent = False
     t_start = time.time()
     last_hb = time.time()
 
@@ -179,9 +183,9 @@ def main():
             name = payload[2:2 + payload[1]].decode(errors="replace")
             print("[<] ATTACH_RSP device=%s allow_mask=0x%02X" % (name, allow))
             attached = True
-            req = bytes([CAP_TELEM | CAP_CMD])
+            req = bytes([CAP_TELEM | (CAP_CMD if args.commands else 0)])
             tp.send_packet(packet(MSG_CAP_REQ, seq, req)); seq += 1
-            print("[*] CAP_REQ telem+cmd ->")
+            print("[*] CAP_REQ %s ->" % ("telem+cmd" if args.commands else "telem"))
         elif mtype == MSG_CAP_RSP:
             granted = payload[0]
             print("[<] CAP_RSP granted=0x%02X" % granted)
@@ -208,11 +212,11 @@ def main():
             print("[<] COMMAND_RSP req_id=%d" % (payload[0] if payload else -1))
             cmd_done = True
 
-        if granted and not cmd_done:
+        if args.commands and (granted & CAP_CMD) and not cmd_sent:
             line = b"var list"
             tp.send_packet(packet(MSG_COMMAND_REQ, seq, command_req(0x42, line.decode()))); seq += 1
             print("[*] COMMAND_REQ 'var list' ->")
-            cmd_done = None  # sent once
+            cmd_sent = True
 
     print("[*] DETACH ->")
     tp.send_packet(packet(MSG_DETACH, seq)); seq += 1

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -53,6 +54,7 @@ struct SessionConsoleLine {
 
 struct SessionCommand {
     double tsec = 0.0;
+    double receivedTsec = std::numeric_limits<double>::quiet_NaN();
     std::string source;
     std::string text;
     bool sent = false;
@@ -72,7 +74,7 @@ struct RuntimeSessionSnapshot {
 };
 
 // Point-in-time copy of everything the runtime knows. Mirrors the old ImGui
-// client's TelemetryState so the HTTP API can keep its exact JSON contract.
+// client's TelemetryState so the local automation session can expose it.
 // NOTE: expensive to produce (full history copies) — use GetStatsLine() for
 // high-frequency polling.
 struct TelemetrySnapshot {
@@ -98,7 +100,7 @@ struct TelemetrySnapshot {
 // Thread-safe store for live telemetry: float signal histories, latest values
 // (float + string), and the device console scrollback. Written by the GUI
 // thread (from RuntimeController's drain timer) and read by the GUI and the
-// HTTP server thread.
+// local session endpoint.
 //
 // Retention matches the old client: 30 seconds or 12000 samples per signal,
 // 6000 console lines.
@@ -114,6 +116,11 @@ public:
     void AddCommand(const std::string& text,
                     const std::string& source,
                     bool sent);
+    // Marks the most recent command that has not yet been marked as received
+    // with the current session elapsed time. Call when a device console line
+    // arrives so the exported command event can record when the response came
+    // back. Safe to call when no pending command exists (no-op).
+    void MarkLastCommandReceived();
     void ClearConsole();
     void ClearSession();
 
