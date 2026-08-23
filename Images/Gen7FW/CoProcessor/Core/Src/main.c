@@ -105,7 +105,7 @@ int main(void)
   MX_FDCAN3_Init();
   MX_HRTIM1_Init();
   MX_USART3_UART_Init();
-  MX_USB_PCD_Init();
+  MX_USB_DEVICE_Init();
   MX_WWDG_Init();
   MX_ADC3_Init();
   MX_CORDIC_Init();
