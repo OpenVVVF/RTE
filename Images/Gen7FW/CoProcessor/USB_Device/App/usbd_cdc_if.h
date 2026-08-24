@@ -111,6 +111,7 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
 void CDC_Bridge_Process(void);
 uint8_t CDC_IsBridgeMode(void);
+void CDC_DebugReportStartup(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**

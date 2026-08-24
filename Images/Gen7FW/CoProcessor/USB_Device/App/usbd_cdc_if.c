@@ -23,6 +23,8 @@
 
 /* USER CODE BEGIN INCLUDE */
 #include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include "usart.h"
 #include "main.h"
 /* USER CODE END INCLUDE */
@@ -98,8 +100,11 @@ uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 /* USER CODE BEGIN PRIVATE_VARIABLES */
 static volatile uint8_t bridge_mode = 0U;
 static volatile uint8_t enter_bridge_request = 0U;
+static volatile uint8_t bridge_validate = 1U;
 static uint8_t bridge_cmd_idx = 0U;
 static const char *bridge_cmd = "BOOTLOADER\r\n";
+static uint8_t dumb_bridge_cmd_idx = 0U;
+static const char *dumb_bridge_cmd = "BRIDGE\r\n";
 
 static uint8_t uart_rx_buf[CDC_BRIDGE_BUF_SIZE];
 static volatile uint16_t uart_rx_head = 0U;
@@ -110,6 +115,7 @@ static uint8_t uart_tx_buf[CDC_BRIDGE_BUF_SIZE];
 static volatile uint16_t uart_tx_head = 0U;
 static volatile uint16_t uart_tx_tail = 0U;
 static volatile uint8_t uart_tx_active = 0U;
+static uint8_t uart_tx_active_byte;
 
 static volatile uint8_t cdc_tx_busy = 0U;
 /* USER CODE END PRIVATE_VARIABLES */
@@ -146,6 +152,12 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *pbuf, uint32_t *Len, uint8_t epnum);
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
 static void Bridge_UartTxStart(void);
+static void MainMCU_ResetToBootloader(void);
+static void MainMCU_ResetToApp(void);
+static uint8_t Bootloader_ValidateSync(void);
+static void CDC_SendString(const char *str);
+static void CDC_DebugPrintf(const char *fmt, ...);
+static void CDC_DebugPinStates(const char *label);
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
 /**
@@ -296,19 +308,16 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   }
   else
   {
-    if (*Len > 0U)
-    {
-      memcpy(UserTxBufferFS, Buf, *Len);
-      CDC_Transmit_FS(UserTxBufferFS, (uint16_t)*Len);
-    }
-
     for (uint32_t i = 0U; i < *Len; i++)
     {
+      /* BOOTLOADER command: reset, validate sync, then bridge */
       if (Buf[i] == (uint8_t)bridge_cmd[bridge_cmd_idx])
       {
         bridge_cmd_idx++;
         if (bridge_cmd[bridge_cmd_idx] == '\0')
         {
+          CDC_DebugPrintf("CMD: BOOTLOADER received\r\n");
+          bridge_validate = 1U;
           enter_bridge_request = 1U;
           bridge_cmd_idx = 0U;
         }
@@ -319,6 +328,27 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
         if (Buf[i] == (uint8_t)bridge_cmd[0])
         {
           bridge_cmd_idx = 1U;
+        }
+      }
+
+      /* BRIDGE command: reset and bridge, let the host tool do the sync */
+      if (Buf[i] == (uint8_t)dumb_bridge_cmd[dumb_bridge_cmd_idx])
+      {
+        dumb_bridge_cmd_idx++;
+        if (dumb_bridge_cmd[dumb_bridge_cmd_idx] == '\0')
+        {
+          CDC_DebugPrintf("CMD: BRIDGE received\r\n");
+          bridge_validate = 0U;
+          enter_bridge_request = 1U;
+          dumb_bridge_cmd_idx = 0U;
+        }
+      }
+      else
+      {
+        dumb_bridge_cmd_idx = 0U;
+        if (Buf[i] == (uint8_t)dumb_bridge_cmd[0])
+        {
+          dumb_bridge_cmd_idx = 1U;
         }
       }
     }
@@ -391,8 +421,8 @@ static void Bridge_UartTxStart(void)
   }
 
   uart_tx_active = 1U;
-  uint8_t byte = uart_tx_buf[uart_tx_tail];
-  HAL_UART_Transmit_IT(&huart3, &byte, 1U);
+  uart_tx_active_byte = uart_tx_buf[uart_tx_tail];
+  HAL_UART_Transmit_IT(&huart3, &uart_tx_active_byte, 1U);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -416,8 +446,8 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     uart_tx_tail = (uart_tx_tail + 1U) % CDC_BRIDGE_BUF_SIZE;
     if (uart_tx_head != uart_tx_tail)
     {
-      uint8_t byte = uart_tx_buf[uart_tx_tail];
-      HAL_UART_Transmit_IT(&huart3, &byte, 1U);
+      uart_tx_active_byte = uart_tx_buf[uart_tx_tail];
+      HAL_UART_Transmit_IT(&huart3, &uart_tx_active_byte, 1U);
     }
     else
     {
@@ -430,29 +460,60 @@ void CDC_Bridge_Process(void)
 {
   if (enter_bridge_request != 0U)
   {
+    uint8_t do_validate = bridge_validate;
     enter_bridge_request = 0U;
+
+    CDC_DebugPrintf("DBG: Step 1 - Reset main MCU into bootloader mode\r\n");
+    MainMCU_ResetToBootloader();
+
     bridge_mode = 1U;
     cdc_tx_busy = 0U;
+    uart_rx_head = 0U;
+    uart_rx_tail = 0U;
+    uart_tx_head = 0U;
+    uart_tx_tail = 0U;
+    uart_tx_active = 0U;
 
-    HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port, BOOTSEL_MAIN_MCU_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_RESET);
-    HAL_Delay(10);
-    HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
-    HAL_Delay(100);
-
+    HAL_NVIC_SetPriority(USART3_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
     HAL_UART_Receive_IT(&huart3, &uart_rx_byte, 1U);
+
+    if (do_validate != 0U)
+    {
+      CDC_DebugPrintf("DBG: Step 2 - Validate sync 0x7F -> 0x79\r\n");
+      if (Bootloader_ValidateSync() != 0U)
+      {
+        CDC_DebugPrintf("DBG: Sync OK\r\n");
+        CDC_SendString("BOOTLOADER OK\r\n");
+      }
+      else
+      {
+        CDC_DebugPrintf("DBG: Sync FAILED\r\n");
+        CDC_SendString("BOOTLOADER FAILED\r\n");
+        CDC_DebugPrintf("DBG: Resetting main MCU back to application mode\r\n");
+        MainMCU_ResetToApp();
+        bridge_mode = 0U;
+      }
+    }
+    else
+    {
+      CDC_DebugPrintf("DBG: Bridge mode (no validation) - forwarding USB<->USART3\r\n");
+      CDC_SendString("BRIDGE OK\r\n");
+    }
   }
 
   if ((bridge_mode != 0U) && (cdc_tx_busy == 0U))
   {
     static uint8_t cdc_tx_buf[CDC_BRIDGE_BUF_SIZE];
-    uint16_t cdc_tx_len = 0U;
+    static uint16_t cdc_tx_len = 0U;
 
-    while ((uart_rx_head != uart_rx_tail) && (cdc_tx_len < CDC_BRIDGE_BUF_SIZE))
+    if (cdc_tx_len == 0U)
     {
-      cdc_tx_buf[cdc_tx_len++] = uart_rx_buf[uart_rx_tail];
-      uart_rx_tail = (uart_rx_tail + 1U) % CDC_BRIDGE_BUF_SIZE;
+      while ((uart_rx_head != uart_rx_tail) && (cdc_tx_len < CDC_BRIDGE_BUF_SIZE))
+      {
+        cdc_tx_buf[cdc_tx_len++] = uart_rx_buf[uart_rx_tail];
+        uart_rx_tail = (uart_rx_tail + 1U) % CDC_BRIDGE_BUF_SIZE;
+      }
     }
 
     if (cdc_tx_len > 0U)
@@ -461,6 +522,7 @@ void CDC_Bridge_Process(void)
       if (CDC_Transmit_FS(UserTxBufferFS, cdc_tx_len) == USBD_OK)
       {
         cdc_tx_busy = 1U;
+        cdc_tx_len = 0U;
       }
     }
   }
@@ -469,6 +531,130 @@ void CDC_Bridge_Process(void)
 uint8_t CDC_IsBridgeMode(void)
 {
   return bridge_mode;
+}
+
+static void MainMCU_ResetToBootloader(void)
+{
+  /* BOOT0 must be sampled high when NRST rises (AN2606). Keep BOOTSEL high
+     throughout the whole sequence and use generous settling/delays. */
+  HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port, BOOTSEL_MAIN_MCU_Pin, GPIO_PIN_SET);
+  HAL_Delay(50);
+  CDC_DebugPinStates("After BOOTSEL=H settle");
+
+  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_RESET);
+  HAL_Delay(100);
+  CDC_DebugPinStates("After RESET=L settle");
+
+  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
+  HAL_Delay(300);
+  CDC_DebugPinStates("After RESET=H settle");
+}
+
+static void MainMCU_ResetToApp(void)
+{
+  /* BOOT0 low, then reset so the main MCU boots from flash. */
+  HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port, BOOTSEL_MAIN_MCU_Pin, GPIO_PIN_RESET);
+  HAL_Delay(50);
+  CDC_DebugPinStates("After BOOTSEL=L settle");
+
+  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_RESET);
+  HAL_Delay(100);
+  CDC_DebugPinStates("After RESET=L settle");
+
+  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
+  HAL_Delay(50);
+  CDC_DebugPinStates("After RESET=H settle");
+}
+
+static uint8_t Bootloader_ValidateSync(void)
+{
+  uint8_t sync_byte = 0x7F;
+  uint8_t ack_byte = 0;
+
+  for (uint8_t attempt = 0U; attempt < 3U; attempt++)
+  {
+    CDC_DebugPrintf("DBG: Sync attempt %u, sending 0x7F\r\n", (unsigned int)(attempt + 1U));
+    if (HAL_UART_Transmit(&huart3, &sync_byte, 1U, 100) != HAL_OK)
+    {
+      CDC_DebugPrintf("DBG: UART TX failed\r\n");
+      HAL_Delay(50);
+      continue;
+    }
+
+    uint32_t start = HAL_GetTick();
+    while ((HAL_GetTick() - start) < 500U)
+    {
+      if (HAL_UART_Receive(&huart3, &ack_byte, 1U, 10) == HAL_OK)
+      {
+        CDC_DebugPrintf("DBG: RX byte 0x%02X\r\n", (unsigned int)ack_byte);
+        if (ack_byte == 0x79U)
+        {
+          return 1U;
+        }
+      }
+    }
+
+    CDC_DebugPrintf("DBG: No ACK within 500 ms\r\n");
+    HAL_Delay(50);
+  }
+
+  return 0U;
+}
+
+static void CDC_SendString(const char *str)
+{
+  uint16_t len = (uint16_t)strlen(str);
+  if ((len == 0U) || (len > APP_TX_DATA_SIZE))
+  {
+    return;
+  }
+
+  memcpy(UserTxBufferFS, str, len);
+  uint32_t start = HAL_GetTick();
+  while (CDC_Transmit_FS(UserTxBufferFS, len) != USBD_OK)
+  {
+    if ((HAL_GetTick() - start) > 1000U)
+    {
+      break;
+    }
+  }
+}
+
+static void CDC_DebugPrintf(const char *fmt, ...)
+{
+  static char buf[128];
+  va_list args;
+  va_start(args, fmt);
+  int len = vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+
+  if ((len > 0) && (len < (int)sizeof(buf)))
+  {
+    CDC_SendString(buf);
+  }
+}
+
+static void CDC_DebugPinStates(const char *label)
+{
+  GPIO_PinState bootsel = HAL_GPIO_ReadPin(BOOTSEL_MAIN_MCU_GPIO_Port, BOOTSEL_MAIN_MCU_Pin);
+  GPIO_PinState reset = HAL_GPIO_ReadPin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin);
+
+  CDC_DebugPrintf("DBG: %-24s BOOTSEL=%s RESET=%s\r\n",
+                  label,
+                  (bootsel == GPIO_PIN_SET) ? "H" : "L",
+                  (reset == GPIO_PIN_SET) ? "H" : "L");
+}
+
+void CDC_DebugReportStartup(void)
+{
+  GPIO_PinState bootsel = HAL_GPIO_ReadPin(BOOTSEL_MAIN_MCU_GPIO_Port, BOOTSEL_MAIN_MCU_Pin);
+  GPIO_PinState reset = HAL_GPIO_ReadPin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin);
+
+  CDC_DebugPrintf("\r\n=== CoProcessor startup ===\r\n");
+  CDC_DebugPrintf("DBG: Initial pin state        BOOTSEL=%s RESET=%s\r\n",
+                  (bootsel == GPIO_PIN_SET) ? "H" : "L",
+                  (reset == GPIO_PIN_SET) ? "H" : "L");
+  CDC_DebugPrintf("DBG: Send 'BOOTLOADER' to flash the main MCU\r\n");
 }
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */

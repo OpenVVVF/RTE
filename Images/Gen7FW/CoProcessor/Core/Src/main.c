@@ -33,7 +33,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
 #include "usbd_cdc_if.h"
 /* USER CODE END Includes */
 
@@ -116,6 +115,7 @@ int main(void)
   /* Release the main MCU from reset so it runs its application. */
   HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
   HAL_Delay(10);
+  CDC_DebugReportStartup();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -123,23 +123,6 @@ int main(void)
   while (1)
   {
     CDC_Bridge_Process();
-
-    if (CDC_IsBridgeMode() == 0U)
-    {
-      static uint32_t last_uptime_tick = 0U;
-      static char uptime_str[64];
-      uint32_t now = HAL_GetTick();
-
-      if ((now - last_uptime_tick) >= 100U)
-      {
-        last_uptime_tick = now;
-        int len = snprintf(uptime_str, sizeof(uptime_str), "uptime: %lu ms\r\n", now);
-        if (len > 0)
-        {
-          CDC_Transmit_FS((uint8_t*)uptime_str, (uint16_t)len);
-        }
-      }
-    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

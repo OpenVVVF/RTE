@@ -1,0 +1,5 @@
+# Build outputs
+build/
+
+# Patched dfu-util source tree (use build-dfu-util.sh to regenerate)
+dfu-util-src/

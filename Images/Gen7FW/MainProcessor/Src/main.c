@@ -134,8 +134,21 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  static uint32_t last_toggle_ms = 0;
+  static uint8_t led_phase = 0;
   while (1)
   {
+    uint32_t now = HAL_GetTick();
+    if ((now - last_toggle_ms) >= 500U)
+    {
+      last_toggle_ms = now;
+      led_phase ^= 1U;
+
+      HAL_GPIO_WritePin(DEBUG_ORANGE_LED_GPIO_Port, DEBUG_ORANGE_LED_Pin,
+                        led_phase ? GPIO_PIN_SET : GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(DEBUG_GREEN_LED_GPIO_Port, DEBUG_GREEN_LED_Pin,
+                        led_phase ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
