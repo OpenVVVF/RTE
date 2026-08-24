@@ -65,6 +65,12 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PC13 (COPROCESSOR_WAKEUP from H7) */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pin : CURSENSE_PH_U_SIG_Pin */
   GPIO_InitStruct.Pin = CURSENSE_PH_U_SIG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;

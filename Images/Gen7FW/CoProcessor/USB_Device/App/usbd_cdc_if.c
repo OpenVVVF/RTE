@@ -699,13 +699,15 @@ static void CDC_ReportSharedPinStates(void)
   GPIO_PinState user_din_3 = HAL_GPIO_ReadPin(USER_DIN_3_GPIO_Port, USER_DIN_3_Pin);
   GPIO_PinState user_din_4 = HAL_GPIO_ReadPin(USER_DIN_4_GPIO_Port, USER_DIN_4_Pin);
   GPIO_PinState sync_line  = HAL_GPIO_ReadPin(INTERMCU_SYNC_LINE_GPIO_Port, INTERMCU_SYNC_LINE_Pin);
+  GPIO_PinState wakeup     = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
 
-  CDC_DebugPrintf("STATUS: USER_DIN_1=%s USER_DIN_2=%s USER_DIN_3=%s USER_DIN_4=%s SYNC=%s\r\n",
+  CDC_DebugPrintf("STATUS: USER_DIN_1=%s USER_DIN_2=%s USER_DIN_3=%s USER_DIN_4=%s SYNC=%s WAKEUP=%s\r\n",
                   (user_din_1 == GPIO_PIN_SET) ? "H" : "L",
                   (user_din_2 == GPIO_PIN_SET) ? "H" : "L",
                   (user_din_3 == GPIO_PIN_SET) ? "H" : "L",
                   (user_din_4 == GPIO_PIN_SET) ? "H" : "L",
-                  (sync_line == GPIO_PIN_SET) ? "H" : "L");
+                  (sync_line == GPIO_PIN_SET) ? "H" : "L",
+                  (wakeup == GPIO_PIN_SET) ? "H" : "L");
 }
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
