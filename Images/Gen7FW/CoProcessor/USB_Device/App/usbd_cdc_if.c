@@ -155,6 +155,7 @@ static void Bridge_UartTxStart(void);
 static void MainMCU_ResetToBootloader(void);
 static void MainMCU_ResetToApp(void);
 static uint8_t Bootloader_ValidateSync(void);
+static void CDC_EnableUartIrq(void);
 static void CDC_SendString(const char *str);
 static void CDC_DebugPrintf(const char *fmt, ...);
 static void CDC_DebugPinStates(const char *label);
@@ -464,7 +465,6 @@ void CDC_Bridge_Process(void)
     CDC_DebugPrintf("DBG: Step 1 - Reset main MCU into bootloader mode\r\n");
     MainMCU_ResetToBootloader();
 
-    bridge_mode = 1U;
     cdc_tx_busy = 0U;
     uart_rx_head = 0U;
     uart_rx_tail = 0U;
@@ -472,21 +472,14 @@ void CDC_Bridge_Process(void)
     uart_tx_tail = 0U;
     uart_tx_active = 0U;
 
-    HAL_NVIC_SetPriority(USART3_IRQn, 5U, 0U);
-    HAL_NVIC_EnableIRQ(USART3_IRQn);
-    CDC_DebugPrintf("DBG: USART3 IRQ enabled\r\n");
-
-    HAL_StatusTypeDef rx_status = HAL_UART_Receive_IT(&huart3, &uart_rx_byte, 1U);
-    CDC_DebugPrintf("DBG: HAL_UART_Receive_IT status=%d\r\n", (int)rx_status);
-
-    CDC_DebugPrintf("DBG: about to enter validation block (do_validate=%u)\r\n", (unsigned int)do_validate);
-
     if (do_validate != 0U)
     {
       CDC_DebugPrintf("DBG: Step 2 - Validate sync 0x7F -> 0x79\r\n");
       if (Bootloader_ValidateSync() != 0U)
       {
         CDC_DebugPrintf("DBG: Sync OK\r\n");
+        bridge_mode = 1U;
+        CDC_EnableUartIrq();
         CDC_SendString("BOOTLOADER OK\r\n");
       }
       else
@@ -501,6 +494,8 @@ void CDC_Bridge_Process(void)
     else
     {
       CDC_DebugPrintf("DBG: Bridge mode (no validation) - forwarding USB<->USART3\r\n");
+      bridge_mode = 1U;
+      CDC_EnableUartIrq();
       CDC_SendString("BRIDGE OK\r\n");
     }
   }
@@ -534,6 +529,13 @@ void CDC_Bridge_Process(void)
 uint8_t CDC_IsBridgeMode(void)
 {
   return bridge_mode;
+}
+
+static void CDC_EnableUartIrq(void)
+{
+  HAL_NVIC_SetPriority(USART3_IRQn, 5U, 0U);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
+  HAL_UART_Receive_IT(&huart3, &uart_rx_byte, 1U);
 }
 
 static void MainMCU_ResetToBootloader(void)
