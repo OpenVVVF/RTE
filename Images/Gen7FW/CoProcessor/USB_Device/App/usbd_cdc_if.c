@@ -612,14 +612,22 @@ static void CDC_SendString(const char *str)
     return;
   }
 
-  memcpy(UserTxBufferFS, str, len);
+  /* Wait for any previous USB IN transfer to finish. */
   uint32_t start = HAL_GetTick();
-  while (CDC_Transmit_FS(UserTxBufferFS, len) != USBD_OK)
+  while (cdc_tx_busy != 0U)
   {
     if ((HAL_GetTick() - start) > 1000U)
     {
+      cdc_tx_busy = 0U;
       break;
     }
+  }
+
+  memcpy(UserTxBufferFS, str, len);
+  cdc_tx_busy = 1U;
+  if (CDC_Transmit_FS(UserTxBufferFS, len) != USBD_OK)
+  {
+    cdc_tx_busy = 0U;
   }
 }
 
