@@ -105,6 +105,8 @@ static uint8_t bridge_cmd_idx = 0U;
 static const char *bridge_cmd = "BOOTLOADER\r\n";
 static uint8_t dumb_bridge_cmd_idx = 0U;
 static const char *dumb_bridge_cmd = "BRIDGE\r\n";
+static uint8_t status_cmd_idx = 0U;
+static const char *status_cmd = "STATUS\r\n";
 
 static uint8_t uart_rx_buf[CDC_BRIDGE_BUF_SIZE];
 static volatile uint16_t uart_rx_head = 0U;
@@ -159,6 +161,7 @@ static void CDC_EnableUartIrq(void);
 static void CDC_SendString(const char *str);
 static void CDC_DebugPrintf(const char *fmt, ...);
 static void CDC_DebugPinStates(const char *label);
+static void CDC_ReportSharedPinStates(void);
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
 /**
@@ -348,6 +351,25 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
         if (Buf[i] == (uint8_t)dumb_bridge_cmd[0])
         {
           dumb_bridge_cmd_idx = 1U;
+        }
+      }
+
+      /* STATUS command: report shared GPIO states */
+      if (Buf[i] == (uint8_t)status_cmd[status_cmd_idx])
+      {
+        status_cmd_idx++;
+        if (status_cmd[status_cmd_idx] == '\0')
+        {
+          CDC_ReportSharedPinStates();
+          status_cmd_idx = 0U;
+        }
+      }
+      else
+      {
+        status_cmd_idx = 0U;
+        if (Buf[i] == (uint8_t)status_cmd[0])
+        {
+          status_cmd_idx = 1U;
         }
       }
     }
@@ -668,6 +690,22 @@ void CDC_DebugReportStartup(void)
                   (bootsel == GPIO_PIN_SET) ? "H" : "L",
                   (reset == GPIO_PIN_SET) ? "H" : "L");
   CDC_DebugPrintf("DBG: Send 'BOOTLOADER' to flash the main MCU\r\n");
+}
+
+static void CDC_ReportSharedPinStates(void)
+{
+  GPIO_PinState user_din_1 = HAL_GPIO_ReadPin(USER_DIN_1_GPIO_Port, USER_DIN_1_Pin);
+  GPIO_PinState user_din_2 = HAL_GPIO_ReadPin(USER_DIN_2_GPIO_Port, USER_DIN_2_Pin);
+  GPIO_PinState user_din_3 = HAL_GPIO_ReadPin(USER_DIN_3_GPIO_Port, USER_DIN_3_Pin);
+  GPIO_PinState user_din_4 = HAL_GPIO_ReadPin(USER_DIN_4_GPIO_Port, USER_DIN_4_Pin);
+  GPIO_PinState sync_line  = HAL_GPIO_ReadPin(INTERMCU_SYNC_LINE_GPIO_Port, INTERMCU_SYNC_LINE_Pin);
+
+  CDC_DebugPrintf("STATUS: USER_DIN_1=%s USER_DIN_2=%s USER_DIN_3=%s USER_DIN_4=%s SYNC=%s\r\n",
+                  (user_din_1 == GPIO_PIN_SET) ? "H" : "L",
+                  (user_din_2 == GPIO_PIN_SET) ? "H" : "L",
+                  (user_din_3 == GPIO_PIN_SET) ? "H" : "L",
+                  (user_din_4 == GPIO_PIN_SET) ? "H" : "L",
+                  (sync_line == GPIO_PIN_SET) ? "H" : "L");
 }
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
