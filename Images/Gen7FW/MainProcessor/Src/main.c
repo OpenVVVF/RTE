@@ -90,14 +90,24 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  /* Early raw GPIO toggle to prove the H7 is running before any CubeMX init. */
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  GPIOD->MODER &= ~(3UL << (9U * 2U));
+  GPIOD->MODER |=  (1UL << (9U * 2U));
+  for (uint32_t i = 0; i < 4; i++)
+  {
+    GPIOD->BSRR = (1UL << 9U);
+    HAL_Delay(100);
+    GPIOD->BSRR = (1UL << (9U + 16U));
+    HAL_Delay(100);
+  }
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* Configure the peripherals common clocks */
-  PeriphCommonClock_Config();
+  /* Minimal bring-up: skip peripheral common clock config. */
+  // PeriphCommonClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
@@ -105,30 +115,28 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
+  /* Minimal bring-up: skip other peripheral inits to isolate failures. */
+  // MX_DMA_Init();
   MX_USART3_UART_Init();
-  MX_TIM1_Init();
-  MX_ADC1_Init();
-  MX_ADC2_Init();
-  MX_ADC3_Init();
-  MX_FDCAN1_Init();
-  MX_FDCAN2_Init();
-  MX_SPI4_Init();
-  MX_SPI2_Init();
-  MX_DAC1_Init();
-  MX_TIM3_Init();
-  MX_UART9_Init();
-  MX_I2C4_Init();
-  MX_I2C5_Init();
-  MX_UART4_Init();
-  MX_CORDIC_Init();
-  MX_CRC_Init();
-  MX_FMAC_Init();
-  /* Watchdogs disabled for bring-up: init sequence may exceed their timeout. */
-  /* MX_IWDG1_Init(); */
-  MX_RAMECC_Init();
-  MX_RNG_Init();
-  /* MX_WWDG1_Init(); */
+  // MX_TIM1_Init();
+  // MX_ADC1_Init();
+  // MX_ADC2_Init();
+  // MX_ADC3_Init();
+  // MX_FDCAN1_Init();
+  // MX_FDCAN2_Init();
+  // MX_SPI4_Init();
+  // MX_SPI2_Init();
+  // MX_DAC1_Init();
+  // MX_TIM3_Init();
+  // MX_UART9_Init();
+  // MX_I2C4_Init();
+  // MX_I2C5_Init();
+  // MX_UART4_Init();
+  // MX_CORDIC_Init();
+  // MX_CRC_Init();
+  // MX_FMAC_Init();
+  // MX_RAMECC_Init();
+  // MX_RNG_Init();
   /* USER CODE BEGIN 2 */
   /* Release the CoProcessor from reset so it can run its application. */
   HAL_GPIO_WritePin(COPROCESSOR_RESET_GPIO_Port, COPROCESSOR_RESET_Pin, GPIO_PIN_SET);
@@ -154,6 +162,10 @@ int main(void)
 
       /* Heartbeat for the CoProcessor: toggle the wakeup line every 500 ms. */
       HAL_GPIO_TogglePin(COPROCESSOR_WAKEUP_GPIO_Port, COPROCESSOR_WAKEUP_Pin);
+
+      /* UART heartbeat for debugging through the bridge. */
+      const char *msg = led_phase ? "H7 ALIVE 1\r\n" : "H7 ALIVE 0\r\n";
+      HAL_UART_Transmit(&huart3, (uint8_t *)msg, 12, 100);
     }
     /* USER CODE END WHILE */
 
@@ -170,6 +182,8 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  uint32_t sysclk_source = RCC_SYSCLKSOURCE_PLLCLK;
+  uint32_t flash_latency = FLASH_LATENCY_3;
 
   /** Supply configuration update enable
   */
@@ -201,7 +215,20 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLFRACN = 6144;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
-    Error_Handler();
+    /* HSE failed — fall back to HSI direct (no PLL) for bring-up. */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_LSI
+                                |RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+    RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    sysclk_source = RCC_SYSCLKSOURCE_HSI;
+    flash_latency = FLASH_LATENCY_2;
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -209,7 +236,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
                               |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKSource = sysclk_source;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV2;
@@ -217,7 +244,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, flash_latency) != HAL_OK)
   {
     Error_Handler();
   }
