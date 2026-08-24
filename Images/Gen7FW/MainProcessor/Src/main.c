@@ -138,6 +138,10 @@ int main(void)
   static uint8_t led_phase = 0;
   while (1)
   {
+    /* Refresh WWDG often; with the current config the allowed refresh
+       window is only a few tens of milliseconds. */
+    HAL_WWDG_Refresh(&hwwdg1);
+
     uint32_t now = HAL_GetTick();
     if ((now - last_toggle_ms) >= 500U)
     {
@@ -148,6 +152,9 @@ int main(void)
                         led_phase ? GPIO_PIN_SET : GPIO_PIN_RESET);
       HAL_GPIO_WritePin(DEBUG_GREEN_LED_GPIO_Port, DEBUG_GREEN_LED_Pin,
                         led_phase ? GPIO_PIN_RESET : GPIO_PIN_SET);
+
+      /* IWDG timeout is ~512 ms, so refresh it here as well. */
+      HAL_IWDG_Refresh(&hiwdg1);
     }
     /* USER CODE END WHILE */
 
