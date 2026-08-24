@@ -112,9 +112,8 @@ int main(void)
   MX_TIM1_Init();
   MX_USB_Device_Init();
   /* USER CODE BEGIN 2 */
-  /* Release the main MCU from reset so it runs its application. */
-  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
-  HAL_Delay(10);
+  /* Keep the main MCU held in reset at startup so a bad app cannot reset us.
+     It is only released when entering BRIDGE/BOOTLOADER mode. */
   CDC_DebugReportStartup();
   /* USER CODE END 2 */
 

@@ -129,7 +129,9 @@ int main(void)
   MX_RNG_Init();
   MX_WWDG1_Init();
   /* USER CODE BEGIN 2 */
-
+  /* Release the CoProcessor from reset so it can run its application. */
+  HAL_GPIO_WritePin(COPROCESSOR_RESET_GPIO_Port, COPROCESSOR_RESET_Pin, GPIO_PIN_SET);
+  HAL_Delay(10);
   /* USER CODE END 2 */
 
   /* Infinite loop */
