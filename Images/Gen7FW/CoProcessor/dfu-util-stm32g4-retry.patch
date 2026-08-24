@@ -1,0 +1,45 @@
+diff --git a/src/dfuse.c b/src/dfuse.c
+index 1261e2b..27cacbe 100644
+--- a/src/dfuse.c
++++ b/src/dfuse.c
+@@ -242,15 +242,20 @@ static int dfuse_special_command(struct dfu_if *dif, unsigned int address,
+ 	}
+ 	do {
+ 		ret = dfu_get_status(dif, &dst);
+-		/* Workaround for some STM32L4 bootloaders that report a too
+-		 * short poll timeout and may stall the pipe when we poll.
++		/* Workaround for some STM32L4/G4 bootloaders that report a too
++		 * short poll timeout and may stall the pipe when we poll, or return
++		 * a transient IO error while the flash controller is busy.
+ 		 * This also allows "fast" mode (without poll timeouts) to work
+ 		 * with many bootloaders. */
+-		if (ret == LIBUSB_ERROR_PIPE && polltimeout != 0 && stalls < 3) {
++		if ((ret == LIBUSB_ERROR_PIPE || ret == LIBUSB_ERROR_IO) && stalls < 10) {
+ 			dst.bState = DFU_STATE_dfuDNBUSY;
+ 			stalls++;
++			if (polltimeout == 0)
++				polltimeout = 100; /* sensible fallback while retrying */
+ 			if (verbose)
+ 				fprintf(stderr, "* Device stalled USB pipe, reusing last poll timeout\n");
++			milli_sleep(polltimeout);
++			continue;
+ 		} else if (ret < 0) {
+ 			errx(EX_IOERR,
+ 			     "Error during special command \"%s\" get_status: %d (%s)",
+@@ -321,12 +326,13 @@ static int dfuse_dnload_chunk(struct dfu_if *dif, unsigned char *data, int size,
+ 
+ 	do {
+ 		ret = dfu_get_status(dif, &dst);
+-		/* needed for some STM32L4 bootloaders and for "fast" mode */
+-		if (ret == LIBUSB_ERROR_PIPE && stalls < 3) {
++		/* needed for some STM32L4/G4 bootloaders and for "fast" mode */
++		if ((ret == LIBUSB_ERROR_PIPE || ret == LIBUSB_ERROR_IO) && stalls < 10) {
+ 			dst.bState = DFU_STATE_dfuDNBUSY;
+ 			stalls++;
+ 			if (verbose)
+-				fprintf(stderr, " * Pipe error, retrying get_status\n");
++				fprintf(stderr, " * Pipe/IO error, retrying get_status\n");
++			milli_sleep(100);
+ 			continue;
+ 		}
+ 		if (ret < 0) {
