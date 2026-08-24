@@ -316,7 +316,6 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
         bridge_cmd_idx++;
         if (bridge_cmd[bridge_cmd_idx] == '\0')
         {
-          CDC_DebugPrintf("CMD: BOOTLOADER received\r\n");
           bridge_validate = 1U;
           enter_bridge_request = 1U;
           bridge_cmd_idx = 0U;
@@ -337,7 +336,6 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
         dumb_bridge_cmd_idx++;
         if (dumb_bridge_cmd[dumb_bridge_cmd_idx] == '\0')
         {
-          CDC_DebugPrintf("CMD: BRIDGE received\r\n");
           bridge_validate = 0U;
           enter_bridge_request = 1U;
           dumb_bridge_cmd_idx = 0U;
@@ -476,7 +474,12 @@ void CDC_Bridge_Process(void)
 
     HAL_NVIC_SetPriority(USART3_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
-    HAL_UART_Receive_IT(&huart3, &uart_rx_byte, 1U);
+    CDC_DebugPrintf("DBG: USART3 IRQ enabled\r\n");
+
+    HAL_StatusTypeDef rx_status = HAL_UART_Receive_IT(&huart3, &uart_rx_byte, 1U);
+    CDC_DebugPrintf("DBG: HAL_UART_Receive_IT status=%d\r\n", (int)rx_status);
+
+    CDC_DebugPrintf("DBG: about to enter validation block (do_validate=%u)\r\n", (unsigned int)do_validate);
 
     if (do_validate != 0U)
     {
