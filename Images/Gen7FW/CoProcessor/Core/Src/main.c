@@ -113,24 +113,31 @@ int main(void)
   MX_TIM1_Init();
   MX_USB_Device_Init();
   /* USER CODE BEGIN 2 */
-
+  /* Release the main MCU from reset so it runs its application. */
+  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
+  HAL_Delay(10);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    static uint32_t last_uptime_tick = 0U;
-    static char uptime_str[64];
-    uint32_t now = HAL_GetTick();
+    CDC_Bridge_Process();
 
-    if ((now - last_uptime_tick) >= 100U)
+    if (CDC_IsBridgeMode() == 0U)
     {
-      last_uptime_tick = now;
-      int len = snprintf(uptime_str, sizeof(uptime_str), "uptime: %lu ms\r\n", now);
-      if (len > 0)
+      static uint32_t last_uptime_tick = 0U;
+      static char uptime_str[64];
+      uint32_t now = HAL_GetTick();
+
+      if ((now - last_uptime_tick) >= 100U)
       {
-        CDC_Transmit_FS((uint8_t*)uptime_str, (uint16_t)len);
+        last_uptime_tick = now;
+        int len = snprintf(uptime_str, sizeof(uptime_str), "uptime: %lu ms\r\n", now);
+        if (len > 0)
+        {
+          CDC_Transmit_FS((uint8_t*)uptime_str, (uint16_t)len);
+        }
       }
     }
     /* USER CODE END WHILE */

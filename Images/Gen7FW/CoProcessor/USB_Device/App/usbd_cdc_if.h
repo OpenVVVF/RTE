@@ -52,7 +52,7 @@
 #define APP_RX_DATA_SIZE  2048
 #define APP_TX_DATA_SIZE  2048
 /* USER CODE BEGIN EXPORTED_DEFINES */
-
+#define CDC_BRIDGE_BUF_SIZE 512U
 /* USER CODE END EXPORTED_DEFINES */
 
 /**
@@ -109,7 +109,8 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
 uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
+void CDC_Bridge_Process(void);
+uint8_t CDC_IsBridgeMode(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
