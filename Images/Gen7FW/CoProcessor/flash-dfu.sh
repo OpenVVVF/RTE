@@ -107,11 +107,34 @@ echo "Flashing ${FIRMWARE_FILE}..."
 # -c port=usb1 : connect to the first STM32 ROM bootloader DFU device
 # -d <file>    : download (ELF/HEX use their embedded addresses, .bin uses FLASH_ADDR)
 # -v           : verify after download
-# NOTE: '-rst' is NOT supported over DFU ("Reset command is only available
-# with JTAG/SWD"), and the G4 ROM bootloader ignores a bare DFU detach.
-# You must power-cycle the board or press its reset button afterwards.
 "${STM32_PROGRAMMER}" -c port=usb1 "${DOWNLOAD_ARGS[@]}" -v
 
+# Start the application without a physical reset.
+# NOTE: '-rst' does NOT work over DFU ("only available with JTAG/SWD"), but
+# '-g' does. '-g' jumps with a raw PC, so it must get the ELF entry point
+# (Reset_Handler) -- NOT the vector table base 0x08000000 (jumping there
+# executes the initial SP as an instruction and locks up the CPU).
+ENTRY=""
+case "${FIRMWARE_FILE}" in
+    *.elf)
+        if command -v arm-none-eabi-readelf &>/dev/null; then
+            ENTRY="$(arm-none-eabi-readelf -h "${FIRMWARE_FILE}" \
+                     | awk '/Entry point address:/{print $NF}')"
+        fi
+        ;;
+    *.bin)
+        # Reset_Handler is word 1 of the vector table (offset 4, little-endian)
+        ENTRY="0x$(xxd -p -l 4 -s 4 "${FIRMWARE_FILE}" \
+               | sed 's/\(..\)\(..\)\(..\)\(..\)/\4\3\2\1/')"
+        ;;
+esac
+
 echo ""
-echo "Done. Now reset the board (power-cycle or reset button, BOOT0 low)"
-echo "so it boots the new firmware."
+if [[ -n "${ENTRY}" ]]; then
+    echo "Starting application at ${ENTRY}..."
+    "${STM32_PROGRAMMER}" -c port=usb1 -g "${ENTRY}"
+    echo "Done. The device should now be running the new firmware."
+else
+    echo "Done. Could not determine the entry point to auto-start the app;"
+    echo "reset the board manually (BOOT0 low) to run the new firmware."
+fi

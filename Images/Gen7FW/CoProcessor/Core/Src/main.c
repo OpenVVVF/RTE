@@ -118,13 +118,9 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  /* MX_GPIO_Init() intentionally disabled: the generated init drives
-     GATE_DRIVE_PWR_ENABLE / BOOTSEL_MAIN_MCU / RESET_MAIN_MCU /
-     GATE_DRIVER_RESET low, which brown-out-resets THIS board (boot loop,
-     measured via flash breadcrumbs). Re-enable only after setting the
-     correct output levels for your hardware in CubeMX ("GPIO output level"
-     High where a line must stay high). */
-  /* MX_GPIO_Init(); */
+  /* MX_GPIO_Init() drives RESET_MAIN_MCU (PC9) low by default; safe now that
+     the NRST<->CPRESET board tie is fixed (it used to self-reset the MCU). */
+  MX_GPIO_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_HRTIM1_Init();
