@@ -22,13 +22,13 @@
 #include "cordic.h"
 #include "crc.h"
 #include "dac.h"
+#include "fdcan.h"
 #include "fmac.h"
 #include "hrtim.h"
-#include "iwdg.h"
 #include "rng.h"
 #include "tim.h"
+#include "usart.h"
 #include "usb_device.h"
-#include "wwdg.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -92,49 +92,22 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  /* Clock fixes (root-caused via DFU flash breadcrumbs, no JTAG needed):
-     1) This G4 HAL version's HAL_RCC_OscConfig() enables only the PLLR
-        output -- PLLP (ADC12 clock) and PLLQ (nominal 48 MHz USB/RNG clock)
-        stay disabled. Enable both outputs here.
-     2) USB/RNG 48 MHz comes from HSI48 + CRS (SOF-trimmed), not PLLQ:
-        PLLQ is derived from HSI16 (±1%), outside USB FS tolerance (±0.25%).
-        HSI48+CRS is the same crystal-less path the ST ROM bootloader uses
-        for DFU. USB/RNG clock selection is set to HSI48 in usbd_conf.c /
-        rng.c -- mirror that in the CubeMX clock tree before regenerating. */
-  SET_BIT(RCC->PLLCFGR, RCC_PLLCFGR_PLLPEN | RCC_PLLCFGR_PLLQEN);
-  SET_BIT(RCC->CRRCR, RCC_CRRCR_HSI48ON);
-  while (!READ_BIT(RCC->CRRCR, RCC_CRRCR_HSI48RDY)) { }
-  __HAL_RCC_CRS_CLK_ENABLE();
-  {
-    RCC_CRSInitTypeDef crs = {0};
-    crs.Prescaler = RCC_CRS_SYNC_DIV1;
-    crs.Source = RCC_CRS_SYNC_SOURCE_USB;
-    crs.Polarity = RCC_CRS_SYNC_POLARITY_RISING;
-    crs.ReloadValue = __HAL_RCC_CRS_RELOADVALUE_CALCULATE(48000000U, 1000U);
-    crs.ErrorLimitValue = RCC_CRS_ERRORLIMIT_DEFAULT;
-    crs.HSI48CalibrationValue = RCC_CRS_HSI48CALIBRATION_DEFAULT;
-    (void)HAL_RCCEx_CRSConfig(&crs);
-  }
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  /* MX_GPIO_Init() drives RESET_MAIN_MCU (PC9) low by default; safe now that
-     the NRST<->CPRESET board tie is fixed (it used to self-reset the MCU). */
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
+  MX_FDCAN2_Init();
+  MX_FDCAN3_Init();
   MX_HRTIM1_Init();
-  /* WWDG disabled: 28 us timeout with no refresh resets the MCU before USB init.
-     Also disable "WWDG Activated" in CubeMX or regeneration restores this call. */
-  /* MX_WWDG_Init(); */
+  MX_USART3_UART_Init();
   MX_ADC3_Init();
   MX_CORDIC_Init();
   MX_CRC_Init();
   MX_DAC1_Init();
   MX_FMAC_Init();
-  /* IWDG disabled: ~0.5 s timeout with no refresh would reset-loop the MCU and
-     drop USB enumeration. Also disable "IWDG Activated" in CubeMX. */
-  /* MX_IWDG_Init(); */
   MX_RNG_Init();
   MX_TIM1_Init();
   MX_USB_Device_Init();
@@ -169,16 +142,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSI48;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+  RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  /* PLLM /4 + PLLN 72: same 288 MHz VCO as /6 + 108 (PLLR=144M, PLLQ=48M,
-     PLLP=144M) but a 4.0 MHz VCO input instead of 2.67 MHz, which sat at the
-     2.66 MHz spec minimum and could dip below it with HSI16 tolerance.
-     Mirror PLLM /4, PLLN 72 in the CubeMX clock tree. */
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV4;
   RCC_OscInitStruct.PLL.PLLN = 72;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
