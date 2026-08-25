@@ -115,6 +115,29 @@ int main(void)
   /* Always boot the main MCU application. Port A is the transparent UART
      bridge; port B controls BOOTSEL/reset without disturbing port A. */
   CDC_DebugReportStartup();
+
+  /* Gen7 bring-up: do not let the coprocessor load or pull down
+     the main processor PWM lines and the shared gate-drive breakin net. */
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  GPIO_InitStruct.Pin = PH_U_LOW_Pin|PH_U_HIGH_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = PH_V_LOW_Pin|PH_V_HIGH_Pin|PH_W_LOW_Pin|PH_W_HIGH_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  HAL_GPIO_WritePin(GATE_DRIVER_FAULT_IN_GPIO_Port, GATE_DRIVER_FAULT_IN_Pin, GPIO_PIN_SET);
+  GPIO_InitStruct.Pin = GATE_DRIVER_FAULT_IN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GATE_DRIVER_FAULT_IN_GPIO_Port, &GPIO_InitStruct);
   /* USER CODE END 2 */
 
   /* Infinite loop */

@@ -8,7 +8,7 @@ STM32_PROGRAMMER="${STM32_PROGRAMMER:-/home/tliao/STMicroelectronics/STM32Cube/S
 FLASH_ATTEMPTS="${FLASH_ATTEMPTS:-3}"
 BRIDGE_PORT="${1:-}"
 CONTROL_PORT="${2:-}"
-FIRMWARE="${3:-${SCRIPT_DIR}/pleasework2.elf}"
+FIRMWARE="${3:-${SCRIPT_DIR}/../.rte-gen7/build/Release/STM32CubeMX.elf}"
 
 find_port() {
     local interface="$1"

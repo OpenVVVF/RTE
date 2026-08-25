@@ -83,6 +83,9 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOG, USER_DOUT_4_Pin|USER_DOUT_3_Pin|USER_DOUT_2_Pin|USER_DOUT_1_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(POWERMON_ENABLE_GPIO_Port, POWERMON_ENABLE_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pins : DEBUG_GREEN_LED_Pin DEBUG_ORANGE_LED_Pin */
   GPIO_InitStruct.Pin = DEBUG_GREEN_LED_Pin|DEBUG_ORANGE_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -118,6 +121,13 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(COPROCESSOR_RESET_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : POWERMON_ENABLE_Pin */
+  GPIO_InitStruct.Pin = POWERMON_ENABLE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(POWERMON_ENABLE_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : USER_DIN_5_Pin USER_DIN_4_Pin USER_DIN_3_Pin USER_DIN_2_Pin
                            USER_DIN_1_Pin USER_DIN_7_Pin USER_DIN_8_Pin */
