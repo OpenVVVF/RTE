@@ -12,8 +12,8 @@ USBD_ClassTypeDef USBD_CDC = { init, deinit, setup, NULL, ep0_rx, data_in, data_
 
 #define WB(x) LOBYTE(x), HIBYTE(x)
 #define FUNCTION(ci,di,ce,oe,ie,si) \
-  8,0x0B,ci,2,2,2,1,0, \
-  9,USB_DESC_TYPE_INTERFACE,ci,0,1,2,2,1,si, \
+  8,0x0B,ci,2,2,2,0,0, \
+  9,USB_DESC_TYPE_INTERFACE,ci,0,1,2,2,0,si, \
   5,0x24,0,0x10,1, 5,0x24,1,0,di, 4,0x24,2,2, 5,0x24,6,ci,di, \
   7,USB_DESC_TYPE_ENDPOINT,ce,3,WB(CDC_CMD_PACKET_SIZE),CDC_FS_BINTERVAL, \
   9,USB_DESC_TYPE_INTERFACE,di,0,2,0x0A,0,0,si, \
