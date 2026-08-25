@@ -112,8 +112,8 @@ int main(void)
   MX_TIM1_Init();
   MX_USB_Device_Init();
   /* USER CODE BEGIN 2 */
-  /* Keep the main MCU held in reset at startup so a bad app cannot reset us.
-     It is only released when entering BRIDGE/BOOTLOADER mode. */
+  /* Always boot the main MCU application. Port A is the transparent UART
+     bridge; port B controls BOOTSEL/reset without disturbing port A. */
   CDC_DebugReportStartup();
   /* USER CODE END 2 */
 

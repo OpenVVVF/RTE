@@ -8,7 +8,16 @@ CMD="${1:-STATUS}"
 PORT="${2:-}"
 
 if [[ -z "${PORT}" ]]; then
-    PORT="$(ls -1 /dev/serial/by-id/usb-OpenVVVF_* 2>/dev/null | head -n 1 || true)"
+    PORT="$(find /dev/serial/by-id -maxdepth 1 -type l -name 'usb-OpenVVVF_*if02*' -print 2>/dev/null | sort | head -n 1 || true)"
+    if [[ -z "${PORT}" ]]; then
+        for tty_path in /sys/class/tty/ttyACM*; do
+            [[ -e "${tty_path}" ]] || continue
+            if [[ "$(udevadm info --query=property --path="${tty_path}" 2>/dev/null | sed -n 's/^ID_USB_INTERFACE_NUM=//p')" == "02" ]]; then
+                PORT="/dev/${tty_path##*/}"
+                break
+            fi
+        done
+    fi
     if [[ -z "${PORT}" ]]; then
         echo "ERROR: CoProcessor VCP not found." >&2
         exit 1

@@ -1,60 +1,71 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Flash MainProcessor firmware through the CoProcessor bridge.
-# Usage: ./flash-main.sh [SERIAL_PORT] [FIRMWARE_HEX]
+# Flash through the CoProcessor's dual CDC device.
+# Usage: ./flash-main.sh [BRIDGE_PORT] [CONTROL_PORT] [FIRMWARE]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STM32_PROGRAMMER="${STM32_PROGRAMMER:-/home/tliao/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI}"
+BRIDGE_PORT="${1:-}"
+CONTROL_PORT="${2:-}"
+FIRMWARE="${3:-${SCRIPT_DIR}/pleasework2.elf}"
 
-PORT="${1:-}"
-HEX="${2:-}"
-
-if [[ -z "${PORT}" ]]; then
-    PORT="$(ls -1 /dev/serial/by-id/usb-OpenVVVF_* 2>/dev/null | head -n 1 || true)"
-    if [[ -z "${PORT}" ]]; then
-        echo "ERROR: CoProcessor VCP not found." >&2
-        exit 1
+find_port() {
+    local interface="$1"
+    local port
+    port="$(find /dev/serial/by-id -maxdepth 1 -type l -name "usb-OpenVVVF_*${interface}*" -print 2>/dev/null | sort | head -n 1 || true)"
+    if [[ -z "${port}" ]]; then
+        for tty_path in /sys/class/tty/ttyACM*; do
+            [[ -e "${tty_path}" ]] || continue
+            if [[ "$(udevadm info --query=property --path="${tty_path}" 2>/dev/null | sed -n 's/^ID_USB_INTERFACE_NUM=//p')" == "${interface#if}" ]]; then
+                port="/dev/${tty_path##*/}"
+                break
+            fi
+        done
     fi
-fi
+    printf '%s' "${port}"
+}
 
-if [[ -z "${HEX}" ]]; then
-    HEX="${SCRIPT_DIR}/build/Debug/MainProcessor.hex"
-fi
-
-if [[ ! -f "${HEX}" ]]; then
-    echo "ERROR: Firmware not found: ${HEX}" >&2
+[[ -n "${BRIDGE_PORT}" ]] || BRIDGE_PORT="$(find_port if00)"
+[[ -n "${CONTROL_PORT}" ]] || CONTROL_PORT="$(find_port if02)"
+if [[ -z "${BRIDGE_PORT}" || -z "${CONTROL_PORT}" ]]; then
+    echo "ERROR: Dual-CDC CoProcessor ports not found (bridge=if00, control=if02)." >&2
     exit 1
 fi
+[[ -f "${FIRMWARE}" ]] || { echo "ERROR: Firmware not found: ${FIRMWARE}" >&2; exit 1; }
 
-echo "==> Entering bootloader bridge on ${PORT}..."
-python3 - "${PORT}" <<'PY'
-import sys, serial, time
-port = sys.argv[1]
-with serial.Serial(port, 115200, timeout=8) as ser:
+control_command() {
+    python3 - "$CONTROL_PORT" "$1" <<'PY'
+import serial, sys, time
+port, command = sys.argv[1:]
+with serial.Serial(port, 115200, timeout=0.25) as ser:
     ser.reset_input_buffer()
-    ser.write(b"BOOTLOADER\r\n")
+    ser.write(command.encode("ascii") + b"\r\n")
     ser.flush()
-    deadline = time.time() + 8
-    ok = False
-    while time.time() < deadline:
-        line = ser.readline()
-        if line:
-            text = line.decode('ascii', errors='replace').strip()
-            print(f"    CoProcessor: {text}")
-            if 'BOOTLOADER OK' in text:
-                ok = True
-                break
-            if 'BOOTLOADER FAILED' in text:
-                print("ERROR: Bootloader sync failed.", file=sys.stderr)
-                sys.exit(1)
-    if not ok:
-        print("ERROR: Timeout waiting for BOOTLOADER OK.", file=sys.stderr)
-        sys.exit(1)
+    deadline = time.monotonic() + 3
+    response = b""
+    while time.monotonic() < deadline:
+        response += ser.read(ser.in_waiting or 1)
+        if b" OK\r\n" in response:
+            print(response.decode("ascii", errors="replace"), end="")
+            raise SystemExit(0)
+    print(response.decode("ascii", errors="replace"), end="", file=sys.stderr)
+    raise SystemExit(f"timeout waiting for {command} OK")
 PY
+}
 
-echo "==> Flashing MainProcessor: ${HEX}"
-"${STM32_PROGRAMMER}" -c port="${PORT}" br=115200 P=EVEN db=8 sb=1 \
-    -d "${HEX}" -v -g 0x08000000
+restore_app() {
+    local status=$?
+    trap - EXIT INT TERM
+    echo "==> Restoring main MCU application mode..."
+    control_command APP || true
+    exit "$status"
+}
+trap restore_app EXIT INT TERM
 
-echo "==> Done. Reset CoProcessor to exit bridge mode."
+echo "==> Bridge:  ${BRIDGE_PORT}"
+echo "==> Control: ${CONTROL_PORT}"
+echo "==> Entering main MCU ROM bootloader..."
+control_command BOOTLOADER
+echo "==> Flashing ${FIRMWARE}..."
+"${STM32_PROGRAMMER}" -c port="${BRIDGE_PORT}" br=115200 P=EVEN db=8 sb=1 -d "${FIRMWARE}" -v -g 0x08000000
+echo "==> Flash verified."

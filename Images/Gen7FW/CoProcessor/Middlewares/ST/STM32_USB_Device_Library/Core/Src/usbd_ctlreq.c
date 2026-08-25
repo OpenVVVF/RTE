@@ -490,6 +490,14 @@ static void USBD_GetDescriptor(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *r
           }
           break;
 
+        case 0x06U:
+          {
+            extern uint8_t *USBD_CDC_ControlInterfaceStrDescriptor(USBD_SpeedTypeDef speed,
+                                                                    uint16_t *length);
+            pbuf = USBD_CDC_ControlInterfaceStrDescriptor(pdev->dev_speed, &len);
+          }
+          break;
+
         default:
 #if (USBD_SUPPORT_USER_STRING_DESC == 1U)
           if (pdev->pClass->GetUsrStrDescriptor != NULL)

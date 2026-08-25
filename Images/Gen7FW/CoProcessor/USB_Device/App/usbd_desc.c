@@ -69,6 +69,8 @@
 #define USBD_PRODUCT_STRING     "Control Board Gen 7"
 #define USBD_CONFIGURATION_STRING     "CDC Config"
 #define USBD_INTERFACE_STRING     "CDC Interface"
+#define USBD_BRIDGE_INTERFACE_STRING     "Main MCU UART Bridge"
+#define USBD_CONTROL_INTERFACE_STRING    "Main MCU Flash Control"
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
 
@@ -119,6 +121,7 @@ uint8_t * USBD_CDC_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *lengt
 uint8_t * USBD_CDC_SerialStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
 uint8_t * USBD_CDC_ConfigStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
 uint8_t * USBD_CDC_InterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
+uint8_t * USBD_CDC_ControlInterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
 
 /**
   * @}
@@ -150,9 +153,9 @@ __ALIGN_BEGIN uint8_t USBD_CDC_DeviceDesc[USB_LEN_DEV_DESC] __ALIGN_END =
   USB_DESC_TYPE_DEVICE,       /*bDescriptorType*/
   0x00,                       /*bcdUSB */
   0x02,
-  0x02,                       /*bDeviceClass*/
-  0x02,                       /*bDeviceSubClass*/
-  0x00,                       /*bDeviceProtocol*/
+  0xEF,                       /*bDeviceClass: composite/IAD */
+  0x02,                       /*bDeviceSubClass: Common Class */
+  0x01,                       /*bDeviceProtocol: IAD */
   USB_MAX_EP0_SIZE,           /*bMaxPacketSize*/
   LOBYTE(USBD_VID),           /*idVendor*/
   HIBYTE(USBD_VID),           /*idVendor*/
@@ -320,14 +323,15 @@ uint8_t * USBD_CDC_ConfigStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length
   */
 uint8_t * USBD_CDC_InterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
-  if(speed == 0)
-  {
-    USBD_GetString((uint8_t *)USBD_INTERFACE_STRING, USBD_StrDesc, length);
-  }
-  else
-  {
-    USBD_GetString((uint8_t *)USBD_INTERFACE_STRING, USBD_StrDesc, length);
-  }
+  UNUSED(speed);
+  USBD_GetString((uint8_t *)USBD_BRIDGE_INTERFACE_STRING, USBD_StrDesc, length);
+  return USBD_StrDesc;
+}
+
+uint8_t * USBD_CDC_ControlInterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
+{
+  UNUSED(speed);
+  USBD_GetString((uint8_t *)USBD_CONTROL_INTERFACE_STRING, USBD_StrDesc, length);
   return USBD_StrDesc;
 }
 
