@@ -98,13 +98,23 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
+static volatile uint8_t exit_bridge_request = 0U;
+static uint8_t exit_bridge_idx = 0U;
+static const uint8_t exit_bridge_magic[8] = {
+    0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE
+};
+
+
 static volatile uint8_t bridge_mode = 0U;
 static volatile uint8_t enter_bridge_request = 0U;
 static volatile uint8_t bridge_validate = 1U;
+static volatile uint8_t listen_mode = 0U;
 static uint8_t bridge_cmd_idx = 0U;
 static const char *bridge_cmd = "BOOTLOADER\r\n";
 static uint8_t dumb_bridge_cmd_idx = 0U;
 static const char *dumb_bridge_cmd = "BRIDGE\r\n";
+static uint8_t listen_cmd_idx = 0U;
+static const char *listen_cmd = "LISTEN\r\n";
 static uint8_t status_cmd_idx = 0U;
 static const char *status_cmd = "STATUS\r\n";
 
@@ -301,10 +311,32 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   {
     for (uint32_t i = 0U; i < *Len; i++)
     {
+      uint8_t b = Buf[i];
+
+      /* Non-consuming magic matcher: partial matches are NOT swallowed,
+         so normal bootloader data is never corrupted. */
+      if (b == exit_bridge_magic[exit_bridge_idx])
+      {
+        exit_bridge_idx++;
+        if (exit_bridge_idx == sizeof(exit_bridge_magic))
+        {
+          exit_bridge_request = 1U;
+          exit_bridge_idx = 0U;
+        }
+      }
+      else
+      {
+        exit_bridge_idx = (b == exit_bridge_magic[0]) ? 1U : 0U;
+      }
+
+      /* Always forward to UART.  If the user intentionally sends the magic,
+         those few bytes reach the target while it is in data-receive mode
+         (WRITE MEMORY) and are harmless.  An accidental 8-byte match is
+         ~1 in 2^64 — it will never happen. */
       uint16_t next_head = (uart_tx_head + 1U) % CDC_BRIDGE_BUF_SIZE;
       if (next_head != uart_tx_tail)
       {
-        uart_tx_buf[uart_tx_head] = Buf[i];
+        uart_tx_buf[uart_tx_head] = b;
         uart_tx_head = next_head;
       }
     }
@@ -351,6 +383,26 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
         if (Buf[i] == (uint8_t)dumb_bridge_cmd[0])
         {
           dumb_bridge_cmd_idx = 1U;
+        }
+      }
+
+      /* LISTEN command: bridge without resetting the main MCU */
+      if (Buf[i] == (uint8_t)listen_cmd[listen_cmd_idx])
+      {
+        listen_cmd_idx++;
+        if (listen_cmd[listen_cmd_idx] == '\0')
+        {
+          listen_mode = 1U;
+          enter_bridge_request = 1U;
+          listen_cmd_idx = 0U;
+        }
+      }
+      else
+      {
+        listen_cmd_idx = 0U;
+        if (Buf[i] == (uint8_t)listen_cmd[0])
+        {
+          listen_cmd_idx = 1U;
         }
       }
 
@@ -479,10 +531,53 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 void CDC_Bridge_Process(void)
 {
+  /* ---- Exit bridge & reset to app ------------------------------------- */
+  if (exit_bridge_request != 0U)
+  {
+    exit_bridge_request = 0U;
+    bridge_mode = 0U;
+
+    /* Tear down UART bridge cleanly */
+    HAL_NVIC_DisableIRQ(USART3_IRQn);
+    HAL_UART_Abort_IT(&huart3);
+
+    uart_rx_head = 0U;
+    uart_rx_tail = 0U;
+    uart_tx_head = 0U;
+    uart_tx_tail = 0U;
+    uart_tx_active = 0U;
+    cdc_tx_busy = 0U;
+    exit_bridge_idx = 0U;
+
+    CDC_DebugPrintf("DBG: Exit-bridge magic received. Resetting main MCU to app mode.\r\n");
+    MainMCU_ResetToApp();
+    CDC_SendString("EXITAPP OK\r\n");
+    return;
+  }
+
+
   if (enter_bridge_request != 0U)
   {
     uint8_t do_validate = bridge_validate;
+    uint8_t do_listen = listen_mode;
     enter_bridge_request = 0U;
+    listen_mode = 0U;
+
+    if (do_listen != 0U)
+    {
+      CDC_DebugPrintf("DBG: Listen mode - forwarding USB<->USART3 without reset\r\n");
+      bridge_mode = 1U;
+      exit_bridge_idx = 0U; 
+      cdc_tx_busy = 0U;
+      uart_rx_head = 0U;
+      uart_rx_tail = 0U;
+      uart_tx_head = 0U;
+      uart_tx_tail = 0U;
+      uart_tx_active = 0U;
+      CDC_EnableUartIrq();
+      CDC_SendString("LISTEN OK\r\n");
+      return;
+    }
 
     CDC_DebugPrintf("DBG: Step 1 - Reset main MCU into bootloader mode\r\n");
     MainMCU_ResetToBootloader();
@@ -501,6 +596,7 @@ void CDC_Bridge_Process(void)
       {
         CDC_DebugPrintf("DBG: Sync OK\r\n");
         bridge_mode = 1U;
+        exit_bridge_idx = 0U; 
         CDC_EnableUartIrq();
         CDC_SendString("BOOTLOADER OK\r\n");
       }
@@ -517,6 +613,7 @@ void CDC_Bridge_Process(void)
     {
       CDC_DebugPrintf("DBG: Bridge mode (no validation) - forwarding USB<->USART3\r\n");
       bridge_mode = 1U;
+      exit_bridge_idx = 0U;  
       CDC_EnableUartIrq();
       CDC_SendString("BRIDGE OK\r\n");
     }
@@ -575,6 +672,10 @@ static void MainMCU_ResetToBootloader(void)
   HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
   HAL_Delay(300);
   CDC_DebugPinStates("After RESET=H settle");
+
+  // Clear boot0
+  HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port, BOOTSEL_MAIN_MCU_Pin, GPIO_PIN_RESET);
+
 }
 
 static void MainMCU_ResetToApp(void)

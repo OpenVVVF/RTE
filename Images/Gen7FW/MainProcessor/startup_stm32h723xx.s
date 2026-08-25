@@ -60,6 +60,34 @@ defined in linker script */
 Reset_Handler:
   ldr   sp, =_estack      /* set stack pointer */
 
+/* Continuous bare-metal toggle of PD9 to prove we reached Reset_Handler. */
+  ldr r0, =0x580244E0     /* RCC_AHB4ENR */
+  ldr r1, [r0]
+  orr r1, r1, #(1 << 3)   /* GPIODEN */
+  str r1, [r0]
+  ldr r0, =0x58020C00     /* GPIOD_MODER */
+  ldr r1, [r0]
+  bic r1, r1, #(3 << 18)  /* clear PD9 mode */
+  orr r1, r1, #(1 << 18)  /* PD9 output */
+  str r1, [r0]
+  ldr r0, =0x58020C18     /* GPIOD_BSRR */
+Reset_Toggle_Loop:
+  mov r1, #(1 << 9)       /* PD9 high */
+  str r1, [r0]
+  movw r2, #0x4240        /* 1000000 = 0x000F4240 */
+  movt r2, #0x000F
+Reset_Delay1:
+  subs r2, r2, #1
+  bne Reset_Delay1
+  mov r1, #(1 << (9+16))  /* PD9 low */
+  str r1, [r0]
+  movw r2, #0x4240
+  movt r2, #0x000F
+Reset_Delay2:
+  subs r2, r2, #1
+  bne Reset_Delay2
+  b Reset_Toggle_Loop
+
 /* Call the ExitRun0Mode function to configure the power supply */
   bl  ExitRun0Mode
 /* Call the clock system initialization function.*/

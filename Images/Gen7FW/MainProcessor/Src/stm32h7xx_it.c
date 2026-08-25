@@ -85,12 +85,17 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  /* Toggle COPROCESSOR_WAKEUP (PD9) forever so the CoProcessor can see it. */
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  GPIOD->MODER &= ~(3UL << (9U * 2U));
+  GPIOD->MODER |=  (1UL << (9U * 2U));
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
+    GPIOD->BSRR = (1UL << 9U);
+    for (volatile uint32_t i = 0; i < 1000000; i++) {}
+    GPIOD->BSRR = (1UL << (9U + 16U));
+    for (volatile uint32_t i = 0; i < 1000000; i++) {}
   }
 }
 
