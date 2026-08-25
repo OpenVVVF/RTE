@@ -1,0 +1,41 @@
+{
+  "name": "gen6_baseline",
+  "nodeTypes": [
+    {
+      "id": "rte.noop",
+      "displayName": "No-op",
+      "inputPorts": [],
+      "outputPorts": [],
+      "inlineCode": "",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": "",
+      "maxInstances": 0,
+      "isEntryPoint": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "noop_app",
+      "type": "rte.noop",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {}
+    },
+    {
+      "id": "noop_tim",
+      "type": "rte.noop",
+      "domain": "tim_isr",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {}
+    },
+    {
+      "id": "noop_adc",
+      "type": "rte.noop",
+      "domain": "adc_isr",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {}
+    }
+  ],
+  "connections": []
+}

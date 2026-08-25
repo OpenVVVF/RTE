@@ -24,6 +24,11 @@ struct AppPreferences {
     int undoHistoryLimit = 100;
     int buildLogLineLimit = 5000;
     QString firmwareBuildType = QStringLiteral("Release");
+#ifdef _WIN32
+    QString serialPort = QStringLiteral("COM3");
+#else
+    QString serialPort = QStringLiteral("/dev/ttyACM0");
+#endif
     Qt::MouseButton panMouseButton = Qt::MiddleButton;
 };
 
@@ -66,6 +71,7 @@ private:
     QSpinBox* undoHistoryLimitSpin_ = nullptr;
     QSpinBox* buildLogLineLimitSpin_ = nullptr;
     QComboBox* buildTypeCombo_ = nullptr;
+    QComboBox* serialPortCombo_ = nullptr;
     QComboBox* panMouseButtonCombo_ = nullptr;
     QLabel* shortcutErrorLabel_ = nullptr;
 };

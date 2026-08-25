@@ -67,6 +67,7 @@ public:
     void ClearSession();
 
     QString Port() const { return port_; }
+    void SetPort(const QString& port);
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }
 

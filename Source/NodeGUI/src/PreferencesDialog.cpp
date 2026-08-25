@@ -4,10 +4,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QKeySequenceEdit>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
@@ -69,6 +71,8 @@ AppPreferences LoadAppPreferences() {
     preferences.firmwareBuildType =
         settings.value(QStringLiteral("firmwareBuildType"),
                        QStringLiteral("Release")).toString();
+    preferences.serialPort =
+        settings.value(QStringLiteral("serialPort"), preferences.serialPort).toString();
     preferences.panMouseButton = static_cast<Qt::MouseButton>(
         settings.value(QStringLiteral("panMouseButton"),
                        static_cast<int>(Qt::MiddleButton)).toInt());
@@ -104,6 +108,7 @@ void SaveAppPreferences(const AppPreferences& preferences) {
                       preferences.buildLogLineLimit);
     settings.setValue(QStringLiteral("firmwareBuildType"),
                       preferences.firmwareBuildType);
+    settings.setValue(QStringLiteral("serialPort"), preferences.serialPort);
     settings.setValue(QStringLiteral("panMouseButton"),
                       static_cast<int>(preferences.panMouseButton));
     settings.endGroup();
@@ -163,6 +168,39 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
         QStringLiteral("Maximum number of graph changes retained for Undo"));
     generalLayout->addRow(QStringLiteral("Undo history"), undoHistoryLimitSpin_);
     tabs->addTab(generalPage, QStringLiteral("General"));
+
+    auto* devicePage = new QWidget(tabs);
+    auto* deviceLayout = new QFormLayout(devicePage);
+    serialPortCombo_ = new QComboBox(devicePage);
+    serialPortCombo_->setEditable(true);
+    serialPortCombo_->setInsertPolicy(QComboBox::NoInsert);
+#ifdef _WIN32
+    for (int port = 1; port <= 32; ++port) {
+        serialPortCombo_->addItem(QStringLiteral("COM%1").arg(port));
+    }
+#else
+    QStringList detectedPorts;
+    const QDir byId(QStringLiteral("/dev/serial/by-id"));
+    for (const QString& entry : byId.entryList(QDir::Files | QDir::System)) {
+        detectedPorts.push_back(byId.absoluteFilePath(entry));
+    }
+    const QDir dev(QStringLiteral("/dev"));
+    for (const QString& pattern : {QStringLiteral("ttyACM*"),
+                                   QStringLiteral("ttyUSB*")}) {
+        for (const QString& entry : dev.entryList({pattern}, QDir::System)) {
+            detectedPorts.push_back(dev.absoluteFilePath(entry));
+        }
+    }
+    detectedPorts.removeDuplicates();
+    detectedPorts.sort();
+    serialPortCombo_->addItems(detectedPorts);
+#endif
+    serialPortCombo_->setCurrentText(preferences.serialPort);
+    serialPortCombo_->setToolTip(
+        QStringLiteral("Serial port used for telemetry, commands, and firmware flashing. "
+                       "Stable /dev/serial/by-id paths are recommended on Linux."));
+    deviceLayout->addRow(QStringLiteral("Device port"), serialPortCombo_);
+    tabs->addTab(devicePage, QStringLiteral("Device"));
 
     auto* buildPage = new QWidget(tabs);
     auto* buildLayout = new QFormLayout(buildPage);
@@ -294,6 +332,7 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.undoHistoryLimit = undoHistoryLimitSpin_->value();
     preferences.buildLogLineLimit = buildLogLineLimitSpin_->value();
     preferences.firmwareBuildType = buildTypeCombo_->currentText();
+    preferences.serialPort = serialPortCombo_->currentText().trimmed();
     preferences.panMouseButton = static_cast<Qt::MouseButton>(
         panMouseButtonCombo_->currentData().toInt());
     return preferences;
@@ -308,6 +347,14 @@ QMap<QString, QKeySequence> PreferencesDialog::Shortcuts() const {
 }
 
 void PreferencesDialog::accept() {
+    if (serialPortCombo_->currentText().trimmed().isEmpty()) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Device Port Required"),
+                             QStringLiteral("Choose or enter a serial device port."));
+        serialPortCombo_->setFocus();
+        return;
+    }
+
     QMap<QString, QString> ownerBySequence;
     for (const ShortcutBinding& binding : bindings_) {
         const QKeySequence sequence = shortcutEditors_.value(binding.id)->keySequence();

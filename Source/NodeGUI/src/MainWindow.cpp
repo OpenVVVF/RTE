@@ -442,12 +442,15 @@ MainWindow::MainWindow(QWidget* parent)
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
                               runtime::Protocol protocol) {
+    const QString effectiveSerialPort =
+        serialPort.trimmed().isEmpty() ? preferences_.serialPort : serialPort.trimmed();
+    preferences_.serialPort = effectiveSerialPort;
     runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(serialPort, simulate, protocol);
+        std::make_unique<runtime::RuntimeController>(effectiveSerialPort, simulate, protocol);
     localSessionServer_ = std::make_unique<runtime::LocalSessionServer>(
         runtimeController_->Store(), this);
 
-    localSessionServer_->SetDevicePort(serialPort.toStdString());
+    localSessionServer_->SetDevicePort(effectiveSerialPort.toStdString());
     localSessionServer_->SetCommandHandler(
         [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
     localSessionServer_->SetFlashLeaseHandler([this](bool acquire) {
@@ -848,6 +851,7 @@ void MainWindow::RegisterShortcut(QAction* action,
 }
 
 void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
+    const QString previousSerialPort = preferences_.serialPort;
     preferences_ = preferences;
     if (view_) {
         view_->SetPanMouseButton(preferences_.panMouseButton);
@@ -858,6 +862,15 @@ void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     if (localSessionServer_) {
         localSessionServer_->SetExternalDeviceWritesEnabled(
             preferences_.allowExternalDeviceWrites);
+    }
+    if (runtimeController_ && preferences_.serialPort != previousSerialPort) {
+        runtimeController_->SetPort(preferences_.serialPort);
+        if (localSessionServer_) {
+            localSessionServer_->SetDevicePort(runtimeController_->Port().toStdString());
+        }
+        statusBar()->showMessage(
+            QStringLiteral("Device port changed to %1").arg(runtimeController_->Port()),
+            5000);
     }
 
     const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);

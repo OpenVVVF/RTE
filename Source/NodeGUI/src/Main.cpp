@@ -15,7 +15,7 @@ namespace {
 void PrintUsage(const char* exe) {
     std::cerr << "usage: " << exe
               << " [graph.json] [--serial <port>] [--protocol legacy|ivp] [--simulate]\n"
-              << "  --serial <port>      telemetry serial port (default /dev/ttyACM0)\n"
+              << "  --serial <port>      override the saved telemetry serial port\n"
               << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
               << "                       or 'ivp' (new InverterProtocol stack)\n"
               << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n";
@@ -49,11 +49,9 @@ int main(int argc, char* argv[]) {
     format.setSwapInterval(1);
     QSurfaceFormat::setDefaultFormat(format);
 
-#ifdef _WIN32
-    QString serialPort = QStringLiteral("COM3");
-#else
-    QString serialPort = QStringLiteral("/dev/ttyACM0");
-#endif
+    // Empty means use the persistent Device port preference. --serial always
+    // overrides it for this launch.
+    QString serialPort;
     bool simulate = false;
     auto protocol = NodeGUI::runtime::Protocol::Legacy;
     std::string graphPath;

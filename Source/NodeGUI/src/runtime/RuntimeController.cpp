@@ -105,6 +105,29 @@ void RuntimeController::Start() {
     drainTimer_->start();
 }
 
+void RuntimeController::SetPort(const QString& port) {
+    const QString normalized = port.trimmed();
+    if (normalized.isEmpty() || normalized == port_) {
+        return;
+    }
+
+    if (!simulate_) {
+        if (protocol_ == Protocol::Legacy) {
+            legacyClient_.stop();
+        } else {
+            ivpClient_.stop();
+        }
+    }
+    port_ = normalized;
+    if (!simulate_ && !suspended_) {
+        if (protocol_ == Protocol::Legacy) {
+            legacyClient_.start(port_.toStdString());
+        } else {
+            ivpClient_.start(port_.toStdString());
+        }
+    }
+}
+
 bool RuntimeController::SendLine(const std::string& line) {
     if (suspended_ || simulate_) {
         return false;

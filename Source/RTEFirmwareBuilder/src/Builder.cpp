@@ -144,11 +144,23 @@ bool Builder::Configure(const BuilderOptions& options,
      * shared InverterProtocol library explicitly (default in the firmware
      * CMake only covers in-tree builds). */
     {
-        std::error_code ec;
-        const auto ivpCore = std::filesystem::weakly_canonical(
-            options.fwSrc / ".." / ".." / "Lib" / "InverterProtocol", ec);
-        if (!ec && std::filesystem::is_directory(ivpCore)) {
-            args.push_back("-DIVP_CORE_DIR=" + ivpCore.string());
+        /* Base images may be nested at different depths (for example,
+         * Images/Gen6FW versus Images/Gen7FW/MainProcessor). Walk upward to
+         * locate the repository's shared library instead of assuming a fixed
+         * number of parent directories. */
+        std::filesystem::path search = options.fwSrc;
+        while (!search.empty()) {
+            const auto candidate = search / "Lib" / "InverterProtocol";
+            if (std::filesystem::is_directory(candidate / "include")) {
+                std::error_code ec;
+                const auto ivpCore = std::filesystem::weakly_canonical(candidate, ec);
+                args.push_back("-DIVP_CORE_DIR=" +
+                               (ec ? candidate.string() : ivpCore.string()));
+                break;
+            }
+            const auto parent = search.parent_path();
+            if (parent == search) break;
+            search = parent;
         }
     }
 

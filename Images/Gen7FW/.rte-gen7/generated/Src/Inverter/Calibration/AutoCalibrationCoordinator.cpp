@@ -1,0 +1,689 @@
+#include "Inverter/Calibration/AutoCalibrationCoordinator.h"
+
+#include "Inverter/Calibration/CalKvStore.h"
+#include "Inverter/Calibration/PoleCalibrator.h"
+#include "Inverter/Calibration/EncoderOffsetCalibrator.h"
+#include "Inverter/Calibration/ResistanceCalibrator.h"
+#include "Inverter/Calibration/InductanceCalibrator.h"
+#include "Inverter/Calibration/FluxLinkageCalibrator.h"
+#include "Inverter/Calibration/EncoderCycleCalibrator.h"
+#include "Inverter/Calibration/InductionMotorCalibrator.h"
+#include "Inverter/Calibration/MotorCalibration.h"
+#include "Inverter/Control/ControlSupervisor.h"
+#include "Inverter/Control/FocControlManager.h"
+#include "Inverter/Control/OpenLoopController.h"
+#include "Inverter/Drivers/GateDriver/gate_driver.h"
+#include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/Sensors/PoleEstimator.h"
+#include "Inverter/Drivers/Storage/MotorConfigStore.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
+#include "Inverter/Telemetry.h"
+
+#include "main.h"
+#include <cstdarg>
+#include <cmath>
+
+namespace Inverter {
+
+static AutoCalibrationCoordinator s_instance;
+
+AutoCalibrationCoordinator& AutoCalibrationCoordinator::instance() {
+    return s_instance;
+}
+
+namespace {
+
+/* Conservative power limits suitable for unknown motors. */
+static constexpr float MAX_MODULATION = 0.35f;
+static constexpr float OFFSET_MAX_MODULATION = 1.0f;   /* allow full inverter range for offset rotation; EncoderOffsetCalibrator clamps by voltage */
+static constexpr float POLE_ROTATE_MOD_FACTOR = 1.00f;
+static constexpr float OFFSET_ROTATE_MOD_FACTOR = 1.00f;
+static constexpr float RES_MAX_CURRENT_A = 80.0f;
+static constexpr float RES_OC_LIMIT_A = 120.0f;
+static constexpr float IND_MAX_CURRENT_A = 30.0f;
+static constexpr float FLUX_MAX_CURRENT_A = 20.0f;
+static constexpr uint32_t RES_TIMEOUT_MS = 30000U;
+static constexpr uint32_t SETTLE_BEFORE_RES_MS = 2000U;
+
+} // namespace
+
+const char* AutoCalibrationCoordinator::stateName() const {
+    switch (m_state) {
+        case State::IDLE:        return "IDLE";
+        case State::POLE:        return "POLE";
+        case State::OFFSET:      return "OFFSET";
+        case State::SETTLE:      return "SETTLE";
+        case State::RESISTANCE:  return "RESISTANCE";
+        case State::INDUCTANCE:       return "INDUCTANCE";
+        case State::INDUCTION_PARAMS: return "INDUCTION_PARAMS";
+        case State::FLUX:             return "FLUX";
+        case State::DONE:        return "DONE";
+        case State::FAIL:        return "FAIL";
+    }
+    return "?";
+}
+
+void AutoCalibrationCoordinator::enterState(State state) {
+    m_state = state;
+    m_state_enter_ms = HAL_GetTick();
+    Telemetry::printf("[CAL] AUTO: enter %s", stateName());
+}
+
+void AutoCalibrationCoordinator::fail(const char* reason_fmt, ...) {
+    va_list args;
+    va_start(args, reason_fmt);
+    Telemetry::vprintf(reason_fmt, args);
+    va_end(args);
+
+    /* Make sure any still-active sub-calibrator is stopped and the gate driver
+     * is left in a safe, known state. */
+    EncoderCycleCalibrator::instance().stop();
+    if (poleCalibrator().isActive()) {
+        poleCalibrator().stop();
+    }
+    if (encoderOffsetCalibrator().isActive()) {
+        encoderOffsetCalibrator().stop();
+    }
+    if (resistanceCalibrator().isActive()) {
+        resistanceCalibrator().stop();
+    }
+    if (inductionMotorCalibrator().isActive()) {
+        inductionMotorCalibrator().stop();
+    }
+
+    encoderADC().learnBounds(false);
+    m_custom_res_current_a = 0.0f;
+    m_custom_ind_max_a = 0.0f;
+    m_custom_ind_ac_a = 0.0f;
+    m_custom_ind_freq_hz = 0.0f;
+    m_custom_ind_flux_a = 0.0f;
+    m_custom_ind_ac_voltage_pct = 0.0f;
+    m_custom_ind_ac_freq_hz = 0.0f;
+    m_custom_ind_lm_h = 0.0f;
+    enterState(State::FAIL);
+}
+
+void AutoCalibrationCoordinator::stop() {
+    if (!isActive()) {
+        return;
+    }
+
+    EncoderCycleCalibrator::instance().stop();
+    if (poleCalibrator().isActive()) {
+        poleCalibrator().stop();
+    }
+    if (encoderOffsetCalibrator().isActive()) {
+        encoderOffsetCalibrator().stop();
+    }
+    if (resistanceCalibrator().isActive()) {
+        resistanceCalibrator().stop();
+    }
+    if (inductionMotorCalibrator().isActive()) {
+        inductionMotorCalibrator().stop();
+    }
+
+    encoderADC().learnBounds(false);
+    Telemetry::printf("[CAL] AUTO: stopped by user");
+    m_custom_res_current_a = 0.0f;
+    m_custom_ind_max_a = 0.0f;
+    m_custom_ind_ac_a = 0.0f;
+    m_custom_ind_freq_hz = 0.0f;
+    m_custom_ind_flux_a = 0.0f;
+    m_custom_ind_ac_voltage_pct = 0.0f;
+    m_custom_ind_ac_freq_hz = 0.0f;
+    m_custom_ind_lm_h = 0.0f;
+    enterState(State::IDLE);
+}
+
+bool AutoCalibrationCoordinator::start() {
+    return startSlice(State::POLE, State::FLUX);
+}
+
+bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_results) {
+    if (isActive()) {
+        Telemetry::printf("[CAL] AUTO: already running");
+        return false;
+    }
+
+    if (openLoopController().isRunning() ||
+        ControlSupervisor::instance().isRunning()) {
+        Telemetry::printf("[CAL] AUTO: stop the motor before starting");
+        return false;
+    }
+
+    if (poleCalibrator().isActive() ||
+        encoderOffsetCalibrator().isActive() ||
+        resistanceCalibrator().isActive() ||
+        inductanceCalibrator().isActive() ||
+        inductionMotorCalibrator().isActive() ||
+        fluxLinkageCalibrator().isActive()) {
+        Telemetry::printf("[CAL] AUTO: another calibration is active");
+        return false;
+    }
+
+    m_poles = 0.0f;
+    m_encoder_cycles_per_rev = 0.0f;
+    m_breakaway_mod = 0.0f;
+    m_encoder_offset = 0.0f;
+    m_encoder_sign = -1.0f;
+    m_r_uv = 0.0f;
+    m_r_uw = 0.0f;
+    m_r_vw = 0.0f;
+    m_r_avg = 0.0f;
+    m_slice_last = last;
+    m_full_run = (first == State::POLE && last == State::FLUX);
+    m_save_results = save_results;
+
+    /* Clear any gate-driver fault latch left over from a previous run/stop;
+     * the open-loop startup refuses to proceed while it is set. */
+    GateDriver_ResetPulse();
+
+    /* Point the legacy FOC at the real calibrated angle/poles/resistance
+     * (its RAM calibration struct resets to debug defaults every boot). */
+    Inverter::CalKvStore::loadMotorCalibration();
+
+    /* Stages that depend on earlier results pull their prerequisites from the
+     * RTE KV store (written by earlier runs). */
+    if (first == State::OFFSET) {
+        float poles = 0.0f, cycles = 0.0f, breakaway = 0.0f;
+        if (!RteParamStore::isReady() ||
+            !RteParamStore::get("Motor.Poles", &poles) ||
+            !RteParamStore::get("Motor.Encoder.SinCos.CyclesRev", &cycles)) {
+            Telemetry::printf("[CAL] AUTO: missing stored poles/encoder cycles; run cal Motor.Poles first");
+            return false;
+        }
+        m_poles = poles;
+        m_encoder_cycles_per_rev = cycles;
+        (void)breakaway;
+        /* Breakaway is re-found every run (not stored): stale values are
+         * meaningless across bus voltages anyway. */
+        m_breakaway_mod = 0.0f;
+    }
+
+    /* Open the encoder hard caps so the sin/cos envelope for this motor is
+     * learned during rotation. */
+    encoderADC().resetBounds();
+    encoderADC().learnBounds(true);
+
+    /* Re-capture current-sensor offsets with the gate driver held in reset and
+     * PWM running.  This must happen before every run because a manual `cal`
+     * (or a previous failed calibration) can leave bad offsets in place. */
+    if (!openLoopController().isInitialized()) {
+        if (!openLoopController().init()) {
+            Telemetry::printf("[CAL] AUTO: failed to initialize open-loop controller");
+            return false;
+        }
+    }
+    if (!openLoopController().recalibrateOffsets()) {
+        Telemetry::printf("[CAL] AUTO: current-sensor offset recalibration failed");
+        return false;
+    }
+
+    const float res_current_a = (m_custom_res_current_a > 0.0f)
+                                    ? m_custom_res_current_a
+                                    : RES_MAX_CURRENT_A;
+    Telemetry::printf("[CAL] AUTO: starting (max_mod=%.2f res_I=%.1f A)",
+                      static_cast<double>(MAX_MODULATION),
+                      static_cast<double>(res_current_a));
+
+    switch (first) {
+        case State::POLE:
+            /* The pole-cal rotation also counts encoder electrical cycles. */
+            EncoderCycleCalibrator::instance().start();
+            if (!poleCalibrator().start(MAX_MODULATION, POLE_ROTATE_MOD_FACTOR)) {
+                EncoderCycleCalibrator::instance().stop();
+                Telemetry::printf("[CAL] AUTO: failed to start pole calibration");
+                return false;
+            }
+            enterState(State::POLE);
+            return true;
+
+        case State::OFFSET:
+            if (!encoderOffsetCalibrator().start(m_poles, m_encoder_cycles_per_rev,
+                                                 m_breakaway_mod, OFFSET_MAX_MODULATION,
+                                                 OFFSET_ROTATE_MOD_FACTOR)) {
+                Telemetry::printf("[CAL] AUTO: failed to start encoder offset calibration");
+                return false;
+            }
+            enterState(State::OFFSET);
+            return true;
+
+        case State::SETTLE:
+        case State::RESISTANCE:
+            enterState(State::SETTLE);
+            return true;
+
+        case State::INDUCTANCE:
+            m_inductance_ran = startInductanceCal();
+            if (!m_inductance_ran) {
+                Telemetry::printf("[CAL] AUTO: failed to start inductance calibration");
+                return false;
+            }
+            enterState(State::INDUCTANCE);
+            return true;
+
+        case State::INDUCTION_PARAMS:
+            m_induction_ran = startInductionMotorCal();
+            if (!m_induction_ran) {
+                Telemetry::printf("[CAL] AUTO: failed to start induction calibration");
+                return false;
+            }
+            enterState(State::INDUCTION_PARAMS);
+            return true;
+
+        case State::FLUX:
+            m_flux_ran = fluxLinkageCalibrator().start(FLUX_MAX_CURRENT_A);
+            if (!m_flux_ran) {
+                Telemetry::printf("[CAL] AUTO: failed to start flux linkage calibration");
+                return false;
+            }
+            enterState(State::FLUX);
+            return true;
+
+        default:
+            Telemetry::printf("[CAL] AUTO: invalid slice start stage");
+            return false;
+    }
+}
+
+void AutoCalibrationCoordinator::finish() {
+    if (!m_save_results) {
+        Telemetry::printf("[CAL] AUTO: --no-save: results kept in RAM only");
+        encoderADC().learnBounds(false);
+        enterState(State::DONE);
+        return;
+    }
+
+    /* Persist the freshly measured profile so FOC can run after a reboot
+     * without re-running calibration.  Legacy store for the base-image FOC,
+     * RTE KV store for graph config nodes. */
+    bool saved_ok = MotorConfigStore::saveFromRuntime();
+
+    /* Persist the learned sin/cos envelope so the decoder uses the correct
+     * bounds from the next boot instead of full-scale fallback caps. */
+    CalKvStore::saveEncoderBounds(encoderADC().sinMin(), encoderADC().sinMax(),
+                                  encoderADC().cosMin(), encoderADC().cosMax());
+
+    /* Persist the Layer 1 ellipse fit computed during offset calibration. */
+    CalKvStore::saveEncoderFit(encoderOffsetCalibrator().lastSinCosFit());
+
+    if (CalKvStore::flush()) {
+        if (saved_ok) {
+            Telemetry::printf("[CAL] AUTO: calibration results saved");
+        } else {
+            Telemetry::printf("[CAL] AUTO: WARNING: RTE KV store flushed but motor config FRAM write failed");
+        }
+    } else {
+        if (saved_ok) {
+            Telemetry::printf("[CAL] AUTO: WARNING: motor config saved to FRAM but RTE KV store flush failed");
+        } else {
+            Telemetry::printf("[CAL] AUTO: ERROR: calibration results NOT saved (FRAM write and KV flush both failed)");
+        }
+    }
+
+    encoderADC().learnBounds(false);
+    m_custom_res_current_a = 0.0f;
+    m_custom_ind_max_a = 0.0f;
+    m_custom_ind_ac_a = 0.0f;
+    m_custom_ind_freq_hz = 0.0f;
+    m_custom_ind_flux_a = 0.0f;
+    m_custom_ind_ac_voltage_pct = 0.0f;
+    m_custom_ind_ac_freq_hz = 0.0f;
+    m_custom_ind_lm_h = 0.0f;
+    enterState(State::DONE);
+}
+
+bool AutoCalibrationCoordinator::startInductanceCal() {
+    if (m_custom_ind_max_a > 0.0f) {
+        const float ac_a = (m_custom_ind_ac_a > 0.0f) ? m_custom_ind_ac_a : 3.0f;
+        const float freq_hz = (m_custom_ind_freq_hz > 0.0f) ? m_custom_ind_freq_hz : 75.0f;
+        return inductanceCalibrator().start(m_custom_ind_max_a, ac_a, freq_hz);
+    }
+    return inductanceCalibrator().start(IND_MAX_CURRENT_A);
+}
+
+bool AutoCalibrationCoordinator::startInductionMotorCal() {
+    const float flux_a = (m_custom_ind_flux_a > 0.0f) ? m_custom_ind_flux_a : IND_MAX_CURRENT_A;
+    const float ac_pct = (m_custom_ind_ac_voltage_pct > 0.0f) ? m_custom_ind_ac_voltage_pct : 5.0f;
+    const float freq_hz = (m_custom_ind_ac_freq_hz > 0.0f) ? m_custom_ind_ac_freq_hz : 100.0f;
+    const float lm_h = (m_custom_ind_lm_h > 0.0f) ? m_custom_ind_lm_h : 0.0f;
+    return inductionMotorCalibrator().start(flux_a, ac_pct, freq_hz,
+                                            3000U, 2000U, lm_h);
+}
+
+void AutoCalibrationCoordinator::update() {
+    if (m_state == State::IDLE || m_state == State::DONE || m_state == State::FAIL) {
+        return;
+    }
+
+    switch (m_state) {
+        case State::POLE: {
+            PoleCalibrator& pc = poleCalibrator();
+            if (pc.isActive()) {
+                return; /* still running */
+            }
+
+            EncoderCycleCalibrator::instance().stop();
+
+            if (pc.lastPoles() <= 0.0f) {
+                fail("[CAL] AUTO: FAIL: pole calibration did not produce a valid pole count");
+                return;
+            }
+
+            m_poles = pc.lastPoles();
+            m_breakaway_mod = pc.lastBreakawayMod();
+
+            const float mech_cycles = PoleEstimator::instance().mechanicalCycles();
+            const float enc_cycles = EncoderCycleCalibrator::instance().cycles();
+            if (mech_cycles > 0.25f && enc_cycles > 0.0f) {
+                m_pole_cal_encoder_cycles_per_rev = enc_cycles / mech_cycles;
+                m_encoder_cycles_per_rev = m_pole_cal_encoder_cycles_per_rev;
+            } else {
+                fail("[CAL] AUTO: FAIL: insufficient rotation for encoder cycle count (mech=%.2f enc=%.2f)",
+                     static_cast<double>(mech_cycles),
+                     static_cast<double>(enc_cycles));
+                return;
+            }
+
+            Telemetry::printf("[CAL] AUTO: poles=%.2f enc_cycles/rev=%.2f breakaway_mod=%.3f",
+                              static_cast<double>(m_poles),
+                              static_cast<double>(m_encoder_cycles_per_rev),
+                              static_cast<double>(m_breakaway_mod));
+
+            CalKvStore::savePoleResults(m_poles, m_encoder_cycles_per_rev);
+            if (m_slice_last == State::POLE) {
+                finish();
+                break;
+            }
+
+            if (!encoderOffsetCalibrator().start(m_poles, m_encoder_cycles_per_rev,
+                                                 m_breakaway_mod, OFFSET_MAX_MODULATION,
+                                                 OFFSET_ROTATE_MOD_FACTOR)) {
+                fail("[CAL] AUTO: FAIL: encoder offset calibration failed to start");
+                return;
+            }
+
+            enterState(State::OFFSET);
+            break;
+        }
+
+        case State::OFFSET: {
+            EncoderOffsetCalibrator& ec = encoderOffsetCalibrator();
+            if (ec.isActive()) {
+                return; /* still running */
+            }
+
+            if (!ec.isDone()) {
+                fail("[CAL] AUTO: FAIL: encoder offset calibration failed");
+                return;
+            }
+
+            m_encoder_offset = ec.averageOffset();
+            m_encoder_sign = static_cast<float>(ec.detectedSign());
+            /* Override the pole-cal cycle-count estimate with the more accurate
+             * value measured during the controlled offset rotation. */
+            m_encoder_cycles_per_rev = ec.measuredEncoderCyclesPerRev();
+            Telemetry::printf("[CAL] AUTO: encoder offset=%.3f deg samples=%d sign=%.0f",
+                              static_cast<double>(m_encoder_offset),
+                              ec.sampleCount(),
+                              static_cast<double>(m_encoder_sign));
+            Telemetry::printf("[CAL] AUTO: encoder cycles/rev measured=%.3f (pole-cal estimate=%.3f)",
+                              static_cast<double>(m_encoder_cycles_per_rev),
+                              static_cast<double>(m_pole_cal_encoder_cycles_per_rev));
+
+            CalKvStore::saveEncoderResults(m_encoder_offset, m_encoder_sign,
+                                           m_encoder_cycles_per_rev, m_poles);
+            if (m_slice_last == State::OFFSET) {
+                finish();
+                break;
+            }
+
+            Telemetry::printf("[CAL] AUTO: settling %.3f s before resistance cal",
+                              static_cast<double>(SETTLE_BEFORE_RES_MS) * 0.001);
+
+            enterState(State::SETTLE);
+            break;
+        }
+
+        case State::SETTLE: {
+            if ((HAL_GetTick() - m_state_enter_ms) < SETTLE_BEFORE_RES_MS) {
+                return; /* still settling */
+            }
+
+            const float res_current_a = (m_custom_res_current_a > 0.0f)
+                                            ? m_custom_res_current_a
+                                            : RES_MAX_CURRENT_A;
+            if (!resistanceCalibrator().startCurrentCtrl(res_current_a,
+                                                         ResistanceCalibrator::Pair::UV,
+                                                         true, RES_TIMEOUT_MS,
+                                                         RES_OC_LIMIT_A)) {
+                fail("[CAL] AUTO: FAIL: resistance calibration failed to start");
+                return;
+            }
+
+            enterState(State::RESISTANCE);
+            break;
+        }
+
+        case State::RESISTANCE: {
+            ResistanceCalibrator& rc = resistanceCalibrator();
+            if (rc.isActive()) {
+                return; /* still running */
+            }
+
+            if (!rc.isDone()) {
+                fail("[CAL] AUTO: FAIL: resistance calibration failed");
+                return;
+            }
+
+            m_r_uv = rc.lastResult(ResistanceCalibrator::Pair::UV);
+            m_r_uw = rc.lastResult(ResistanceCalibrator::Pair::UW);
+            m_r_vw = rc.lastResult(ResistanceCalibrator::Pair::VW);
+            m_r_avg = rc.lastAverage();
+
+            /* Store the calibrated parameters where FOC and telemetry can find
+             * them easily. */
+            {
+                MotorCalibration& mc = motorCalibration();
+                mc.pole_count = m_poles;
+                mc.encoder_cycles_per_rev = m_encoder_cycles_per_rev;
+                mc.encoder_offset_deg = m_encoder_offset;
+                mc.encoder_sign = m_encoder_sign;
+                mc.r_phase_uv = m_r_uv;
+                mc.r_phase_uw = m_r_uw;
+                mc.r_phase_vw = m_r_vw;
+                mc.r_phase_avg = m_r_avg;
+                mc.timestamp_ms = HAL_GetTick();
+                mc.valid = true;
+
+                Telemetry::log("motor_poles", mc.pole_count);
+                Telemetry::log("motor_enc_cycles", mc.encoder_cycles_per_rev);
+                Telemetry::log("motor_enc_offset_deg", mc.encoder_offset_deg);
+                Telemetry::log("motor_enc_sign", mc.encoder_sign);
+                Telemetry::log("motor_r_phase_uv", mc.r_phase_uv);
+                Telemetry::log("motor_r_phase_uw", mc.r_phase_uw);
+                Telemetry::log("motor_r_phase_vw", mc.r_phase_vw);
+                Telemetry::log("motor_r_phase_avg", mc.r_phase_avg);
+            }
+
+            /* The fresh calibration replaces the offset the runtime adjustment
+             * was tuned against; drop the stale delta so the next FOC start
+             * uses exactly the measured offset. */
+            focControlManager().resetEncoderOffsetAdjustment();
+
+            encoderADC().learnBounds(false);
+
+            CalKvStore::saveResistanceResults(m_r_uv, m_r_uw, m_r_vw, m_r_avg);
+            if (m_slice_last == State::RESISTANCE) {
+                finish();
+                break;
+            }
+
+            /* Branch on motor type for the parameter-identification stage. */
+            const MotorType mt = motorCalibration().motor_type;
+            if (mt == MotorType::Induction) {
+                Telemetry::printf("[CAL] AUTO: enter INDUCTION_PARAMS");
+                m_induction_ran = startInductionMotorCal();
+                if (!m_induction_ran) {
+                    Telemetry::printf("[CAL] AUTO: WARNING: induction cal failed to start; "
+                                      "continuing without it");
+                }
+                enterState(State::INDUCTION_PARAMS);
+            } else {
+                /* Default PMSM path. */
+                Telemetry::printf("[CAL] AUTO: enter INDUCTANCE");
+                m_inductance_ran = startInductanceCal();
+                if (!m_inductance_ran) {
+                    Telemetry::printf("[CAL] AUTO: WARNING: inductance cal failed to start; "
+                                      "continuing without it");
+                }
+                enterState(State::INDUCTANCE);
+            }
+            break;
+        }
+
+        case State::INDUCTION_PARAMS: {
+            InductionMotorCalibrator& ic = inductionMotorCalibrator();
+            if (ic.isActive()) {
+                return; /* still running */
+            }
+
+            if (m_induction_ran && ic.isDone() && ic.sigmaLsHenry() > 0.0f) {
+                MotorCalibration& mc = motorCalibration();
+                mc.motor_type = MotorType::Induction;
+                mc.sigma_ls_henry = ic.sigmaLsHenry();
+                mc.rotor_time_constant_ms = ic.rotorTauMs();
+                if (ic.lmHenry() > 0.0f) mc.lm_henry = ic.lmHenry();
+                if (ic.lrHenry() > 0.0f) mc.lr_henry = ic.lrHenry();
+                if (ic.rrOhm() > 0.0f) mc.rr_ohm = ic.rrOhm();
+                if (ic.lLeakHenry() > 0.0f) mc.l_leak_henry = ic.lLeakHenry();
+                CalKvStore::saveInductionResults(mc.sigma_ls_henry, mc.rotor_time_constant_ms,
+                                                 mc.lm_henry, mc.lr_henry,
+                                                 mc.rr_ohm, mc.l_leak_henry);
+                Telemetry::printf("[CAL] AUTO: sigma_Ls=%.1f uH tau_r=%.1f ms",
+                                  static_cast<double>(mc.sigma_ls_henry * 1.0e6),
+                                  static_cast<double>(mc.rotor_time_constant_ms));
+            } else {
+                Telemetry::printf("[CAL] AUTO: WARNING: induction calibration "
+                                  "incomplete; sigma_Ls/tau_r left unset");
+            }
+
+            if (m_slice_last == State::INDUCTION_PARAMS) {
+                finish();
+                break;
+            }
+
+            /* Induction profile ends here (no flux linkage stage). */
+            finish();
+            break;
+        }
+
+        case State::INDUCTANCE: {
+            InductanceCalibrator& ic = inductanceCalibrator();
+            if (ic.isActive()) {
+                return; /* still running */
+            }
+
+            if (m_inductance_ran && ic.isDone() && ic.lastLd() > 0.0f) {
+                MotorCalibration& mc = motorCalibration();
+                mc.ld_henry = ic.lastLd();
+                mc.lq_henry = ic.lastLq();
+                CalKvStore::saveInductanceResults(mc.ld_henry, mc.lq_henry);
+                Telemetry::printf("[CAL] AUTO: Ld(0)=%.1f uH Lq(0)=%.1f uH",
+                                  static_cast<double>(mc.ld_henry * 1.0e6),
+                                  static_cast<double>(mc.lq_henry * 1.0e6));
+            } else {
+                Telemetry::printf("[CAL] AUTO: WARNING: inductance calibration "
+                                  "incomplete; Ld/Lq left unset");
+            }
+
+            if (m_slice_last == State::INDUCTANCE) {
+                finish();
+                break;
+            }
+
+            /* Measure the PM flux linkage (back-EMF speed sweep).  The FRAM
+             * save happens after this stage so it includes everything. */
+            Telemetry::printf("[CAL] AUTO: enter FLUX");
+            m_flux_ran = fluxLinkageCalibrator().start(FLUX_MAX_CURRENT_A);
+            if (!m_flux_ran) {
+                Telemetry::printf("[CAL] AUTO: WARNING: flux cal failed to start; "
+                                  "continuing without it");
+            }
+            enterState(State::FLUX);
+            break;
+        }
+
+        case State::FLUX: {
+            FluxLinkageCalibrator& fc = fluxLinkageCalibrator();
+            if (fc.isActive()) {
+                return; /* still running */
+            }
+
+            if (m_flux_ran && fc.isDone() && fc.lastFlux() > 0.0f) {
+                CalKvStore::saveFluxResults(fc.lastFlux());
+                Telemetry::printf("[CAL] AUTO: flux linkage=%.5f Wb",
+                                  static_cast<double>(fc.lastFlux()));
+            } else {
+                Telemetry::printf("[CAL] AUTO: WARNING: flux calibration "
+                                  "incomplete; psi_m left unset");
+            }
+
+            finish();
+
+            if (!m_full_run) {
+                Telemetry::printf("[CAL] AUTO: slice complete");
+                break;
+            }
+
+            /* One clear, self-contained summary block. */
+            Telemetry::printf("[CAL] AUTO: ===========================================");
+            Telemetry::printf("[CAL] AUTO: MOTOR PROFILE COMPLETE");
+            Telemetry::printf("[CAL] AUTO:   poles                = %.2f", static_cast<double>(m_poles));
+            Telemetry::printf("[CAL] AUTO:   encoder cycles/rev   = %.2f", static_cast<double>(m_encoder_cycles_per_rev));
+            Telemetry::printf("[CAL] AUTO:   encoder offset       = %.3f deg", static_cast<double>(m_encoder_offset));
+            Telemetry::printf("[CAL] AUTO:   encoder sign         = %.0f", static_cast<double>(m_encoder_sign));
+            Telemetry::printf("[CAL] AUTO:   R_phase (UV/UW/VW)   = %.4f / %.4f / %.4f ohm",
+                              static_cast<double>(m_r_uv),
+                              static_cast<double>(m_r_uw),
+                              static_cast<double>(m_r_vw));
+            Telemetry::printf("[CAL] AUTO:   R_phase_avg          = %.4f ohm  (%.2f mohm)",
+                              static_cast<double>(m_r_avg),
+                              static_cast<double>(m_r_avg * 1000.0f));
+            Telemetry::printf("[CAL] AUTO:   R_ll_avg             = %.4f ohm  (%.2f mohm)",
+                              static_cast<double>(m_r_avg * 2.0f),
+                              static_cast<double>(m_r_avg * 2000.0f));
+            Telemetry::printf("[CAL] AUTO:   motor type           = %s",
+                              MotorConfigStore::typeName(motorCalibration().motor_type));
+            if (motorCalibration().ld_henry > 0.0f) {
+                Telemetry::printf("[CAL] AUTO:   Ld / Lq (0 A)      = %.1f / %.1f uH",
+                                  static_cast<double>(motorCalibration().ld_henry * 1.0e6),
+                                  static_cast<double>(motorCalibration().lq_henry * 1.0e6));
+            }
+            if (motorCalibration().flux_linkage_wb > 0.0f) {
+                Telemetry::printf("[CAL] AUTO:   flux linkage       = %.5f Wb",
+                                  static_cast<double>(motorCalibration().flux_linkage_wb));
+            }
+            if (motorCalibration().sigma_ls_henry > 0.0f) {
+                Telemetry::printf("[CAL] AUTO:   sigma_Ls / tau_r   = %.1f uH / %.1f ms",
+                                  static_cast<double>(motorCalibration().sigma_ls_henry * 1.0e6),
+                                  static_cast<double>(motorCalibration().rotor_time_constant_ms));
+            }
+            Telemetry::printf("[CAL] AUTO: ===========================================");
+            break;
+        }
+
+        case State::IDLE:
+        case State::DONE:
+        case State::FAIL:
+        default:
+            break;
+    }
+}
+
+AutoCalibrationCoordinator& autoCalibrationCoordinator() {
+    return AutoCalibrationCoordinator::instance();
+}
+
+} // namespace Inverter

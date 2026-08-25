@@ -1,0 +1,3 @@
+/home/tliao/Desktop/RTE/Images/HostSim/build_linux/CMakeFiles/host_sim.dir
+/home/tliao/Desktop/RTE/Images/HostSim/build_linux/CMakeFiles/edit_cache.dir
+/home/tliao/Desktop/RTE/Images/HostSim/build_linux/CMakeFiles/rebuild_cache.dir

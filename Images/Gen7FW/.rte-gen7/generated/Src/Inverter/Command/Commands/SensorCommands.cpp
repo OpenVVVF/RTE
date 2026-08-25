@@ -1,0 +1,249 @@
+#include "Inverter/Command/CommandInterface.h"
+#include "Inverter/Command/CommandContext.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
+#include "Inverter/Drivers/Sensors/MAX22530.h"
+#include "Inverter/Telemetry.h"
+#include "Inverter/platform_api.h"
+
+using Inverter::PhaseCurrentADC;
+using Inverter::DcLinkVoltageSensor;
+using Inverter::DcLinkCurrentSensor;
+using Inverter::MAX22530;
+using Inverter::phaseCurrentADC;
+using Inverter::dcLinkVoltageSensor;
+using Inverter::dcLinkCurrentSensor;
+
+class DclZeroCommand : public CommandInterface {
+public:
+    DclZeroCommand()
+      : CommandInterface("dclzero", "Zero DC-link current offset + reset energy counter (drive must be idle)",
+            ArgSpec{"dummy", "", 0.0f, 0.0f, 0.0f, false, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        if (dcLinkCurrentSensor().zeroCalibrate()) {
+            Telemetry::printf("[DCL] zeroed; energy counter reset");
+        } else {
+            Telemetry::printf("[DCL] zero calibration FAILED (offset suspect)");
+        }
+        Telemetry::printf("[DCL] I=%.2f A P=%.1f W E=%.2f Wh",
+                          static_cast<double>(dcLinkCurrentSensor().current()),
+                          static_cast<double>(dcLinkCurrentSensor().power()),
+                          static_cast<double>(dcLinkCurrentSensor().energyWh()));
+    }
+};
+
+class DclRawCommand : public CommandInterface {
+public:
+    DclRawCommand()
+      : CommandInterface("dclraw", "DC-link current sensor raw ADC counts (sig/ref/diff)") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        const uint32_t sig = dcLinkCurrentSensor().lastRawSig();
+        const uint32_t ref = dcLinkCurrentSensor().lastRawRef();
+        Telemetry::printf("[SHELL] dclink raw sig=%lu ref=%lu diff=%ld offset=%.3f A valid=%d",
+                          static_cast<unsigned long>(sig),
+                          static_cast<unsigned long>(ref),
+                          static_cast<long>(static_cast<int32_t>(sig) -
+                                            static_cast<int32_t>(ref)),
+                          static_cast<double>(dcLinkCurrentSensor().lastOffset()),
+                          dcLinkCurrentSensor().offsetValid() ? 1 : 0);
+    }
+};
+
+class OcSetCommand : public CommandInterface {
+public:
+    OcSetCommand()
+      : CommandInterface("ocset", "Set phase overcurrent threshold (0 disables)",
+            ArgSpec{"amps", "A", 0.0f, 2000.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        float amps = args[0].f_val;
+        if (amps < 0.0f) amps = 0.0f;
+        phaseCurrentADC().setOvercurrentThreshold(amps);
+        Telemetry::printf("[SHELL] phase overcurrent threshold set to %.3f A", static_cast<double>(amps));
+    }
+};
+
+class HwOcSetCommand : public CommandInterface {
+public:
+    HwOcSetCommand()
+      : CommandInterface("hwocset", "Set hardware overcurrent threshold (0 disables ADC watchdog)",
+            ArgSpec{"amps", "A", 0.0f, 2000.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        float amps = args[0].f_val;
+        if (amps < 0.0f) amps = 0.0f;
+        if (phaseCurrentADC().setHardwareOvercurrentThreshold(amps)) {
+            Telemetry::printf("[SHELL] hardware overcurrent threshold set to %.3f A", static_cast<double>(amps));
+        } else {
+            Telemetry::printf("[SHELL] failed to set hardware overcurrent threshold (stop motor first)");
+        }
+    }
+};
+
+class MaxCfgOvCommand : public CommandInterface {
+public:
+    MaxCfgOvCommand()
+      : CommandInterface("maxcfg_ov", "Set DC-link overvoltage threshold",
+            ArgSpec{"volts", "V", 0.0f, 1000.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        DcLinkVoltageSensor& vdc = dcLinkVoltageSensor();
+        if (vdc.setOvervoltageThreshold(args[0].f_val)) {
+            Telemetry::printf("[SHELL] Vbus OV threshold set to %.3f V", static_cast<double>(args[0].f_val));
+        } else {
+            Telemetry::printf("[SHELL] failed to set OV threshold");
+        }
+    }
+};
+
+class MaxCfgUvCommand : public CommandInterface {
+public:
+    MaxCfgUvCommand()
+      : CommandInterface("maxcfg_uv", "Set DC-link undervoltage threshold",
+            ArgSpec{"volts", "V", 0.0f, 1000.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        DcLinkVoltageSensor& vdc = dcLinkVoltageSensor();
+        if (vdc.setUndervoltageThreshold(args[0].f_val)) {
+            Telemetry::printf("[SHELL] Vbus UV threshold set to %.3f V", static_cast<double>(args[0].f_val));
+        } else {
+            Telemetry::printf("[SHELL] failed to set UV threshold");
+        }
+    }
+};
+
+class MaxCfgStatusCommand : public CommandInterface {
+public:
+    MaxCfgStatusCommand() : CommandInterface("maxcfg_status", "Print MAX22530 status") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        MAX22530& adc = dcLinkVoltageSensor().adc();
+        uint16_t cout_status = 0;
+        (void)adc.getComparatorStatus(cout_status);
+        uint16_t couthi = 0, coutlo = 0;
+        (void)adc.readComparatorThreshold(0, couthi, coutlo);
+        Telemetry::printf("[SHELL] MAX int_status=0x%04X cout_status=0x%04X int_enable=0x%04X",
+                          adc.lastInterruptStatus(), cout_status, adc.lastInterruptEnable());
+        Telemetry::printf("[SHELL] MAX ch1 thresholds: HI=0x%03X LO=0x%03X",
+                          couthi, coutlo);
+        Telemetry::printf("[SHELL] MAX irq=%lu dma=%lu err=%lu fail=%lu crc_err=%lu",
+                          static_cast<unsigned long>(adc.irqCount()),
+                          static_cast<unsigned long>(adc.dmaCompleteCount()),
+                          static_cast<unsigned long>(adc.dmaErrorCount()),
+                          static_cast<unsigned long>(adc.dmaStartFailCount()),
+                          static_cast<unsigned long>(adc.crcErrorCount()));
+    }
+};
+
+class MaxCfgThresholdsCommand : public CommandInterface {
+public:
+    MaxCfgThresholdsCommand() : CommandInterface("maxcfg_thresholds", "Print DC-link OV/UV thresholds") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        DcLinkVoltageSensor& vdc = dcLinkVoltageSensor();
+        Telemetry::printf("[SHELL] Vbus OV=%.3f V UV=%.3f V (scaled)",
+                          static_cast<double>(vdc.overvoltageThreshold()),
+                          static_cast<double>(vdc.undervoltageThreshold()));
+    }
+};
+
+class MaxCfgFilterClearCommand : public CommandInterface {
+public:
+    MaxCfgFilterClearCommand() : CommandInterface("maxcfg_filterclear", "Clear MAX22530 channel 1 filter") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        MAX22530& adc = dcLinkVoltageSensor().adc();
+        if (adc.clearFilter(0)) {
+            Telemetry::printf("[SHELL] MAX channel 1 filter cleared");
+        } else {
+            Telemetry::printf("[SHELL] MAX filter clear failed");
+        }
+    }
+};
+
+class MaxCfgRawCommand : public CommandInterface {
+public:
+    MaxCfgRawCommand() : CommandInterface("maxcfg_raw", "Read raw MAX22530 channel 1") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        MAX22530& adc = dcLinkVoltageSensor().adc();
+        const uint16_t counts = adc.readRawCounts(0);
+        const float v = adc.readRawVoltage(0);
+        Telemetry::printf("[SHELL] MAX raw ch1 = 0x%03X (%lu counts), %.3f V",
+                          counts, static_cast<unsigned long>(counts), static_cast<double>(v));
+    }
+};
+
+class MaxCfgFilteredCommand : public CommandInterface {
+public:
+    MaxCfgFilteredCommand() : CommandInterface("maxcfg_filtered", "Read filtered MAX22530 channel 1") {}
+
+    void execute(const ArgValue*, CommandContext&) override {
+        MAX22530& adc = dcLinkVoltageSensor().adc();
+        const uint16_t counts = adc.readFilteredCounts(0);
+        const float v = adc.readFilteredVoltage(0);
+        Telemetry::printf("[SHELL] MAX filtered ch1 = 0x%03X (%lu counts), %.3f V",
+                          counts, static_cast<unsigned long>(counts), static_cast<double>(v));
+    }
+};
+
+class ObsCommand : public CommandInterface {
+public:
+    ObsCommand()
+      : CommandInterface("obs", "Toggle observer-based current output in generated graphs (0/1)",
+            ArgSpec{"enabled", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool enabled = (args[0].f_val != 0.0f);
+        platform_set_use_observer(enabled);
+        Telemetry::printf("[SHELL] observer output %s", enabled ? "ENABLED" : "DISABLED");
+    }
+};
+
+class FixedRefCommand : public CommandInterface {
+public:
+    FixedRefCommand()
+      : CommandInterface("fixedref", "Use fixed mid-scale reference instead of sampled ref (0/1)",
+            ArgSpec{"enabled", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool enabled = (args[0].f_val != 0.0f);
+        phaseCurrentADC().setUseFixedReference(enabled);
+        Telemetry::printf("[SHELL] fixed reference %s", enabled ? "ENABLED" : "DISABLED");
+    }
+};
+
+static OcSetCommand             sOcSetCmd;
+static DclZeroCommand           sDclZeroCmd;
+static DclRawCommand            sDclRawCmd;
+static HwOcSetCommand           sHwOcSetCmd;
+static MaxCfgOvCommand          sMaxCfgOvCmd;
+static MaxCfgUvCommand          sMaxCfgUvCmd;
+static MaxCfgStatusCommand      sMaxCfgStatusCmd;
+static MaxCfgThresholdsCommand  sMaxCfgThresholdsCmd;
+static MaxCfgFilterClearCommand sMaxCfgFilterClearCmd;
+static MaxCfgRawCommand         sMaxCfgRawCmd;
+static MaxCfgFilteredCommand    sMaxCfgFilteredCmd;
+static ObsCommand               sObsCmd;
+static FixedRefCommand          sFixedRefCmd;
+
+#include "Inverter/Command/CommandManager.h"
+
+void registerSensorCommands(CommandManager& mgr) {
+    mgr.registerCommand(&sOcSetCmd);
+    mgr.registerCommand(&sDclZeroCmd);
+    mgr.registerCommand(&sDclRawCmd);
+    mgr.registerCommand(&sHwOcSetCmd);
+    mgr.registerCommand(&sMaxCfgOvCmd);
+    mgr.registerCommand(&sMaxCfgUvCmd);
+    mgr.registerCommand(&sMaxCfgStatusCmd);
+    mgr.registerCommand(&sMaxCfgThresholdsCmd);
+    mgr.registerCommand(&sMaxCfgFilterClearCmd);
+    mgr.registerCommand(&sMaxCfgRawCmd);
+    mgr.registerCommand(&sMaxCfgFilteredCmd);
+    mgr.registerCommand(&sObsCmd);
+    mgr.registerCommand(&sFixedRefCmd);
+}
