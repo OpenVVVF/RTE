@@ -25,7 +25,7 @@ USBD_CDC_ItfTypeDef USBD_Interface_fops_FS = {cdc_init,cdc_deinit,cdc_control,cd
 
 static int8_t cdc_init(uint8_t p){USBD_CDC_SetTxBuffer(&hUsbDeviceFS,p,UserTxBufferFS[p],0);USBD_CDC_SetRxBuffer(&hUsbDeviceFS,p,UserRxBufferFS[p]);if(p==CDC_PORT_BRIDGE){bridge_out_armed=1;USART3->CR1|=USART_CR1_RXNEIE_RXFNEIE|USART_CR1_PEIE;USART3->CR3|=USART_CR3_EIE;HAL_NVIC_SetPriority(USART3_IRQn,5,0);HAL_NVIC_EnableIRQ(USART3_IRQn);}return USBD_OK;}
 static int8_t cdc_deinit(uint8_t p){(void)p;return USBD_OK;}
-static int8_t cdc_control(uint8_t p,uint8_t cmd,uint8_t*b,uint16_t n){(void)p;if(cmd==CDC_GET_LINE_CODING&&n>=7){b[0]=0;b[1]=0xC2;b[2]=1;b[3]=0;b[4]=0;b[5]=0;b[6]=8;}return USBD_OK;}
+static int8_t cdc_control(uint8_t p,uint8_t cmd,uint8_t*b,uint16_t n){(void)p;if(cmd==CDC_GET_LINE_CODING&&n>=7){b[0]=0x00;b[1]=0x08;b[2]=0x07;b[3]=0x00;b[4]=0;b[5]=0;b[6]=8;}return USBD_OK;}
 
 static int8_t cdc_receive(uint8_t p,uint8_t*b,uint32_t*n){
  if(p==CDC_PORT_BRIDGE){bridge_out_armed=0;for(uint32_t i=0;i<*n;i++){uint16_t x=(uart_tx_head+1U)%CDC_BRIDGE_BUF_SIZE;if(x==uart_tx_tail){uart_tx_dropped++;break;}uart_tx_ring[uart_tx_head]=b[i];uart_tx_head=x;}uart_tx_start();bridge_out_arm_if_ready();return USBD_OK;}

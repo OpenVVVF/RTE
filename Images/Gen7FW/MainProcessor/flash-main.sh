@@ -70,7 +70,7 @@ control_command BOOTLOADER
 flash_ok=0
 for ((attempt=1; attempt<=FLASH_ATTEMPTS; attempt++)); do
     echo "==> Flashing ${FIRMWARE} (attempt ${attempt}/${FLASH_ATTEMPTS})..."
-    if "${STM32_PROGRAMMER}" -c port="${BRIDGE_PORT}" br=115200 P=EVEN db=8 sb=1 -d "${FIRMWARE}" -v -g 0x08000000; then
+    if "${STM32_PROGRAMMER}" -c port="${BRIDGE_PORT}" br=460800 P=EVEN db=8 sb=1 -d "${FIRMWARE}" -v -g 0x08000000; then
         flash_ok=1
         break
     fi
