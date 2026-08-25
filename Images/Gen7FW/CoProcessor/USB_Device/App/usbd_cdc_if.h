@@ -112,6 +112,7 @@ uint8_t CDC_Transmit_FS(uint8_t port, uint8_t* Buf, uint16_t Len);
 void CDC_Bridge_Process(void);
 uint8_t CDC_IsBridgeMode(void);
 void CDC_DebugReportStartup(void);
+void CDC_UartIrqHandler(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**

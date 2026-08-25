@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STM32_PROGRAMMER="${STM32_PROGRAMMER:-/home/tliao/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI}"
+FLASH_ATTEMPTS="${FLASH_ATTEMPTS:-3}"
 BRIDGE_PORT="${1:-}"
 CONTROL_PORT="${2:-}"
 FIRMWARE="${3:-${SCRIPT_DIR}/pleasework2.elf}"
@@ -66,6 +67,20 @@ echo "==> Bridge:  ${BRIDGE_PORT}"
 echo "==> Control: ${CONTROL_PORT}"
 echo "==> Entering main MCU ROM bootloader..."
 control_command BOOTLOADER
-echo "==> Flashing ${FIRMWARE}..."
-"${STM32_PROGRAMMER}" -c port="${BRIDGE_PORT}" br=115200 P=EVEN db=8 sb=1 -d "${FIRMWARE}" -v -g 0x08000000
+flash_ok=0
+for ((attempt=1; attempt<=FLASH_ATTEMPTS; attempt++)); do
+    echo "==> Flashing ${FIRMWARE} (attempt ${attempt}/${FLASH_ATTEMPTS})..."
+    if "${STM32_PROGRAMMER}" -c port="${BRIDGE_PORT}" br=115200 P=EVEN db=8 sb=1 -d "${FIRMWARE}" -v -g 0x08000000; then
+        flash_ok=1
+        break
+    fi
+    if (( attempt < FLASH_ATTEMPTS )); then
+        echo "WARNING: Flash attempt failed; resetting the ROM bootloader before retry." >&2
+        control_command BOOTLOADER
+    fi
+done
+if (( flash_ok == 0 )); then
+    echo "ERROR: Flashing failed after ${FLASH_ATTEMPTS} attempts." >&2
+    exit 1
+fi
 echo "==> Flash verified."
