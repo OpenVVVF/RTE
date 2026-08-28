@@ -72,7 +72,7 @@ float DcLinkCurrentSensor::countsToCurrent(uint32_t sig, uint32_t ref) const {
 
 void DcLinkCurrentSensor::update() {
     /* Samples come from the ApplicationSensors TIM3-triggered ADC1 scan
-     * (ranks 5/6, 100 Hz, DMA): signal and reference are converted
+     * (ranks 4/5, ~1 kHz, DMA): signal and reference are converted
      * microseconds apart in the same scan, so the sensor supply bounce is
      * common-mode and cancels in the difference.  Nothing here ever blocks
      * on the ADC. */

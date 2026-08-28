@@ -29,26 +29,38 @@ constexpr const char* KV_PREFIX[ApplicationSensors::NUM_CHANNELS] = {
     "Hw.Temp.B1", "Hw.Temp.B2", "Hw.Temp.B3", "Motor.Temp",
 };
 
-/* ADC1 scan rank order (board temp 1/2/3, throttle A/B, DC-link cur sig/ref).
- * The throttle pins PA3/PA4 are shared ADC1/ADC2 inputs, so ADC1 can read
- * them while the encoder owns ADC2's regular group.  The DC-link pair is
- * sampled in the same scan microseconds apart, so the sensor supply bounce
- * is common-mode and cancels in the difference. */
+/* ADC1 scan rank order (board temp 2/3, throttle A/B, DC-link cur sig/ref,
+ * probe).  Board temp 1 is on PF8, which is ADC3-only on this part, so it
+ * lives in the ADC3 scan below.  The throttle pins PA3/PA4 are shared
+ * ADC1/ADC2 inputs, so ADC1 can read them while the encoder owns ADC2's
+ * regular group.  The DC-link pair is sampled in the same scan microseconds
+ * apart, so the sensor supply bounce is common-mode and cancels in the
+ * difference. */
 constexpr uint32_t ADC1_RANK_CHANNELS[ApplicationSensors::ADC1_RANKS] = {
-    ADC_CHANNEL_19, ADC_CHANNEL_17, ADC_CHANNEL_16, ADC_CHANNEL_15,
+    ADC_CHANNEL_17, ADC_CHANNEL_16, ADC_CHANNEL_15,
     ADC_CHANNEL_18, ADC_CHANNEL_2, ADC_CHANNEL_6, ADC_CHANNEL_5,
+};
+
+/* ADC3 scan rank order: board temp 1 (PF8/INP7), motor temp (PF4/INP9). */
+constexpr uint32_t ADC3_RANK_CHANNELS[ApplicationSensors::ADC3_RANKS] = {
+    ADC_CHANNEL_7, ADC_CHANNEL_9,
 };
 
 /* KTY84 quadratic coefficients: R = R25 * (1 + A*dT + B*dT^2). */
 constexpr float KTY84_A = 7.418e-3f;
 constexpr float KTY84_B = 1.815e-5f;
 
-/* TIM3 TRGO (1 kHz) -> ADC1 scan -> circular DMA, mirroring the encoder's
- * TIM2 -> ADC2 setup.  Buffer holds the latest scan (one value per rank).
- * Must live in .dma_buffers (AXI SRAM): DMA1/DMA2 cannot access DTCM. */
+/* TIM3 TRGO (~1 kHz) -> ADC1 scan -> circular DMA, mirroring the encoder's
+ * TIM2 -> ADC2 setup.  ADC3 (board temp 1 + motor temp) free-runs a 2-rank
+ * continuous scan into its own circular DMA buffer.  Buffers hold the latest
+ * scan (one value per rank).  Must live in .dma_buffers (AXI SRAM):
+ * DMA1/DMA2 cannot access DTCM. */
 TIM_HandleTypeDef htim3_appsens;
 DMA_HandleTypeDef hdma_adc1_appsens;
+DMA_HandleTypeDef hdma_adc3_appsens;
 uint16_t s_adc1_buf[ApplicationSensors::ADC1_RANKS]
+    __attribute__((section(".dma_buffers")));
+uint16_t s_adc3_buf[ApplicationSensors::ADC3_RANKS]
     __attribute__((section(".dma_buffers")));
 
 } // namespace
@@ -137,33 +149,52 @@ void ApplicationSensors::updateThrottlePlausibility(uint32_t now_ms) {
 }
 
 void ApplicationSensors::debugStatus() const {
-    Telemetry::printf("[SHELL] adc3: ISR=%08lX CFGR=%08lX raw_latest=%lu",
+    Telemetry::printf("[SHELL] adc3: ISR=%08lX CFGR=%08lX dma2s2 CR=%08lX NDTR=%lu buf[0..1]: %u %u",
                       static_cast<unsigned long>(hadc3.Instance->ISR),
                       static_cast<unsigned long>(hadc3.Instance->CFGR),
-                      static_cast<unsigned long>(m_adc3_latest));
+                      static_cast<unsigned long>(DMA2_Stream2->CR),
+                      static_cast<unsigned long>(DMA2_Stream2->NDTR),
+                      s_adc3_buf[0], s_adc3_buf[1]);
     Telemetry::printf("[SHELL] adc1: ISR=%08lX CFGR=%08lX SQR1=%08lX tim3_cr1=%08lX",
                       static_cast<unsigned long>(hadc1.Instance->ISR),
                       static_cast<unsigned long>(hadc1.Instance->CFGR),
                       static_cast<unsigned long>(hadc1.Instance->SQR1),
                       static_cast<unsigned long>(TIM3->CR1));
-    Telemetry::printf("[SHELL] dma2s1: CR=%08lX NDTR=%lu buf[0..7]: %u %u %u %u %u %u %u %u",
+    /* Diagnosing ADC1 regular scan returning garbage: check that the pins
+     * are really in analog mode (MODER=11), regular oversampling is really
+     * off (CFGR2 ROVSE=0), and the ADC1/2 multimode (CCR MULTI/DAMDF) is not
+     * entangling the regular group with the encoder's ADC2. */
+    Telemetry::printf("[SHELL] gpio: MODER_A=%08lX MODER_F=%08lX MODER_B=%08lX",
+                      static_cast<unsigned long>(GPIOA->MODER),
+                      static_cast<unsigned long>(GPIOF->MODER),
+                      static_cast<unsigned long>(GPIOB->MODER));
+    Telemetry::printf("[SHELL] adc1: CFGR2=%08lX SMPR1=%08lX SMPR2=%08lX CCR=%08lX CR=%08lX",
+                      static_cast<unsigned long>(hadc1.Instance->CFGR2),
+                      static_cast<unsigned long>(hadc1.Instance->SMPR1),
+                      static_cast<unsigned long>(hadc1.Instance->SMPR2),
+                      static_cast<unsigned long>(ADC12_COMMON->CCR),
+                      static_cast<unsigned long>(hadc1.Instance->CR));
+    Telemetry::printf("[SHELL] dma2s1: CR=%08lX NDTR=%lu buf[0..6]: %u %u %u %u %u %u %u",
                       static_cast<unsigned long>(DMA2_Stream1->CR),
                       static_cast<unsigned long>(DMA2_Stream1->NDTR),
                       s_adc1_buf[0], s_adc1_buf[1], s_adc1_buf[2],
                       s_adc1_buf[3], s_adc1_buf[4], s_adc1_buf[5],
-                      s_adc1_buf[6], s_adc1_buf[7]);
+                      s_adc1_buf[6]);
 }
 
 bool ApplicationSensors::configureAdc1ScanDma() {
-    /* --- ADC1 regular scan: 5 ranks, TIM3 TRGO, circular DMA -------------
+    /* --- ADC1 regular scan: 7 ranks, TIM3 TRGO, circular DMA -------------
      * Register-level setup (mirrors EncoderADC): HAL_ADC_ConfigChannel would
      * fight the injected phase-current state machine; direct writes to the
-     * regular-group registers do not disturb injected conversions. */
-    LL_ADC_REG_SetSequencerLength(hadc1.Instance, LL_ADC_REG_SEQ_SCAN_ENABLE_8RANKS);
+     * regular-group registers do not disturb injected conversions.
+     * NOTE: the matching PCSEL (pre-channel selection) bits for these
+     * channels are set once in MX_ADC1_Init (Src/adc.c) — PCSEL can only be
+     * written while no conversions are ongoing, so it cannot be done here. */
+    LL_ADC_REG_SetSequencerLength(hadc1.Instance, LL_ADC_REG_SEQ_SCAN_ENABLE_7RANKS);
     static constexpr uint32_t RANKS[ADC1_RANKS] = {
         LL_ADC_REG_RANK_1, LL_ADC_REG_RANK_2, LL_ADC_REG_RANK_3,
         LL_ADC_REG_RANK_4, LL_ADC_REG_RANK_5, LL_ADC_REG_RANK_6,
-        LL_ADC_REG_RANK_7, LL_ADC_REG_RANK_8,
+        LL_ADC_REG_RANK_7,
     };
     for (uint8_t r = 0; r < ADC1_RANKS; ++r) {
         LL_ADC_REG_SetSequencerRanks(hadc1.Instance, RANKS[r],
@@ -338,27 +369,58 @@ bool ApplicationSensors::init() {
                           static_cast<double>(c.gain));
     }
 
-    /* --- ADC3 (motor temp): continuous conversions, polled via EOC --------
-     * Register-level setup at init only; the CPU never touches the ADC at
-     * runtime beyond reading DR.  ADC3 (v90 IP) does not accept the ADC1/2
-     * CFGR2 oversampling layout; keep it plain 12-bit and read the latest
-     * sample — fine for a temperature channel. */
-    hadc3.Init.ContinuousConvMode = ENABLE;
+    /* --- ADC3: board temp 1 (PF8/INP7) + motor temp (PF4/INP9) -----------
+     * Free-running 2-rank regular scan into circular DMA (DMA2_Stream2).
+     * ADC3 is the v90 IP: 12-bit only, and it does not accept the ADC1/2
+     * CFGR2 oversampling layout, so keep it plain.  Continuous mode means
+     * no trigger is needed and the CPU never touches the ADC at runtime. */
     LL_ADC_REG_SetContinuousMode(hadc3.Instance, LL_ADC_REG_CONV_CONTINUOUS);
-    LL_ADC_REG_SetSequencerLength(hadc3.Instance, LL_ADC_REG_SEQ_SCAN_DISABLE);
-    LL_ADC_REG_SetSequencerRanks(hadc3.Instance, LL_ADC_REG_RANK_1, ADC_CHANNEL_9);
-    LL_ADC_SetChannelSamplingTime(hadc3.Instance, ADC_CHANNEL_9,
+    LL_ADC_REG_SetSequencerLength(hadc3.Instance, LL_ADC_REG_SEQ_SCAN_ENABLE_2RANKS);
+    LL_ADC_REG_SetSequencerRanks(hadc3.Instance, LL_ADC_REG_RANK_1,
+                                 ADC3_RANK_CHANNELS[0]);
+    LL_ADC_REG_SetSequencerRanks(hadc3.Instance, LL_ADC_REG_RANK_2,
+                                 ADC3_RANK_CHANNELS[1]);
+    LL_ADC_SetChannelSamplingTime(hadc3.Instance, ADC3_RANK_CHANNELS[0],
+                                  ADC3_SAMPLETIME_92CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(hadc3.Instance, ADC3_RANK_CHANNELS[1],
                                   ADC3_SAMPLETIME_92CYCLES_5);
     CLEAR_BIT(hadc3.Instance->CFGR2, ADC_CFGR2_ROVSE);
     MODIFY_REG(hadc3.Instance->CFGR, ADC_CFGR_EXTEN | ADC_CFGR_EXTSEL,
                ADC_EXTERNALTRIGCONVEDGE_NONE | ADC_SOFTWARE_START);
 
-    if (HAL_ADC_Start(&hadc3) != HAL_OK) {
-        Telemetry::printf("[TMP] ERROR: ADC3 start failed");
+    /* Tell HAL_ADC_Start_DMA() to use circular DMA mode (same trick as
+     * ADC1 below: the Init fields are only read by the Start call). */
+    hadc3.Init.ScanConvMode = ADC_SCAN_ENABLE;
+    hadc3.Init.NbrOfConversion = ADC3_RANKS;
+    hadc3.Init.ContinuousConvMode = ENABLE;
+    hadc3.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
+    hadc3.Init.DMAContinuousRequests = ENABLE;
+
+    /* --- DMA2_Stream2: ADC3 -> circular buffer --------------------------- */
+    __HAL_RCC_DMA2_CLK_ENABLE();
+    hdma_adc3_appsens.Instance = DMA2_Stream2;
+    hdma_adc3_appsens.Init.Request = DMA_REQUEST_ADC3;
+    hdma_adc3_appsens.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_adc3_appsens.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_adc3_appsens.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_adc3_appsens.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma_adc3_appsens.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma_adc3_appsens.Init.Mode = DMA_CIRCULAR;
+    hdma_adc3_appsens.Init.Priority = DMA_PRIORITY_MEDIUM;
+    hdma_adc3_appsens.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    if (HAL_DMA_Init(&hdma_adc3_appsens) != HAL_OK) {
+        Telemetry::printf("[TMP] ERROR: ADC3 DMA init failed");
+        return false;
+    }
+    __HAL_LINKDMA(&hadc3, DMA_Handle, hdma_adc3_appsens);
+
+    if (HAL_ADC_Start_DMA(&hadc3, reinterpret_cast<uint32_t*>(s_adc3_buf),
+                          ADC3_RANKS) != HAL_OK) {
+        Telemetry::printf("[TMP] ERROR: ADC3 DMA start failed");
         return false;
     }
 
-    /* --- ADC1 scan: board temps + throttle via TIM3 TRGO + DMA ----------- */
+    /* --- ADC1 scan: board temps 2/3 + throttle via TIM3 TRGO + DMA ------- */
     if (!configureAdc1ScanDma()) {
         Telemetry::printf("[TMP] ERROR: ADC1/trigger/DMA setup failed");
         return false;
@@ -370,6 +432,7 @@ bool ApplicationSensors::init() {
     }
     if (HAL_TIM_Base_Start(&htim3_appsens) != HAL_OK) {
         HAL_ADC_Stop_DMA(&hadc1);
+        HAL_ADC_Stop_DMA(&hadc3);
         Telemetry::printf("[TMP] ERROR: TIM3 start failed");
         return false;
     }
@@ -553,14 +616,16 @@ void ApplicationSensors::evaluateChannel(uint8_t ch, uint32_t now_ms) {
 }
 
 void ApplicationSensors::computeWindow(uint32_t now_ms) {
-    /* The DMA buffer holds the latest 100 Hz scan; just read it. */
+    /* The DMA buffers hold the latest scans; just read them.
+     * ADC1 ranks: 0=temp2 1=temp3 2=thrA 3=thrB (4/5 = DC-link sig/ref,
+     * consumed per-scan in update(); 6 = probe). */
     for (uint8_t r = 0; r < ADC1_RANKS; ++r) {
         const float volts = (static_cast<float>(s_adc1_buf[r]) / ADC1_FULL_SCALE) * m_vcc;
-        if (r < BOARD_CHANNELS) {
-            m_ch[r].voltage = volts;
-        } else if (r == 3) {
+        if (r < 2) {
+            m_ch[r + 1].voltage = volts;  /* board temp 2/3 */
+        } else if (r == 2) {
             m_thr_a_v = volts;
-        } else if (r == 4) {
+        } else if (r == 3) {
             m_thr_b_v = volts;
         }
     }
@@ -585,8 +650,9 @@ void ApplicationSensors::computeWindow(uint32_t now_ms) {
     Telemetry::log("thr_a", m_thr_a_norm);
     Telemetry::log("thr_b", m_thr_b_norm);
 
-    /* Motor temp (ADC3 continuous): latest sample. */
-    m_ch[3].voltage = (static_cast<float>(m_adc3_latest) / ADC3_FULL_SCALE) * m_vcc;
+    /* ADC3 scan: board temp 1 (rank 0) + motor temp (rank 1), 12-bit. */
+    m_ch[0].voltage = (static_cast<float>(s_adc3_buf[0]) / ADC3_FULL_SCALE) * m_vcc;
+    m_ch[3].voltage = (static_cast<float>(s_adc3_buf[1]) / ADC3_FULL_SCALE) * m_vcc;
 
     for (uint8_t ch = 0; ch < NUM_CHANNELS; ++ch) {
         evaluateChannel(ch, now_ms);
@@ -598,22 +664,16 @@ void ApplicationSensors::update() {
         return;
     }
 
-    /* Per-scan feed for the DC-link current pair: the DMA counter reloads
-     * once per ~1020 Hz scan; every arrival publishes the raw pair so the
-     * DcLinkCurrentSensor moving average sees every sample (the 16 ms
-     * compute window below would alias it away). */
+    /* Per-scan feed for the DC-link current pair (ADC1 ranks 4/5): the DMA
+     * counter reloads once per ~1020 Hz scan; every arrival publishes the
+     * raw pair so the DcLinkCurrentSensor moving average sees every sample
+     * (the 16 ms compute window below would alias it away). */
     const uint32_t ndtr = DMA2_Stream1->NDTR;
     if (ndtr != m_last_ndtr) {
         m_last_ndtr = ndtr;
-        m_dclink_sig = s_adc1_buf[5];
-        m_dclink_ref = s_adc1_buf[6];
+        m_dclink_sig = s_adc1_buf[4];
+        m_dclink_ref = s_adc1_buf[5];
         ++m_dclink_seq;
-    }
-
-    /* Harvest the latest completed ADC3 conversion; never blocks.  Reading
-     * DR clears EOC, and continuous mode immediately starts the next one. */
-    if (LL_ADC_IsActiveFlag_EOC(hadc3.Instance)) {
-        m_adc3_latest = LL_ADC_REG_ReadConversionData32(hadc3.Instance);
     }
 
     const uint32_t now_ms = HAL_GetTick();

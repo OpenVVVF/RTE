@@ -141,7 +141,7 @@ The slow analog inputs are configured in `Src/adc.c` but not sampled:
 
 * `AIN_THROTTLE_A` (PA3 / ADC2_INP15)
 * `AIN_THROTTLE_B` (PA4 / ADC2_INP18)
-* `AIN_TMP_SENSE_1` (PA5 / ADC1_INP19)
+* `AIN_TMP_SENSE_1` (PF8 / ADC3_INP7)
 * `AIN_TMP_SENSE_2` (PA1 / ADC1_INP17)
 * `AIN_TMP_SENSE_3` (PA0 / ADC1_INP16)
 * `AIN_MOTOR_TMP` (PF4 / ADC3_INP9)

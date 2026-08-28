@@ -93,7 +93,19 @@ void MX_ADC1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
-
+  /* ADC1/2 pre-channel selection (PCSEL): the ApplicationSensors driver
+   * programs its regular scan ranks with raw LL register writes, which do
+   * NOT set these bits (HAL_ADC_ConfigChannel normally does).  With a
+   * channel's PCSEL bit clear it is never connected to the sampling mux and
+   * conversions return floating-node garbage.  Must be written here because
+   * PCSEL can only be modified while no conversions are ongoing, and the
+   * injected phase-current stream starts before ApplicationSensors::init().
+   * Channels: 17/16 (board temp 2/3), 15/18 (throttle A/B),
+   *           2/6 (DC-link current sig/ref), 5 (probe). */
+  ADC1->PCSEL_RES0 |= ADC_PCSEL_PCSEL_17 | ADC_PCSEL_PCSEL_16 |
+                      ADC_PCSEL_PCSEL_15 | ADC_PCSEL_PCSEL_18 |
+                      ADC_PCSEL_PCSEL_2  | ADC_PCSEL_PCSEL_6  |
+                      ADC_PCSEL_PCSEL_5;
   /* USER CODE END ADC1_Init 2 */
 
 }
@@ -236,7 +248,6 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     /**ADC1 GPIO Configuration
     PA0     ------> ADC1_INP16   (AIN_TMP_SENSE_3)
     PA1     ------> ADC1_INP17   (AIN_TMP_SENSE_2)
-    PA5     ------> ADC1_INP19   (AIN_TMP_SENSE_1)
     PA6     ------> ADC1_INP3    (AIN_PH_V_CURSENS)
     PA7     ------> ADC1_INN3    (AIN_PH_V_CURSENS_REF)
     PA7     ------> ADC1_INP7    (AIN_PH_V_CURSENS_REF)
@@ -251,12 +262,13 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     PF12     ------> ADC1_INP6   (AIN_DC_LINK_CURSENS_REF)
     */
     /* TIME_DOMAIN: APPLICATION_ADC_GPIO_INIT
-     *   ADC1 pins for slow application sensors (board temps; throttle A/B are
-     *   shared ADC1/ADC2 inputs, see ADC2 below).  Sampled by the
+     *   ADC1 pins for slow application sensors (board temps 2/3; throttle A/B
+     *   are shared ADC1/ADC2 inputs, see ADC2 below).  Sampled by the
      *   ApplicationSensors driver via a TIM3-triggered regular scan into
      *   circular DMA — see Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp.
+     *   Board temp 1 lives on PF8 (ADC3_INP7) and is handled by ADC3.
      */
-    GPIO_InitStruct.Pin = AIN_TMP_SENSE_3_Pin|AIN_TMP_SENSE_2_Pin|AIN_TMP_SENSE_1_Pin|AIN_PH_V_CURSENS_Pin
+    GPIO_InitStruct.Pin = AIN_TMP_SENSE_3_Pin|AIN_TMP_SENSE_2_Pin|AIN_PH_V_CURSENS_Pin
                           |AIN_PH_V_CURSENS_REF_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -353,15 +365,16 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     __HAL_RCC_GPIOF_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
     /**ADC3 GPIO Configuration
-    PF4     ------> ADC3_INP9
+    PF4     ------> ADC3_INP9   (AIN_MOTOR_TMP)
+    PF8     ------> ADC3_INP7   (AIN_TMP_SENSE_1)
     PC2_C     ------> ADC3_INN1
     PC2_C     ------> ADC3_INP0
     PC3_C     ------> ADC3_INP1
     */
-    GPIO_InitStruct.Pin = AIN_MOTOR_TMP_Pin;
+    GPIO_InitStruct.Pin = AIN_MOTOR_TMP_Pin|AIN_TMP_SENSE_1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(AIN_MOTOR_TMP_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
     HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC2, SYSCFG_SWITCH_PC2_OPEN);
 
@@ -390,7 +403,6 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     /**ADC1 GPIO Configuration
     PA0     ------> ADC1_INP16
     PA1     ------> ADC1_INP17
-    PA5     ------> ADC1_INP19
     PA6     ------> ADC1_INP3
     PA7     ------> ADC1_INN3
     PA7     ------> ADC1_INP7
@@ -404,7 +416,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     PF12     ------> ADC1_INN2
     PF12     ------> ADC1_INP6
     */
-    HAL_GPIO_DeInit(GPIOA, AIN_TMP_SENSE_3_Pin|AIN_TMP_SENSE_2_Pin|AIN_TMP_SENSE_1_Pin|AIN_PH_V_CURSENS_Pin
+    HAL_GPIO_DeInit(GPIOA, AIN_TMP_SENSE_3_Pin|AIN_TMP_SENSE_2_Pin|AIN_PH_V_CURSENS_Pin
                           |AIN_PH_V_CURSENS_REF_Pin);
 
     HAL_GPIO_DeInit(GPIOC, AIN_PH_U_CURSENS_Pin|AIN_PH_U_CURSENS_REF_Pin);
@@ -466,11 +478,12 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
 
     /**ADC3 GPIO Configuration
     PF4     ------> ADC3_INP9
+    PF8     ------> ADC3_INP7
     PC2_C     ------> ADC3_INN1
     PC2_C     ------> ADC3_INP0
     PC3_C     ------> ADC3_INP1
     */
-    HAL_GPIO_DeInit(AIN_MOTOR_TMP_GPIO_Port, AIN_MOTOR_TMP_Pin);
+    HAL_GPIO_DeInit(GPIOF, AIN_MOTOR_TMP_Pin|AIN_TMP_SENSE_1_Pin);
 
   /* USER CODE BEGIN ADC3_MspDeInit 1 */
 

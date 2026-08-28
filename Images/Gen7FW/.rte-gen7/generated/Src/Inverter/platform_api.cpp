@@ -231,7 +231,7 @@ float platform_phase_voltage_w(void) {
  * The analog pins are configured in Src/adc.c:
  *   AIN_THROTTLE_A  = PA3 / ADC1_INP15 (shared ADC1/ADC2)
  *   AIN_THROTTLE_B  = PA4 / ADC1_INP18 (shared ADC1/ADC2)
- *   AIN_TMP_SENSE_1 = PA5 / ADC1_INP19
+ *   AIN_TMP_SENSE_1 = PF8 / ADC3_INP7
  *   AIN_TMP_SENSE_2 = PA1 / ADC1_INP17
  *   AIN_TMP_SENSE_3 = PA0 / ADC1_INP16
  *   AIN_MOTOR_TMP   = PF4 / ADC3_INP9

@@ -8,10 +8,11 @@ namespace Inverter {
  * @brief Slow application analog sampler: temperatures + throttle inputs.
  *
  * All hardware capture runs without CPU involvement:
- *  - TIM3 TRGO at 100 Hz triggers an ADC1 regular scan of 5 ranks
- *    (board temps 1..3 + throttle A/B) into a circular DMA buffer.
- *  - ADC3 (motor temp, INP9) free-runs in continuous mode; update() harvests
- *    completed conversions without ever blocking.
+ *  - TIM3 TRGO (~1 kHz) triggers an ADC1 regular scan of 7 ranks (board
+ *    temps 2/3, throttle A/B, DC-link current sig/ref, probe) into a
+ *    circular DMA buffer.
+ *  - ADC3 free-runs a continuous 2-rank scan (board temp 1 on PF8/INP7 and
+ *    motor temp on PF4/INP9) into its own circular DMA buffer.
  *
  * The CPU never waits on an ADC: no HAL_ADC_PollForConversion, no runtime
  * HAL_ADC_Start/Stop, no runtime ADC reconfiguration.  update() only
@@ -25,7 +26,8 @@ class ApplicationSensors {
 public:
     static constexpr uint8_t NUM_CHANNELS = 4; /**< 0..2 = board, 3 = motor. */
     static constexpr uint8_t BOARD_CHANNELS = 3;
-    static constexpr uint8_t ADC1_RANKS = 8;   /**< 3 temps + 2 throttle + DC-link sig/ref + probe. */
+    static constexpr uint8_t ADC1_RANKS = 7;   /**< temps 2/3 + 2 throttle + DC-link sig/ref + probe. */
+    static constexpr uint8_t ADC3_RANKS = 2;   /**< temp 1 (PF8/INP7) + motor temp (PF4/INP9). */
 
     /** @brief Load config from the KV store, start ADC3 (and later TIM3+DMA). */
     bool init();
@@ -154,7 +156,6 @@ private:
     bool     m_thr_plausible = true;
     bool     m_thr_fault_raised = false;
     uint32_t m_thr_implausible_since = 0;
-    uint32_t m_adc3_latest = 0;
     float    m_vcc = 3.3f;
     uint32_t m_last_window_ms = 0;
     bool     m_initialized = false;
