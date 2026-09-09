@@ -15,12 +15,33 @@ float WrapAngle(float theta) {
 }
 } // namespace
 
+/* Salient dq PMSM (machine Pmsm, the default):
+ *
+ *   v_d = Rs id + Ld d(id)/dt - w_e Lq iq     -> integrated as
+ *   diq/dt = (vq - Rs iq - w_e (Ld id + lambda)) / Lq
+ *   did/dt = (vd - Rs id + w_e Lq iq) / Ld
+ *   Te = (3/2) pp (lambda iq + (Ld - Lq) id iq)
+ *
+ * with the same electrical-frame mechanics as the induction machine:
+ * d(w_e)/dt = (Te - B w_e)/J, theta_e wrapped in [0, 2pi). */
+
 void MotorModel::SetParams(const MotorParams& params) {
     params_ = params;
+    InductionParams ip{};
+    ip.rs_ohm = params.rs_ohm;
+    ip.rr_ohm = params.rr_ohm;
+    ip.lm_h = params.lm_h;
+    ip.lls_h = params.lls_h;
+    ip.llr_h = params.llr_h;
+    ip.pole_pairs = params.pole_pairs;
+    ip.inertia_kg_m2 = params.inertia_kg_m2;
+    ip.friction_nm_per_rad_s = params.friction_nm_per_rad_s;
+    induction_.SetParams(ip);
 }
 
 void MotorModel::Reset() {
     state_ = MotorState{};
+    induction_.Reset();
 }
 
 float MotorModel::ClampDuty(float duty_pct) {
@@ -68,6 +89,25 @@ void MotorModel::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     state_.va_v = va;
     state_.vb_v = vb;
     state_.vc_v = vc;
+
+    if (params_.machine == MachineType::Induction) {
+        /* Same Clarke convention as AbcToDq: peak-phase-amplitude preserving.
+         * v_alpha/beta is exactly the stationary-frame voltage vector the
+         * V/Hz and FOC graphs synthesize. */
+        const float v_alpha = (2.0f / 3.0f) * (va - 0.5f * vb - 0.5f * vc);
+        const float v_beta = (2.0f / 3.0f) * (0.8660254f * vb - 0.8660254f * vc);
+        induction_.Step(v_alpha, v_beta, dt_s);
+
+        const float i_alpha = induction_.IsAlpha();
+        const float i_beta = induction_.IsBeta();
+        state_.ia_a = i_alpha;
+        state_.ib_a = -0.5f * i_alpha + 0.8660254f * i_beta;
+        state_.ic_a = -0.5f * i_alpha - 0.8660254f * i_beta;
+        induction_.FluxFrameCurrents(&state_.id_a, &state_.iq_a);
+        state_.theta_e_rad = induction_.ThetaERad();
+        state_.omega_e_rad_s = induction_.OmegaERadS();
+        return;
+    }
 
     float vd = 0.0f;
     float vq = 0.0f;

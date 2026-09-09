@@ -21,5 +21,10 @@ public:
 };
 
 std::unique_ptr<IPlant> CreatePlantBackend(const std::string& type);
+/* Machine-aware form: the ngspice backend is electrical RL / PMSM-backEMF
+ * only, so machine=induction with backend=ngspice is refused loudly and
+ * falls back to the ODE plant. */
+std::unique_ptr<IPlant> CreatePlantBackend(const std::string& type,
+                                           MachineType machine);
 
 } // namespace hostsim

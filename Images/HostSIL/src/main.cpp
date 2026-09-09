@@ -330,6 +330,11 @@ int main(int argc, char** argv) {
         mp.inertia_kg_m2 = g_scn.inertia_kg_m2;
         mp.friction_nm_per_rad_s = g_scn.friction_nm_per_rad_s;
         mp.vdc_v = g_scn.vdc_v;
+        if (g_scn.machine == "induction") mp.machine = hostsim::MachineType::Induction;
+        mp.rr_ohm = g_scn.rr_ohm;
+        mp.lm_h = g_scn.lm_h;
+        mp.lls_h = g_scn.lls_h;
+        mp.llr_h = g_scn.llr_h;
         silWorld().plant.SetParams(mp);
         silWorld().plant.Reset();
         silWorld().vdc_v = g_scn.vdc_v;
@@ -352,8 +357,9 @@ int main(int argc, char** argv) {
                 scenario_path, static_cast<double>(g_scn.duration_s),
                 static_cast<double>(g_scn.app_loop_hz),
                 g_scn.trace_csv.c_str());
-    std::printf("[SIL] motor: rs=%.4f ohm ld=%.1f uH lq=%.1f uH flux=%.4f Wb "
+    std::printf("[SIL] motor: %s rs=%.4f ohm ld=%.1f uH lq=%.1f uH flux=%.4f Wb "
                 "pp=%d J=%.2e B=%.2e vdc=%.1f\n",
+                g_scn.machine.c_str(),
                 static_cast<double>(g_scn.rs_ohm),
                 static_cast<double>(g_scn.ld_h) * 1e6,
                 static_cast<double>(g_scn.lq_h) * 1e6,

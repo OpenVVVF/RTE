@@ -24,6 +24,23 @@
 
 #include "realtime_platform.h"
 
+/* Graph Var registries exist only after RTECodeEmitter has generated the
+ * domain sources. The base image (and HostSIL, which reuses this file only
+ * in spirit) compiles without them; guard the same way AppState.h does. */
+#if defined(__has_include)
+#if __has_include("../generated/domain_tim_isr_generated.h") && \
+    __has_include("../generated/domain_app_loop_generated.h") && \
+    __has_include("../generated/domain_adc_isr_generated.h")
+#include "../generated/domain_tim_isr_generated.h"
+#include "../generated/domain_app_loop_generated.h"
+#include "../generated/domain_adc_isr_generated.h"
+#define HOSTSIM_HAS_GENERATED_DOMAINS 1
+#endif
+#endif
+#ifndef HOSTSIM_HAS_GENERATED_DOMAINS
+#define HOSTSIM_HAS_GENERATED_DOMAINS 0
+#endif
+
 namespace hostsim {
 
 SimRuntime::SimRuntime() : plant_(std::make_unique<OdePlant>()) {}
@@ -169,6 +186,40 @@ uint8_t ParseHexPayload(const std::string& hex, uint8_t* out, uint8_t max_bytes)
     return n;
 }
 
+/* Enumerate "key": number pairs in a flat object blob (for the scenario
+ * "vars" graph-var seed map). String values would otherwise alias the next
+ * pair's colon (a value in quotes is not a number): skip them instead. */
+void EnumerateKv(const std::string& blob,
+                 std::vector<std::pair<std::string, float>>* out) {
+    if (!out) return;
+    size_t i = 0;
+    while (i < blob.size()) {
+        const size_t q1 = blob.find('"', i);
+        if (q1 == std::string::npos) break;
+        const size_t q2 = blob.find('"', q1 + 1);
+        if (q2 == std::string::npos) break;
+        const std::string key = blob.substr(q1 + 1, q2 - q1 - 1);
+        const size_t colon = blob.find(':', q2);
+        if (colon == std::string::npos) break;
+        size_t start = colon + 1;
+        while (start < blob.size() &&
+               std::isspace(static_cast<unsigned char>(blob[start]))) ++start;
+        if (start < blob.size() && blob[start] == '"') {
+            /* String value: skip to its closing quote so it cannot alias the
+             * next pair's colon. */
+            const size_t vend = blob.find('"', start + 1);
+            i = (vend != std::string::npos) ? vend + 1 : blob.size();
+            continue;
+        }
+        char* end = nullptr;
+        const float v = std::strtof(blob.c_str() + start, &end);
+        if (end != blob.c_str() + start) {
+            out->emplace_back(key, v);
+        }
+        i = colon + 1;
+    }
+}
+
 StimulusType ParseStimulusType(const std::string& blob) {
     const std::string t = ExtractString(blob, "type");
     if (t == "ramp") return StimulusType::Ramp;
@@ -271,6 +322,24 @@ bool SimRuntime::ParseScenario(const char* path) {
     if (ExtractNumber(motor, "inertia_kg_m2", &v)) config_.motor.inertia_kg_m2 = v;
     if (ExtractNumber(motor, "friction_nm_per_rad_s", &v)) config_.motor.friction_nm_per_rad_s = v;
     if (ExtractNumber(motor, "vdc_v", &v)) config_.motor.vdc_v = v;
+    /* Machine selection: "machine": "induction" swaps the ODE plant to the
+     * stationary alpha/beta squirrel-cage model (src/induction_model.h);
+     * default/absent stays PMSM. */
+    {
+        const std::string machine = ExtractString(motor, "machine");
+        if (machine == "induction") {
+            config_.motor.machine = MachineType::Induction;
+        } else if (machine == "pmsm") {
+            config_.motor.machine = MachineType::Pmsm;
+        } else if (!machine.empty()) {
+            std::cerr << "HostSim: unknown motor.machine \"" << machine
+                      << "\" (want \"pmsm\" or \"induction\"); keeping pmsm\n";
+        }
+    }
+    if (ExtractNumber(motor, "rr_ohm", &v)) config_.motor.rr_ohm = v;
+    if (ExtractNumber(motor, "lm_h", &v)) config_.motor.lm_h = v;
+    if (ExtractNumber(motor, "lls_h", &v)) config_.motor.lls_h = v;
+    if (ExtractNumber(motor, "llr_h", &v)) config_.motor.llr_h = v;
 
     if (ExtractNumber(sim, "duration_s", &v)) config_.duration_s = v;
     if (ExtractNumber(sim, "tim_isr_hz", &v)) config_.tim_isr_hz = v;
@@ -404,6 +473,13 @@ bool SimRuntime::ParseScenario(const char* path) {
         }
     }
 
+    /* Graph Var node seeds: {"vars": {"TargetHz": 40.0}}, applied after
+     * domain init (emitted builds only). */
+    const std::string vars_obj = ExtractObject(blob, "vars");
+    if (!vars_obj.empty()) {
+        EnumerateKv(vars_obj, &config_.graph_vars);
+    }
+
     config_.throttle_a = ParseStimulus(ExtractObject(blob, "throttle_a"));
     config_.throttle_b = ParseStimulus(ExtractObject(blob, "throttle_b"));
     return true;
@@ -429,7 +505,7 @@ bool SimRuntime::LoadScenario(const char* path) {
         frame.done = false;
     }
 
-    plant_ = CreatePlantBackend(config_.plant_backend);
+    plant_ = CreatePlantBackend(config_.plant_backend, config_.motor.machine);
     if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
         if (!config_.ngspice_netlist.empty()) ng->SetNetlistPath(config_.ngspice_netlist);
         ng->SetSubsteps(config_.ngspice_substeps);
@@ -474,7 +550,7 @@ void SimRuntime::InitDomains() {
     ctx.motor_temp_c = config_.motor_temp_c;
     ctx.inverter_temp_c = config_.inverter_temp_c;
     if (!plant_) {
-        plant_ = CreatePlantBackend(config_.plant_backend);
+        plant_ = CreatePlantBackend(config_.plant_backend, config_.motor.machine);
         plant_->SetParams(config_.motor);
         plant_->Reset();
     }
@@ -483,6 +559,47 @@ void SimRuntime::InitDomains() {
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
+    ApplyGraphVars();
+}
+
+void SimRuntime::ApplyGraphVars() {
+    if (config_.graph_vars.empty()) return;
+#if HOSTSIM_HAS_GENERATED_DOMAINS
+    struct DomainVars {
+        const RteParamDesc* vars;
+        size_t count;
+        void* state;
+    };
+    const DomainVars domains[] = {
+        {app::g_tim_isr_vars, app::g_tim_isr_var_count, &appState.tim_isr},
+        {app::g_app_loop_vars, app::g_app_loop_var_count, &appState.app_loop},
+        {app::g_adc_isr_vars, app::g_adc_isr_var_count, &appState.adc_isr},
+    };
+    for (const auto& [name, value] : config_.graph_vars) {
+        bool applied = false;
+        for (const auto& domain : domains) {
+            for (size_t i = 0; i < domain.count; ++i) {
+                if (domain.vars[i].name && name == domain.vars[i].name) {
+                    domain.vars[i].set(domain.state, value);
+                    std::fprintf(stderr, "HostSim: scenario var %.*s = %g\n",
+                                 static_cast<int>(name.size()), name.c_str(),
+                                 static_cast<double>(value));
+                    applied = true;
+                }
+            }
+        }
+        if (!applied) {
+            std::fprintf(stderr,
+                         "HostSim: WARNING: scenario var \"%s\" matches no "
+                         "graph Var node; ignored\n",
+                         name.c_str());
+        }
+    }
+#else
+    std::fprintf(stderr,
+                 "HostSim: WARNING: scenario \"vars\" given but this binary "
+                 "has no emitted graph domains; var seeds ignored\n");
+#endif
 }
 
 void SimRuntime::WriteTraceRow() {

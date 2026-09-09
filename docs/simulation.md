@@ -23,7 +23,7 @@ Both are pure host executables — no hardware, no cross-toolchain required.
 |---|---|---|
 | What executes | Graph-generated domain code only | The real Gen6FW application, unmodified |
 | Base image source | `Images/HostSim` | Emit of `Images/Gen6FW` (+ graph) behind `sil/` shims |
-| Plants | ODE PMSM (default), experimental ngspice | ODE PMSM |
+| Plants | ODE PMSM/induction (default), experimental ngspice | ODE PMSM/induction |
 | Live GUI attach | Yes (`--live`; the sim publishes IVP over TCP `127.0.0.1:14608`) | Yes (`--live`; relays the firmware's own USART3 telemetry over TCP) |
 | Best for | Iterating on graph control logic, demos, live tuning, GUI work | Firmware-level checks: boot, command handling, ISR cadence, exact firmware behavior |
 
@@ -144,6 +144,9 @@ HostSIL scenarios extend the HostSim scenario format (see below) with
 `control` (`start`, `start_time_s`, `iq_a`, `id_a` — posted through the
 firmware's own `CommandManager`), `firmware_config` (KV pairs seeded via
 `config set/save`), and `fram_image` (file backing for the emulated F-RAM).
+`Images/HostSIL/scenarios/sil_foc_salient.json` demonstrates the salient PMSM
+(Ld≠Lq) with a forced negative `id_a`: the plant's reluctance torque term adds
+~23 % speed at equal `iq_a` versus `id_a = 0`.
 Architecture, ISR ordering, and fidelity notes:
 [Images/HostSIL/README.md](../Images/HostSIL/README.md).
 
@@ -154,20 +157,31 @@ Defaults are built in — a scenario only overrides the keys it names. The
 parser matches keys by name anywhere in the file, so the shipped scenarios
 nest `plant`/`pwm_scope` under `simulation` while flat placement is also
 accepted. Bundled scenarios: `default_motor.json`, `spwm_demo.json`,
-`svpwm_live.json`, `ngspice_rl_demo.json`, `ngspice_pmsm_demo.json`.
+`svpwm_live.json`, `ngspice_rl_demo.json`, `ngspice_pmsm_demo.json`,
+`salient_pmsm.json`, `induction_vhz.json`.
 
-### `motor.*` — PMSM parameters
+### `motor.*` — machine parameters
+
+Both simulators run the same ODE plant (`Images/HostSim/src/motor_model.cpp`).
+`machine` selects the model:
 
 | Key | Default | Meaning |
 |---|---|---|
+| `machine` | `pmsm` | `pmsm` = salient-dq PMSM; `induction` = squirrel-cage induction (stationary αβ model, `src/induction_model.h`) |
 | `rs_ohm` | 0.05 | Stator resistance |
-| `ld_h` / `lq_h` | 1e-4 | d/q inductance |
-| `flux_wb` | 0.01 | PM flux linkage |
 | `pole_pairs` | 7 | Pole pairs |
-| `inertia_kg_m2` | 1e-5 | Rotor inertia |
-| `friction_nm_per_rad_s` | 1e-4 | Viscous friction |
+| `inertia_kg_m2` | 1e-5 | Rotor inertia (applied to the electrical speed, the simulator's mechanics convention) |
+| `friction_nm_per_rad_s` | 1e-4 | Viscous friction (same convention) |
 | `vdc_v` | 48.0 | DC-link voltage |
+| PMSM only: `ld_h` / `lq_h` | 1e-4 | d/q inductance — Ld≠Lq enables the `(Ld−Lq)·id·iq` reluctance torque term |
+| PMSM only: `flux_wb` | 0.01 | PM flux linkage |
+| Induction only: `rr_ohm` | 0.3 | Rotor resistance (referred) |
+| Induction only: `lm_h` | 0.025 | Magnetizing inductance |
+| Induction only: `lls_h` / `llr_h` | 0.002 | Stator/rotor leakage (Ls=Lm+Lls, Lr=Lm+Llr) |
 | `name`, `comment` | — | Informational (e.g. where to paste calibrated values) |
+
+HostSIL parses the same keys (`Images/HostSIL/src/scenario.cpp`); its
+`machine` maps onto the shared ODE plant identically.
 
 ### `throttle_a` / `throttle_b` — stimulus profiles
 
@@ -248,6 +262,18 @@ Defaults mirror the Gen6 signal-chain constants in
 | `loopback` | true | Frames sent via `platform_can_send` are readable via `platform_can_rx` (latest-frame store keyed by bus+id) |
 | `frames` | — | Scheduled injected traffic: `[{"bus": 1, "id": 291, "ext": false, "start_s": 0.1, "period_s": 0.01, "data": "DEADBEEF"}]`. `id` accepts decimal or `0x` hex, `data` is a hex string ≤ 8 bytes (`dlc` follows), `period_s` > 0 repeats otherwise single shot at `start_s` (alias `time_s`). |
 
+### `vars.*` — graph Var node seeds (HostSim only)
+
+`{"vars": {"TargetHz": 40.0}}` writes each value into the `Stored` state of
+the emitted graph's Var node with that id, right after domain init — the
+batch-mode equivalent of the firmware shell's `var set` used by
+`Tools/alternate_target_hz.py`-style live sessions. Unknown names are warned
+about and ignored (base-image-only runs have no graph and warn once).
+`scenarios/induction_vhz.json` uses this to set the induction_vhz example
+graph's frequency target; Values.Config nodes are instead seeded from the
+`simulation.config_file` KV store (e.g. `scenarios/induction_vhz.cfg` for the
+V/Hz ratio).
+
 Motor parameters are not hardcoded to a machine: copy a bundled scenario and
 paste calibrated values from the target motor.
 
@@ -255,15 +281,18 @@ paste calibrated values from the target motor.
 
 | Backend | Scenario | What it models |
 |---|---|---|
-| **ODE PMSM** (default) | `"backend": "ode"` or omitted | Discrete-time PMSM ODE (`src/motor_model.cpp`): clamped duty × Vdc drive → averaged phase voltages → dq dynamics; integrated mechanics. Fast — the only fully supported backend and the right choice for `--live`. |
+| **ODE** (default) | `"backend": "ode"` or omitted | Discrete-time machine ODE (`src/motor_model.cpp` + `src/induction_model.h`): clamped duty × Vdc drive → averaged phase voltages → plant dynamics; integrated mechanics. `motor.machine` picks `pmsm` (salient dq, reluctance torque included) or `induction` (4th-order squirrel-cage, stationary αβ, rotor-flux angle/slip internal). Fast — the only fully supported backend and the right choice for `--live`. |
 | **ngspice RL** (experimental) | `"backend": "ngspice"`, `"netlist": "plants/inverter_rl.cir"` | Three-phase wye RL load in libngspice. The circuit has no back-EMF element, so the back-EMF is folded into the driven source values; mechanics integrate in the host. |
 | **ngspice PMSM** (experimental) | `"backend": "ngspice"`, `"netlist": "plants/inverter_pmsm.cir"` | Per-phase R-L plus an **in-circuit back-EMF source** (`Veu/Vev/Vew` external sources driven from rotor angle/speed), so back-EMF is part of the circuit equation. |
 
 Both ngspice netlists are voltage-source driven (duty → phase terminal
 voltage, vs DC−), with netlist components parameterized from `motor.*`
-(`alterparam`, cold start via `UIC`). If `libngspice` cannot be loaded,
-HostSim prints a notice on stderr and continues on the ODE plant — check the
-log when a scenario unexpectedly runs ODE.
+(`alterparam`, cold start via `UIC`). ngspice models **electrical RL /
+PMSM-backEMF only — no induction machine**; `machine: "induction"` with
+`backend: "ngspice"` is refused with a stderr notice and continues on the ODE
+plant (which models the induction machine natively). If `libngspice` cannot
+be loaded, HostSim prints a notice on stderr and continues on the ODE plant —
+check the log when a scenario unexpectedly runs ODE.
 
 ## ngspice backend setup (Linux, optional)
 

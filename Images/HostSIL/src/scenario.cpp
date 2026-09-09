@@ -91,7 +91,9 @@ bool ExtractBool(const std::string& blob, const std::string& key, bool* out) {
     return false;
 }
 
-/* Enumerate "key": number pairs in a flat object blob. */
+/* Enumerate "key": number pairs in a flat object blob.
+ * String values would otherwise alias the next pair's colon (a value in
+ * quotes is not a number): skip them instead. */
 void EnumerateKv(const std::string& blob,
                  std::vector<std::pair<std::string, float>>& out) {
     size_t i = 0;
@@ -103,9 +105,19 @@ void EnumerateKv(const std::string& blob,
         const std::string key = blob.substr(q1 + 1, q2 - q1 - 1);
         const size_t colon = blob.find(':', q2);
         if (colon == std::string::npos) break;
+        size_t start = colon + 1;
+        while (start < blob.size() &&
+               std::isspace(static_cast<unsigned char>(blob[start]))) ++start;
+        if (start < blob.size() && blob[start] == '"') {
+            /* String value: skip to its closing quote so it cannot alias the
+             * next pair's colon. */
+            const size_t vend = blob.find('"', start + 1);
+            i = (vend != std::string::npos) ? vend + 1 : blob.size();
+            continue;
+        }
         char* end = nullptr;
-        const float v = std::strtof(blob.c_str() + colon + 1, &end);
-        if (end != blob.c_str() + colon + 1) {
+        const float v = std::strtof(blob.c_str() + start, &end);
+        if (end != blob.c_str() + start) {
             out.emplace_back(key, v);
         }
         i = colon + 1;
@@ -154,6 +166,12 @@ bool LoadScenario(const char* path, Scenario& out, std::string& error) {
         if (ExtractNumber(motor, "inertia_kg_m2", &v)) out.inertia_kg_m2 = v;
         if (ExtractNumber(motor, "friction_nm_per_rad_s", &v)) out.friction_nm_per_rad_s = v;
         if (ExtractNumber(motor, "vdc_v", &v)) out.vdc_v = v;
+        const std::string machine = ExtractString(motor, "machine");
+        if (!machine.empty()) out.machine = machine;
+        if (ExtractNumber(motor, "rr_ohm", &v)) out.rr_ohm = v;
+        if (ExtractNumber(motor, "lm_h", &v)) out.lm_h = v;
+        if (ExtractNumber(motor, "lls_h", &v)) out.lls_h = v;
+        if (ExtractNumber(motor, "llr_h", &v)) out.llr_h = v;
     }
 
     const std::string sim = ExtractObject(blob, "simulation");

@@ -2,7 +2,11 @@
 
 #include <cmath>
 
+#include "induction_model.h"
+
 namespace hostsim {
+
+enum class MachineType { Pmsm = 0, Induction };
 
 struct MotorParams {
     float rs_ohm = 0.05f;
@@ -13,6 +17,15 @@ struct MotorParams {
     float inertia_kg_m2 = 1.0e-5f;
     float friction_nm_per_rad_s = 1.0e-4f;
     float vdc_v = 48.0f;
+    /* Machine selection: Pmsm (default) integrates the salient dq PMSM below
+     * and ignores the induction-only fields. */
+    MachineType machine = MachineType::Pmsm;
+    /* Induction machine (squirrel cage, stationary alpha/beta). rs_ohm,
+     * pole_pairs, inertia, friction and vdc_v are shared with the PMSM. */
+    float rr_ohm = 0.3f;
+    float lm_h = 0.025f;
+    float lls_h = 0.002f;
+    float llr_h = 0.002f;
 };
 
 struct MotorState {
@@ -42,10 +55,15 @@ public:
 
     float ThetaElectricalDeg() const;
     float OmegaElectricalRadPerSec() const { return state_.omega_e_rad_s; }
+    /* Rotor-flux slip (induction only; 0 for PMSM). Diagnostic accessor for
+     * scenario/debug sessions — the runtime trace derives slip from the
+     * commanded feed frequency instead. */
+    float SlipElectricalRadPerSec() const { return induction_.SlipElectricalRadPerSec(); }
 
 private:
     MotorParams params_{};
     MotorState state_{};
+    InductionMachine induction_{};
 
     static float ClampDuty(float duty_pct);
     static void DutiesToAbcVoltage(float du, float dv, float dw, float vdc,

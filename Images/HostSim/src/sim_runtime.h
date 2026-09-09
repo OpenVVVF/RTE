@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hostsim {
@@ -61,6 +62,10 @@ struct SimConfig {
     std::string ngspice_netlist = "";
     int ngspice_substeps = 4;
     MotorParams motor{};
+    /* Graph Var node seeds ("vars": {"NodeId": value}) applied to the emitted
+     * var registries after domain init — batch-mode equivalent of the live
+     * firmware's `var set` (e.g. TargetHz in induction_vhz). */
+    std::vector<std::pair<std::string, float>> graph_vars{};
     StimulusProfile throttle_a{};
     StimulusProfile throttle_b{};
     SimAdcConfig adc{};
@@ -140,6 +145,7 @@ private:
     bool undervoltage_raised_ = false;
 
     bool ParseScenario(const char* path);
+    void ApplyGraphVars();
     void OpenTrace();
     void WriteTraceRow();
     void PublishTelemetry();

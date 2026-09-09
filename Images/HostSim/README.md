@@ -37,9 +37,14 @@ on the STM32 images. The only difference is the base image underneath it:
 HostSim provides simulator implementations of `platform_pwm_set()`,
 `platform_get_phase_currents()`, etc., instead of STM32 HAL drivers.
 
-The default plant is a fast discrete PMSM ODE (`src/motor_model.cpp`). An
+The default plant is a fast discrete machine ODE (`src/motor_model.cpp`):
+a salient PMSM (per-axis Ld/Lq and the (Ld−Lq)·id·iq reluctance torque term)
+or a squirrel-cage **induction** machine (`src/induction_model.h`, stationary
+αβ frame), selected per scenario with `motor.machine`. An
 optional **ngspice** backend exists (`src/plant/ngspice_plant.cpp`) but is
-experimental and not yet the default.
+experimental, supports electrical RL / PMSM-backEMF netlists only (no
+induction machine — it falls back to the ODE plant with a stderr notice),
+and is not the default.
 
 ## Domains
 
@@ -92,7 +97,20 @@ This copies `Images/HostSim` to `build/hostsim_emitted`, runs `RTECodeEmitter` w
 Motor parameters are **not** hardcoded to a specific machine. Edit
 `scenarios/default_motor.json` (or pass another file as argv[1]):
 
-- `motor.*` — PMSM Rs, Ld/Lq, flux, pole pairs, inertia, Vdc
+- `motor.*` — machine model parameters
+  - `machine` — `"pmsm"` (default) or `"induction"` (squirrel cage, stationary
+    αβ model in `src/induction_model.h`)
+  - shared: `rs_ohm`, `pole_pairs`, `inertia_kg_m2`, `friction_nm_per_rad_s`,
+    `vdc_v` (friction/inertia act on the *electrical* speed, the simulator's
+    convention for both machines)
+  - PMSM: `ld_h`, `lq_h`, `flux_wb` — Ld≠Lq gives the plant the reluctance
+    torque term exercised by `scenarios/salient_pmsm.json` (and by
+    `Assets/Examples/foc_mtpa_demo.json`'s MTPA reference)
+  - induction: `rr_ohm`, `lm_h`, `lls_h`, `llr_h` (Ls=Lm+Lls, Lr=Lm+Llr)
+- `vars.*` — graph **Var node seeds** (`{"TargetHz": 40.0}`), applied to the
+  emitted graph's `Stored` state after domain init — the batch-mode equivalent
+  of the live firmware's `var set` (e.g. `TargetHz` in the induction_vhz
+  example). Names that match no Var node are warned about and ignored.
 - `throttle_a` / `throttle_b` — `constant`, `ramp`, or `step` profiles
 - `simulation.duration_s`, `trace_csv`, domain rates
 - `simulation.demo_fallback` — opt-in legacy open-loop SPWM synthesized by the
@@ -122,6 +140,36 @@ Motor parameters are **not** hardcoded to a specific machine. Edit
   `period_s` > 0 repeats, otherwise single shot at `start_s`).
 
 A comment field documents where to paste calibrated values (e.g. 75-5 bench motor).
+
+### Machine demos
+
+- `scenarios/salient_pmsm.json` — salient IPMSM (`ld_h` 500 µH, `lq_h` 1.5 mH,
+  pp = 7). Run it through any duty-driving graph, e.g. the SPWM demo tree:
+  the synchronous plant locks to the rotating field with zero steady slip.
+  Saliency is *torque-producing*: the plant's `(Ld−Lq)·id·iq` term engages
+  whenever id ≠ 0 — forced directly by the MTPA reference graph
+  (`Assets/Examples/foc_mtpa_demo.json`, id ref via `Control.Mtpa`) or by the
+  real firmware FOC (`Images/HostSIL/scenarios/sil_foc_salient.json` with
+  `control.id_a = −2`, same iq yields ~23 % more speed than with id = 0).
+- `scenarios/induction_vhz.json` — 4-pole 48 V squirrel-cage induction machine
+  under open-loop V/Hz. Run it with the bundled example graph:
+
+  ```bash
+  ./build/bin/RTECodeEmitter --base-src Images/HostSim \
+      --graph Assets/Examples/induction_vhz.json \
+      --output build/hostsim_induction_emitted
+  cmake -S build/hostsim_induction_emitted -B build/hostsim_induction_emitted_build
+  cmake --build build/hostsim_induction_emitted_build -j
+  cd build/hostsim_induction_emitted
+  ../hostsim_induction_emitted_build/host_sim scenarios/induction_vhz.json --realtime 0
+  ```
+
+  The scenario's `vars` block seeds the graph's `TargetHz` (40 Hz) and its
+  `config_file` (`scenarios/induction_vhz.cfg`) retunes the V/Hz ratio for a
+  48 V link. The trace shows the rotor settle just *below* synchronous speed
+  (measurable slip, ~5 % here) instead of locking to it like the PMSM.
+
+Both scenarios are exercised by `Tools/tests/run_sim_smoke.sh --only plants`.
 
 ## Platform coupling
 
@@ -230,7 +278,9 @@ live IVP publisher when `--live` is active.
 
 ## Roadmap
 
-- **Today:** ODE PMSM plant is the default and only fully-supported backend.
+- **Today:** the ODE plant (PMSM + induction machine) is the default and only
+  fully-supported backend; the ngspice backend remains electrical RL /
+  PMSM-backEMF only.
 - **Experimental:** ngspice plant backend (`src/plant/ngspice_plant.cpp`) is
   present but not complete. Select it with `"plant": { "backend": "ngspice",
   "netlist": "plants/your.cir" }` in the scenario JSON. If `libngspice.so` is

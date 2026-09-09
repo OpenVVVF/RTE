@@ -1,0 +1,31 @@
+{
+  "comment": "Induction-machine V/Hz demo. Drives Assets/Examples/induction_vhz.json: the vars block seeds the graph's TargetHz Var node (the graph ramps it at Induction.SlewRateHzPs) and the config_file retunes the V/Hz ratio for a 48 V link.",
+  "motor": {
+    "name": "small_squirrel_cage_48v",
+    "machine": "induction",
+    "comment": "4-pole 48 V squirrel-cage induction machine (stationary alpha/beta ODE plant).",
+    "rs_ohm": 0.4,
+    "rr_ohm": 0.3,
+    "lm_h": 0.025,
+    "lls_h": 0.002,
+    "llr_h": 0.002,
+    "pole_pairs": 2,
+    "inertia_kg_m2": 5e-4,
+    "friction_nm_per_rad_s": 1e-3,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 3.5,
+    "tim_isr_hz": 5000,
+    "adc_isr_hz": 5000,
+    "app_loop_hz": 1000,
+    "telem_hz": 500,
+    "trace_csv": "trace_induction_vhz.csv",
+    "config_file": "scenarios/induction_vhz.cfg"
+  },
+  "vars": {
+    "TargetHz": 40.0
+  },
+  "throttle_a": { "type": "constant", "value": 0.0 },
+  "throttle_b": { "type": "constant", "value": 0.0 }
+}

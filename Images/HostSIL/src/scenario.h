@@ -36,6 +36,13 @@ struct Scenario {
     float inertia_kg_m2 = 1.0e-3f;
     float friction_nm_per_rad_s = 1.0e-3f;
     float vdc_v = 48.0f;
+    /* Machine selection mirrors HostSim's motor.machine: "pmsm" (default) or
+     * "induction"; the rr/lm/lls/llr fields only apply to induction. */
+    std::string machine = "pmsm";
+    float rr_ohm = 0.3f;
+    float lm_h = 0.025f;
+    float lls_h = 0.002f;
+    float llr_h = 0.002f;
 
     /* simulation */
     float duration_s = 2.0f;

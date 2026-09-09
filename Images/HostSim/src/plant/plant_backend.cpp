@@ -7,6 +7,19 @@
 namespace hostsim {
 
 std::unique_ptr<IPlant> CreatePlantBackend(const std::string& type) {
+    return CreatePlantBackend(type, MachineType::Pmsm);
+}
+
+std::unique_ptr<IPlant> CreatePlantBackend(const std::string& type,
+                                           MachineType machine) {
+    if (type == "ngspice" && machine == MachineType::Induction) {
+        std::cerr << "HostSim: backend \"ngspice\" cannot model "
+                     "machine \"induction\" (the ngspice netlists are "
+                     "electrical RL / PMSM-backEMF only) — refusing to run "
+                     "an induction machine there. Falling back to the ODE "
+                     "plant, which models the induction machine natively.\n";
+        return std::make_unique<OdePlant>();
+    }
     if (type == "ngspice") {
         auto ng = std::make_unique<NgspicePlant>();
         if (ng->IsSharedspiceLoaded()) {
