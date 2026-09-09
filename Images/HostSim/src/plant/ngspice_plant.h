@@ -3,6 +3,10 @@
 #include "plant_backend.h"
 #include "sharedspice.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
 #include <string>
 
 namespace hostsim {
@@ -38,11 +42,22 @@ private:
     bool first_step_ = true;
     double current_sim_time_ = 0.0;
 
-    double pending_vu_ = 0.0;
-    double pending_vv_ = 0.0;
-    double pending_vw_ = 0.0;
+    // Read by ngspice's analysis thread via GetVSRCData; written by the host
+    // thread in Step(). Atomics keep that cross-thread handoff safe.
+    std::atomic<double> pending_vu_{0.0};
+    std::atomic<double> pending_vv_{0.0};
+    std::atomic<double> pending_vw_{0.0};
 
     void* lib_handle_ = nullptr;
+
+    // BGThreadRunning reports each pause of the background analysis; the host
+    // thread blocks on this instead of spin-polling ngSpice_running().
+    std::mutex bg_mutex_;
+    std::condition_variable bg_cv_;
+    bool bg_running_ = false;
+    uint64_t bg_pauses_ = 0;
+    bool stop_active_ = false;
+    bool analysis_failed_ = false;
 
     using FN_ngSpice_Init =
         int (*)(SendChar*, SendStat*, ControlledExit*, SendData*,
@@ -94,6 +109,8 @@ private:
     void LoadNetlist();
     void ApplyParams();
     void UpdatePendingVoltages(float du_pct, float dv_pct, float dw_pct);
+    bool AdvanceSpiceTo(double target_time);
+    bool WaitForBgPause(uint64_t target_pauses);
     float ReadCurrent(const char* vecname) const;
     void IntegrateMechanics(float dt_s);
 };

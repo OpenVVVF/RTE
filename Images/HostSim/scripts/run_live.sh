@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "${HOSTSIM_ROOT}/../.." && pwd)"
 
 SCENARIO="${1:-${HOSTSIM_ROOT}/scenarios/default_motor.json}"
 HOSTSIM="${HOSTSIM_ROOT}/build_linux/host_sim"
-NODEGUI="${REPO_ROOT}/build/Source/NodeGUI/NodeGUI"
+NODEGUI="${RTE_GUI:-${REPO_ROOT}/build/bin/RTEStudio}"
 NO_GUI=0
 
 for arg in "$@"; do
@@ -24,7 +24,7 @@ if [[ ! -x "${HOSTSIM}" ]]; then
 fi
 
 pgrep -x host_sim | xargs -r kill 2>/dev/null || true
-pgrep -x NodeGUI | xargs -r kill 2>/dev/null || true
+pgrep -x RTEStudio | xargs -r kill 2>/dev/null || true
 sleep 0.5
 
 echo "Starting HostSim live: ${SCENARIO}"
@@ -32,7 +32,7 @@ nohup "${HOSTSIM}" "${SCENARIO}" --live --realtime 1.0 >/dev/null 2>&1 &
 
 if [[ "${NO_GUI}" -eq 0 ]]; then
   if [[ ! -x "${NODEGUI}" ]]; then
-    echo "NodeGUI not found at ${NODEGUI}. Build with: cmake --build build --target NodeGUI" >&2
+    echo "RTEStudio (GUI) not found at ${NODEGUI}. Build with: cmake --build build --target RTEStudio" >&2
     echo "HostSim is still running on 127.0.0.1:14608"
     exit 0
   fi

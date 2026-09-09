@@ -60,8 +60,8 @@ if [[ ! -f "${SCENARIO}" ]]; then
   exit 1
 fi
 
-EMITTER="${RTE_EMITTER:-${REPO_ROOT}/build/Source/RTECodeEmitter/RTECodeEmitter}"
-NODEGUI="${REPO_ROOT}/build/Source/NodeGUI/NodeGUI"
+EMITTER="${RTE_EMITTER:-${REPO_ROOT}/build/bin/RTECodeEmitter}"
+NODEGUI="${RTE_GUI:-${REPO_ROOT}/build/bin/RTEStudio}"
 
 if [[ ! -x "${EMITTER}" ]]; then
   echo "RTECodeEmitter not found at ${EMITTER}" >&2
@@ -116,7 +116,7 @@ nohup "${EXE}" "${SCENARIO}" --live --realtime 1.0 >/dev/null 2>&1 &
 
 if [[ "${NO_GUI}" -eq 0 ]]; then
   if [[ ! -x "${NODEGUI}" ]]; then
-    echo "NodeGUI not found at ${NODEGUI}. Build with: cmake --build build --target NodeGUI" >&2
+    echo "RTEStudio not found at ${NODEGUI}. Build with: cmake --build build --target RTEStudio" >&2
     echo "HostSim is still running."
     exit 0
   fi

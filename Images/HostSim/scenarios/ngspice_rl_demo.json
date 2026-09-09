@@ -17,6 +17,8 @@
     "lq_h": 0.0001,
     "flux_wb": 0.01,
     "pole_pairs": 7,
+    "inertia_kg_m2": 0.005,
+    "friction_nm_per_rad_s": 0.001,
     "vdc_v": 48.0
   },
   "throttle_a": {

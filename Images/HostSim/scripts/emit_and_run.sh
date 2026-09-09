@@ -6,7 +6,7 @@ HOSTSIM_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${HOSTSIM_ROOT}/../.." && pwd)"
 GRAPH="${1:-${HOSTSIM_ROOT}/baseline_graph.json}"
 
-EMITTER="${RTE_EMITTER:-${REPO_ROOT}/build/Source/RTECodeEmitter/RTECodeEmitter}"
+EMITTER="${RTE_EMITTER:-${REPO_ROOT}/build/bin/RTECodeEmitter}"
 if [[ ! -x "${EMITTER}" ]]; then
   echo "RTECodeEmitter not found at ${EMITTER}" >&2
   echo "Build host tools: cmake -B build && cmake --build build --target RTECodeEmitter" >&2

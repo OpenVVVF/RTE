@@ -1,6 +1,7 @@
 #include "ngspice_plant.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -10,7 +11,6 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <vector>
 
 #if defined(_WIN32)
@@ -76,6 +76,8 @@ NgspicePlant::NgspicePlant() {
                  this);
         fn_ngSpice_Init_Sync_(CallbackGetVSRCData, CallbackGetISRCData,
                       CallbackGetSyncData, &ident, this);
+        std::cerr << "HostSim: libngspice loaded; experimental ngspice plant "
+                     "backend active\n";
     } else {
         sharedspice_loaded_ = false;
         UnloadSharedLibrary();
@@ -88,7 +90,13 @@ bool NgspicePlant::LoadSharedLibrary() {
 #if defined(_WIN32)
     lib_handle_ = static_cast<void*>(LoadLibraryA("ngspice.dll"));
 #else
-    lib_handle_ = dlopen("libngspice.so", RTLD_NOW);
+    // The runtime package on most Linux distros ships only the versioned
+    // soname, so try the linker name first, then the soname.
+    static const char* const kCandidates[] = {"libngspice.so", "libngspice.so.0"};
+    for (const char* name : kCandidates) {
+        lib_handle_ = dlopen(name, RTLD_NOW | RTLD_LOCAL);
+        if (lib_handle_) break;
+    }
 #endif
     return lib_handle_ != nullptr;
 }
@@ -155,6 +163,7 @@ void NgspicePlant::Reset() {
     state_ = MotorState{};
     current_sim_time_ = 0.0;
     first_step_ = true;
+    analysis_failed_ = false;
 
     if (!sharedspice_loaded_) return;
 
@@ -165,6 +174,13 @@ void NgspicePlant::Reset() {
     ApplyParams();
 
     if (circuit_loaded_) {
+        // Drop any debug stop that survived a previous run before restarting
+        // the analysis; ngspice complains ("no debugs in effect") if the
+        // delete is issued with none active.
+        if (stop_active_) {
+            Command("delete all");
+            stop_active_ = false;
+        }
         Command("reset");
     }
 }
@@ -236,9 +252,9 @@ void NgspicePlant::UpdatePendingVoltages(float du_pct, float dv_pct,
 
     const float vn = (va + vb + vc) / 3.0f;
 
-    pending_vu_ = static_cast<double>(va - vn - ea);
-    pending_vv_ = static_cast<double>(vb - vn - eb);
-    pending_vw_ = static_cast<double>(vc - vn - ec);
+    pending_vu_.store(static_cast<double>(va - vn - ea));
+    pending_vv_.store(static_cast<double>(vb - vn - eb));
+    pending_vw_.store(static_cast<double>(vc - vn - ec));
 }
 
 float NgspicePlant::ReadCurrent(const char* vecname) const {
@@ -264,41 +280,26 @@ void NgspicePlant::IntegrateMechanics(float dt_s) {
 
 void NgspicePlant::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
                         float dt_s) {
-    if (!sharedspice_loaded_) return;
+    if (!sharedspice_loaded_ || !circuit_loaded_ || analysis_failed_) return;
     if (dt_s <= 0.0f) return;
 
     UpdatePendingVoltages(duty_u_pct, duty_v_pct, duty_w_pct);
 
-    const double target_time = current_sim_time_ + static_cast<double>(dt_s);
-
-    // Use an interactive stop condition to pause the background thread at
-    // the next HostSim time boundary. ngSpice_SetBkpt is kept available for
-    // callers that want it, but the "stop when" command is more reliable
-    // across ngspice versions for this synchronous stepping pattern.
-    Command("delete");
-    {
-        std::ostringstream oss;
-        oss << std::setprecision(12) << "stop when time > " << target_time;
-        Command(oss.str().c_str());
+    // Advance the SPICE analysis in substeps_ chunks of the control period;
+    // the phase voltages are held (zero-order hold) across the whole period.
+    const double sub_dt = static_cast<double>(dt_s) / substeps_;
+    const double t0 = current_sim_time_;
+    for (int s = 1; s <= substeps_; ++s) {
+        if (!AdvanceSpiceTo(t0 + sub_dt * s)) {
+            if (!analysis_failed_) {
+                analysis_failed_ = true;
+                std::cerr << "HostSim: ngspice background analysis failed to "
+                             "respond; plant state frozen\n";
+            }
+            return;
+        }
     }
-
-    if (first_step_) {
-        Command("bg_run");
-        first_step_ = false;
-    } else {
-        Command("resume");
-    }
-
-    // Wait for the background thread to start, then wait for it to pause.
-    constexpr int kMaxStartPolls = 10000;
-    int polls = 0;
-    while (!fn_ngSpice_running_() && polls < kMaxStartPolls) {
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
-        ++polls;
-    }
-    while (fn_ngSpice_running_()) {
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
-    }
+    current_sim_time_ = t0 + static_cast<double>(dt_s);
 
     const float ia = ReadCurrent("i(vu)");
     const float ib = ReadCurrent("i(vv)");
@@ -319,13 +320,58 @@ void NgspicePlant::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     state_.iq_a = -i_alpha * sin_t + i_beta * cos_t;
 
     IntegrateMechanics(dt_s);
+}
 
-    current_sim_time_ = target_time;
+bool NgspicePlant::AdvanceSpiceTo(double target_time) {
+    if (stop_active_) {
+        Command("delete all");
+        stop_active_ = false;
+    }
+    {
+        std::ostringstream oss;
+        oss << std::setprecision(12) << "stop when time > " << target_time;
+        Command(oss.str().c_str());
+        stop_active_ = true;
+    }
+
+    uint64_t target_pauses;
+    {
+        std::lock_guard<std::mutex> lk(bg_mutex_);
+        target_pauses = bg_pauses_ + 1;
+    }
+
+    if (first_step_) {
+        Command("bg_run");
+        first_step_ = false;
+    } else {
+        // Note: plain "resume" makes ngspice re-run the whole transient from
+        // t=0; "bg_resume" continues the paused background analysis.
+        Command("bg_resume");
+    }
+
+    return WaitForBgPause(target_pauses);
+}
+
+bool NgspicePlant::WaitForBgPause(uint64_t target_pauses) {
+    std::unique_lock<std::mutex> lk(bg_mutex_);
+    // The timeout is deliberately generous: a missed event freezes the plant
+    // (logged once) instead of hanging the whole simulator.
+    return bg_cv_.wait_for(lk, std::chrono::seconds(10),
+                           [&] { return bg_pauses_ >= target_pauses; });
 }
 
 int NgspicePlant::CallbackSendChar(char* output, int /*ident*/,
                                     void* /*userdata*/) {
-    if (output) {
+    if (!output) return 0;
+    // ngspice routes all of its stdout through this callback. The bulk of it
+    // is per-run/per-resume banner noise ("Doing analysis...", breakpoint
+    // chatter), which would flood std::cerr and dominate the step cost, so
+    // only genuine diagnostics are forwarded.
+    std::string chunk(output);
+    for (auto& c : chunk) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (chunk.find("error") != std::string::npos) {
         std::cerr << "[ngspice] " << output;
     }
     return 0;
@@ -354,8 +400,24 @@ int NgspicePlant::CallbackSendInitData(pvecinfoall /*data*/, int /*ident*/,
     return 0;
 }
 
-int NgspicePlant::CallbackBGThreadRunning(bool /*running*/, int /*ident*/,
-                                           void* /*userdata*/) {
+int NgspicePlant::CallbackBGThreadRunning(bool running, int /*ident*/,
+                                           void* userdata) {
+    auto* self = static_cast<NgspicePlant*>(userdata);
+    if (!self) return 0;
+    // Despite the parameter name, the sharedspice module delivers the
+    // internal "not running" flag here (verified against ngspice-42):
+    // true == background analysis paused/halted, false == started.
+    if (running) {
+        {
+            std::lock_guard<std::mutex> lk(self->bg_mutex_);
+            self->bg_running_ = false;
+            ++self->bg_pauses_;
+        }
+        self->bg_cv_.notify_all();
+    } else {
+        std::lock_guard<std::mutex> lk(self->bg_mutex_);
+        self->bg_running_ = true;
+    }
     return 0;
 }
 
@@ -367,13 +429,13 @@ int NgspicePlant::CallbackGetVSRCData(double* vval, double /*timeval*/,
 
     if (CaseInsensitiveCompare(node, "u_node") == 0 ||
         CaseInsensitiveCompare(node, "vu") == 0) {
-        *vval = self->pending_vu_;
+        *vval = self->pending_vu_.load();
     } else if (CaseInsensitiveCompare(node, "v_node") == 0 ||
                CaseInsensitiveCompare(node, "vv") == 0) {
-        *vval = self->pending_vv_;
+        *vval = self->pending_vv_.load();
     } else if (CaseInsensitiveCompare(node, "w_node") == 0 ||
                CaseInsensitiveCompare(node, "vw") == 0) {
-        *vval = self->pending_vw_;
+        *vval = self->pending_vw_.load();
     } else {
         *vval = 0.0;
     }
