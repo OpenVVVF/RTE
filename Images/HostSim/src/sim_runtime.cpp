@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "realtime_platform.h"
 
@@ -31,14 +32,6 @@ SimRuntime::~SimRuntime() = default;
 namespace {
 
 SimRuntime g_runtime;
-
-std::string Trim(const std::string& s) {
-    size_t b = 0;
-    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
-    size_t e = s.size();
-    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
-    return s.substr(b, e - b);
-}
 
 std::string ExtractString(const std::string& blob, const std::string& key) {
     const std::string needle = "\"" + key + "\"";
@@ -65,6 +58,46 @@ bool ExtractNumber(const std::string& blob, const std::string& key, float* out) 
     return true;
 }
 
+/* Handles both JSON booleans and 0/1 numbers. Deliberately parses the token
+ * right after the colon so unquoted true/false don't scoop the next key. */
+bool ExtractBool(const std::string& blob, const std::string& key, bool* out) {
+    const std::string needle = "\"" + key + "\"";
+    const size_t pos = blob.find(needle);
+    if (pos == std::string::npos) return false;
+    const size_t colon = blob.find(':', pos);
+    if (colon == std::string::npos) return false;
+    size_t i = colon + 1;
+    while (i < blob.size() && std::isspace(static_cast<unsigned char>(blob[i]))) ++i;
+    if (blob.compare(i, 4, "true") == 0) {
+        if (out) *out = true;
+        return true;
+    }
+    if (blob.compare(i, 5, "false") == 0) {
+        if (out) *out = false;
+        return true;
+    }
+    char* end = nullptr;
+    const float v = std::strtof(blob.c_str() + i, &end);
+    if (end == blob.c_str() + i) return false;
+    if (out) *out = (v != 0.0f);
+    return true;
+}
+
+/* Unsigned integer with base auto-detect (supports "0x" hex CAN ids). */
+bool ExtractUint(const std::string& blob, const std::string& key, uint32_t* out) {
+    const std::string needle = "\"" + key + "\"";
+    const size_t pos = blob.find(needle);
+    if (pos == std::string::npos) return false;
+    const size_t colon = blob.find(':', pos);
+    if (colon == std::string::npos) return false;
+    const char* start = blob.c_str() + colon + 1;
+    char* end = nullptr;
+    const unsigned long v = std::strtoul(start, &end, 0);
+    if (end == start) return false;
+    if (out) *out = static_cast<uint32_t>(v);
+    return true;
+}
+
 std::string ExtractObject(const std::string& blob, const std::string& key) {
     const std::string needle = "\"" + key + "\"";
     const size_t pos = blob.find(needle);
@@ -80,6 +113,60 @@ std::string ExtractObject(const std::string& blob, const std::string& key) {
         }
     }
     return {};
+}
+
+/* Bracket-matched "key": [ ... ] extraction, inner content only. */
+std::string ExtractArray(const std::string& blob, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    const size_t pos = blob.find(needle);
+    if (pos == std::string::npos) return {};
+    const size_t open = blob.find('[', pos);
+    if (open == std::string::npos) return {};
+    int depth = 0;
+    for (size_t i = open; i < blob.size(); ++i) {
+        if (blob[i] == '[') ++depth;
+        if (blob[i] == ']') {
+            --depth;
+            if (depth == 0) return blob.substr(open + 1, i - open - 1);
+        }
+    }
+    return {};
+}
+
+/* Split an array body into its top-level {...} object bodies. */
+std::vector<std::string> SplitArrayObjects(const std::string& array_body) {
+    std::vector<std::string> out;
+    int depth = 0;
+    size_t start = std::string::npos;
+    for (size_t i = 0; i < array_body.size(); ++i) {
+        if (array_body[i] == '{') {
+            if (depth == 0) start = i;
+            ++depth;
+        } else if (array_body[i] == '}') {
+            --depth;
+            if (depth == 0 && start != std::string::npos) {
+                out.push_back(array_body.substr(start, i - start + 1));
+                start = std::string::npos;
+            }
+        }
+    }
+    return out;
+}
+
+/* Hex string payload → byte buffer, e.g. "DEADBEEF" -> {0xDE,0xAD,0xBE,0xEF}.
+ * Non-hex pairs are skipped; result capped at max_bytes. */
+uint8_t ParseHexPayload(const std::string& hex, uint8_t* out, uint8_t max_bytes) {
+    if (!out || max_bytes == 0) return 0;
+    std::string clean;
+    clean.reserve(hex.size());
+    for (char c : hex) {
+        if (std::isxdigit(static_cast<unsigned char>(c))) clean.push_back(c);
+    }
+    uint8_t n = 0;
+    for (size_t i = 0; i + 1 < clean.size() && n < max_bytes; i += 2) {
+        out[n++] = static_cast<uint8_t>(std::strtoul(clean.substr(i, 2).c_str(), nullptr, 16));
+    }
+    return n;
 }
 
 StimulusType ParseStimulusType(const std::string& blob) {
@@ -236,6 +323,74 @@ bool SimRuntime::ParseScenario(const char* path) {
     }
     const std::string trace = ExtractString(sim, "trace_csv");
     if (!trace.empty()) config_.trace_csv = trace;
+    {
+        bool b = false;
+        if (ExtractBool(sim, "demo_fallback", &b)) config_.demo_fallback = b;
+    }
+    {
+        const std::string cfg = ExtractString(sim, "config_file");
+        if (!cfg.empty()) config_.config_file = cfg;
+    }
+
+    /* ADC sensor error model — absent keys keep the ideal defaults. */
+    const std::string adc_obj = ExtractObject(blob, "adc");
+    if (!adc_obj.empty()) {
+        if (ExtractNumber(adc_obj, "resolution_bits", &v)) {
+            if (v < 1.0f) v = 1.0f;
+            if (v > 24.0f) v = 24.0f;
+            config_.adc.bits = static_cast<unsigned>(v);
+        }
+        if (ExtractNumber(adc_obj, "vref_v", &v)) config_.adc.vref_v = v;
+        if (ExtractNumber(adc_obj, "ref_v", &v)) config_.adc.ref_volts = v;
+        if (ExtractNumber(adc_obj, "divider", &v)) config_.adc.divider = v;
+        if (ExtractNumber(adc_obj, "sensitivity_v_per_a", &v)) config_.adc.sensitivity_v_per_a = v;
+        if (ExtractNumber(adc_obj, "gain_error", &v)) config_.adc.gain_error = v;
+        if (ExtractNumber(adc_obj, "offset_u_a", &v)) config_.adc.offset_u_a = v;
+        if (ExtractNumber(adc_obj, "offset_v_a", &v)) config_.adc.offset_v_a = v;
+        if (ExtractNumber(adc_obj, "noise_std_a", &v)) config_.adc.noise_std_a = v;
+    }
+
+    /* CAN: loopback toggle plus scheduled injected frames. */
+    const std::string can_obj = ExtractObject(blob, "can");
+    if (!can_obj.empty()) {
+        bool b = false;
+        if (ExtractBool(can_obj, "loopback", &b)) config_.can_loopback = b;
+        const std::string frames_arr = ExtractArray(can_obj, "frames");
+        for (const std::string& f : SplitArrayObjects(frames_arr)) {
+            SimCanInjectFrame frame{};
+            uint32_t id = 0;
+            if (!ExtractUint(f, "id", &id)) continue;
+            frame.id = id;
+            float num = 0.0f;
+            if (ExtractNumber(f, "bus", &num)) frame.bus = static_cast<uint8_t>(num);
+            bool ext = false;
+            if (ExtractBool(f, "ext", &ext)) frame.ext = ext;
+            if (ExtractNumber(f, "start_s", &num)) frame.start_s = num;
+            if (ExtractNumber(f, "time_s", &num)) frame.start_s = num;
+            if (ExtractNumber(f, "period_s", &num)) frame.period_s = num;
+            frame.dlc = ParseHexPayload(ExtractString(f, "data"), frame.data,
+                                        sizeof(frame.data));
+            frame.next_fire_s = frame.start_s;
+            config_.can_frames.push_back(frame);
+        }
+    }
+
+    /* Environment temperatures surfaced by the platform temperature APIs. */
+    const std::string env_obj = ExtractObject(blob, "environment");
+    if (!env_obj.empty()) {
+        if (ExtractNumber(env_obj, "motor_temp_c", &v)) config_.motor_temp_c = v;
+        if (ExtractNumber(env_obj, "inverter_temp_c", &v)) config_.inverter_temp_c = v;
+    }
+
+    /* Simple fault triggers: overcurrent threshold, undervoltage threshold,
+     * and a timed DC-link voltage drop. */
+    const std::string faults_obj = ExtractObject(blob, "faults");
+    if (!faults_obj.empty()) {
+        if (ExtractNumber(faults_obj, "overcurrent_a", &v)) config_.overcurrent_a = v;
+        if (ExtractNumber(faults_obj, "undervoltage_v", &v)) config_.undervoltage_v = v;
+        if (ExtractNumber(faults_obj, "vdc_glitch_time_s", &v)) config_.vdc_glitch_time_s = v;
+        if (ExtractNumber(faults_obj, "vdc_glitch_v", &v)) config_.vdc_glitch_v = v;
+    }
 
     const std::string plant_obj = ExtractObject(blob, "plant");
     if (!plant_obj.empty()) {
@@ -259,7 +414,21 @@ bool SimRuntime::LoadScenario(const char* path) {
     tim_dt_s_ = 1.0f / std::max(1.0f, config_.tim_isr_hz);
     adc_dt_s_ = 1.0f / std::max(1.0f, config_.adc_isr_hz);
     app_dt_s_ = 1.0f / std::max(1.0f, config_.app_loop_hz);
-    
+
+    SimAdcConfigure(config_.adc);
+    SimCanSetLoopback(config_.can_loopback);
+    SimConfigSetBackingFile(config_.config_file.empty()
+                                ? nullptr
+                                : config_.config_file.c_str());
+    demo_fallback_warned_ = false;
+    vdc_glitch_applied_ = false;
+    overcurrent_raised_ = false;
+    undervoltage_raised_ = false;
+    for (auto& frame : config_.can_frames) {
+        frame.next_fire_s = frame.start_s;
+        frame.done = false;
+    }
+
     plant_ = CreatePlantBackend(config_.plant_backend);
     if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
         if (!config_.ngspice_netlist.empty()) ng->SetNetlistPath(config_.ngspice_netlist);
@@ -299,7 +468,11 @@ void SimRuntime::InitDomains() {
         config_.pwm_telem_hz =
             std::clamp(config_.pwm_carrier_hz * 12.0f, 1000.0f, 4000.0f);
     }
-    GetSimContext().vdc_v = config_.motor.vdc_v;
+    auto& ctx = GetSimContext();
+    ctx.vdc_v = config_.motor.vdc_v;
+    ctx.plant_vdc_v = config_.motor.vdc_v;
+    ctx.motor_temp_c = config_.motor_temp_c;
+    ctx.inverter_temp_c = config_.inverter_temp_c;
     if (!plant_) {
         plant_ = CreatePlantBackend(config_.plant_backend);
         plant_->SetParams(config_.motor);
@@ -338,12 +511,42 @@ bool SimRuntime::StepOnce() {
     ctx.throttle_b = throttle_b_;
     ctx.time_us = TimeMicros();
 
+    /* Fault injection: timed DC-link voltage drop, seen by both the control
+     * code (ctx.vdc_v) and the plant (motor params). Applied once. */
+    if (config_.vdc_glitch_time_s >= 0.0f && !vdc_glitch_applied_ &&
+        time_s_ + 1e-9f >= config_.vdc_glitch_time_s) {
+        vdc_glitch_applied_ = true;
+        config_.motor.vdc_v = config_.vdc_glitch_v;
+        ctx.vdc_v = config_.vdc_glitch_v;
+        ctx.plant_vdc_v = config_.vdc_glitch_v;
+        if (plant_) plant_->SetParams(config_.motor);
+        std::fprintf(stderr,
+                     "HostSim: DC link glitch at t=%.3f s -> vdc=%.2f V\n",
+                     static_cast<double>(time_s_),
+                     static_cast<double>(config_.vdc_glitch_v));
+    }
+
     if (time_s_ + 1e-9f >= next_tim_s_) {
+        ctx.pwm_written = false;
         // RTE_EMIT: tim_isr step
-        if (ctx.duty_u == 0.0f && ctx.duty_v == 0.0f && ctx.duty_w == 0.0f) {
-            if (throttle_a_ > 0.0f || throttle_b_ > 0.0f) {
-                float freq_hz = throttle_b_ > 0.0f ? (1.0f + 19.0f * throttle_b_) : 10.0f;
-                platform_spwm_step(throttle_a_, freq_hz, tim_dt_s_, &ctx.duty_u, &ctx.duty_v, &ctx.duty_w);
+        if (!ctx.pwm_written && (throttle_a_ > 0.0f || throttle_b_ > 0.0f)) {
+            if (config_.demo_fallback) {
+                /* Legacy bring-up behaviour: synthesize open-loop SPWM while no
+                 * graph node drives the duties. Opt-in via "demo_fallback":
+                 * true because it silently masks emitted graphs that never
+                 * call platform_pwm_set. */
+                const float freq_hz = throttle_b_ > 0.0f
+                                          ? (1.0f + 19.0f * throttle_b_)
+                                          : 10.0f;
+                platform_spwm_step(throttle_a_, freq_hz, tim_dt_s_,
+                                   &ctx.duty_u, &ctx.duty_v, &ctx.duty_w);
+            } else if (!demo_fallback_warned_) {
+                demo_fallback_warned_ = true;
+                std::fprintf(stderr,
+                             "HostSim: throttle is non-zero but no graph node "
+                             "is driving platform_pwm_set — all duties stay 0 "
+                             "(the legacy SPWM fallback is off; enable with "
+                             "\"demo_fallback\": true in the scenario).\n");
             }
         }
         duty_u_ = ctx.duty_u;
@@ -352,6 +555,9 @@ bool SimRuntime::StepOnce() {
         if (pub.HasDutyOverrideU()) duty_u_ = pub.DutyOverrideU();
         if (pub.HasDutyOverrideV()) duty_v_ = pub.DutyOverrideV();
         if (pub.HasDutyOverrideW()) duty_w_ = pub.DutyOverrideW();
+        ctx.duty_applied_u = duty_u_;
+        ctx.duty_applied_v = duty_v_;
+        ctx.duty_applied_w = duty_w_;
         if (config_.pwm_scope_enabled) {
             auto& pwm = GlobalPwmScope();
             pwm.SetVdc(ctx.vdc_v);
@@ -360,12 +566,48 @@ bool SimRuntime::StepOnce() {
         }
         if (plant_) {
             plant_->Step(duty_u_, duty_v_, duty_w_, tim_dt_s_);
+            ++ctx.plant_step_seq;
+
+            /* Fault injection: surface limits through platform_raise_fault so
+             * graph code sees them via platform_has_critical_fault. */
+            if (config_.overcurrent_a > 0.0f && !overcurrent_raised_) {
+                const auto& st = plant_->State();
+                const float peak = std::max(
+                    {std::fabs(st.ia_a), std::fabs(st.ib_a), std::fabs(st.ic_a)});
+                if (peak > config_.overcurrent_a) {
+                    overcurrent_raised_ = true;
+                    /* Gen6 FaultSource::PhaseOvercurrent / Reason::
+                     * PhaseOvercurrentSoftware numbering. */
+                    platform_raise_fault(128u, 4u);
+                    std::fprintf(stderr,
+                                 "HostSim: overcurrent fault at t=%.3f s "
+                                 "(peak %.2f A > %.2f A)\n",
+                                 static_cast<double>(time_s_),
+                                 static_cast<double>(peak),
+                                 static_cast<double>(config_.overcurrent_a));
+                }
+            }
+            if (config_.undervoltage_v > 0.0f && !undervoltage_raised_ &&
+                ctx.vdc_v < config_.undervoltage_v) {
+                undervoltage_raised_ = true;
+                /* Gen6 FaultSource::Max22530Uv / Reason::PvdTriggered. */
+                platform_raise_fault(8u, 17u);
+                std::fprintf(stderr,
+                             "HostSim: undervoltage fault at t=%.3f s "
+                             "(vdc %.2f V < %.2f V)\n",
+                             static_cast<double>(time_s_),
+                             static_cast<double>(ctx.vdc_v),
+                             static_cast<double>(config_.undervoltage_v));
+            }
         }
         SimNotifyEncoderSample();
         next_tim_s_ += tim_dt_s_;
     }
 
     if (time_s_ + 1e-9f >= next_adc_s_) {
+        /* Conversion trigger: latch a coherent ADC sample set from the plant
+         * before the graph's adc_isr domain reads the injected channels. */
+        SimAdcTriggerConversion();
         // RTE_EMIT: adc_isr step
         next_adc_s_ += adc_dt_s_;
     }
@@ -373,6 +615,19 @@ bool SimRuntime::StepOnce() {
     if (time_s_ + 1e-9f >= next_app_s_) {
         // RTE_EMIT: app_loop step
         next_app_s_ += app_dt_s_;
+    }
+
+    for (auto& frame : config_.can_frames) {
+        if (frame.done) continue;
+        if (time_s_ + 1e-9f >= frame.next_fire_s) {
+            SimCanInject(frame.bus, frame.id, frame.ext, frame.data,
+                         frame.dlc);
+            if (frame.period_s > 0.0f) {
+                frame.next_fire_s += frame.period_s;
+            } else {
+                frame.done = true;
+            }
+        }
     }
 
     if (time_s_ + 1e-9f >= next_telem_s_) {
@@ -518,6 +773,7 @@ int SimRuntime::Run() {
 
 void SimRuntime::Shutdown() {
     if (trace_.is_open()) trace_.close();
+    SimConfigPersist();
 }
 
 } // namespace hostsim

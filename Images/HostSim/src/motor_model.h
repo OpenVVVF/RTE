@@ -23,6 +23,12 @@ struct MotorState {
     float ia_a = 0.0f;
     float ib_a = 0.0f;
     float ic_a = 0.0f;
+    /* Phase terminal voltages applied by the inverter on the last Step()
+     * (duty-derived, vs DC-). Read back by platform_phase_voltage_u/v/w so
+     * telemetry sees what the plant actually received, not the duty request. */
+    float va_v = 0.0f;
+    float vb_v = 0.0f;
+    float vc_v = 0.0f;
 };
 
 class MotorModel {

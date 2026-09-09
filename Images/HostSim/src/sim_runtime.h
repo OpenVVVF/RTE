@@ -2,11 +2,13 @@
 
 #include "motor_model.h"
 #include "plant/plant_backend.h"
+#include "sim_context.h"
 
 #include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace hostsim {
 
@@ -23,6 +25,20 @@ struct StimulusProfile {
     float step_value = 0.0f;
 };
 
+/* Scenario-driven CAN frame injector. period_s > 0 repeats from start_s,
+ * otherwise a single frame at start_s. */
+struct SimCanInjectFrame {
+    uint8_t bus = 1;
+    uint32_t id = 0;
+    bool ext = false;
+    uint8_t dlc = 0;
+    uint8_t data[8] = {0};
+    float start_s = 0.0f;
+    float period_s = 0.0f;
+    float next_fire_s = 0.0f;
+    bool done = false;
+};
+
 struct SimConfig {
     float duration_s = 1.0f;
     float tim_isr_hz = 10000.0f;
@@ -34,15 +50,29 @@ struct SimConfig {
     bool pwm_scope_enabled = false;
     float pwm_carrier_hz = 800.0f;
     bool live = false;
+    /* Legacy scheduler-synthesized SPWM when no graph node drives the duties.
+     * Hidden fallback — must be explicitly requested with "demo_fallback". */
+    bool demo_fallback = false;
     std::string listen_host = "127.0.0.1";
     int listen_port = 14608;
     std::string trace_csv = "trace.csv";
+    std::string config_file; /* "" = in-memory config store only */
     std::string plant_backend = "ode";
     std::string ngspice_netlist = "";
     int ngspice_substeps = 4;
     MotorParams motor{};
     StimulusProfile throttle_a{};
     StimulusProfile throttle_b{};
+    SimAdcConfig adc{};
+    bool can_loopback = true;
+    std::vector<SimCanInjectFrame> can_frames{};
+    float motor_temp_c = 25.0f;
+    float inverter_temp_c = 25.0f;
+    /* Fault injection: 0/absent = disabled. */
+    float overcurrent_a = 0.0f;          /* trip when any |i_phase| exceeds */
+    float undervoltage_v = 0.0f;         /* trip when DC link below         */
+    float vdc_glitch_time_s = -1.0f;     /* at t, drop DC link to ...       */
+    float vdc_glitch_v = 0.0f;
 };
 
 class SimRuntime {
@@ -103,6 +133,11 @@ private:
     float duty_w_ = 0.0f;
     float next_telem_s_ = 0.0f;
     float next_pwm_telem_s_ = 0.0f;
+
+    bool demo_fallback_warned_ = false;
+    bool vdc_glitch_applied_ = false;
+    bool overcurrent_raised_ = false;
+    bool undervoltage_raised_ = false;
 
     bool ParseScenario(const char* path);
     void OpenTrace();

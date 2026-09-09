@@ -92,8 +92,43 @@ Motor parameters are **not** hardcoded to a specific machine. Edit
 - `motor.*` — PMSM Rs, Ld/Lq, flux, pole pairs, inertia, Vdc
 - `throttle_a` / `throttle_b` — `constant`, `ramp`, or `step` profiles
 - `simulation.duration_s`, `trace_csv`, domain rates
+- `simulation.demo_fallback` — opt-in legacy open-loop SPWM synthesized by the
+  scheduler when no graph node drives `platform_pwm_set` (default **false**;
+  when off and duties stay at 0 despite non-zero throttle, HostSim logs a
+  warning once). Only `default_motor.json` enables it, for plant bring-up
+  without a graph.
+- `simulation.config_file` — backing file for the `platform_config_*` key/value
+  store (`key=value` lines, preloaded at startup, flushed on every set);
+  absent = in-memory only.
+- `adc.*` — phase-current ADC model error terms; absent = ideal behaviour.
+  `resolution_bits` (16), `vref_v` (3.3), `ref_v` (1.65), `divider` (2/3),
+  `sensitivity_v_per_a` (1.042e-3), `gain_error` (1.0), `offset_u_a`,
+  `offset_v_a`, `noise_std_a` — defaults in parentheses come from the Gen6
+  signal-chain constants in `include/RteParams.h`.
+- `environment.*` — `motor_temp_c` (25), `inverter_temp_c` (25) surfaced by the
+  platform temperature APIs.
+- `faults.*` — simple triggers surfaced via `platform_has_critical_fault()`:
+  `overcurrent_a` (trip when any |i_phase| exceeds), `undervoltage_v` (trip
+  when the DC link drops below), `vdc_glitch_time_s` + `vdc_glitch_v` (timed
+  DC-link drop applied to both control code and plant).
+- `can.*` — `loopback` (default true: frames sent via `platform_can_send` are
+  readable via `platform_can_rx`, latest-frame store keyed by (bus, id)) and
+  `frames`: scheduled injected traffic, e.g.
+  `{"bus": 1, "id": 291, "period_s": 0.01, "start_s": 0.1, "data": "DEADBEEF"}`
+  (numeric id accepts decimal or `0x` hex; `data` is a hex string, ≤ 8 bytes;
+  `period_s` > 0 repeats, otherwise single shot at `start_s`).
 
 A comment field documents where to paste calibrated values (e.g. 75-5 bench motor).
+
+## Platform coupling
+
+`platform_phase_voltage_u/v/w()` read the terminal voltages the plant actually
+applied on its last step (recorded by the ODE motor model from its clamped
+duty×Vdc drive), not the requested duties — so telemetry reflects a Vdc glitch
+or a live duty override automatically. ADC injected channel reads are
+conversion-latched per `adc_isr` tick; CAN `rx`/`send` follow the Gen6
+latest-frame semantics; `platform_critical_enter/exit` are a real recursive
+mutex.
 
 ## SPWM demo (NodeGUI + HostSim live)
 

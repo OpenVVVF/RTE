@@ -65,6 +65,9 @@ void MotorModel::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     float vc = 0.0f;
     DutiesToAbcVoltage(duty_u_pct, duty_v_pct, duty_w_pct, params_.vdc_v,
                        &va, &vb, &vc);
+    state_.va_v = va;
+    state_.vb_v = vb;
+    state_.vc_v = vc;
 
     float vd = 0.0f;
     float vq = 0.0f;

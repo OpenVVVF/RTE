@@ -16,7 +16,8 @@
     "tim_isr_hz": 10000,
     "adc_isr_hz": 10000,
     "app_loop_hz": 1000,
-    "trace_csv": "trace.csv"
+    "trace_csv": "trace.csv",
+    "demo_fallback": true
   },
   "throttle_a": {
     "type": "ramp",
