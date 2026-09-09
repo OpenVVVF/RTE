@@ -1,0 +1,25 @@
+* HostSim 3-Phase Inverter + Wye RL Load SPICE Netlist
+* External voltage sources are driven by HostSim via libngspice callbacks.
+
+.param VDC = 48.0
+.param RS = 0.05
+.param LS = 0.0001
+
+* Phase U external source
+Vu u_node 0 dc 0 external
+Ru u_node u_mid {RS}
+Lu u_mid n_node {LS}
+
+* Phase V external source
+Vv v_node 0 dc 0 external
+Rv v_node v_mid {RS}
+Lv v_mid n_node {LS}
+
+* Phase W external source
+Vw w_node 0 dc 0 external
+Rw w_node w_mid {RS}
+Lw w_mid n_node {LS}
+
+.tran 10us 1s
+
+.end

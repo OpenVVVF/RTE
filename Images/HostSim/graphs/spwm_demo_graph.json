@@ -1,0 +1,430 @@
+{
+  "name": "hostsim_spwm_demo",
+  "nodeTypes": [
+    {
+      "id": "hw.throttle_a",
+      "displayName": "Throttle A",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "Value = platform_get_throttle_a();",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "hw.throttle_b",
+      "displayName": "Throttle B",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "Value = platform_get_throttle_b();",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "mod.freq_map",
+      "displayName": "Map Throttle To Freq",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "Throttle",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "FreqHz",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {
+        "FreqMin": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+        "FreqMax": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+      },
+      "inlineCode": "FreqHz = FreqMin + (FreqMax - FreqMin) * Throttle;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "mod.spwm",
+      "displayName": "SPWM Step",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "ModIndex",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "FreqHz",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Duty_A",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "Duty_B",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "Duty_C",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {
+        "TimDt": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+      },
+      "inlineCode": "platform_spwm_step(ModIndex, FreqHz, TimDt, &Duty_A, &Duty_B, &Duty_C);",
+      "constructorCode": "platform_spwm_reset();",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "hw.pwm.set_duty",
+      "displayName": "Set PWM Duty Cycles",
+      "maxInstances": 1,
+      "isEntryPoint": false,
+      "domain": "tim_isr",
+      "inputPorts": [
+        {
+          "name": "Duty_A",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "Duty_B",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        },
+        {
+          "name": "Duty_C",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "outputPorts": [],
+      "parameterTypes": {},
+      "inlineCode": "platform_pwm_set(Duty_A, Duty_B, Duty_C);",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "hw.spwm_angle_deg",
+      "displayName": "SPWM Angle (deg)",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "Value = platform_spwm_get_angle_deg();",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "hw.encoder_angle_deg",
+      "displayName": "Encoder Angle (deg)",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "Value = platform_get_encoder_angle_latest();",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "hw.phase_current_a",
+      "displayName": "Phase Current A",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Value",
+          "direction": "output",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "parameterTypes": {},
+      "inlineCode": "float iu = 0.0f; float iv = 0.0f; float iw = 0.0f; platform_get_phase_currents(&iu, &iv, &iw); Value = iu;",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    },
+    {
+      "id": "app.telemetry_log",
+      "displayName": "Telemetry Log",
+      "maxInstances": 0,
+      "isEntryPoint": false,
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "Value",
+          "direction": "input",
+          "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+        }
+      ],
+      "outputPorts": [],
+      "parameterTypes": {
+        "Key": {"quantity": "string", "frame": "scalar", "dtype": "f32"}
+      },
+      "inlineCode": "platform_telemetry_log_f32(Key, Value);",
+      "constructorCode": "",
+      "classHeader": "",
+      "classDefinition": ""
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ThrottleA",
+      "type": "hw.throttle_a",
+      "displayName": "Throttle A (mod index)",
+      "domain": "tim_isr",
+      "position": {"x": 0.0, "y": 0.0},
+      "parameters": {}
+    },
+    {
+      "id": "ThrottleB",
+      "type": "hw.throttle_b",
+      "displayName": "Throttle B (freq map)",
+      "domain": "tim_isr",
+      "position": {"x": 0.0, "y": 120.0},
+      "parameters": {}
+    },
+    {
+      "id": "FreqMap",
+      "type": "mod.freq_map",
+      "displayName": "Electrical Freq Map",
+      "domain": "tim_isr",
+      "position": {"x": 240.0, "y": 120.0},
+      "parameters": {"FreqMin": "1.0", "FreqMax": "20.0"}
+    },
+    {
+      "id": "Spwm",
+      "type": "mod.spwm",
+      "displayName": "SPWM",
+      "domain": "tim_isr",
+      "position": {"x": 480.0, "y": 60.0},
+      "parameters": {"TimDt": "0.0001"}
+    },
+    {
+      "id": "PwmOut",
+      "type": "hw.pwm.set_duty",
+      "displayName": "PWM Out",
+      "domain": "tim_isr",
+      "position": {"x": 760.0, "y": 60.0},
+      "parameters": {}
+    },
+    {
+      "id": "LogModIndex",
+      "type": "app.telemetry_log",
+      "displayName": "Log Mod Index",
+      "domain": "app_loop",
+      "position": {"x": 240.0, "y": 360.0},
+      "parameters": {"Key": "mod_index"}
+    },
+    {
+      "id": "LogElecFreq",
+      "type": "app.telemetry_log",
+      "displayName": "Log Elec Freq",
+      "domain": "app_loop",
+      "position": {"x": 480.0, "y": 360.0},
+      "parameters": {"Key": "elec_freq_hz"}
+    },
+    {
+      "id": "LogSpwmAngle",
+      "type": "app.telemetry_log",
+      "displayName": "Log SPWM Angle",
+      "domain": "app_loop",
+      "position": {"x": 720.0, "y": 360.0},
+      "parameters": {"Key": "spwm_angle_deg"}
+    },
+    {
+      "id": "LogEncoderAngle",
+      "type": "app.telemetry_log",
+      "displayName": "Log Encoder Angle",
+      "domain": "app_loop",
+      "position": {"x": 960.0, "y": 360.0},
+      "parameters": {"Key": "encoder_angle_deg"}
+    },
+    {
+      "id": "LogPhaseCurrent",
+      "type": "app.telemetry_log",
+      "displayName": "Log Phase A Current",
+      "domain": "app_loop",
+      "position": {"x": 1200.0, "y": 360.0},
+      "parameters": {"Key": "phase_a_a"}
+    },
+    {
+      "id": "ThrottleAApp",
+      "type": "hw.throttle_a",
+      "displayName": "Throttle A",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 360.0},
+      "parameters": {}
+    },
+    {
+      "id": "ThrottleBApp",
+      "type": "hw.throttle_b",
+      "displayName": "Throttle B",
+      "domain": "app_loop",
+      "position": {"x": 0.0, "y": 480.0},
+      "parameters": {}
+    },
+    {
+      "id": "FreqMapApp",
+      "type": "mod.freq_map",
+      "displayName": "Electrical Freq Map",
+      "domain": "app_loop",
+      "position": {"x": 240.0, "y": 480.0},
+      "parameters": {"FreqMin": "1.0", "FreqMax": "20.0"}
+    },
+    {
+      "id": "SpwmAngle",
+      "type": "hw.spwm_angle_deg",
+      "displayName": "SPWM Angle",
+      "domain": "app_loop",
+      "position": {"x": 720.0, "y": 480.0},
+      "parameters": {}
+    },
+    {
+      "id": "EncoderAngle",
+      "type": "hw.encoder_angle_deg",
+      "displayName": "Encoder Angle",
+      "domain": "app_loop",
+      "position": {"x": 960.0, "y": 480.0},
+      "parameters": {}
+    },
+    {
+      "id": "PhaseCurrentA",
+      "type": "hw.phase_current_a",
+      "displayName": "Phase Current A",
+      "domain": "app_loop",
+      "position": {"x": 1200.0, "y": 480.0},
+      "parameters": {}
+    },
+    {
+      "id": "noop_adc",
+      "type": "hw.throttle_a",
+      "displayName": "ADC noop",
+      "domain": "adc_isr",
+      "position": {"x": 0.0, "y": 720.0},
+      "parameters": {}
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {"nodeId": "ThrottleA", "portName": "Value"},
+      "to": {"nodeId": "Spwm", "portName": "ModIndex"}
+    },
+    {
+      "id": "c2",
+      "from": {"nodeId": "ThrottleB", "portName": "Value"},
+      "to": {"nodeId": "FreqMap", "portName": "Throttle"}
+    },
+    {
+      "id": "c3",
+      "from": {"nodeId": "FreqMap", "portName": "FreqHz"},
+      "to": {"nodeId": "Spwm", "portName": "FreqHz"}
+    },
+    {
+      "id": "c4",
+      "from": {"nodeId": "Spwm", "portName": "Duty_A"},
+      "to": {"nodeId": "PwmOut", "portName": "Duty_A"}
+    },
+    {
+      "id": "c5",
+      "from": {"nodeId": "Spwm", "portName": "Duty_B"},
+      "to": {"nodeId": "PwmOut", "portName": "Duty_B"}
+    },
+    {
+      "id": "c6",
+      "from": {"nodeId": "Spwm", "portName": "Duty_C"},
+      "to": {"nodeId": "PwmOut", "portName": "Duty_C"}
+    },
+    {
+      "id": "c7",
+      "from": {"nodeId": "ThrottleAApp", "portName": "Value"},
+      "to": {"nodeId": "LogModIndex", "portName": "Value"}
+    },
+    {
+      "id": "c8",
+      "from": {"nodeId": "ThrottleBApp", "portName": "Value"},
+      "to": {"nodeId": "FreqMapApp", "portName": "Throttle"}
+    },
+    {
+      "id": "c9",
+      "from": {"nodeId": "FreqMapApp", "portName": "FreqHz"},
+      "to": {"nodeId": "LogElecFreq", "portName": "Value"}
+    },
+    {
+      "id": "c10",
+      "from": {"nodeId": "SpwmAngle", "portName": "Value"},
+      "to": {"nodeId": "LogSpwmAngle", "portName": "Value"}
+    },
+    {
+      "id": "c11",
+      "from": {"nodeId": "EncoderAngle", "portName": "Value"},
+      "to": {"nodeId": "LogEncoderAngle", "portName": "Value"}
+    },
+    {
+      "id": "c12",
+      "from": {"nodeId": "PhaseCurrentA", "portName": "Value"},
+      "to": {"nodeId": "LogPhaseCurrent", "portName": "Value"}
+    }
+  ],
+  "bridges": []
+}
