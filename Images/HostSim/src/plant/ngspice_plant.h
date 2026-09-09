@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace hostsim {
 
@@ -39,6 +40,10 @@ private:
     int substeps_ = 4;
     bool sharedspice_loaded_ = false;
     bool circuit_loaded_ = false;
+    // True when the loaded netlist exposes Veu/Vev/Vew external sources,
+    // meaning the back-EMF is in-circuit and the V-sources take only the
+    // inverter terminal voltages.
+    bool has_bemf_sources_ = false;
     bool first_step_ = true;
     double current_sim_time_ = 0.0;
 
@@ -47,6 +52,27 @@ private:
     std::atomic<double> pending_vu_{0.0};
     std::atomic<double> pending_vv_{0.0};
     std::atomic<double> pending_vw_{0.0};
+    // Back-EMF values for netlists that expose Veu/Vev/Vew external sources
+    // (back-EMF in-circuit); unused otherwise.
+    std::atomic<double> pending_eu_{0.0};
+    std::atomic<double> pending_ev_{0.0};
+    std::atomic<double> pending_ew_{0.0};
+
+    // Trace-time target of the in-flight bg_run/bg_resume. The GetSyncData
+    // callback reads it to override ngspice's post-breakpoint timestep cut
+    // with a single "whole remaining substep" step (skip the re-ramp).
+    std::atomic<double> sync_target_time_{0.0};
+    // Runtime opt-in (HOSTSIM_NGSPICE_SYNC_JUMP=1): GetSyncData overrides the
+    // post-breakpoint timestep cut and jumps straight to the stop target,
+    // skipping ngspice's per-resume delta re-ramp (~1.8x fewer internal
+    // steps, but only ~4% wall time on the RL/PMSM demos and slightly
+    // different trajectories). Default off: identical behavior to not
+    // having the override at all.
+    bool sync_override_ = false;
+    // Set by the sync callback whenever ngspice has to redo a step; cleared by
+    // AdvanceSpiceTo when a new stop target is armed. While set, the callback
+    // leaves the timestep to ngspice for the rest of that substep.
+    std::atomic<bool> sync_redo_block_{false};
 
     void* lib_handle_ = nullptr;
 
@@ -107,6 +133,7 @@ private:
     void UnloadSharedLibrary();
     void Command(const char* cmd);
     void LoadNetlist();
+    static bool DetectBackEmfSources(const std::vector<std::string>& lines);
     void ApplyParams();
     void UpdatePendingVoltages(float du_pct, float dv_pct, float dw_pct);
     bool AdvanceSpiceTo(double target_time);

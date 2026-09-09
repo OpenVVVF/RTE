@@ -20,6 +20,8 @@ Vw w_node 0 dc 0 external
 Rw w_node w_mid {RS}
 Lw w_mid n_node {LS}
 
-.tran 10us 1s
+* Without UIC the OP shorts the inductors and the transient starts from the
+* DC operating point (~416A inrush); UIC forces the zero-current cold start.
+.tran 10us 1s uic
 
 .end

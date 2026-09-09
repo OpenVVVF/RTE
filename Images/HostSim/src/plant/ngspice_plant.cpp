@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -68,6 +69,7 @@ int CaseInsensitiveCompare(const char* a, const char* b) {
 } // namespace
 
 NgspicePlant::NgspicePlant() {
+    if (std::getenv("HOSTSIM_NGSPICE_SYNC_JUMP")) sync_override_ = true;
     if (LoadSharedLibrary() && BindSymbols()) {
         sharedspice_loaded_ = true;
         int ident = 0;
@@ -164,6 +166,8 @@ void NgspicePlant::Reset() {
     current_sim_time_ = 0.0;
     first_step_ = true;
     analysis_failed_ = false;
+    sync_target_time_.store(0.0);
+    sync_redo_block_.store(false);
 
     if (!sharedspice_loaded_) return;
 
@@ -189,6 +193,29 @@ float NgspicePlant::ThetaElectricalDeg() const {
     return state_.theta_e_rad * 180.0f / kPi;
 }
 
+bool NgspicePlant::DetectBackEmfSources(
+    const std::vector<std::string>& lines) {
+    static const char* const kNames[3] = {"veu", "vev", "vew"};
+    bool found[3] = {false, false, false};
+    // ngspice lowercases netlist names internally, so match
+    // case-insensitively.
+    for (const auto& raw : lines) {
+        std::string line = Trim(raw);
+        if (line.empty() || line[0] == '*') continue;
+        for (auto& c : line) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (line.find("external") == std::string::npos) continue;
+        std::istringstream iss(line);
+        std::string name;
+        iss >> name;
+        for (int k = 0; k < 3; ++k) {
+            if (name == kNames[k]) found[k] = true;
+        }
+    }
+    return found[0] && found[1] && found[2];
+}
+
 void NgspicePlant::LoadNetlist() {
     if (netlist_path_.empty() || !fn_ngSpice_Circ_) return;
 
@@ -203,6 +230,12 @@ void NgspicePlant::LoadNetlist() {
     while (std::getline(in, line)) {
         if (Trim(line).empty()) continue;
         storage.push_back(line);
+    }
+
+    has_bemf_sources_ = DetectBackEmfSources(storage);
+    if (has_bemf_sources_) {
+        std::cerr << "HostSim: netlist exposes Veu/Vev/Vew back-EMF sources; "
+                     "back-EMF is driven in-circuit\n";
     }
 
     std::vector<char*> lines;
@@ -252,9 +285,23 @@ void NgspicePlant::UpdatePendingVoltages(float du_pct, float dv_pct,
 
     const float vn = (va + vb + vc) / 3.0f;
 
-    pending_vu_.store(static_cast<double>(va - vn - ea));
-    pending_vv_.store(static_cast<double>(vb - vn - eb));
-    pending_vw_.store(static_cast<double>(vc - vn - ec));
+    if (has_bemf_sources_) {
+        // PMSM netlist: the back-EMF is an in-circuit external source, so the
+        // V-sources receive only the inverter terminal voltages and Veu/Vev/Vew
+        // receive the phase back-EMFs.
+        pending_vu_.store(static_cast<double>(va - vn));
+        pending_vv_.store(static_cast<double>(vb - vn));
+        pending_vw_.store(static_cast<double>(vc - vn));
+        pending_eu_.store(static_cast<double>(ea));
+        pending_ev_.store(static_cast<double>(eb));
+        pending_ew_.store(static_cast<double>(ec));
+    } else {
+        // RL netlist: the back-EMF has to be folded into the V-source value
+        // because the circuit contains no element for it.
+        pending_vu_.store(static_cast<double>(va - vn - ea));
+        pending_vv_.store(static_cast<double>(vb - vn - eb));
+        pending_vw_.store(static_cast<double>(vc - vn - ec));
+    }
 }
 
 float NgspicePlant::ReadCurrent(const char* vecname) const {
@@ -339,6 +386,9 @@ bool NgspicePlant::AdvanceSpiceTo(double target_time) {
         std::lock_guard<std::mutex> lk(bg_mutex_);
         target_pauses = bg_pauses_ + 1;
     }
+
+    sync_target_time_.store(target_time);
+    sync_redo_block_.store(false);
 
     if (first_step_) {
         Command("bg_run");
@@ -436,6 +486,15 @@ int NgspicePlant::CallbackGetVSRCData(double* vval, double /*timeval*/,
     } else if (CaseInsensitiveCompare(node, "w_node") == 0 ||
                CaseInsensitiveCompare(node, "vw") == 0) {
         *vval = self->pending_vw_.load();
+    } else if (CaseInsensitiveCompare(node, "u_e") == 0 ||
+               CaseInsensitiveCompare(node, "veu") == 0) {
+        *vval = self->pending_eu_.load();
+    } else if (CaseInsensitiveCompare(node, "v_e") == 0 ||
+               CaseInsensitiveCompare(node, "vev") == 0) {
+        *vval = self->pending_ev_.load();
+    } else if (CaseInsensitiveCompare(node, "w_e") == 0 ||
+               CaseInsensitiveCompare(node, "vew") == 0) {
+        *vval = self->pending_ew_.load();
     } else {
         *vval = 0.0;
     }
@@ -449,11 +508,29 @@ int NgspicePlant::CallbackGetISRCData(double* ival, double /*timeval*/,
     return 0;
 }
 
-int NgspicePlant::CallbackGetSyncData(double /*actualtime*/,
-                                       double* /*deltatime*/,
-                                       double /*olddelta*/, int /*redostep*/,
+int NgspicePlant::CallbackGetSyncData(double actualtime, double* deltatime,
+                                       double /*olddelta*/, int redostep,
                                        int /*ident*/, int /*location*/,
-                                       void* /*userdata*/) {
+                                       void* userdata) {
+    if (!deltatime || !userdata) return 0;
+    auto* self = static_cast<NgspicePlant*>(userdata);
+    if (!self->sync_override_ || !self->circuit_loaded_) return 0;
+    if (redostep != 0) {
+        // ngspice is redoing a step (non-convergence / truncation error): let
+        // its own reduced delta stand, and stop overriding for the rest of
+        // this substep so we can never fight its error control (no livelock).
+        self->sync_redo_block_.store(true);
+        return 0;
+    }
+    if (self->sync_redo_block_.load()) return 0;
+    // sharedspice's sharedsync() applies whatever the callback leaves in
+    // *deltatime as the next CKTdelta (clamped only to the final time), so we
+    // can replace the post-breakpoint re-ramp with a jump straight to the
+    // current stop target. ngspice's own breakpoint truncation happens before
+    // this callback, so assigning the remaining distance can neither overshoot
+    // the stop breakpoint nor skip a pause.
+    const double remaining = self->sync_target_time_.load() - actualtime;
+    if (remaining > *deltatime) *deltatime = remaining;
     return 0;
 }
 
