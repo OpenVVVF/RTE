@@ -4,8 +4,9 @@
  *
  * The MCP2221A text console maps to the host stdout; the USB-enumeration
  * delay is skipped (not load-bearing).  Binary telemetry frames do not use
- * this path (Telemetry transmits via HAL_UART_Transmit_DMA directly, which
- * the SIL HAL swallows).
+ * this path (Telemetry transmits via HAL_UART_Transmit_DMA directly; in
+ * --live mode those bytes are proxied onto the TCP link — see
+ * sil_live_server.cpp).
  *
  * mcp2221a_driver.h has no extern "C" guards, so firmware C++ TUs reference
  * the mangled C++ spellings — those live in sil_uart_cpp.cpp and forward to

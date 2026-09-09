@@ -1,0 +1,42 @@
+{
+  "comment": "HostSIL FOC live-telemetry demo: same setup as sil_foc_demo but with a 30 s duration so there is time to attach RTEStudio (--tcp 127.0.0.1:14608 --protocol ivp) or scripts/ivp_probe.py while the firmware streams. Run: host_sil scenarios/sil_foc_live.json --live",
+  "motor": {
+    "name": "sil_small_bldc",
+    "rs_ohm": 0.05,
+    "ld_h": 0.0001,
+    "lq_h": 0.0001,
+    "flux_wb": 0.008,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 0.001,
+    "friction_nm_per_rad_s": 0.001,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 30.0,
+    "app_loop_hz": 1000,
+    "trace_csv": "sil_foc_live_trace.csv",
+    "trace_decim_us": 5000
+  },
+  "throttle_a": { "type": "constant", "value": 0.0 },
+  "control": {
+    "start": true,
+    "start_time_s": 1.6,
+    "iq_a": 8.0,
+    "id_a": 0.0
+  },
+  "firmware_config": {
+    "Motor.Poles": 14.0,
+    "Motor.Encoder.SinCos.Sign": 1.0,
+    "Motor.Encoder.SinCos.OffsetDeg": 0.0,
+    "Motor.Encoder.SinCos.CyclesRev": 1.0,
+    "Motor.Encoder.Type": 1.0,
+    "Motor.Type": 2.0,
+    "Motor.Resistance.Avg": 0.05,
+    "Motor.Ld": 0.0001,
+    "Motor.Lq": 0.0001,
+    "Motor.Lambda": 0.008,
+    "Motor.PMSM.Inductance.Ld": 0.0001,
+    "Motor.PMSM.Inductance.Lq": 0.0001,
+    "Motor.PMSM.FluxLinkage.Wb": 0.008
+  }
+}

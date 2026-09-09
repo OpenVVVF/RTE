@@ -14,9 +14,17 @@
  * cooperative rendezvous (see sil_rt.h / README.md).
  *
  * Usage:
- *   host_sil <scenario.json> [--realtime N]
+ *   host_sil <scenario.json> [--realtime N] [--live [--port P]]
  *     --realtime N   wall-clock pacing factor (0 or omitted = as fast as
  *                    possible; 1 = realtime)
+ *     --live         serve the firmware's own USART3 telemetry byte stream
+ *                    (COBS-framed InverterProtocol) verbatim on a TCP port for
+ *                    RTEStudio (--tcp H:P --protocol ivp); implies realtime 1.0
+ *                    unless --realtime overrides it
+ *     --port P       live listen port (default 14608, same as HostSim)
+ *
+ * In --live mode bytes a client sends are logged but not forwarded to the
+ * firmware shell (see sil/sil_live_server.h).
  *
  * Scenario JSON: see scenarios/sil_foc_demo.json and src/scenario.h.
  */
@@ -24,6 +32,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -33,6 +42,7 @@
 #include "sil_rt.h"
 #include "sil_world.h"
 #include "sil_hooks.h"
+#include "sil_live_server.h"
 
 #include "Inverter/AppState.h"
 #include "Inverter/Control/ControlSupervisor.h"
@@ -232,8 +242,7 @@ void engageControl() {
     }
 }
 
-/* Host-side active-fault listing (works even though telemetry prints are
- * swallowed by the SIL UART sink). */
+/* Host-side active-fault listing (works even without the --live link). */
 void printActiveFaults() {
     const uint32_t flags = Inverter::FaultManager::instance().activeFlags();
     if (flags == 0) {
@@ -250,9 +259,17 @@ void printActiveFaults() {
 
 } // namespace
 
+/* Ensure the live server socket is closed on every early return path. */
+struct LiveServerGuard {
+    ~LiveServerGuard() { sil_live_stop(); }   /* safe when never started */
+};
+
 int main(int argc, char** argv) {
     const char* scenario_path = "scenarios/sil_foc_demo.json";
     float realtime = 0.0f;
+    bool  realtime_set = false;
+    bool  live = false;
+    uint16_t live_port = SIL_LIVE_DEFAULT_PORT;
 
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
@@ -262,9 +279,25 @@ int main(int argc, char** argv) {
                 return 1;
             }
             realtime = static_cast<float>(std::atof(argv[i]));
+            realtime_set = true;
+        } else if (std::strcmp(arg, "--live") == 0) {
+            live = true;
+        } else if (std::strcmp(arg, "--port") == 0) {
+            if (++i >= argc) {
+                std::fprintf(stderr, "missing value for --port\n");
+                return 1;
+            }
+            const int p = std::atoi(argv[i]);
+            if (p < 1 || p > 65535) {
+                std::fprintf(stderr, "invalid port: %s\n", argv[i]);
+                return 1;
+            }
+            live_port = static_cast<uint16_t>(p);
         } else if (std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0) {
             std::fprintf(stderr,
-                         "usage: %s [scenario.json] [--realtime N]\n", argv[0]);
+                         "usage: %s [scenario.json] [--realtime N] "
+                         "[--live [--port P]]\n",
+                         argv[0]);
             return 0;
         } else if (arg[0] != '-') {
             scenario_path = arg;
@@ -272,6 +305,12 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "unknown argument: %s\n", arg);
             return 1;
         }
+    }
+
+    /* --live is meant to be watched from RTEStudio; default to realtime
+     * pacing (an explicit --realtime still wins). */
+    if (live && !realtime_set) {
+        realtime = 1.0f;
     }
 
     std::string err;
@@ -324,6 +363,11 @@ int main(int argc, char** argv) {
                 static_cast<double>(g_scn.vdc_v));
 
     /* --- Boot the firmware on its own thread. --- */
+    LiveServerGuard live_guard;
+    if (live && !sil_live_start("127.0.0.1", live_port)) {
+        std::fprintf(stderr, "[SIL] --live requested but the listen socket "
+                             "failed (see above); running without live link\n");
+    }
     sil_rt_start_firmware();
     g_failed = !sil_rt_idle_to_gate(fastTick);
     if (g_failed) {
@@ -370,6 +414,7 @@ int main(int argc, char** argv) {
         if (static_cast<double>(now) >= g_sched.next_app_us) {
             updateThrottleVoltages();
             silUartPumpTxCompletion();
+            sil_live_poll();
             if (!sil_rt_run_app_iteration(fastTick)) {
                 std::fprintf(stderr, "[SIL] firmware died in main loop: %s\n",
                              sil_rt_fw_error());
