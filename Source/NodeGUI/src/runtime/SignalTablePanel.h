@@ -26,6 +26,10 @@ public:
     std::array<QStringList, 3> GraphSignalSets() const;
     void SetGraphSignalSets(const std::array<QStringList, 3>& sets);
 
+    // Programmatically set the shared plot-view window (seconds). Emits
+    // viewSecondsChanged just as a manual slider drag would.
+    void SetViewSeconds(double seconds);
+
 signals:
     void graphSignalsChanged(const std::array<QStringList, 3>& sets);
     void viewSecondsChanged(double seconds);

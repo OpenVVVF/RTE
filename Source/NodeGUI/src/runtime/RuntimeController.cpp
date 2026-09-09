@@ -36,9 +36,13 @@ constexpr SimWave kSimWaves[] = {
 RuntimeController::RuntimeController(QString port,
                                      bool simulate,
                                      Protocol protocol,
+                                     QString tcpHost,
+                                     int tcpPort,
                                      QObject* parent)
     : QObject(parent)
     , port_(std::move(port))
+    , tcpHost_(std::move(tcpHost))
+    , tcpPort_(tcpPort)
     , simulate_(simulate)
     , protocol_(protocol)
     , startTime_(std::chrono::steady_clock::now()) {
@@ -80,11 +84,31 @@ RuntimeController::RuntimeController(QString port,
                        0,
                        s.last_seq});
     });
+
+    tcpClient_.onF32Value = [this](uint16_t, const std::string& key, float value, uint32_t) {
+        Push(F32Item{key, value, NowSec()});
+    };
+    tcpClient_.onStringValue = [this](uint16_t, const std::string& key, const std::string& value,
+                                      uint32_t) { Push(StringItem{key, value}); };
+    tcpClient_.onConsoleLine = [this](const std::string& line) { Push(ConsoleItem{line}); };
+    tcpClient_.onStats = [this](const ivp::ClientStats& s) {
+        Push(StatsItem{s.rx_hz,
+                       s.rx_bytes_per_sec,
+                       s.good_frames,
+                       s.bad_frames,
+                       s.reject_crc,
+                       s.reject_hdr,
+                       s.reject_len,
+                       s.reject_decode,
+                       0,
+                       s.last_seq});
+    };
 }
 
 RuntimeController::~RuntimeController() {
     legacyClient_.stop();
     ivpClient_.stop();
+    tcpClient_.Stop();
 }
 
 void RuntimeController::Start() {
@@ -93,6 +117,8 @@ void RuntimeController::Start() {
         simTimer_->setInterval(10);  // 100 Hz
         connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
         simTimer_->start();
+    } else if (UsingTcp()) {
+        tcpClient_.Start(tcpHost_, tcpPort_);
     } else if (protocol_ == Protocol::Legacy) {
         legacyClient_.start(port_.toStdString());
     } else {
@@ -112,7 +138,9 @@ void RuntimeController::SetPort(const QString& port) {
     }
 
     if (!simulate_) {
-        if (protocol_ == Protocol::Legacy) {
+        if (UsingTcp()) {
+            tcpClient_.Stop();
+        } else if (protocol_ == Protocol::Legacy) {
             legacyClient_.stop();
         } else {
             ivpClient_.stop();
@@ -120,7 +148,9 @@ void RuntimeController::SetPort(const QString& port) {
     }
     port_ = normalized;
     if (!simulate_ && !suspended_) {
-        if (protocol_ == Protocol::Legacy) {
+        if (UsingTcp()) {
+            tcpClient_.Start(tcpHost_, tcpPort_);
+        } else if (protocol_ == Protocol::Legacy) {
             legacyClient_.start(port_.toStdString());
         } else {
             ivpClient_.start(port_.toStdString());
@@ -131,6 +161,9 @@ void RuntimeController::SetPort(const QString& port) {
 bool RuntimeController::SendLine(const std::string& line) {
     if (suspended_ || simulate_) {
         return false;
+    }
+    if (UsingTcp()) {
+        return tcpClient_.SendLine(line);
     }
     return protocol_ == Protocol::Legacy ? legacyClient_.sendLine(line)
                                          : ivpClient_.sendCommandLine(line);
@@ -176,7 +209,9 @@ void RuntimeController::SuspendForFlash() {
     if (simulate_) {
         return;
     }
-    if (protocol_ == Protocol::Legacy) {
+    if (UsingTcp()) {
+        tcpClient_.Stop();
+    } else if (protocol_ == Protocol::Legacy) {
         legacyClient_.suspend();
     } else {
         ivpClient_.stop();
@@ -188,7 +223,9 @@ void RuntimeController::ResumeAfterFlash() {
         return;
     }
     if (!simulate_) {
-        if (protocol_ == Protocol::Legacy) {
+        if (UsingTcp()) {
+            tcpClient_.Start(tcpHost_, tcpPort_);
+        } else if (protocol_ == Protocol::Legacy) {
             legacyClient_.resume();
         } else {
             ivpClient_.start(port_.toStdString());
@@ -281,6 +318,13 @@ void RuntimeController::TickSimulator() {
 float RuntimeController::NowSec() const {
     return std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime_)
         .count();
+}
+
+QString RuntimeController::Port() const {
+    if (!UsingTcp()) {
+        return port_;
+    }
+    return QStringLiteral("tcp %1:%2").arg(tcpHost_).arg(tcpPort_);
 }
 
 }  // namespace NodeGUI::runtime

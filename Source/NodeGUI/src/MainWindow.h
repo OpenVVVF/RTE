@@ -50,10 +50,14 @@ public:
     GraphScene* Scene() const { return graphScene_.get(); }
 
     // Adds the top-level Runtime and Firmware Update tabs, then starts the
-    // telemetry client and authenticated local automation session.
+    // telemetry client and authenticated local automation session. A non-empty
+    // tcpHost selects the HostSim --live InverterProtocol-over-TCP link
+    // instead of the serial port.
     void SetupRuntime(const QString& serialPort,
                       bool simulate,
-                      runtime::Protocol protocol = runtime::Protocol::Legacy);
+                      runtime::Protocol protocol = runtime::Protocol::Legacy,
+                      const QString& tcpHost = {},
+                      int tcpPort = 0);
 
 private slots:
     void OnOpen();

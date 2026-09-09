@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IvpTcpClient.h"
 #include "LegacyTelemetryClient.h"
 #include "TelemetryStore.h"
 
@@ -27,13 +28,16 @@ enum class Protocol {
     Inverter,
 };
 
-// Bridges the threaded telemetry client into the Qt world. Client callbacks
-// fire on the client's worker thread; they only append to a pending queue. A
-// ~33 ms QTimer on the GUI thread drains the queue into the TelemetryStore and
-// emits storeChanged() once per batch.
+// Bridges the telemetry client(s) into the Qt world. Client callbacks fire on
+// the client's worker thread (Legacy/Inverter) or on the GUI thread (TCP);
+// they only append to a pending queue. A ~33 ms QTimer on the GUI thread
+// drains the queue into the TelemetryStore and emits storeChanged() once per
+// batch.
 //
-// With simulate=true no serial port is opened; synthetic 100 Hz signals are
-// fed through the same path (used for UI verification without hardware).
+// With simulate=true no link is opened; synthetic 100 Hz signals are fed
+// through the same path (used for UI verification without hardware). When a
+// TCP endpoint is given (--tcp host:port), the COBS-framed InverterProtocol
+// stream from HostSim --live is used instead of the serial port.
 class RuntimeController : public QObject {
     Q_OBJECT
 
@@ -41,6 +45,8 @@ public:
     RuntimeController(QString port,
                       bool simulate,
                       Protocol protocol = Protocol::Legacy,
+                      QString tcpHost = {},
+                      int tcpPort = 0,
                       QObject* parent = nullptr);
     ~RuntimeController() override;
 
@@ -66,10 +72,14 @@ public:
     // a new session at the current time.
     void ClearSession();
 
-    QString Port() const { return port_; }
+    QString Port() const;
     void SetPort(const QString& port);
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }
+
+    // True when --tcp host:port was given; the TCP IVP link replaces the
+    // serial port for this run.
+    bool UsingTcp() const { return !tcpHost_.isEmpty() && tcpPort_ > 0; }
 
     // Frees the serial port for the firmware updater and back.
     void SuspendForFlash();
@@ -114,13 +124,17 @@ private:
     bool SendLine(const std::string& line);
 
     QString port_;
+    QString tcpHost_;
+    int tcpPort_ = 0;
     bool simulate_ = false;
     Protocol protocol_;
     bool suspended_ = false;
 
-    // Only the backend matching protocol_ is started.
+    // Only the backend matching the link selection (simulate / tcp / protocol)
+    // is started.
     LegacyTelemetryClient legacyClient_;
     ivp::InverterClient ivpClient_;
+    IvpTcpClient tcpClient_;
     TelemetryStore store_;
     QTimer* drainTimer_ = nullptr;
 

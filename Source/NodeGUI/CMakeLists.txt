@@ -34,6 +34,10 @@ add_executable(RTEStudio
     src/runtime/TelemetryStore.h
     src/runtime/LegacyTelemetryClient.cpp
     src/runtime/LegacyTelemetryClient.h
+    src/runtime/IvpStreamDecoder.cpp
+    src/runtime/IvpStreamDecoder.h
+    src/runtime/IvpTcpClient.cpp
+    src/runtime/IvpTcpClient.h
     src/runtime/RuntimeController.cpp
     src/runtime/RuntimeController.h
     src/runtime/RuntimeSessionExporter.cpp

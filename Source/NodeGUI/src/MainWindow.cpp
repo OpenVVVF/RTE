@@ -441,12 +441,14 @@ MainWindow::MainWindow(QWidget* parent)
 
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
-                              runtime::Protocol protocol) {
+                              runtime::Protocol protocol,
+                              const QString& tcpHost,
+                              int tcpPort) {
     const QString effectiveSerialPort =
         serialPort.trimmed().isEmpty() ? preferences_.serialPort : serialPort.trimmed();
     preferences_.serialPort = effectiveSerialPort;
-    runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(effectiveSerialPort, simulate, protocol);
+    runtimeController_ = std::make_unique<runtime::RuntimeController>(
+        effectiveSerialPort, simulate, protocol, tcpHost, tcpPort);
     localSessionServer_ = std::make_unique<runtime::LocalSessionServer>(
         runtimeController_->Store(), this);
 

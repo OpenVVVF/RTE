@@ -30,7 +30,103 @@ QSettings MakeSettings() {
     return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
 }
 
+bool LayoutIsEmpty(const std::array<QStringList, 3>& sets) {
+    for (const QStringList& list : sets) {
+        if (!list.isEmpty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
+
+std::array<QStringList, 3> RuntimeTab::BuiltinSpwmLayout() {
+    return {{
+        QStringList{QStringLiteral("pwm_gate_u"),
+                    QStringLiteral("pwm_gate_v"),
+                    QStringLiteral("pwm_gate_w")},
+        QStringList{QStringLiteral("duty_u"),
+                    QStringLiteral("duty_v"),
+                    QStringLiteral("duty_w")},
+        QStringList{QStringLiteral("i_a"), QStringLiteral("i_b"), QStringLiteral("i_c")},
+    }};
+}
+
+std::array<QStringList, 3> RuntimeTab::BuiltinFocLayout() {
+    return {{
+        QStringList{QStringLiteral("cg_id_a"), QStringLiteral("cg_iq_a")},
+        QStringList{QStringLiteral("cg_vd_v"), QStringLiteral("cg_vq_v")},
+        QStringList{QStringLiteral("cg_iu_a"),
+                    QStringLiteral("cg_iv_a"),
+                    QStringLiteral("cg_iw_a")},
+    }};
+}
+
+void RuntimeTab::EnsureBuiltinPresets() {
+    auto settings = MakeSettings();
+    const bool hasSpwm = settings.contains(QStringLiteral("runtime/presets/SPWM"));
+    const bool hasFoc = settings.contains(QStringLiteral("runtime/presets/FOC"));
+    if (hasSpwm && hasFoc) {
+        return;
+    }
+
+    if (!hasSpwm) {
+        const auto layout = BuiltinSpwmLayout();
+        settings.beginGroup(QStringLiteral("runtime/presets/SPWM"));
+        for (int i = 0; i < 3; ++i) {
+            settings.setValue(QStringLiteral("graph%1").arg(i + 1), layout[i]);
+        }
+        settings.endGroup();
+    }
+
+    if (!hasFoc) {
+        const auto layout = BuiltinFocLayout();
+        settings.beginGroup(QStringLiteral("runtime/presets/FOC"));
+        for (int i = 0; i < 3; ++i) {
+            settings.setValue(QStringLiteral("graph%1").arg(i + 1), layout[i]);
+        }
+        settings.endGroup();
+    }
+
+    QStringList recent = settings.value(QStringLiteral("runtime/recent")).toStringList();
+    if (!hasSpwm && !recent.contains(QStringLiteral("SPWM"))) {
+        recent.prepend(QStringLiteral("SPWM"));
+    }
+    if (!hasFoc && !recent.contains(QStringLiteral("FOC"))) {
+        recent.prepend(QStringLiteral("FOC"));
+    }
+    while (recent.size() > kMaxRecentPresets) {
+        recent.removeLast();
+    }
+    settings.setValue(QStringLiteral("runtime/recent"), recent);
+}
+
+void RuntimeTab::ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout) {
+    if (!LayoutIsEmpty(signalTablePanel_->GraphSignalSets())) {
+        return;
+    }
+    signalTablePanel_->SetGraphSignalSets(layout);
+    if (layout == BuiltinFocLayout()) {
+        ApplyFocViewWindows();
+        presetStatus_->setText(QStringLiteral("applied FOC plot layout"));
+    } else {
+        ApplySpwmViewWindows();
+        presetStatus_->setText(QStringLiteral("applied SPWM plot layout"));
+    }
+}
+
+void RuntimeTab::ApplySpwmViewWindows() {
+    // G1 scope (~4 carrier periods @ 100 Hz), G2 duty slow, G3 current.
+    telemetryPanel_->SetGraphViewSeconds({0.04, 1.0, 0.5});
+    signalTablePanel_->SetViewSeconds(1.0);
+}
+
+void RuntimeTab::ApplyFocViewWindows() {
+    // G1 d/q current, G2 d/q voltage, G3 phase currents.
+    telemetryPanel_->SetGraphViewSeconds({0.5, 0.5, 0.5});
+    signalTablePanel_->SetViewSeconds(0.5);
+}
 
 RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     : QWidget(parent)
@@ -79,6 +175,14 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     auto* loadButton = new QPushButton(QStringLiteral("Load"), this);
     connect(loadButton, &QPushButton::clicked, this, &RuntimeTab::OnLoadPreset);
     presetRow->addWidget(loadButton);
+    auto* spwmButton = new QPushButton(QStringLiteral("SPWM"), this);
+    spwmButton->setToolTip(QStringLiteral("Apply the SPWM demo plot layout"));
+    connect(spwmButton, &QPushButton::clicked, this, &RuntimeTab::OnLoadBuiltinSpwm);
+    presetRow->addWidget(spwmButton);
+    auto* focButton = new QPushButton(QStringLiteral("FOC"), this);
+    focButton->setToolTip(QStringLiteral("Apply the FOC plot layout"));
+    connect(focButton, &QPushButton::clicked, this, &RuntimeTab::OnLoadBuiltinFoc);
+    presetRow->addWidget(focButton);
     presetStatus_ = new QLabel(this);
     presetRow->addWidget(presetStatus_);
     presetRow->addStretch(1);
@@ -101,11 +205,26 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     connect(controller_, &RuntimeController::storeChanged,
             this, &RuntimeTab::OnStoreChanged);
 
+    EnsureBuiltinPresets();
     RefreshRecentCombo();
     OnStoreChanged();
 }
 
 void RuntimeTab::OnStoreChanged() {
+    if (!applied_builtin_layout_) {
+        // FOC graphs publish d/q currents; prefer the FOC layout when those
+        // are present. SPWM demo graphs do not, so duty_u triggers the SPWM
+        // layout. Only auto-applies while the layout is still untouched.
+        float probe = 0.0f;
+        if (controller_->Store().LatestValue("cg_id_a", probe)) {
+            ApplyLayoutIfEmpty(BuiltinFocLayout());
+            applied_builtin_layout_ = true;
+        } else if (controller_->Store().LatestValue("duty_u", probe)) {
+            ApplyLayoutIfEmpty(BuiltinSpwmLayout());
+            applied_builtin_layout_ = true;
+        }
+    }
+
     // Cheap scalar read — the full Snapshot() copies every history and is far
     // too expensive for the ~30 Hz header refresh.
     const auto stats = controller_->Store().GetStatsLine();
@@ -159,6 +278,22 @@ void RuntimeTab::OnSavePreset() {
     presetStatus_->setText(QStringLiteral("saved '%1'").arg(name));
     RefreshRecentCombo();
     recentCombo_->setCurrentText(name);
+}
+
+void RuntimeTab::OnLoadBuiltinSpwm() {
+    signalTablePanel_->SetGraphSignalSets(BuiltinSpwmLayout());
+    ApplySpwmViewWindows();
+    recentCombo_->setCurrentText(QStringLiteral("SPWM"));
+    presetStatus_->setText(QStringLiteral("loaded SPWM layout"));
+    applied_builtin_layout_ = true;
+}
+
+void RuntimeTab::OnLoadBuiltinFoc() {
+    signalTablePanel_->SetGraphSignalSets(BuiltinFocLayout());
+    ApplyFocViewWindows();
+    recentCombo_->setCurrentText(QStringLiteral("FOC"));
+    presetStatus_->setText(QStringLiteral("loaded FOC layout"));
+    applied_builtin_layout_ = true;
 }
 
 void RuntimeTab::OnLoadPreset() {

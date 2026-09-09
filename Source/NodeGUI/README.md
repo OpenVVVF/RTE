@@ -33,6 +33,30 @@ Open a graph from the command line:
 
 Or launch with no arguments and use `File → Open`.
 
+## Live telemetry
+
+The Runtime screen can attach to a live InverterProtocol stream:
+
+```sh
+rte-studio graph.json --tcp 127.0.0.1:14608 --protocol ivp
+```
+
+`--tcp host:port` connects over TCP (and implies `--protocol ivp`) — this is
+the link host_sim publishes with `--live` (`Images/HostSim`, default
+127.0.0.1:14608). The stream is COBS-framed `Lib/InverterProtocol` packets;
+decoding uses the library's C core (`protocol.c`, `packet_parser.c`). The
+client reconnects automatically after a disconnect, and the console panel's
+command box sends HostSim text shell commands (`throttle a 0.5`, `duty u 60`,
+`pause`, `resume`) back over the same socket.
+
+Other modes: `--simulate` feeds synthetic 100 Hz telemetry instead of a link,
+and `--serial <port>` + `--protocol legacy|ivp` attach to a real device.
+
+The Runtime tab has built-in SPWM and FOC plot-layout presets (also saved under
+`runtime/presets/` so they can be tweaked); the SPWM/FOC buttons restore them,
+and a matching layout auto-applies on first contact with a stream that
+publishes `duty_u` or `cg_id_a`.
+
 ## What it does today
 
 - Loads node-type templates from `RTE/Assets/NodeTemplates`.

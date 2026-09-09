@@ -63,6 +63,18 @@ void SignalTablePanel::SetGraphSignalSets(const std::array<QStringList, 3>& sets
     emit graphSignalsChanged(graphSignals_);
 }
 
+void SignalTablePanel::SetViewSeconds(double seconds) {
+    // Slider is in tenths of a second.
+    const int pos = qBound(viewSlider_->minimum(),
+                           static_cast<int>(seconds * 10.0 + 0.5),
+                           viewSlider_->maximum());
+    if (viewSlider_->value() != pos) {
+        viewSlider_->setValue(pos);  // fires OnViewSecondsChanged -> viewSecondsChanged
+    } else {
+        emit viewSecondsChanged(seconds);
+    }
+}
+
 void SignalTablePanel::OnStoreChanged() {
     RebuildSignalTable();
 
