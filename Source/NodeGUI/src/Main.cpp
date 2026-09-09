@@ -5,7 +5,9 @@
 #include <QApplication>
 #include <QLockFile>
 #include <QSurfaceFormat>
+#include <QTimer>
 
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -15,14 +17,18 @@ namespace {
 void PrintUsage(const char* exe) {
     std::cerr << "usage: " << exe
               << " [graph.json] [--serial <port>] [--tcp <host:port>] "
-                 "[--protocol legacy|ivp] [--simulate]\n"
+                 "[--protocol legacy|ivp] [--simulate] [--sim-smoke]\n"
               << "  --serial <port>      override the saved telemetry serial port\n"
               << "  --tcp <host:port>    connect InverterProtocol over TCP "
                  "(implies --protocol ivp)\n"
               << "                       e.g. --tcp 127.0.0.1:14608 for HostSim --live\n"
               << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
               << "                       or 'ivp' (new InverterProtocol stack)\n"
-              << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n";
+              << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n"
+              << "  --sim-smoke          headless Build & Run Simulation self-test: run the\n"
+              << "                       graph (default: the HostSim SPWM demo) in the\n"
+              << "                       simulator, verify live TCP telemetry, print\n"
+              << "                       SIM_SMOKE PASS/FAIL and exit\n";
 }
 
 bool ParseHostPort(const std::string& spec, QString* host, int* port) {
@@ -74,6 +80,7 @@ int main(int argc, char* argv[]) {
     QString tcpHost;
     int tcpPort = 0;
     bool simulate = false;
+    bool simSmoke = false;
     auto protocol = NodeGUI::runtime::Protocol::Legacy;
     std::string graphPath;
 
@@ -113,6 +120,8 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "--simulate") {
             simulate = true;
+        } else if (arg == "--sim-smoke") {
+            simSmoke = true;
         } else if (arg == "--help" || arg == "-h") {
             PrintUsage(argv[0]);
             return 0;
@@ -124,6 +133,27 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (simSmoke) {
+        // The smoke test runs against a graph on disk rather than the editor
+        // buffer; default to the HostSim SPWM demo shipped with the tree.
+        if (graphPath.empty()) {
+#ifdef RTE_PROJECT_ROOT
+            graphPath =
+                std::string(RTE_PROJECT_ROOT) + "/Images/HostSim/graphs/spwm_demo_graph.json";
+#endif
+        }
+        std::error_code existsError;
+        if (graphPath.empty()
+            || !std::filesystem::is_regular_file(graphPath, existsError)) {
+            std::fprintf(stderr, "SIM_SMOKE FAIL: graph not found: %s\n",
+                         graphPath.c_str());
+            return 1;
+        }
+        // No serial scraping while attached to the simulator.
+        serialPort.clear();
+        simulate = true;
+    }
+
     NodeGUI::MainWindow window;
     window.SetupRuntime(serialPort, simulate, protocol, tcpHost, tcpPort);
     window.showNormal();
@@ -133,6 +163,14 @@ int main(int argc, char* argv[]) {
             std::cerr << "Could not open graph: " << graphPath << std::endl;
             return 1;
         }
+    }
+
+    if (simSmoke) {
+        // Defer into the event loop: the QCoreApplication::exit() on the PASS
+        // path is a no-op before exec() starts.
+        QTimer::singleShot(0, &window, [&window, graphPath] {
+            window.StartSimSmoke(QString::fromStdString(graphPath));
+        });
     }
 
     return app.exec();

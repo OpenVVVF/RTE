@@ -58,6 +58,12 @@ add_executable(RTEStudio
     src/runtime/FramKeysManager.h
     src/runtime/RuntimeTab.cpp
     src/runtime/RuntimeTab.h
+    src/simulation/SimRunner.cpp
+    src/simulation/SimRunner.h
+    src/simulation/ScenarioFile.cpp
+    src/simulation/ScenarioFile.h
+    src/simulation/ScenarioDialog.cpp
+    src/simulation/ScenarioDialog.h
 )
 
 set_target_properties(RTEStudio PROPERTIES

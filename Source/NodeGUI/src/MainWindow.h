@@ -11,6 +11,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <QVector>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,6 +39,10 @@ class FlashPanel;
 class RuntimeTab;
 }
 
+namespace simulation {
+class SimRunner;
+}
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -58,6 +63,12 @@ public:
                       runtime::Protocol protocol = runtime::Protocol::Legacy,
                       const QString& tcpHost = {},
                       int tcpPort = 0);
+
+    // Headless self-test for the Build & Run Simulation path (the --sim-smoke
+    // flag): starts the sim runner on graphPath without any dialog, waits for
+    // TCP telemetry frames, prints "SIM_SMOKE PASS/FAIL ..." to stdout, and
+    // exits the application with code 0/1.
+    void StartSimSmoke(const QString& graphPath);
 
 private slots:
     void OnOpen();
@@ -103,6 +114,17 @@ private:
     void ShowBuildLogs();
     void AppendBuildLog(const QString& text);
     void SetBuildActionsEnabled(bool enabled);
+
+    // Simulation screen plumbing (SimRunner + the Simulation log page of the
+    // editor console dock). StartSimulation is shared by the menu action and
+    // the --sim-smoke self-test.
+    void OnRunSimulation();
+    void OnStopSimulation();
+    void OnScenarioEditor();
+    bool StartSimulation(const QString& graphPath, const QString& scenarioPath);
+    void OnSimFinished(int exitCode, bool crashed);
+    void ShowSimulationLog();
+    void AppendSimLog(const QString& text);
     void ConnectModelSignals();
     void ResetHistory();
     void RecordHistorySnapshot();
@@ -170,6 +192,21 @@ private:
     QAction* generateAction_ = nullptr;
     QAction* flashAction_ = nullptr;
     QAction* generateFlashAction_ = nullptr;
+    QAction* runSimAction_ = nullptr;
+    QAction* stopSimAction_ = nullptr;
+    QAction* scenarioEditorAction_ = nullptr;
+    // Owned SimRunner, created in SetupRuntime; streams to simLogView_.
+    simulation::SimRunner* simRunner_ = nullptr;
+    QPlainTextEdit* simLogView_ = nullptr;
+    // True while the runtime link is overridden onto the live sim TCP endpoint.
+    bool simAttached_ = false;
+    // Graceful Stop() was requested; OnSimFinished reports "stopped by user"
+    // rather than an error exit.
+    bool simStopRequested_ = false;
+    // --sim-smoke self-test bookkeeping.
+    bool simSmokeActive_ = false;
+    bool simSmokeAttached_ = false;
+    uint64_t simSmokeBaselineFrames_ = 0;
     QProcess* buildProcess_ = nullptr;
     CliStage cliStage_ = CliStage::None;
     BuildCommand activeBuildCommand_ = BuildCommand::Generate;

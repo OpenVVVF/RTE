@@ -52,6 +52,25 @@ command box sends HostSim text shell commands (`throttle a 0.5`, `duty u 60`,
 Other modes: `--simulate` feeds synthetic 100 Hz telemetry instead of a link,
 and `--serial <port>` + `--protocol legacy|ivp` attach to a real device.
 
+## Build & Run Simulation
+
+`Simulation → Build & Run Simulation (Live)` (`F6`) is the graph-mode HostSim
+loop: it saves the graph, asks for a scenario (default: automatic, mirroring
+`rte sim`'s rule), then runs `rte sim --graph <file> --live` as a child
+process. Its emit/build/run output streams to Console → Simulation; once
+host_sim announces its live endpoint, the Runtime tab attaches to it through
+the same `--tcp` link described above (`127.0.0.1:14608` by default). The
+`rte` executable is found next to RTE Studio, via `RTE_CLI`, or on `PATH`.
+`Simulation → Stop Simulation` (`Shift+F6`) signals the whole simulator
+process group; on exit the previous telemetry link is restored.
+
+The same dialog edits the common scenario keys (motor parameters, sim rates,
+plant backend + ngspice netlist) with Save / Save As; saving rewrites only
+those keys and preserves the rest of the file. `Simulation → Scenario
+Editor…` opens it without running. A headless self-test of the whole path is
+`rte-studio --sim-smoke [graph.json]` (prints `SIM_SMOKE PASS/FAIL`, exits
+0/1; default graph is `Images/HostSim/graphs/spwm_demo_graph.json`).
+
 The Runtime tab has built-in SPWM and FOC plot-layout presets (also saved under
 `runtime/presets/` so they can be tweaked); the SPWM/FOC buttons restore them,
 and a matching layout auto-applies on first contact with a stream that
@@ -105,4 +124,4 @@ publishes `duty_u` or `cg_id_a`.
 
 ## What it does not do yet
 
-- No packaged project/archive format or closed-loop plant simulator.
+- No packaged project/archive format.

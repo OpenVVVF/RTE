@@ -81,6 +81,19 @@ public:
     // serial port for this run.
     bool UsingTcp() const { return !tcpHost_.isEmpty() && tcpPort_ > 0; }
 
+    // Temporarily switches the live link to a HostSim --live TCP endpoint
+    // (Build & Run Simulation attach) without changing the configured link;
+    // ClearLinkOverride() restores it. The TCP client reconnects on its own
+    // until host_sim is listening, so calling this before the simulator is up
+    // is safe.
+    void ConnectTcpOverride(const QString& host, int port);
+    void ClearLinkOverride();
+    bool HasLinkOverride() const { return linkOverride_; }
+
+    // True while the TCP IVP client holds an open connection, on the
+    // configured --tcp link or an active override.
+    bool IsTcpConnected() const;
+
     // Frees the serial port for the firmware updater and back.
     void SuspendForFlash();
     void ResumeAfterFlash();
@@ -122,6 +135,10 @@ private:
     void TickSimulator();
     float NowSec() const;
     bool SendLine(const std::string& line);
+    // Starts/stops whichever link the current configuration selects
+    // (override TCP, simulated feed, configured TCP, or serial).
+    void StartActiveLink();
+    void StopActiveLink();
 
     QString port_;
     QString tcpHost_;
@@ -129,6 +146,9 @@ private:
     bool simulate_ = false;
     Protocol protocol_;
     bool suspended_ = false;
+    bool linkOverride_ = false;
+    QString overrideHost_;
+    int overridePort_ = 0;
 
     // Only the backend matching the link selection (simulate / tcp / protocol)
     // is started.

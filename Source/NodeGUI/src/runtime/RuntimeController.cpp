@@ -112,23 +112,72 @@ RuntimeController::~RuntimeController() {
 }
 
 void RuntimeController::Start() {
+    StartActiveLink();
+
+    drainTimer_ = new QTimer(this);
+    drainTimer_->setInterval(33);  // ~30 Hz GUI updates
+    connect(drainTimer_, &QTimer::timeout, this, &RuntimeController::DrainQueue);
+    drainTimer_->start();
+}
+
+void RuntimeController::StartActiveLink() {
+    if (linkOverride_) {
+        tcpClient_.Start(overrideHost_, overridePort_);
+        return;
+    }
     if (simulate_) {
-        simTimer_ = new QTimer(this);
-        simTimer_->setInterval(10);  // 100 Hz
-        connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
+        if (!simTimer_) {
+            simTimer_ = new QTimer(this);
+            simTimer_->setInterval(10);  // 100 Hz
+            connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
+        }
         simTimer_->start();
-    } else if (UsingTcp()) {
+        return;
+    }
+    if (UsingTcp()) {
         tcpClient_.Start(tcpHost_, tcpPort_);
     } else if (protocol_ == Protocol::Legacy) {
         legacyClient_.start(port_.toStdString());
     } else {
         ivpClient_.start(port_.toStdString());
     }
+}
 
-    drainTimer_ = new QTimer(this);
-    drainTimer_->setInterval(33);  // ~30 Hz GUI updates
-    connect(drainTimer_, &QTimer::timeout, this, &RuntimeController::DrainQueue);
-    drainTimer_->start();
+void RuntimeController::StopActiveLink() {
+    if (simTimer_) {
+        simTimer_->stop();
+    }
+    legacyClient_.stop();
+    ivpClient_.stop();
+    tcpClient_.Stop();
+}
+
+void RuntimeController::ConnectTcpOverride(const QString& host, int port) {
+    overrideHost_ = host.trimmed();
+    overridePort_ = port;
+    linkOverride_ = true;
+    if (suspended_) {
+        return;
+    }
+    StopActiveLink();
+    tcpClient_.Start(overrideHost_, overridePort_);
+}
+
+void RuntimeController::ClearLinkOverride() {
+    if (!linkOverride_) {
+        return;
+    }
+    linkOverride_ = false;
+    StopActiveLink();
+    overrideHost_.clear();
+    overridePort_ = 0;
+    if (!suspended_) {
+        StartActiveLink();
+    }
+}
+
+bool RuntimeController::IsTcpConnected() const {
+    return tcpClient_.IsConnected();
 }
 
 void RuntimeController::SetPort(const QString& port) {
@@ -137,32 +186,23 @@ void RuntimeController::SetPort(const QString& port) {
         return;
     }
 
-    if (!simulate_) {
-        if (UsingTcp()) {
-            tcpClient_.Stop();
-        } else if (protocol_ == Protocol::Legacy) {
-            legacyClient_.stop();
-        } else {
-            ivpClient_.stop();
-        }
+    // Only the serial link is re-targeted here; a TCP override or the
+    // simulated feed keeps running untouched.
+    const bool restartSerial = !simulate_ && !linkOverride_ && !suspended_;
+    if (restartSerial) {
+        StopActiveLink();
     }
     port_ = normalized;
-    if (!simulate_ && !suspended_) {
-        if (UsingTcp()) {
-            tcpClient_.Start(tcpHost_, tcpPort_);
-        } else if (protocol_ == Protocol::Legacy) {
-            legacyClient_.start(port_.toStdString());
-        } else {
-            ivpClient_.start(port_.toStdString());
-        }
+    if (restartSerial) {
+        StartActiveLink();
     }
 }
 
 bool RuntimeController::SendLine(const std::string& line) {
-    if (suspended_ || simulate_) {
+    if (suspended_ || (simulate_ && !linkOverride_)) {
         return false;
     }
-    if (UsingTcp()) {
+    if (linkOverride_ || UsingTcp()) {
         return tcpClient_.SendLine(line);
     }
     return protocol_ == Protocol::Legacy ? legacyClient_.sendLine(line)
@@ -206,10 +246,10 @@ void RuntimeController::SuspendForFlash() {
     }
     suspended_ = true;
     store_.SetSuspended(true);
-    if (simulate_) {
+    if (simulate_ && !linkOverride_) {
         return;
     }
-    if (UsingTcp()) {
+    if (linkOverride_ || UsingTcp()) {
         tcpClient_.Stop();
     } else if (protocol_ == Protocol::Legacy) {
         legacyClient_.suspend();
@@ -222,9 +262,10 @@ void RuntimeController::ResumeAfterFlash() {
     if (!suspended_) {
         return;
     }
-    if (!simulate_) {
-        if (UsingTcp()) {
-            tcpClient_.Start(tcpHost_, tcpPort_);
+    if (!simulate_ || linkOverride_) {
+        if (linkOverride_ || UsingTcp()) {
+            tcpClient_.Start(linkOverride_ ? overrideHost_ : tcpHost_,
+                             linkOverride_ ? overridePort_ : tcpPort_);
         } else if (protocol_ == Protocol::Legacy) {
             legacyClient_.resume();
         } else {
@@ -321,6 +362,9 @@ float RuntimeController::NowSec() const {
 }
 
 QString RuntimeController::Port() const {
+    if (linkOverride_) {
+        return QStringLiteral("sim %1:%2").arg(overrideHost_).arg(overridePort_);
+    }
     if (!UsingTcp()) {
         return port_;
     }
