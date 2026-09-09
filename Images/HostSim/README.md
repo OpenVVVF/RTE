@@ -1,5 +1,8 @@
 # HostSim — upstream-compatible host simulator base image
 
+> Overview of both simulators, `rte sim`, the live GUI loop, and the ngspice
+> backend: [docs/simulation.md](../../docs/simulation.md).
+
 Host-side base image for `RTECodeEmitter`. Generated domain code calls
 `platform_api.h` only; motor plant, sensor injection, and scheduling live in
 this base image.

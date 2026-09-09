@@ -1,5 +1,15 @@
 # HostSim — Implementation Plan
 
+> **Historical document.** This was the design plan for the ngspice plant
+> backend. The work described here has **landed**: the `IPlant` seam
+> (`src/plant/plant_backend.h`), the ODE refactor (`OdePlant`), the
+> sharedspice loader (`NgspicePlant`), scenario-selected backends
+> (`simulation.plant.backend`), the bundled `plants/inverter_rl.cir` and
+> `plants/inverter_pmsm.cir` netlists, and live IVP telemetry are all in the
+> tree. The status tables and "TBD" sections below predate the
+> implementation — read them for design rationale only. Current capability
+> documentation lives in [docs/simulation.md](../../../docs/simulation.md).
+
 Host-side base image for `RTECodeEmitter`: generated domain code calls
 `platform_api.h`; scheduling, sensors, and the **plant** live in this tree.
 

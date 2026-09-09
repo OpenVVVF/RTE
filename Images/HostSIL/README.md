@@ -1,5 +1,8 @@
 # HostSIL — firmware-in-the-loop SIL simulator
 
+> Overview of both simulators and when to use which:
+> [docs/simulation.md](../../docs/simulation.md).
+
 `host_sil` compiles the **real Gen6FW application code, unmodified**, for the
 host (Linux) and runs it against the HostSim ODE PMSM plant on a simulated
 clock: software-in-the-loop with the firmware's own init sequence, TIM1 ISR
@@ -11,6 +14,35 @@ cmake --build build/hostsil_build -j
 cd Images/HostSIL && ../../build/hostsil_build/host_sil scenarios/sil_foc_demo.json --realtime 0
 python3 scripts/validate_trace.py sil_foc_trace.csv --control-start-s 1.6 --iq-a 8
 ```
+
+### Live telemetry link (`--live`)
+
+```
+cd Images/HostSIL && ../../build/hostsil_build/host_sil scenarios/sil_foc_demo.json --live
+build/bin/RTEStudio --tcp 127.0.0.1:14608 --protocol ivp        # from repo root
+```
+
+With `--live`, `host_sil` proxies the firmware's **own** USART3 TX byte stream
+(the COBS-framed InverterProtocol packets produced by `Telemetry.cpp`,
+tapped in `HAL_UART_Transmit_DMA`) verbatim onto a TCP socket — the same
+stream RTEStudio decodes from real hardware, produced here by the real
+firmware at its own rates (100 Hz DATA; DEFINEs re-announced at 10 Hz, so a
+client joining mid-run has the full key table within ~100 ms).
+`--live` implies `--realtime 1.0` unless `--realtime` is given explicitly;
+`--port P` selects the listen port (default **14608**, same as HostSim).
+Without `--live` no socket is opened and batch behavior is unchanged.
+
+Client→server bytes (RTEStudio's HostSim-style text commands such as
+`throttle a 0.5`) are accepted, decoded into lines, and **logged to stdout
+only** — they are *not* forwarded to the Gen6FW `CommandShell`, whose UART
+RX path consumes single bytes via `HAL_UART_Receive_IT`/interrupt callbacks
+that SIL intentionally does not drive.  Use scenario `firmware_config` /
+`control` seeds to affect the firmware instead.  `scripts/ivp_probe.py` is a
+stdlib-only command-line probe that decodes the stream and prints the
+firmware keys (handy without a GUI).
+
+Note the live link ends when the scenario `simulation.duration_s` elapses;
+use a longer-duration scenario for interactive sessions.
 
 The configure step auto-emits the firmware tree
 (`build/hostsil_fw_src` = copy of `Images/Gen6FW/` + graph-generated
@@ -35,6 +67,8 @@ graph at configure time with `-DSIL_GRAPH=<path>` and a fresh `-DSIL_FW_SRC`.
 * `sil/sil_*.cpp` — driver shims implementing the firmware's own driver
   classes (`PWM`, `PhaseCurrentADC`, `EncoderADC`, `MAX22530`,
   `ApplicationSensors`, `CanBus`, F-RAM, UART, …) against `silWorld()`.
+* `sil/sil_live_server.*` — the optional `--live` TCP server proxying the
+  firmware's COBS-framed UART telemetry stream to RTEStudio.
 * `src/main.cpp` — scenario parsing, scheduler, trace CSV.
 
 ### Per-TIM1-update-event order (hardware order)
@@ -75,8 +109,10 @@ on the firmware thread.
 * **Sensors are ideal** apart from quantization and the documented LA37S600
   polarity inversion; encoder sin/cos is centered at 32768/30000 counts with
   one cycle per mechanical revolution.
-* **CAN/UART**: frames are accepted and dropped; telemetry TX DMA completes
-  at the next app tick.  FRAM is a 256 KiB in-memory image (optional file
+* **CAN/UART**: CAN frames are accepted and dropped; telemetry TX DMA
+  completes at the next app tick.  The telemetry bytes themselves (COBS
+  InverterProtocol) are forwarded verbatim to TCP clients in `--live` mode
+  and discarded otherwise.  FRAM is a 256 KiB in-memory image (optional file
   backing via scenario `fram_image`).
 * The firmware's `platform_micros()`/DWT paths see cycles = sim_us *
   550 MHz.
