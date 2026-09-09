@@ -38,10 +38,32 @@ rte validate --graph graph.json --templates Assets/NodeTemplates
 rte generate --graph graph.json --base-source Images/Gen6FW --output out
 rte build --graph graph.json --base-source Images/Gen6FW
 rte flash --firmware firmware.bin --serial /dev/ttyACM0
+rte sim --graph graph.json [--scenario file.json] [--base-source DIR] [--name NAME]
+        [--live] [--realtime F] [--no-build] [--output-format text|json]
 ```
 
 Use `--format json` for one structured result or `--format jsonl` for progress
 events. Commands never require a local web server.
+
+`rte sim` emits a graph into the HostSim base image (default `Images/HostSim`
+in the same checkout, discovered by walking up from the `rte` executable),
+builds it with cmake under `build/hostsim_<name>_emitted_build`, and runs
+`host_sim` in the foreground. `<name>` defaults to the graph file stem.
+
+- `RTE_EMITTER` overrides the RTECodeEmitter executable path; otherwise the
+  emitter next to `rte` (or on `PATH`) is used.
+- Without `--scenario`, the scenario matching the graph name (minus a trailing
+  `_graph`) under `<base-source>/scenarios/` is used, falling back to
+  `scenarios/default_motor.json` — the same rule as
+  `Images/HostSim/scripts/run_spwm_live.sh`.
+- Batch mode defaults to `--realtime 0` (as fast as the host can run); with
+  `--live` the default is 1.0 (wall-clock). Live mode prints the IVP telemetry
+  endpoint (default `127.0.0.1:14608`) and stays in the foreground until
+  Ctrl+C.
+- The simulator's trace CSV lands in the run directory
+  `build/hostsim_<name>_emitted_build/run/`; the completed run reports the
+  absolute path as a `sim-trace` artifact event. `--no-build` reuses the most
+  recent emit and/or build for the name.
 
 `rte flash` controls MCP2221A GP0 (BOOT0) and GP1 (active-low NRST) directly
 before and after invoking STM32CubeProgrammer. It uses the kernel GPIO
