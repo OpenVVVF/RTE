@@ -67,15 +67,25 @@ std::recursive_mutex g_critical_mu;
 /* --------------------------------------------------------------------------
  * Phase-current ADC sensor model.
  *
- * Mirrors the Gen6FW PhaseCurrentADC signal chain (constants in RteParams.h):
- *   sig_counts = ref_counts + i_measured * counts_per_amp, clamped to the ADC
+ * Mirrors the Gen6FW PhaseCurrentADC signal chain (constants in RteParams.h),
+ * including the inverted sensor wiring documented for the hardware and
+ * modeled the same way in HostSIL (sil_phase_current_adc.cpp):
+ *   sig_counts = ref_counts - i_measured * counts_per_amp, clamped to the ADC
  *   i_measured = i_true * gain_error + bias + gaussian noise
  *   current a graph recovers = (sig - ref) * lsb / (divider * sensitivity)
+ *     minus the calibrated zero offset, i.e. -i_measured + bias
+ *
+ * Graphs fix the sign with their InvertPolarity parameter (or an explicit
+ * negation, e.g. Custom.PhaseCurrentsBurst) exactly as on hardware.
  *
  * Conversions are latch-based like the STM32 injected channels: the runtime
  * calls SimAdcTriggerConversion() at each adc_isr tick; reads after that see a
  * coherent sample set. Direct reads without a trigger convert on demand once
  * per plant step (tracked via SimContext::plant_step_seq).
+ *
+ * The startup zero-offset calibration is not simulated separately: the
+ * "calibrated" offset reported by platform_adc_get_offset_*() is what a
+ * Gen6 calibration at standstill would measure, i.e. -(injected bias).
  * -------------------------------------------------------------------------- */
 SimAdcConfig g_adc_cfg{};
 bool g_adc_valid = false;
@@ -84,6 +94,7 @@ uint32_t g_adc_u_sig = 0;
 uint32_t g_adc_v_sig = 0;
 uint32_t g_adc_u_ref = 0;
 uint32_t g_adc_v_ref = 0;
+uint32_t g_adc_burst_time_us = 0;
 std::mt19937 g_adc_rng{0xC0FFEEu};
 std::normal_distribution<float> g_adc_noise{0.0f, 1.0f};
 
@@ -107,10 +118,22 @@ uint32_t AdcCurrentToCounts(float i_true_a, float bias_a) {
     if (g_adc_cfg.noise_std_a > 0.0f) {
         i_meas += g_adc_noise(g_adc_rng) * g_adc_cfg.noise_std_a;
     }
-    long counts = std::lround(static_cast<float>(AdcRefCounts()) + i_meas * counts_per_amp);
+    /* Inverted transducer wiring, as on the Gen6 hardware: sig counts
+     * decrease with positive phase current. */
+    long counts = std::lround(static_cast<float>(AdcRefCounts()) - i_meas * counts_per_amp);
     if (counts < 0) counts = 0;                       /* saturate at the rails */
     if (counts > static_cast<long>(max_counts)) counts = max_counts;
     return static_cast<uint32_t>(counts);
+}
+
+/* Gen6 PhaseCurrentADC::countsToCurrent: differential counts to amps via the
+ * ADC lsb and the transducer chain (divider * sensitivity). */
+float AdcCountsToCurrent(uint32_t sig, uint32_t ref) {
+    const float vref = g_adc_cfg.vref_v > 1e-6f ? g_adc_cfg.vref_v : 1e-6f;
+    const float lsb = vref / static_cast<float>(AdcMaxCounts());
+    const float denom = g_adc_cfg.divider * g_adc_cfg.sensitivity_v_per_a;
+    const float scale = denom > 1e-12f ? lsb / denom : 0.0f;
+    return (static_cast<float>(sig) - static_cast<float>(ref)) * scale;
 }
 
 void AdcConvert() {
@@ -125,6 +148,7 @@ void AdcConvert() {
     g_adc_u_sig = AdcCurrentToCounts(iu, g_adc_cfg.offset_u_a);
     g_adc_v_sig = AdcCurrentToCounts(iv, g_adc_cfg.offset_v_a);
     g_adc_plant_seq = GetSimContext().plant_step_seq;
+    g_adc_burst_time_us = static_cast<uint32_t>(GetSimContext().time_us);
     g_adc_valid = true;
 }
 
@@ -183,6 +207,57 @@ struct SpwmState {
 SpwmState g_spwm;
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kPhase120Rad = 2.09439510239f;
+
+/* --------------------------------------------------------------------------
+ * Encoder model (Gen6 EncoderADC semantics; same rendering as HostSIL's
+ * sil_encoder_adc.cpp).
+ *
+ * The analog sin/cos encoder measures the MECHANICAL rotor angle: one
+ * sinusoidal cycle per mechanical revolution, captured as 16-bit ADC counts.
+ * The plant integrates the electrical angle, so the mechanical angle is
+ * theta_e / pole_pairs. Counts are rendered as center 32768, amplitude 30000
+ * (inside the driver's 427..65388 hard caps), rounded and rail-clamped.
+ * -------------------------------------------------------------------------- */
+constexpr uint32_t kEncoderFullScaleCounts = 65535u;
+constexpr float kEncoderCenterCounts = 32768.0f;
+constexpr float kEncoderAmplitudeCounts = 30000.0f;
+
+float PlantMechanicalDeg() {
+    float elec_deg = 0.0f;
+    if (g_plant) {
+        elec_deg = g_plant->ThetaElectricalDeg();
+    } else if (g_motor) {
+        elec_deg = g_motor->ThetaElectricalDeg();
+    } else {
+        return 0.0f;
+    }
+    const float pp = static_cast<float>(PlantPolePairs());
+    float mech_deg = elec_deg / pp;
+    mech_deg = std::fmod(mech_deg, 360.0f);
+    if (mech_deg < 0.0f) mech_deg += 360.0f;
+    return mech_deg;
+}
+
+uint32_t EncoderCounts(float value) {
+    long counts = std::lround(value);
+    if (counts < 0) counts = 0;
+    if (counts > static_cast<long>(kEncoderFullScaleCounts)) {
+        counts = static_cast<long>(kEncoderFullScaleCounts);
+    }
+    return static_cast<uint32_t>(counts);
+}
+
+/* Gen6 TIM1 hardware configuration (Src/tim.c): 275 MHz timer clock,
+ * center-aligned, ARR 27500. */
+constexpr uint32_t kPwmTimerArr = 27500u;
+
+/* Gen6 platform_schedule_adaptive_sample: deadtime + switching settling +
+ * ADC burst = 6 us at the 275 MHz timer clock. */
+constexpr uint32_t kSampleMinGapTicks = 1650u;
+
+/* Store for the platform domain-dt pair (Gen6 storage semantics; see
+ * platform_api.h for the HostSim scheduling caveat). */
+float g_current_domain_dt = 0.0f;
 } // namespace
 
 SimContext g_sim_ctx{};
@@ -322,12 +397,54 @@ void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
     platform_pwm_set(du, dv, dw);
 }
 
+uint32_t platform_pwm_get_arr(void) { return hostsim::kPwmTimerArr; }
+
+uint32_t platform_schedule_adaptive_sample(float duty_u, float duty_v,
+                                           float duty_w, uint32_t arr) {
+    /* Port of Gen6FW PWM_FindSafeSamplePoint (Src/Inverter/Drivers/PWM/
+     * pwm.cpp): center-aligned PWM with low-side shunts; the quiet windows
+     * are the all-low span 2*(arr - max_ccr) and the all-high span
+     * 2*min_ccr. Take the larger; below the minimum gap the firmware falls
+     * back to the legacy bottom trigger and reports 0. */
+    const auto clamp_duty = [](float d) {
+        return std::max(0.0f, std::min(100.0f, d));
+    };
+    const uint32_t ccr_u =
+        static_cast<uint32_t>(clamp_duty(duty_u) * static_cast<float>(arr) /
+                              100.0f);
+    const uint32_t ccr_v =
+        static_cast<uint32_t>(clamp_duty(duty_v) * static_cast<float>(arr) /
+                              100.0f);
+    const uint32_t ccr_w =
+        static_cast<uint32_t>(clamp_duty(duty_w) * static_cast<float>(arr) /
+                              100.0f);
+
+    const uint32_t min_ccr = std::min({ccr_u, ccr_v, ccr_w});
+    const uint32_t max_ccr = std::max({ccr_u, ccr_v, ccr_w});
+    const uint32_t gap_all_high = 2u * min_ccr;
+    const uint32_t gap_all_low = 2u * (arr - max_ccr);
+    const uint32_t best_gap =
+        gap_all_low >= gap_all_high ? gap_all_low : gap_all_high;
+
+    if (best_gap < hostsim::kSampleMinGapTicks) return 0u;
+    return best_gap;
+}
+
 bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a) {
-    const hostsim::MotorState* st = hostsim::CurrentPlantState();
-    if (!st) return false;
-    if (iu_a) *iu_a = st->ia_a;
-    if (iv_a) *iv_a = st->ib_a;
-    if (iw_a) *iw_a = st->ic_a;
+    /* Gen6 PhaseCurrentADC::sample(): sensor-model values (inverted wiring,
+     * latched at the last conversion trigger), zero-offset removed, W
+     * reconstructed from U+V — not a direct plant read. */
+    if (!hostsim::CurrentPlantState()) return false;
+    hostsim::AdcEnsureFresh();
+    const float iu = hostsim::AdcCountsToCurrent(hostsim::g_adc_u_sig,
+                                                 hostsim::g_adc_u_ref) -
+                     platform_adc_get_offset_u_a();
+    const float iv = hostsim::AdcCountsToCurrent(hostsim::g_adc_v_sig,
+                                                 hostsim::g_adc_v_ref) -
+                     platform_adc_get_offset_v_a();
+    if (iu_a) *iu_a = iu;
+    if (iv_a) *iv_a = iv;
+    if (iw_a) *iw_a = -(iu + iv);
     return true;
 }
 
@@ -347,17 +464,37 @@ uint32_t platform_adc_get_injected_v_ref(void) {
     hostsim::AdcEnsureFresh();
     return hostsim::g_adc_v_ref;
 }
-float platform_adc_get_offset_u_a(void) { return hostsim::g_adc_cfg.offset_u_a; }
-float platform_adc_get_offset_v_a(void) { return hostsim::g_adc_cfg.offset_v_a; }
+/* Gen6 lastOffsetU/V: what startup calibration measures at standstill — the
+ * recovered (inverted) amps of the injected bias, i.e. -(bias). */
+float platform_adc_get_offset_u_a(void) { return -hostsim::g_adc_cfg.offset_u_a; }
+float platform_adc_get_offset_v_a(void) { return -hostsim::g_adc_cfg.offset_v_a; }
+
+bool platform_adc_get_burst_sample(float* iu0_a, float* iv0_a,
+                                   float* iu1_a, float* iv1_a,
+                                   uint32_t* time_us) {
+    if (!iu0_a || !iv0_a || !iu1_a || !iv1_a) return false;
+    if (!hostsim::CurrentPlantState()) return false;
+    hostsim::AdcEnsureFresh();
+    const float iu = hostsim::AdcCountsToCurrent(hostsim::g_adc_u_sig,
+                                                 hostsim::g_adc_u_ref) -
+                     platform_adc_get_offset_u_a();
+    const float iv = hostsim::AdcCountsToCurrent(hostsim::g_adc_v_sig,
+                                                 hostsim::g_adc_v_ref) -
+                     platform_adc_get_offset_v_a();
+    /* Gen6 samples ranks 1/2 and 3/4 back-to-back (~0.46 us apart). The sim's
+     * conversion latch is zero-order-held across the burst, so both points
+     * read the same latched sample set. */
+    *iu0_a = iu;
+    *iu1_a = iu;
+    *iv0_a = iv;
+    *iv1_a = iv;
+    if (time_us) *time_us = hostsim::g_adc_burst_time_us;
+    return true;
+}
 
 bool platform_get_encoder_angle(float* angle_deg) {
-    if (hostsim::g_plant && angle_deg) {
-        *angle_deg = hostsim::g_plant->ThetaElectricalDeg();
-    } else if (hostsim::g_motor && angle_deg) {
-        *angle_deg = hostsim::g_motor->ThetaElectricalDeg();
-    } else if (!hostsim::g_plant && !hostsim::g_motor) {
-        return false;
-    }
+    if (!hostsim::g_plant && !hostsim::g_motor) return false;
+    if (angle_deg) *angle_deg = hostsim::PlantMechanicalDeg();
     auto& ctx = hostsim::GetSimContext();
     const bool had = ctx.encoder_sample_new;
     ctx.encoder_sample_new = false;
@@ -365,9 +502,7 @@ bool platform_get_encoder_angle(float* angle_deg) {
 }
 
 float platform_get_encoder_angle_latest(void) {
-    if (hostsim::g_plant) return hostsim::g_plant->ThetaElectricalDeg();
-    if (hostsim::g_motor) return hostsim::g_motor->ThetaElectricalDeg();
-    return 0.0f;
+    return hostsim::PlantMechanicalDeg();
 }
 
 float platform_get_motor_rpm(void) {
@@ -381,6 +516,32 @@ float platform_get_motor_rpm(void) {
     }
     return omega_e * 60.0f /
            (hostsim::kTwoPi * static_cast<float>(hostsim::PlantPolePairs()));
+}
+
+float platform_get_rpm_mech(void) { return platform_get_motor_rpm(); }
+
+float platform_get_rpm_elec(void) {
+    /* Gen6: rpmMech * pole_pairs * MotorCalibration.encoder_sign. The
+     * simulated encoder counts in the positive rotation direction, so the
+     * sign is +1. */
+    return platform_get_rpm_mech() *
+           static_cast<float>(hostsim::PlantPolePairs());
+}
+
+uint32_t platform_get_encoder_raw_sin(void) {
+    const float theta_m_rad =
+        hostsim::PlantMechanicalDeg() * (hostsim::kTwoPi / 360.0f);
+    return hostsim::EncoderCounts(hostsim::kEncoderCenterCounts +
+                                  hostsim::kEncoderAmplitudeCounts *
+                                      std::sin(theta_m_rad));
+}
+
+uint32_t platform_get_encoder_raw_cos(void) {
+    const float theta_m_rad =
+        hostsim::PlantMechanicalDeg() * (hostsim::kTwoPi / 360.0f);
+    return hostsim::EncoderCounts(hostsim::kEncoderCenterCounts +
+                                  hostsim::kEncoderAmplitudeCounts *
+                                      std::cos(theta_m_rad));
 }
 
 float platform_get_dc_link_voltage(void) {
@@ -541,6 +702,14 @@ uint32_t platform_millis(void) {
 
 uint32_t platform_micros(void) {
     return static_cast<uint32_t>(hostsim::GetSimContext().time_us);
+}
+
+void platform_set_current_domain_dt(float dt_s) {
+    hostsim::g_current_domain_dt = dt_s;
+}
+
+float platform_get_current_domain_dt(void) {
+    return hostsim::g_current_domain_dt;
 }
 
 } // extern "C"

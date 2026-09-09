@@ -181,6 +181,58 @@ conversion-latched per `adc_isr` tick; CAN `rx`/`send` follow the Gen6
 latest-frame semantics; `platform_critical_enter/exit` are a real recursive
 mutex.
 
+### platform_api coverage notes
+
+Implemented with Gen6FW (`Images/Gen6FW`) semantics, reading the same plant
+state everywhere:
+
+- **Phase currents** — the full PhaseCurrentADC signal chain modeled in counts
+  (RteParams.h constants), including the hardware's **inverted sensor wiring**
+  (sig counts *decrease* with positive phase current — same model as HostSIL's
+  `sil_phase_current_adc.cpp`). `platform_get_phase_currents()` returns the
+  latched sensor recovery with the calibrated zero offset removed and W as
+  `-(U+V)`, exactly like Gen6 `PhaseCurrentADC::sample()`; graphs fix the sign
+  with their `InvertPolarity` parameter / explicit negation, as on hardware.
+  `platform_adc_get_burst_sample()` serves the Gen6 `BurstSample` layout (two
+  points per phase from injected ranks 1/2 and 3/4 — the sim's zero-order-held
+  latch makes both points identical, so no intra-burst di/dt) with the
+  latch timestamp in `time_us`.
+- **Encoder** — Gen6 sin/cos-encoder semantics: the angle APIs report
+  **mechanical** degrees in [0, 360) (one sin/cos cycle per mechanical
+  revolution; the plant integrates the electrical angle, so
+  `theta_mech = theta_e / pole_pairs`), and `platform_get_encoder_raw_sin/cos()`
+  render that angle as 16-bit ADC counts (center 32768, amplitude 30000, inside
+  the driver's 427..65388 hard caps). `platform_get_rpm_mech()` aliases
+  `platform_get_motor_rpm()` (Gen6: both are `encoderADC().rpmMech()`);
+  `platform_get_rpm_elec()` is `mech rpm × pole pairs` with encoder sign +1
+  (the simulated encoder counts in the positive rotation direction). The sim
+  reports the exact plant speed instead of the Gen6 EMA-windowed estimate.
+- **Adaptive sampling** — `platform_pwm_get_arr()` returns the Gen6 TIM1
+  value (27500 ticks at 275 MHz, center-aligned) and
+  `platform_schedule_adaptive_sample()` is a direct port of Gen6
+  `PWM_FindSafeSamplePoint` + its wrapper (1650-tick minimum quiet window,
+  0 = bottom-trigger fallback). The sim's conversions stay adc_isr-tick
+  driven; the firmware's CCR4 side effect has no sim equivalent.
+- **Domain dt** — `platform_set/get_current_domain_dt()` use Gen6's storage
+  semantics, but note HostSim's scheduler does not call the setter per domain
+  (unlike the Gen6 ISR wrappers), so the getter returns the last set value
+  (0.0 until set). Graphs that need a step size should carry a `Dt` parameter
+  like the bundled examples do.
+
+Intentionally absent (graphs using these will fail to link — by design, they
+need hardware subsystems a position/current sim does not model):
+
+- **Current observer trio** — `platform_observer_predict/correct`,
+  `platform_observer_set_motor_params`,
+  `platform_observer_init_from_calibration`,
+  `platform_get_observer_currents`, `platform_set/get_use_observer`
+  (used by the `hw.current_observer` template).
+- **DC-link current/power** — `platform_get_dc_link_current/power()` (the sim
+  models the DC link as an ideal voltage source).
+- **Supplemental trace channels** — `platform_trace_configure8/capture8`,
+  `platform_trace_register_event/event` (use `Debug.TelemetryLog` /
+  `TelemetryCurrentSink` instead).
+
 ## SPWM demo (NodeGUI + HostSim live)
 
 Open-loop **sinusoidal PWM** graph for the host simulator. Throttle A sets modulation
