@@ -467,11 +467,23 @@ bool SimRuntime::ParseScenario(const char* path) {
         if (!backend.empty()) config_.plant_backend = backend;
         const std::string netlist = ExtractString(plant_obj, "netlist");
         if (!netlist.empty()) config_.ngspice_netlist = netlist;
+        const std::string mode = ExtractString(plant_obj, "mode");
+        if (!mode.empty()) config_.plant_mode = mode;
         float substeps = 0.0f;
         if (ExtractNumber(plant_obj, "substeps", &substeps)) {
             config_.ngspice_substeps = static_cast<int>(substeps);
         }
     }
+
+    /* dcdc mode default duties: applied each control step unless the graph
+     * wrote PWM that tick (see StepOnce). Only used with
+     * plant {backend:"ngspice", mode:"dcdc"}.
+     * NB: the lenient parser's key search would match the string VALUE
+     * "dcdc" (of plant.mode) as an object key, so the three duty keys are
+     * searched flat in the whole blob — the names are unique anyway. */
+    if (ExtractNumber(blob, "duty_u_pct", &v)) config_.dcdc_duty_u_pct = v;
+    if (ExtractNumber(blob, "duty_v_pct", &v)) config_.dcdc_duty_v_pct = v;
+    if (ExtractNumber(blob, "duty_w_pct", &v)) config_.dcdc_duty_w_pct = v;
 
     /* Graph Var node seeds: {"vars": {"TargetHz": 40.0}}, applied after
      * domain init (emitted builds only). */
@@ -505,13 +517,67 @@ bool SimRuntime::LoadScenario(const char* path) {
         frame.done = false;
     }
 
+    /* plant.mode validation: only "motor"/"dcdc", only with ngspice backend. */
+    if (config_.plant_mode != "motor" && config_.plant_mode != "dcdc") {
+        std::cerr << "HostSim: unknown plant.mode \"" << config_.plant_mode
+                  << "\" (want \"motor\" or \"dcdc\"); keeping motor\n";
+        config_.plant_mode = "motor";
+    }
+    const bool want_dcdc = (config_.plant_mode == "dcdc");
+    if (want_dcdc && config_.plant_backend != "ngspice") {
+        std::cerr << "HostSim: plant.mode \"dcdc\" requires plant.backend "
+                     "\"ngspice\"; mode ignored\n";
+    }
+
     plant_ = CreatePlantBackend(config_.plant_backend, config_.motor.machine);
     if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
-        if (!config_.ngspice_netlist.empty()) ng->SetNetlistPath(config_.ngspice_netlist);
+        if (!config_.ngspice_netlist.empty()) {
+            /* Netlist paths are relative to the process CWD; as a fallback
+             * (so a scenario can be launched from any directory) also try the
+             * scenario file's directory. */
+            std::string netlist = config_.ngspice_netlist;
+            {
+                std::ifstream probe(netlist);
+                if (!probe) {
+                    const size_t slash = std::string(path).find_last_of("/\\");
+                    if (slash != std::string::npos) {
+                        const std::string alt =
+                            std::string(path).substr(0, slash + 1) +
+                            "../" + netlist;
+                        std::ifstream probe2(alt);
+                        if (probe2) {
+                            netlist = alt;
+                            std::cerr << "HostSim: netlist resolved relative "
+                                         "to scenario: " << netlist << '\n';
+                        }
+                    }
+                }
+            }
+            ng->SetNetlistPath(netlist);
+        }
         ng->SetSubsteps(config_.ngspice_substeps);
+        ng->SetMode(want_dcdc && config_.plant_backend == "ngspice"
+                        ? NgspicePlantMode::Dcdc
+                        : NgspicePlantMode::Motor);
     }
     plant_->SetParams(config_.motor);
     plant_->Reset();
+
+    /* Mode vs netlist class guard (the plant detected the mismatch while
+     * loading and already logged specifics): never keep running a mismatched
+     * pair — fall back to the ODE plant loudly. */
+    dcdc_mode_ = false;
+    if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+        if (!ng->ModeMatchesNetlist()) {
+            std::cerr << "HostSim: ERROR: plant mode/netlist mismatch — "
+                         "falling back to OdePlant\n";
+            plant_ = CreatePlantBackend("ode", config_.motor.machine);
+            plant_->SetParams(config_.motor);
+            plant_->Reset();
+        } else {
+            dcdc_mode_ = ng->DcdcActive();
+        }
+    }
     time_s_ = 0.0f;
     next_tim_s_ = 0.0f;
     next_adc_s_ = 0.0f;
@@ -526,8 +592,18 @@ void SimRuntime::OpenTrace() {
         return;
     }
     trace_ << std::setprecision(8);
+    /* dcdc runs extend the fixed motor schema with converter probes; the
+     * motor columns still lead (theta_e/omega_e stay 0 in dcdc mode). */
+    trace_dcdc_ = false;
+    if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+        trace_dcdc_ = ng->DcdcActive();
+    }
     trace_ << "time_us,throttle_a,throttle_b,duty_u,duty_v,duty_w,"
-              "i_a,i_b,i_c,theta_e,omega_e\n";
+              "i_a,i_b,i_c,theta_e,omega_e";
+    if (trace_dcdc_) {
+        trace_ << ",v_bus1,v_bus2,v_bus3,i_leg1,i_leg2,i_leg3";
+    }
+    trace_ << '\n';
 }
 
 void SimRuntime::InitDomains() {
@@ -610,7 +686,17 @@ void SimRuntime::WriteTraceRow() {
            << duty_u_ << ',' << duty_v_ << ',' << duty_w_ << ','
            << st.ia_a << ',' << st.ib_a << ',' << st.ic_a << ','
            << plant_->ThetaElectricalDeg() << ','
-           << plant_->OmegaElectricalRadPerSec() << '\n';
+           << plant_->OmegaElectricalRadPerSec();
+    if (trace_dcdc_) {
+        NgspicePlant::DcdcProbes probes{};
+        if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+            ng->GetDcdcProbes(&probes);
+        }
+        trace_ << ',' << probes.v_bus[0] << ',' << probes.v_bus[1] << ','
+               << probes.v_bus[2] << ',' << probes.i_leg[0] << ','
+               << probes.i_leg[1] << ',' << probes.i_leg[2];
+    }
+    trace_ << '\n';
 }
 
 bool SimRuntime::StepOnce() {
@@ -665,6 +751,15 @@ bool SimRuntime::StepOnce() {
                              "(the legacy SPWM fallback is off; enable with "
                              "\"demo_fallback\": true in the scenario).\n");
             }
+        }
+        /* dcdc duty defaults: only when nothing drove the PWM outputs this
+         * tick. Precedence (highest first): live duty override (applied
+         * below) > graph platform_pwm_set (ctx.pwm_written) > scenario
+         * "dcdc" duties (here) > legacy demo_fallback (overwritten above). */
+        if (dcdc_mode_ && !ctx.pwm_written) {
+            ctx.duty_u = config_.dcdc_duty_u_pct;
+            ctx.duty_v = config_.dcdc_duty_v_pct;
+            ctx.duty_w = config_.dcdc_duty_w_pct;
         }
         duty_u_ = ctx.duty_u;
         duty_v_ = ctx.duty_v;
@@ -793,6 +888,18 @@ void SimRuntime::PublishTelemetry() {
                    GetSimContext().vdc_v);
     pub.LogF32("sim_speed",
                config_.realtime_factor <= 0.0f ? -1.0f : config_.realtime_factor);
+    if (dcdc_mode_) {
+        NgspicePlant::DcdcProbes probes{};
+        if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+            ng->GetDcdcProbes(&probes);
+        }
+        pub.LogF32("v_bus1", probes.v_bus[0]);
+        pub.LogF32("v_bus2", probes.v_bus[1]);
+        pub.LogF32("v_bus3", probes.v_bus[2]);
+        pub.LogF32("i_leg1", probes.i_leg[0]);
+        pub.LogF32("i_leg2", probes.i_leg[1]);
+        pub.LogF32("i_leg3", probes.i_leg[2]);
+    }
     if (config_.pwm_scope_enabled) {
         pub.LogF32("pwm_telem_hz", EffectivePwmTelemHz());
     }

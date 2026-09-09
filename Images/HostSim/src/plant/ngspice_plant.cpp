@@ -216,6 +216,28 @@ bool NgspicePlant::DetectBackEmfSources(
     return found[0] && found[1] && found[2];
 }
 
+bool NgspicePlant::DetectDcdcSenseSources(
+    const std::vector<std::string>& lines) {
+    static const char* const kNames[3] = {"vsen1", "vsen2", "vsen3"};
+    bool found[3] = {false, false, false};
+    // Same scanning idiom as DetectBackEmfSources: first-token element names,
+    // case-insensitive, comments/blank lines skipped.
+    for (const auto& raw : lines) {
+        std::string line = Trim(raw);
+        if (line.empty() || line[0] == '*') continue;
+        for (auto& c : line) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        std::istringstream iss(line);
+        std::string name;
+        iss >> name;
+        for (int k = 0; k < 3; ++k) {
+            if (name == kNames[k]) found[k] = true;
+        }
+    }
+    return found[0] && found[1] && found[2];
+}
+
 void NgspicePlant::LoadNetlist() {
     if (netlist_path_.empty() || !fn_ngSpice_Circ_) return;
 
@@ -236,6 +258,26 @@ void NgspicePlant::LoadNetlist() {
     if (has_bemf_sources_) {
         std::cerr << "HostSim: netlist exposes Veu/Vev/Vew back-EMF sources; "
                      "back-EMF is driven in-circuit\n";
+    }
+
+    netlist_is_dcdc_ = DetectDcdcSenseSources(storage);
+    // Mode/netlist consistency — never run silently on a mismatched pairing;
+    // the runtime replaces the plant after Reset() when this fires.
+    if (mode_ == NgspicePlantMode::Dcdc && !netlist_is_dcdc_) {
+        std::cerr << "HostSim: ERROR: plant.mode \"dcdc\" but netlist "
+                  << netlist_path_
+                  << " lacks the dcdc contract (Vsen1/Vsen2/Vsen3 sense "
+                     "sources, bus1..3 nodes — see plants/dcdc_buck.cir); "
+                     "refusing to interpret a motor netlist as a converter\n";
+    } else if (mode_ == NgspicePlantMode::Motor && netlist_is_dcdc_) {
+        std::cerr << "HostSim: ERROR: netlist " << netlist_path_
+                  << " is a dcdc converter netlist (Vsen1/Vsen2/Vsen3 present) "
+                     "but plant.mode is \"motor\"; refusing to run it with "
+                     "motor semantics\n";
+    } else if (mode_ == NgspicePlantMode::Dcdc) {
+        std::cerr << "HostSim: ngspice plant running in dcdc mode: leg "
+                     "voltage = duty*VDC, currents from Vsen1..3, bus probes "
+                     "v(bus1..3)\n";
     }
 
     std::vector<char*> lines;
@@ -304,7 +346,7 @@ void NgspicePlant::UpdatePendingVoltages(float du_pct, float dv_pct,
     }
 }
 
-float NgspicePlant::ReadCurrent(const char* vecname) const {
+float NgspicePlant::ReadVecLast(const char* vecname) const {
     if (!fn_ngGet_Vec_Info_) return 0.0f;
     pvector_info info = fn_ngGet_Vec_Info_(const_cast<char*>(vecname));
     if (!info || !info->v_realdata || info->v_length <= 0) return 0.0f;
@@ -330,6 +372,11 @@ void NgspicePlant::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     if (!sharedspice_loaded_ || !circuit_loaded_ || analysis_failed_) return;
     if (dt_s <= 0.0f) return;
 
+    if (mode_ == NgspicePlantMode::Dcdc) {
+        StepDcdc(duty_u_pct, duty_v_pct, duty_w_pct, dt_s);
+        return;
+    }
+
     UpdatePendingVoltages(duty_u_pct, duty_v_pct, duty_w_pct);
 
     // Advance the SPICE analysis in substeps_ chunks of the control period;
@@ -348,9 +395,9 @@ void NgspicePlant::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     }
     current_sim_time_ = t0 + static_cast<double>(dt_s);
 
-    const float ia = ReadCurrent("i(vu)");
-    const float ib = ReadCurrent("i(vv)");
-    const float ic = ReadCurrent("i(vw)");
+    const float ia = ReadVecLast("i(vu)");
+    const float ib = ReadVecLast("i(vv)");
+    const float ic = ReadVecLast("i(vw)");
 
     state_.ia_a = ia;
     state_.ib_a = ib;
@@ -367,6 +414,54 @@ void NgspicePlant::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     state_.iq_a = -i_alpha * sin_t + i_beta * cos_t;
 
     IntegrateMechanics(dt_s);
+}
+
+/* dcdc mode: each leg's switch-node source takes duty*VDC directly — no
+ * neutral-point subtraction, no back-EMF, no dq transform, no mechanics
+ * (theta/omega/id/iq stay 0). Leg currents come from the netlist's 0V sense
+ * sources (i(vsenN), + = leg -> bus, orientation fixed by the netlist) and
+ * bus voltages are probed from the bus1..3 nodes for the trace columns. */
+void NgspicePlant::StepDcdc(float duty_u_pct, float duty_v_pct,
+                            float duty_w_pct, float dt_s) {
+    const float scale = params_.vdc_v / 100.0f;
+    pending_vu_.store(static_cast<double>(ClampDuty(duty_u_pct) * scale));
+    pending_vv_.store(static_cast<double>(ClampDuty(duty_v_pct) * scale));
+    pending_vw_.store(static_cast<double>(ClampDuty(duty_w_pct) * scale));
+
+    // Same zero-order-hold substepping as the motor path: voltages held
+    // across the tick, SPICE advanced in substeps_ chunks.
+    const double sub_dt = static_cast<double>(dt_s) / substeps_;
+    const double t0 = current_sim_time_;
+    for (int s = 1; s <= substeps_; ++s) {
+        if (!AdvanceSpiceTo(t0 + sub_dt * s)) {
+            if (!analysis_failed_) {
+                analysis_failed_ = true;
+                std::cerr << "HostSim: ngspice background analysis failed to "
+                             "respond; plant state frozen\n";
+            }
+            return;
+        }
+    }
+    current_sim_time_ = t0 + static_cast<double>(dt_s);
+
+    const float i1 = ReadVecLast("i(vsen1)");
+    const float i2 = ReadVecLast("i(vsen2)");
+    const float i3 = ReadVecLast("i(vsen3)");
+    probes_.i_leg[0] = i1;
+    probes_.i_leg[1] = i2;
+    probes_.i_leg[2] = i3;
+    probes_.v_bus[0] = ReadVecLast("v(bus1)");
+    probes_.v_bus[1] = ReadVecLast("v(bus2)");
+    probes_.v_bus[2] = ReadVecLast("v(bus3)");
+
+    // Leg currents ride the phase-current channels so the ADC latch, the
+    // overcurrent fault injection and the existing trace/telemetry plumbing
+    // see them without knowing about dcdc mode.
+    state_.ia_a = i1;
+    state_.ib_a = i2;
+    state_.ic_a = i3;
+    state_.id_a = 0.0f;
+    state_.iq_a = 0.0f;
 }
 
 bool NgspicePlant::AdvanceSpiceTo(double target_time) {

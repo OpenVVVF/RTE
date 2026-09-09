@@ -158,7 +158,8 @@ parser matches keys by name anywhere in the file, so the shipped scenarios
 nest `plant`/`pwm_scope` under `simulation` while flat placement is also
 accepted. Bundled scenarios: `default_motor.json`, `spwm_demo.json`,
 `svpwm_live.json`, `ngspice_rl_demo.json`, `ngspice_pmsm_demo.json`,
-`salient_pmsm.json`, `induction_vhz.json`.
+`salient_pmsm.json`, `induction_vhz.json`, `dcdc_3bus.json`,
+`dcdc_parallel.json`.
 
 ### `motor.*` — machine parameters
 
@@ -213,8 +214,76 @@ HostSIL parses the same keys (`Images/HostSIL/src/scenario.cpp`); its
 | Key | Default | Meaning |
 |---|---|---|
 | `backend` | `ode` | `ode` or `ngspice` |
-| `netlist` | — | ngspice netlist path, relative to the `host_sim` working directory (bundled netlists live in `Images/HostSim/plants/`) |
+| `netlist` | — | ngspice netlist path, relative to the `host_sim` working directory (bundled netlists live in `Images/HostSim/plants/`); as a fallback the runtime also tries the path relative to the scenario file's directory |
 | `substeps` | 4 | SPICE substeps per control tick (zero-order hold on phase voltages across the tick) |
+| `mode` | `motor` | `motor` = 3-phase machine semantics (neutral-point subtraction, back-EMF, PMSM mechanics); `dcdc` = 3-leg converter semantics (per-leg `duty`×Vdc into a DC/DC netlist, see below). `dcdc` requires `backend: "ngspice"` and a dcdc-contract netlist; mismatched mode/netlist pairings are refused loudly with an ODE fallback. |
+
+### `dcdc.*` — converter default duties (dcdc mode only)
+
+`{"dcdc": {"duty_u_pct": 30, "duty_v_pct": 20, "duty_w_pct": 40}}` (all
+default 0). The duties driven into the legs every control step **unless the
+graph actually wrote PWM in that tick**. Precedence, highest first:
+
+1. live `duty` override (telemetry console),
+2. graph `platform_pwm_set` in that tick (`ctx.pwm_written`),
+3. scenario `dcdc.duty_*_pct`,
+4. legacy `demo_fallback` SPWM (overwritten by the dcdc duties, so it is
+   never effective in dcdc mode).
+
+The motor-parameter keys are reused as converter knobs in dcdc mode:
+`motor.vdc_v` scales the leg voltages, `motor.rs_ohm` becomes the per-leg
+conduction resistance, `motor.ld_h`/`lq_h` (averaged) the leg inductance —
+all three flow through `alterparam` into the netlist at Reset, same as the
+motor netlists.
+
+## DC/DC converter mode (dcdc mode)
+
+ngspice backend mode for synchronous DC/DC plants (the DC-microgrid
+roadmap item). Selected with
+`plant {"backend": "ngspice", "mode": "dcdc", "netlist": ...}`. Bundled:
+`plants/dcdc_buck.cir` (3 legs → 3 independent buses; used by
+`scenarios/dcdc_3bus.json`) and `plants/dcdc_parallel.cir` (3 legs
+paralleled into one shared bus; `scenarios/dcdc_parallel.json`).
+
+Both netlists are **averaged**: per leg, a behavioral `external` V-source
+plays the averaged switch node (`duty`×Vdc, zero-order-held at the control
+rate — the plant seam injects one voltage per control step, so there is no
+per-carrier signal path; switching ripple and dead-time effects stay out of
+scope, same convention as the motor netlists). Each leg feeds an LC filter
+into a bus capacitor and a resistive load. `substeps: 1` suffices (no
+intra-tick events); 0.2–0.3 s is plenty for the LC to settle.
+
+Netlist/host contract (both netlists, as doc comments):
+
+- `Vu`/`Vv`/`Vw` — `external` driven sources, one per leg switch node.
+- `Vsen1`/`Vsen2`/`Vsen3` — 0 V sense sources in series with each leg;
+  `i(vsenN)` is the leg current, positive = leg → bus. Their presence is the
+  dcdc-contract marker (`DetectDcdcSenseSources`): mode `dcdc` with a motor
+  netlist, or mode `motor` with a dcdc netlist, is a loud error plus ODE
+  fallback, never silent.
+- Nodes `bus1`/`bus2`/`bus3` — probed per control step via
+  `ngGet_Vec_Info("v(busN)")` for the trace/telemetry. The parallel netlist
+  aliases `bus2`/`bus3` onto the single shared bus with two 0 V tie sources.
+- `.param` names `RS`, `LS`, `VDC` must exist (host `alterparam` always
+  pushes them: `RS` = per-leg conduction resistance, `LS` = leg inductance
+  in henries) plus the converter tunables (`BUS_CAP_UF`, `BUS_ESR_MO`,
+  `LOAD*_OHM`). Note ngspice brace substitution inserts spaces:
+  write `{BUS_CAP_UF*1e-6}`, never `{BUS_CAP_UF}u` (expands to `470 u`, the
+  element is dropped with "unknown parameter").
+
+Observability: in dcdc mode the trace CSV gains
+`v_bus1,v_bus2,v_bus3,i_leg1,i_leg2,i_leg3` (leg currents also ride the
+`i_a/b/c` columns, so the ADC latch and overcurrent fault injection work
+unchanged; `theta_e`/`omega_e`/`id`/`iq` stay 0), and live telemetry
+publishes `v_bus1..3` / `i_leg1..3`.
+
+Steady state is `v_busN ≈ (duty_N/100)·vdc_v·R_loadN/(R_loadN+R_leg)`
+(`R_leg` = `RS`): with 48 V, duties 30/20/40 % and loads 5/10/2.5 Ω,
+`dcdc_3bus` settles at ≈ 14.34/9.58/19.05 V. Paralleling three legs into one
+bus shares the load in exact thirds when duties and legs are symmetric; a
+duty mismatch redistributes current by `ΔD·Vdc/RS` — the averaged legs are
+near-ideal sources, so small mismatches move a lot of current (on hardware:
+why paralleled converters need current-mode or droop control).
 
 ### `simulation.pwm_scope` (or top-level `pwm_scope`) — switched-waveform scope
 
@@ -284,15 +353,19 @@ paste calibrated values from the target motor.
 | **ODE** (default) | `"backend": "ode"` or omitted | Discrete-time machine ODE (`src/motor_model.cpp` + `src/induction_model.h`): clamped duty × Vdc drive → averaged phase voltages → plant dynamics; integrated mechanics. `motor.machine` picks `pmsm` (salient dq, reluctance torque included) or `induction` (4th-order squirrel-cage, stationary αβ, rotor-flux angle/slip internal). Fast — the only fully supported backend and the right choice for `--live`. |
 | **ngspice RL** (experimental) | `"backend": "ngspice"`, `"netlist": "plants/inverter_rl.cir"` | Three-phase wye RL load in libngspice. The circuit has no back-EMF element, so the back-EMF is folded into the driven source values; mechanics integrate in the host. |
 | **ngspice PMSM** (experimental) | `"backend": "ngspice"`, `"netlist": "plants/inverter_pmsm.cir"` | Per-phase R-L plus an **in-circuit back-EMF source** (`Veu/Vev/Vew` external sources driven from rotor angle/speed), so back-EMF is part of the circuit equation. |
+| **ngspice DC/DC** (experimental) | `"backend": "ngspice"`, `"mode": "dcdc"`, `"netlist": "plants/dcdc_buck.cir"` (or `dcdc_parallel.cir`) | Three averaged synchronous-buck legs driving their own `duty`×Vdc switch node into LC filters and bus caps — 3 independent buses or all legs paralleled into one. See [DC/DC converter mode](#dcdc-converter-mode-dcdc-mode). |
 
-Both ngspice netlists are voltage-source driven (duty → phase terminal
+The ngspice netlists are voltage-source driven (duty → terminal/switch-node
 voltage, vs DC−), with netlist components parameterized from `motor.*`
-(`alterparam`, cold start via `UIC`). ngspice models **electrical RL /
-PMSM-backEMF only — no induction machine**; `machine: "induction"` with
-`backend: "ngspice"` is refused with a stderr notice and continues on the ODE
-plant (which models the induction machine natively). If `libngspice` cannot
-be loaded, HostSim prints a notice on stderr and continues on the ODE plant —
-check the log when a scenario unexpectedly runs ODE.
+(`alterparam`, cold start via `UIC`). dcdc-mode netlists follow a small
+contract instead (see [DC/DC converter mode](#dcdc-converter-mode-dcdc-mode)):
+`Vsen1..3` sense sources, `bus1..3` probe nodes, no back-EMF or mechanics.
+ngspice models **electrical RL / PMSM-backEMF / DC-DC converter only — no
+induction machine**; `machine: "induction"` with `backend: "ngspice"` is
+refused with a stderr notice and continues on the ODE plant (which models
+the induction machine natively). If `libngspice` cannot be loaded, HostSim
+prints a notice on stderr and continues on the ODE plant — check the log
+when a scenario unexpectedly runs ODE.
 
 ## ngspice backend setup (Linux, optional)
 
@@ -344,8 +417,8 @@ Environment knobs:
 **HostSim**
 
 - The ngspice backend is experimental: voltage-source-driven (no switched
-  devices), limited to the RL/PMSM netlist shapes above, slower than the ODE
-  plant, and it falls back to ODE when libngspice is missing.
+  devices), limited to the RL/PMSM/DCDC netlist shapes above, slower than
+  the ODE plant, and it falls back to ODE when libngspice is missing.
 - Number parsing is a lenient key search, not a strict JSON DOM — malformed
   files can silently keep defaults.
 
@@ -366,11 +439,12 @@ Environment knobs:
 Deliberately not built yet, but the seams are in place (see also the TODO.txt
 simulator block and the root README roadmap):
 
-- **Synchronous DC/DC and DC microgrids.** One 3-phase stage driven as three
-  independent phase→DC-bus converters, a 2+1 split, or all legs paralleled.
-  The work item is a DC-bus/load plant behind the existing `IPlant` seam
-  (`src/plant/plant_backend.h`); an ngspice netlist can already express a sync
-  buck/boost of arbitrary shape, so a netlist-only prototype works today.
+- **Synchronous DC/DC and DC microgrids.** The first step landed: the
+  ngspice backend's dcdc mode (above) runs a 3-phase stage as three
+  independent phase→DC-bus converters or legs paralleled into one bus
+  (`plants/dcdc_buck.cir` / `dcdc_parallel.cir`). Still open: a fast ODE/RTL
+  DC-bus plant behind the `IPlant` seam (`src/plant/plant_backend.h`) for
+  `--live` speed, and 2+1 split topologies.
 - **Multiple inverters at once.** Two instances (e.g. a 5-phase motor driven
   by two 3-phase inverters, or a microgrid AFE → DC/DC → output chain) need a
   shared simulated CAN: HostSim already models loopback CAN per instance; the

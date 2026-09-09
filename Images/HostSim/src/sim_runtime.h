@@ -59,6 +59,17 @@ struct SimConfig {
     std::string trace_csv = "trace.csv";
     std::string config_file; /* "" = in-memory config store only */
     std::string plant_backend = "ode";
+    /* ngspice backend interpretation: "motor" (3-phase inverter semantics,
+     * back-EMF, mechanics) or "dcdc" (per-leg duty*VDC into a converter
+     * netlist; leg currents/bus voltages instead of motor state). Only
+     * meaningful with backend "ngspice". */
+    std::string plant_mode = "motor";
+    /* dcdc-mode default duties [%], applied every control step unless the
+     * graph actually wrote PWM in that tick (ctx.pwm_written). Live duty
+     * overrides still take precedence over both. */
+    float dcdc_duty_u_pct = 0.0f;
+    float dcdc_duty_v_pct = 0.0f;
+    float dcdc_duty_w_pct = 0.0f;
     std::string ngspice_netlist = "";
     int ngspice_substeps = 4;
     MotorParams motor{};
@@ -143,6 +154,11 @@ private:
     bool vdc_glitch_applied_ = false;
     bool overcurrent_raised_ = false;
     bool undervoltage_raised_ = false;
+    /* Resolved dcdc mode: scenario asked for it, backend is ngspice, and the
+     * plant still is an NgspicePlant whose netlist matched (no fallback). */
+    bool dcdc_mode_ = false;
+    /* Trace schema extension: dcdc runs append v_bus1..3,i_leg1..3 columns. */
+    bool trace_dcdc_ = false;
 
     bool ParseScenario(const char* path);
     void ApplyGraphVars();

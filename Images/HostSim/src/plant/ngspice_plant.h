@@ -12,8 +12,25 @@
 
 namespace hostsim {
 
+/* How the plant interprets duties and read-back:
+ * Motor: 3-phase inverter semantics — neutral-point subtraction, back-EMF
+ *        handling, i(vu)/i(vv)/i(vw) phase currents, dq transform + PMSM
+ *        mechanics in C++.
+ * Dcdc:  3 independent legs — leg switch-node voltage is duty*VDC directly
+ *        (no neutral subtraction, no back-EMF, no mechanics); leg currents
+ *        read from the netlist's Vsen1..3 zero-volt sense sources, bus
+ *        voltages probed from nodes bus1..3. */
+enum class NgspicePlantMode { Motor = 0, Dcdc };
+
 class NgspicePlant : public IPlant {
 public:
+    /* Per-step probes, meaningful in Dcdc mode only: bus voltages v(bus1..3)
+     * and leg currents i(vsen1..3) sampled at the end of the last Step(). */
+    struct DcdcProbes {
+        float v_bus[3] = {0.0f, 0.0f, 0.0f};
+        float i_leg[3] = {0.0f, 0.0f, 0.0f};
+    };
+
     NgspicePlant();
     ~NgspicePlant() override;
 
@@ -30,6 +47,25 @@ public:
 
     void SetNetlistPath(const std::string& path) { netlist_path_ = path; }
     void SetSubsteps(int substeps) { substeps_ = (substeps > 0) ? substeps : 1; }
+    void SetMode(NgspicePlantMode mode) { mode_ = mode; }
+    NgspicePlantMode GetMode() const { return mode_; }
+
+    /* Valid after the netlist has loaded (first Reset()). */
+    bool NetlistIsDcdc() const { return netlist_is_dcdc_; }
+    /* dcdc mode is only live when the netlist matches it; ModeMatchesNetlist
+     * is the runtime's cue to fall back to another backend loudly. */
+    bool ModeMatchesNetlist() const {
+        return netlist_is_dcdc_ == (mode_ == NgspicePlantMode::Dcdc);
+    }
+    bool DcdcActive() const {
+        return mode_ == NgspicePlantMode::Dcdc && netlist_is_dcdc_;
+    }
+    /* Last Step()'s probes; false when dcdc mode is not live. */
+    bool GetDcdcProbes(DcdcProbes* out) const {
+        if (!DcdcActive() || !out) return false;
+        *out = probes_;
+        return true;
+    }
 
     bool IsSharedspiceLoaded() const { return sharedspice_loaded_; }
 
@@ -44,6 +80,11 @@ private:
     // meaning the back-EMF is in-circuit and the V-sources take only the
     // inverter terminal voltages.
     bool has_bemf_sources_ = false;
+    // True when the loaded netlist exposes the Vsen1/Vsen2/Vsen3 sense-source
+    // trio — the dcdc netlist contract marker (see plants/dcdc_buck.cir).
+    bool netlist_is_dcdc_ = false;
+    NgspicePlantMode mode_ = NgspicePlantMode::Motor;
+    DcdcProbes probes_{};
     bool first_step_ = true;
     double current_sim_time_ = 0.0;
 
@@ -134,12 +175,15 @@ private:
     void Command(const char* cmd);
     void LoadNetlist();
     static bool DetectBackEmfSources(const std::vector<std::string>& lines);
+    static bool DetectDcdcSenseSources(const std::vector<std::string>& lines);
     void ApplyParams();
     void UpdatePendingVoltages(float du_pct, float dv_pct, float dw_pct);
     bool AdvanceSpiceTo(double target_time);
     bool WaitForBgPause(uint64_t target_pauses);
-    float ReadCurrent(const char* vecname) const;
+    float ReadVecLast(const char* vecname) const;
     void IntegrateMechanics(float dt_s);
+    void StepDcdc(float duty_u_pct, float duty_v_pct, float duty_w_pct,
+                  float dt_s);
 };
 
 } // namespace hostsim

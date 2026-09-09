@@ -1,0 +1,26 @@
+{
+  "simulation": {
+    "duration_s": 0.3,
+    "tim_isr_hz": 10000.0,
+    "app_loop_hz": 1000.0,
+    "telem_hz": 500.0,
+    "trace_csv": "dcdc_3bus_trace.csv",
+    "plant": {
+      "backend": "ngspice",
+      "netlist": "plants/dcdc_buck.cir",
+      "substeps": 1,
+      "mode": "dcdc"
+    }
+  },
+  "motor": {
+    "rs_ohm": 0.02,
+    "ld_h": 0.000033,
+    "lq_h": 0.000033,
+    "vdc_v": 48.0
+  },
+  "dcdc": {
+    "duty_u_pct": 30.0,
+    "duty_v_pct": 20.0,
+    "duty_w_pct": 40.0
+  }
+}
