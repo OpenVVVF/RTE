@@ -306,6 +306,15 @@ Next up, roughly in priority order:
   current references (the `control.slew` node exists, unwired)
 - ngspice plant backend beyond the experimental RL/PMSM netlists: switched
   device models, Gen6-oriented netlist templates
+- DC-microgrid converters: synchronous DC/DC testing of one 3-phase power
+  stage configured as three independent phase->bus converters, 2+1 split, or
+  all legs paralleled; needs a DC-bus/load plant model behind the IPlant seam
+  (ngspice netlists can already express a sync buck/boost of arbitrary shape)
+- Multi-converter simulation: several host_sim/host_sil instances over a
+  shared simulated CAN bus (HostSim already loopbacks CAN per-instance;
+  bridge instances over a socket) — covers 5-phase motors from two inverters
+  and microgrid AFE -> DC/DC -> output chains with cross-converter control
+- 5-phase (and N-phase) machine model behind the same plant seam
 - Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no

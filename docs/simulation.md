@@ -361,6 +361,26 @@ Environment knobs:
   clients); F-RAM is a 256 KiB in-memory image (optional file backing).
 - `platform_micros()`/DWT see cycles = sim µs × 550 MHz.
 
+## Future directions
+
+Deliberately not built yet, but the seams are in place (see also the TODO.txt
+simulator block and the root README roadmap):
+
+- **Synchronous DC/DC and DC microgrids.** One 3-phase stage driven as three
+  independent phase→DC-bus converters, a 2+1 split, or all legs paralleled.
+  The work item is a DC-bus/load plant behind the existing `IPlant` seam
+  (`src/plant/plant_backend.h`); an ngspice netlist can already express a sync
+  buck/boost of arbitrary shape, so a netlist-only prototype works today.
+- **Multiple inverters at once.** Two instances (e.g. a 5-phase motor driven
+  by two 3-phase inverters, or a microgrid AFE → DC/DC → output chain) need a
+  shared simulated CAN: HostSim already models loopback CAN per instance; the
+  bridge is a small socket relay between instances. Sim instances already take
+  distinct ports (`host_sim --listen`, `host_sil --port`) so N RTEStudio
+  sessions can attach independently.
+- **N-phase machines.** The induction/PMSM models are 3-phase dq/αβ; a
+  5-phase machine means generalizing the plant transforms behind the same
+  seam.
+
 ## Design history
 
 The ngspice backend was delivered against

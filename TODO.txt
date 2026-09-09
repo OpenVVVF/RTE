@@ -16,3 +16,14 @@ validate by emitting and compiling full existing firmware without any changes or
  - tools for flashing over usb without breaking - like current rte
  - graphs and stuff
  - etc.
+
+simulator future (keep in mind, not urgent):
+- sync dc/dc converter testing: one 3ph stage as 3 separate phase->bus
+  converters, or 2+v separate, or all 3 paralleled (dc microgrid). needs a
+  dc-bus/load plant behind IPlant; ngspice netlist can already do the switch
+  topology
+- multiple inverters at once over a simulated canbus: 5ph motor from two
+  inverters, or whole microgrid afe -> dcdc -> output with cross-converter
+  control. hostsim already loopbacks can per instance; bridge instances over
+  a socket. sims take --listen/--port already so N guis can attach
+- 5-phase machine model behind the same plant seam
