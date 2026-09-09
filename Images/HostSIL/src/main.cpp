@@ -23,8 +23,10 @@
  *                    unless --realtime overrides it
  *     --port P       live listen port (default 14608, same as HostSim)
  *
- * In --live mode bytes a client sends are logged but not forwarded to the
- * firmware shell (see sil/sil_live_server.h).
+ * In --live mode bytes a client sends (e.g. RTEStudio's text console, or a
+ * raw tcp client) are forwarded verbatim into the firmware's huart3 IT-RX
+ * path, so the Gen6FW CommandShell receives them exactly like minicom-typed
+ * bytes on hardware (see sil/sil_live_server.h and silUartRxPoll).
  *
  * Scenario JSON: see scenarios/sil_foc_demo.json and src/scenario.h.
  */
@@ -421,6 +423,7 @@ int main(int argc, char** argv) {
             updateThrottleVoltages();
             silUartPumpTxCompletion();
             sil_live_poll();
+            silUartRxPoll();   /* deliver live-link client bytes to the shell */
             if (!sil_rt_run_app_iteration(fastTick)) {
                 std::fprintf(stderr, "[SIL] firmware died in main loop: %s\n",
                              sil_rt_fw_error());

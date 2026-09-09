@@ -32,14 +32,21 @@ client joining mid-run has the full key table within ~100 ms).
 `--port P` selects the listen port (default **14608**, same as HostSim).
 Without `--live` no socket is opened and batch behavior is unchanged.
 
-Client→server bytes (RTEStudio's HostSim-style text commands such as
-`throttle a 0.5`) are accepted, decoded into lines, and **logged to stdout
-only** — they are *not* forwarded to the Gen6FW `CommandShell`, whose UART
-RX path consumes single bytes via `HAL_UART_Receive_IT`/interrupt callbacks
-that SIL intentionally does not drive.  Use scenario `firmware_config` /
-`control` seeds to affect the firmware instead.  `scripts/ivp_probe.py` is a
-stdlib-only command-line probe that decodes the stream and prints the
-firmware keys (handy without a GUI).
+Client→server bytes — the RTEStudio text console (`IvpTcpClient::SendLine`
+appends `'\n'`) or any raw TCP client — are forwarded **verbatim** into the
+firmware's USART3 IT-RX path: the SIL HAL models the single-byte
+`HAL_UART_Receive_IT` arm / `HAL_UART_RxCpltCallback` interrupt pairing the
+Gen6FW `CommandShell` expects, delivering queued client bytes on the
+scheduler context while the firmware is blocked (one byte per callback, the
+cooperative stand-in for the hardware RXNE IRQ).  Shell commands typed over
+the link therefore take the real firmware code path, exactly as minicom on
+hardware.  Both `'\n'` and `'\r\n'` line endings work (the shell treats
+either as a terminator; empty lines are ignored).  Without `--live` no
+socket is opened, no RX bytes ever arrive, and batch behavior is unchanged.
+`scripts/ivp_probe.py` is a stdlib-only command-line probe that decodes the
+stream and prints the firmware keys (handy without a GUI);
+`scripts/shell_client.py` sends command lines and prints the shell's
+`print`-key responses.
 
 Note the live link ends when the scenario `simulation.duration_s` elapses;
 use a longer-duration scenario for interactive sessions.
@@ -68,7 +75,9 @@ graph at configure time with `-DSIL_GRAPH=<path>` and a fresh `-DSIL_FW_SRC`.
   classes (`PWM`, `PhaseCurrentADC`, `EncoderADC`, `MAX22530`,
   `ApplicationSensors`, `CanBus`, F-RAM, UART, …) against `silWorld()`.
 * `sil/sil_live_server.*` — the optional `--live` TCP server proxying the
-  firmware's COBS-framed UART telemetry stream to RTEStudio.
+  firmware's COBS-framed UART telemetry stream to RTEStudio (TX) and
+  forwarding client-sent command bytes into the modeled huart3 IT-RX path
+  (`silUartRxEnqueue`, drained by `silUartRxPoll` in `sil_hal.cpp`).
 * `src/main.cpp` — scenario parsing, scheduler, trace CSV.
 
 ### Per-TIM1-update-event order (hardware order)
@@ -112,7 +121,11 @@ on the firmware thread.
 * **CAN/UART**: CAN frames are accepted and dropped; telemetry TX DMA
   completes at the next app tick.  The telemetry bytes themselves (COBS
   InverterProtocol) are forwarded verbatim to TCP clients in `--live` mode
-  and discarded otherwise.  FRAM is a 256 KiB in-memory image (optional file
-  backing via scenario `fram_image`).
+  and discarded otherwise.  In `--live` mode client-sent bytes enter the
+  modeled huart3 IT-RX path: bytes queue in a host-side FIFO and are
+  delivered one per `HAL_UART_RxCpltCallback` at app-tick boundaries — the
+  same bytes and callback pairing the shell sees on hardware, coalesced to
+  tick cadence instead of per-byte preempt timing.  FRAM is a 256 KiB
+  in-memory image (optional file backing via scenario `fram_image`).
 * The firmware's `platform_micros()`/DWT paths see cycles = sim_us *
   550 MHz.

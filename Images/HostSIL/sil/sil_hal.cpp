@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 
 /* --------------------------------------------------------------------------
  * Global peripheral register blocks, handles, and port objects
@@ -67,7 +68,23 @@ namespace {
 struct UartState {
     bool               tx_pending = false;
     UART_HandleTypeDef* pending_huart = nullptr;
+
+    /* IT-RX model (huart3): the firmware arms single-byte reception with
+     * HAL_UART_Receive_IT and expects HAL_UART_RxCpltCallback per byte.
+     * Bytes arrive from the live-link clients via silUartRxEnqueue()
+     * (scheduler context) and are delivered by silUartRxPoll() (scheduler
+     * context, firmware blocked — the SIL stand-in for the RXNE ISR). */
+    bool      rx_armed = false;
+    uint8_t*  rx_buf   = nullptr;
+    uint16_t  rx_size  = 0;
+    uint16_t  rx_count = 0;
+    std::deque<uint8_t> rx_fifo;
 };
+
+/* Bound on queued client->firmware bytes (bytes are tiny text commands;
+ * the cap only bounds memory if the firmware stops polling). */
+constexpr size_t kUartRxFifoCap = 4096;
+
 UartState g_uart3;
 } // namespace
 
@@ -325,6 +342,13 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef* hspi,
  * Telemetry module: the bytes handed over here are the COBS-framed
  * InverterProtocol stream exactly as it would leave USART3 on hardware.
  * When the live server is active, forward them verbatim to TCP clients.
+ *
+ * RX (huart3, IT mode): the firmware's CommandShell arms single-byte
+ * reception in HAL_UART_Receive_IT and consumes bytes in
+ * HAL_UART_RxCpltCallback.  Arming only records the intent here; bytes from
+ * live-link clients (silUartRxEnqueue) are delivered by silUartRxPoll on the
+ * scheduler context while the firmware is blocked, one byte per callback —
+ * the cooperative stand-in for the hardware RXNE interrupt.
  * ------------------------------------------------------------------------ */
 
 HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef* huart,
@@ -337,8 +361,18 @@ HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef* huart,
     return HAL_OK;
 }
 
-HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef*, uint8_t*, uint16_t) {
-    return HAL_OK;   /* no RX traffic in SIL */
+HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef* huart, uint8_t* data,
+                                      uint16_t size) {
+    if (huart == &huart3 && data != nullptr && size > 0) {
+        g_uart3.rx_armed = true;
+        g_uart3.rx_buf = data;
+        g_uart3.rx_size = size;
+        g_uart3.rx_count = 0;
+        /* Never deliver inline: the shell re-arms from within
+         * HAL_UART_RxCpltCallback, so delivery happens in silUartRxPoll on
+         * the scheduler context. */
+    }
+    return HAL_OK;
 }
 
 /* --------------------------------------------------------------------------
@@ -376,4 +410,26 @@ void silUartPumpTxCompletion() {
     g_uart3.tx_pending = false;
     g_uart3.pending_huart = nullptr;
     HAL_UART_TxCpltCallback(h);   /* declared by the shim HAL header */
+}
+
+void silUartRxEnqueue(const uint8_t* data, size_t len) {
+    if (data == nullptr || len == 0) return;
+    auto& fifo = g_uart3.rx_fifo;
+    size_t n = len;
+    if (fifo.size() + n > kUartRxFifoCap) {
+        n = fifo.size() < kUartRxFifoCap ? kUartRxFifoCap - fifo.size() : 0;
+    }
+    fifo.insert(fifo.end(), data, data + n);
+}
+
+void silUartRxPoll() {
+    while (g_uart3.rx_armed && !g_uart3.rx_fifo.empty()) {
+        g_uart3.rx_buf[g_uart3.rx_count++] = g_uart3.rx_fifo.front();
+        g_uart3.rx_fifo.pop_front();
+        if (g_uart3.rx_count >= g_uart3.rx_size) {
+            g_uart3.rx_armed = false;
+            g_uart3.rx_count = 0;
+            HAL_UART_RxCpltCallback(&huart3);   /* firmware re-arms for next */
+        }
+    }
 }

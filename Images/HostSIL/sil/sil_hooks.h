@@ -9,6 +9,9 @@
 #ifndef SIL_HOOKS_H
 #define SIL_HOOKS_H
 
+#include <cstddef>
+#include <cstdint>
+
 /* --- TIM1 / PWM (sil_pwm.cpp) -------------------------------------------*/
 float silTimSwitchingHz();      /* current TRGO (injected trigger) rate     */
 float silTimUpdateHz();         /* current update-event rate                */
@@ -36,6 +39,17 @@ bool  silGateOutputsEnabled();  /* power rail on AND reset released         */
 /* Fire a deferred UART TX-complete callback if one is pending — call once
  * per app tick while the firmware is blocked. */
 void  silUartPumpTxCompletion();
+
+/* Queue client->firmware bytes (live-link RX) into the modeled huart3 FIFO.
+ * Call on the scheduler context only (from sil_live_poll).  FIFO is
+ * cap-bounded; excess bytes are dropped. */
+void  silUartRxEnqueue(const uint8_t* data, size_t len);
+
+/* Deliver queued RX bytes to the armed IT reception: one byte per
+ * HAL_UART_RxCpltCallback, exactly like the hardware RXNE interrupt, with
+ * the firmware blocked (its callback re-arms for the next byte).  No-op
+ * when the FIFO is empty or reception is not armed. */
+void  silUartRxPoll();
 
 /* --- Host-side board init (sil_hal.cpp) ----------------------------------*/
 /* Peripheral register defaults (TIM1 ARR mirror of MX init, etc.).  Call

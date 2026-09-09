@@ -5,9 +5,14 @@
  * listen socket, per-client drain).  Unlike HostSim — which re-frames a
  * host-side key/value map — this server is a pure byte proxy: the firmware's
  * own COBS-framed InverterProtocol UART bytes are forwarded verbatim, so the
- * TCP stream is bit-identical to the hardware USART3 wire.
+ * TCP stream is bit-identical to the hardware USART3 wire.  Client→server
+ * bytes (RTEStudio text console lines, which end with '\n') are likewise
+ * forwarded verbatim into the firmware's huart3 IT-RX model
+ * (silUartRxEnqueue); the Gen6FW CommandShell accepts both '\n' and '\r\n'
+ * line endings, so no translation is needed.
  */
 #include "sil_live_server.h"
+#include "sil_hooks.h"   /* silUartRxEnqueue */
 
 #include <cerrno>
 #include <cstdio>
@@ -50,7 +55,6 @@ struct LiveServer {
     std::vector<Client> clients;
     std::vector<uint8_t> pending;  /* firmware UART TX bytes not yet flushed */
     std::mutex mu;                 /* guards pending (feed runs fw-context) */
-    bool rx_note_printed = false;
 };
 
 LiveServer g_live;
@@ -94,21 +98,14 @@ bool WriteAll(Socket fd, const uint8_t* data, size_t n, bool& progressed) {
     return true;
 }
 
-void HandleRxLine(LiveServer& srv, const std::string& raw) {
+void HandleRxLine(LiveServer&, const std::string& raw) {
     std::string line = raw;
     while (!line.empty() &&
            (line.back() == '\r' || line.back() == '\n' || line.back() == ' ')) {
         line.pop_back();
     }
     if (line.empty()) return;
-    if (!srv.rx_note_printed) {
-        srv.rx_note_printed = true;
-        std::printf("[SIL live] note: client TX lines are logged only — the "
-                    "Gen6FW shell consumes huart3 interrupt RX (1 byte/IRQ),\n"
-                    "[SIL live] which SIL does not drive; use scenario control "
-                    "seeds instead\n");
-    }
-    std::printf("[SIL live] rx (ignored): %s\n", line.c_str());
+    std::printf("[SIL live] -> shell: %s\n", line.c_str());
     std::fflush(stdout);
 }
 
@@ -171,7 +168,6 @@ void sil_live_stop() {
         std::lock_guard<std::mutex> lock(g_live.mu);
         g_live.pending.clear();
     }
-    g_live.rx_note_printed = false;
 }
 
 bool sil_live_active() {
@@ -212,8 +208,9 @@ void sil_live_poll() {
         std::fflush(stdout);
     }
 
-    /* Drain client -> server bytes: text lines are logged (not wired to the
-     * firmware shell — see the header). */
+    /* Drain client -> server bytes: forward every byte verbatim into the
+     * modeled huart3 IT-RX FIFO (the firmware CommandShell path) and mirror
+     * complete text lines to stdout. */
     for (size_t i = 0; i < g_live.clients.size();) {
         Client& c = g_live.clients[i];
         char buf[256];
@@ -228,6 +225,8 @@ void sil_live_poll() {
                 drop = true;
                 break;
             }
+            silUartRxEnqueue(reinterpret_cast<const uint8_t*>(buf),
+                             static_cast<size_t>(n));
             c.rx.append(buf, buf + n);
             size_t pos;
             while ((pos = c.rx.find('\n')) != std::string::npos) {
