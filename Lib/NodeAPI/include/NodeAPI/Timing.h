@@ -21,7 +21,12 @@ struct ValidationResult {
 //
 // Every node carries a `domain` string (e.g. "isr_pwm", "adc_sample",
 // "app_loop"). This validator enforces three rules:
-//   1. The graph is a DAG — cycles are reported as errors.
+//   1. Plain connections must not form an algebraic (within-step) cycle.
+//      A bridge breaks a cycle legally: it is the model's unit-delay
+//      primitive for cross-domain dataflow — the producer's value is stored
+//      during its own domain's step and read by the consumer in a later
+//      step of the consumer's domain, so a loop closed through a bridge is
+//      sampled-time feedback, not an algebraic loop.
 //   2. Connections may only exist between nodes in the same timing domain.
 //   3. Bridges may only connect nodes in different timing domains.
 //

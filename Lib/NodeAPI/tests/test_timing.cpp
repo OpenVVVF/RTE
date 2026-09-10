@@ -124,7 +124,7 @@ TEST(Timing, CycleFails) {
     const auto result = validator.Validate(graph);
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(result.errors.size(), 1u);
-    EXPECT_NE(result.errors[0].find("directed cycle"), std::string::npos);
+    EXPECT_NE(result.errors[0].find("algebraic cycle of plain connections"), std::string::npos);
 }
 
 TEST(Timing, EntryPointCannotHaveIncomingConnection) {

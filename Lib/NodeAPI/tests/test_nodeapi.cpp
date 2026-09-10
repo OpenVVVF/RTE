@@ -100,6 +100,23 @@ Graph MakeDemoGraph() {
     return graph;
 }
 
+#ifdef NODEAPI_BUILD_TIMING
+// Timing-validator fixtures: the Validator only exists when NodeAPI is built
+// with NODEAPI_BUILD_TIMING (test_timing.cpp is likewise conditional), so
+// keep the helper under the same guard to avoid an unused-function warning.
+NodeType MakePassThroughType() {
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    return NodeType{
+        .id = "test.passthrough",
+        .displayName = "Pass",
+        .inputPorts = {Port{.name = "in", .direction = PortDirection::Input, .type = scalar}},
+        .outputPorts = {Port{.name = "out", .direction = PortDirection::Output, .type = scalar}},
+    };
+}
+#endif
+
 }  // namespace
 
 TEST(WireType, UnitLabels) {
@@ -869,3 +886,163 @@ TEST(Serialization, LoadFailsLoudlyOnInvalidItems) {
     EXPECT_TRUE(graph.FindConnection("c1").has_value());
     EXPECT_FALSE(graph.FindConnection("c2").has_value());
 }
+
+#ifdef NODEAPI_BUILD_TIMING
+TEST(Timing, PlainConnectionCycleFails) {
+    // A -> B -> A of pure same-domain connections is an algebraic cycle and
+    // must be rejected.
+    Graph graph;
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNode(Node{.id = "a", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "b", .type = "test.passthrough", .domain = "app_loop"});
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "a", .portName = "out"},
+        .to = PortRef{.nodeId = "b", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "b", .portName = "out"},
+        .to = PortRef{.nodeId = "a", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.errors.size(), 1u);
+    EXPECT_NE(result.errors[0].find("algebraic cycle of plain connections"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" a"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" b"), std::string::npos);
+}
+
+TEST(Timing, BridgeMediatedFeedbackLoopPasses) {
+    // Closing a feedback loop through bridges is sampled-time legal: each
+    // bridge is a unit delay, so the loop carries no algebraic (within-step)
+    // constraint. The loop needs two bridges — connections must stay inside
+    // one domain while bridges must cross domains, so domain switches come
+    // in pairs: fast ->conn-> fast ->bridge-> slow ->conn-> slow ->bridge->
+    // back to fast.
+    Graph graph;
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNode(Node{.id = "ctl_a", .type = "test.passthrough", .domain = "fast"});
+    graph.AddNode(Node{.id = "ctl_b", .type = "test.passthrough", .domain = "fast"});
+    graph.AddNode(Node{.id = "plant_c", .type = "test.passthrough", .domain = "slow"});
+    graph.AddNode(Node{.id = "plant_d", .type = "test.passthrough", .domain = "slow"});
+
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "ctl_a", .portName = "out"},
+        .to = PortRef{.nodeId = "ctl_b", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "plant_c", .portName = "out"},
+        .to = PortRef{.nodeId = "plant_d", .portName = "in"},
+    });
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "loop_forward",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "ctl_b", .portName = "out"},
+        .consumer = PortRef{.nodeId = "plant_c", .portName = "in"},
+    });
+    // The return bridge closes the loop: plant_d (slow) feeds ctl_a (fast),
+    // read one domain step later.
+    graph.AddBridge(Bridge{
+        .id = "loop_return",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "plant_d", .portName = "out"},
+        .consumer = PortRef{.nodeId = "ctl_a", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_TRUE(result.ok);
+    EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(Timing, BridgeDoesNotLaunderConnectionCycle) {
+    // Mixing an innocent cross-domain bridge into the graph must not launder
+    // a genuine connection-only cycle elsewhere: A <-> B stays illegal.
+    Graph graph;
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "a", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "b", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "monitor", .type = "display.value", .domain = "host"});
+
+    // The connection-only cycle the other way: b -> a -> b.
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "b", .portName = "out"},
+        .to = PortRef{.nodeId = "a", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "a", .portName = "out"},
+        .to = PortRef{.nodeId = "b", .portName = "in"},
+    });
+
+    // A legal bridge hanging off the cycle: b (app_loop) -> monitor (host).
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "telemetry",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "b", .portName = "out"},
+        .consumer = PortRef{.nodeId = "monitor", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_FALSE(result.ok);
+    // Exactly one error — the cycle. The bridge itself is legal and adds none.
+    EXPECT_EQ(result.errors.size(), 1u);
+    EXPECT_NE(result.errors[0].find("algebraic cycle of plain connections"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" a"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" b"), std::string::npos);
+}
+
+TEST(Timing, AcyclicMultiDomainGraphWithBridgePasses) {
+    // No regression for innocent graphs: two acyclic chains in separate
+    // domains, one feeding the other through a bridge, validate untouched.
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "sense", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "scale", .type = "test.passthrough", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "filter", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "gauge", .type = "display.value", .domain = "app_loop"});
+
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "sense", .portName = "out"},
+        .to = PortRef{.nodeId = "scale", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "filter", .portName = "out"},
+        .to = PortRef{.nodeId = "gauge", .portName = "in"},
+    });
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "sample_handoff",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "scale", .portName = "out"},
+        .consumer = PortRef{.nodeId = "filter", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_TRUE(result.ok);
+    EXPECT_TRUE(result.errors.empty());
+}
+#endif

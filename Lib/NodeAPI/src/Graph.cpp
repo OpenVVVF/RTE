@@ -157,6 +157,10 @@ std::map<std::string, std::string> Graph::ComputeExcludedNodes() const {
     }
 
     // Producer -> consumers adjacency across connections and bridges.
+    // Exclusion follows data provenance rather than schedule order, so it
+    // deliberately crosses bridges: a bridge consumer still reads the
+    // producer's value (one domain step later), unlike cycle detection where
+    // a bridge is a unit delay that breaks the dependency.
     std::unordered_map<std::string, std::vector<std::string>> children;
     for (const auto& connection : connections_) {
         children[connection.from.nodeId].push_back(connection.to.nodeId);
