@@ -123,7 +123,11 @@ graph with `-DSIL_GRAPH=<path>` and a fresh `-DSIL_FW_SRC`, or re-emit with
 `Images/HostSIL/scripts/emit_firmware.sh [graph.json] [output-dir]`.
 `scripts/validate_trace.py` checks the trace for NaN/inf, the i_a+i_b+i_c
 zero-sum constraint, overcurrent bounds, and that speed/duty respond to
-control.
+control.  `scenarios/sil_induction_vhz.json` proves the shared induction
+plant under real firmware too: a scheduled `induction start` shell command
+drives the firmware's open-loop V/Hz (`OpenLoopController` SPWM) against
+`machine: "induction"`, with `validate_trace.py --mode vhz` asserting the
+slip band around sync (numbers in the HostSIL README).
 
 HostSIL also has a live mode (run from `Images/HostSIL`):
 

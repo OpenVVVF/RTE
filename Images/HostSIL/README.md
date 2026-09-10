@@ -149,6 +149,47 @@ in simulated time), the harness posts the equivalent of the shell commands
 through the firmware's own `CommandManager::processLine`.  All of it executes
 on the firmware thread.
 
+### Induction machine under open-loop V/Hz
+
+`scenarios/sil_induction_vhz.json` runs the **squirrel-cage induction plant**
+(HostSim's `induction_model.h`, `motor.machine = "induction"`) under the real
+firmware's own V/Hz path — no graph control code.  The scenario leaves
+`control.start` false (the supervisor/graph FOC, with its PM-flux assumption,
+never engages) and instead schedules the firmware shell command
+`induction start 40 0.98` (`OpenLoopCommands.cpp` →
+`OpenLoopController::start`) at 1.6 s through the `commands` block.  The
+firmware's non-blocking startup (gate-driver reset assert/release →
+`/RDY` wait → `PWM_StartSPWM`, 1 s current-limited modulation ramp 0→0.98 in
+`openLoopController().update()`) runs verbatim; the SPWM angle ramp itself
+runs in the shimmed `HAL_TIM_PeriodElapsedCallback` exactly as on hardware.
+m = 0.98 gives a ~23.5 V phase peak at 40 Hz (≈0.59 V/Hz incl. boost margin —
+the same endpoint the HostSim `induction_vhz` scenario was tuned to).
+
+```
+cd Images/HostSIL && ../../build/hostsil_build/host_sil scenarios/sil_induction_vhz.json --realtime 0
+python3 scripts/validate_trace.py sil_induction_vhz_trace.csv \
+    --mode vhz --freq-hz 40 --pole-pairs 2 --control-start-s 1.6
+```
+
+Measured on the 4-pole-scale machine (rs 0.4 Ω, rr 0.3 Ω, Lm 25 mH, Lls =
+Llr 2 mH, pp = 2, vdc 48 V): ramp done at 2.63 s (`[OL] START f=40.00
+m=0.980`), monotonic speed ramp, settled 247.9 rad/s electrical =
+**1183.7 mech rpm vs 1200 sync** (slip 3.42 rad/s, 1.36 %), peak phase
+current 9.41 A, zero NaN, no firmware fault trips, final supervisor state
+IDLE with `status` reporting the open-loop controller `run=Y` — the OL
+healthy state (no critical faults, gate driver ready).  The vhz validator
+mode asserts exactly this: directional monotonic ramp, current bounds, and an
+end-of-trace speed band of sync ± slip (default 0.3–30 % of sync).
+
+One SIL model refinement was needed to get there: the GPIO shim modeled
+`/RDY` as `power && reset-released`, which made `OpenLoopController::start()`
+deadlock (it polls `/RDY` while the reset its own startup sequence is about
+to release is still asserted) and trip a spurious `GateDriverUvlo`.  The
+NCD57100's `/RDY` reports driver-supply/UVLO state and is not gated by the
+RESET pin — reset gates the gate *outputs*, which the SIL models separately
+in `silGateOutputsEnabled()` — so the shim now reports `/RDY` from the power
+rail alone.
+
 ## Fidelity notes / deliberate simplifications
 
 * **Cooperative scheduling**: ISRs run at tick boundaries; they never preempt

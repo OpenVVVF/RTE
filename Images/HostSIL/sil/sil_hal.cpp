@@ -161,7 +161,12 @@ void Error_Handler(void) {
  *
  * Output state lives in each port's ODR; firmware bit-bang through BSRR is
  * folded in at read time.  Virtual inputs the firmware can observe:
- *   GPIOC.12 GATE_DRIVER_READY   = power(PC10) && reset released(PD5)
+ *   GPIOC.12 GATE_DRIVER_READY   = power(PC10); the NCD57100 /RDY reports
+ *     driver supply/UVLO state and is not gated by the RESET pin — the reset
+ *     pin only gates the gate outputs, which is modeled separately by
+ *     silGateOutputsEnabled().  Folding reset into /RDY would deadlock the
+ *     firmware's own OpenLoopController::start(), which polls /RDY while the
+ *     reset it is about to release is still asserted.
  *   GPIOC.11 GATE_DRIVER_FAULT   = high (never faulted)
  * ------------------------------------------------------------------------ */
 
@@ -192,9 +197,7 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* port, uint16_t pin) {
     const uint32_t idx = port->sil_index;
 
     if (idx == 2 && pin == GPIO_PIN_12) {          /* GATE_DRIVER_READY   */
-        const bool powered  = silPinState(2, GPIO_PIN_10);
-        const bool released = silPinState(3, GPIO_PIN_5);
-        return (powered && released) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+        return silPinState(2, GPIO_PIN_10) ? GPIO_PIN_SET : GPIO_PIN_RESET;
     }
     if (idx == 2 && pin == GPIO_PIN_11) {          /* GATE_DRIVER_FAULT   */
         return GPIO_PIN_SET;                       /* active-low: no fault */

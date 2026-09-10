@@ -22,8 +22,10 @@
 #             scenarios/dcdc_parallel.json (3 legs into one shared bus) and
 #             checks bus voltage + leg current sharing. Same SKIP rule as
 #             the ngspice part; each run is wall-capped.
-#   hostsil   build Images/HostSIL (host_sil), run scenarios/sil_foc_demo.json,
-#             validate with scripts/validate_trace.py.
+#   hostsil   build Images/HostSIL (host_sil), run scenarios/sil_foc_demo.json
+#             (validate with scripts/validate_trace.py) and
+#             scenarios/sil_induction_vhz.json (firmware OpenLoop "induction
+#             start" V/Hz; validate_trace.py --mode vhz slip band).
 #   rte       `rte sim --no-build` batch sanity reusing the hostsim emitted build.
 #
 # Runs from any cwd with no args. Scratch lives under build/ (gitignored) and
@@ -59,6 +61,7 @@ SALIENT_SCENARIO_REL="scenarios/salient_pmsm.json"
 INDUCTION_SCENARIO_REL="scenarios/induction_vhz.json"
 NGSPICE_SCENARIO_REL="scenarios/ngspice_rl_demo.json"
 SIL_SCENARIO="${HOSTSIL_SRC}/scenarios/sil_foc_demo.json"
+SIL_IND_SCENARIO="${HOSTSIL_SRC}/scenarios/sil_induction_vhz.json"
 SIL_VALIDATOR="${HOSTSIL_SRC}/scripts/validate_trace.py"
 DCDC_SCENARIO_REL="scenarios/dcdc_3bus.json"
 DCDC_PARALLEL_SCENARIO_REL="scenarios/dcdc_parallel.json"
@@ -722,6 +725,34 @@ part_hostsil() {
         || { echo "[sim-smoke] FAIL: validate_trace.py output lacks VALIDATION PASSED" >&2
              return 1; }
     log "validate_trace.py: $(grep "VALIDATION PASSED" <<<"${val_out}")"
+
+    # Induction machine under the firmware's own open-loop V/Hz path
+    # ("induction start" shell command -> OpenLoopController SPWM ramp) —
+    # ensure_prereqs/build above are reused; this only adds a second ~4 s run.
+    local ind_log="${run_dir}/host_sil_induction_run.log"
+    (cd "${run_dir}" && "${HOSTSIL_BUILD}/host_sil" "${SIL_IND_SCENARIO}" --realtime 0) \
+        >"${ind_log}" 2>&1 || {
+        echo "[sim-smoke] FAIL: host_sil induction run exited nonzero; tail:" >&2
+        tail -n 20 "${ind_log}" >&2 || true
+        return 1
+    }
+    grep -q "no active faults" "${ind_log}" \
+        || { echo "[sim-smoke] FAIL: host_sil induction run reported active faults; tail:" >&2
+             tail -n 20 "${ind_log}" >&2 || true
+             return 1; }
+    local ind_trace="${run_dir}/sil_induction_vhz_trace.csv"
+    [[ -f "${ind_trace}" ]] || { echo "[sim-smoke] FAIL: sil_induction_vhz_trace.csv not written" >&2; return 1; }
+
+    val_out="$(python3 "${SIL_VALIDATOR}" "${ind_trace}" --mode vhz \
+        --freq-hz 40 --pole-pairs 2 --control-start-s 1.6)" || {
+        echo "[sim-smoke] FAIL: validate_trace.py rejected the induction trace:" >&2
+        echo "${val_out}" >&2
+        return 1
+    }
+    grep -q "VALIDATION PASSED" <<<"${val_out}" \
+        || { echo "[sim-smoke] FAIL: induction validation lacks VALIDATION PASSED" >&2
+             return 1; }
+    log "validate_trace.py --mode vhz: $(grep "VALIDATION PASSED" <<<"${val_out}")"
 }
 
 part_rte() {
