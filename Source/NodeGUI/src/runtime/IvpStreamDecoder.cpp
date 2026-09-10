@@ -47,6 +47,15 @@ void IvpStreamDecoder::FeedBytes(const uint8_t* data, size_t n) {
     }
 }
 
+void IvpStreamDecoder::Reset() {
+    frameLen_ = 0;
+    skipUntilDelimiter_ = false;
+    framesInWindow_ = 0;
+    bytesInWindow_ = 0;
+    registry_.clear();
+    partialStrings_.clear();
+}
+
 void IvpStreamDecoder::EmitStats(double dt_seconds) {
     if (dt_seconds <= 0.0) {
         return;

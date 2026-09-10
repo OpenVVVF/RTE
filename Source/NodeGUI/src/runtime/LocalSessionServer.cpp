@@ -40,17 +40,21 @@ bool ConstantTimeEqual(const std::string& left, const std::string& right) {
     return difference == 0;
 }
 
-json ConsoleJson(const TelemetrySnapshot& snapshot, std::uint64_t since,
-                 std::size_t maximum) {
-    json lines = json::array();
-    const auto first = snapshot.console.size() > maximum
-        ? snapshot.console.size() - maximum : 0;
-    for (std::size_t index = first; index < snapshot.console.size(); ++index) {
-        const auto& line = snapshot.console[index];
-        if (line.seq > since) lines.push_back({{"seq", line.seq}, {"text", line.text}});
+json ConsoleJson(std::vector<ConsoleLine> lines, std::uint64_t latestSeq,
+                 std::uint64_t sessionEpoch, std::size_t maximum) {
+    json out = json::array();
+    // Keep the newest `maximum` matches, mirroring the previous behavior of
+    // clamping against the rolling console tail.
+    const auto first = lines.size() > maximum ? lines.size() - maximum : 0;
+    for (std::size_t index = first; index < lines.size(); ++index) {
+        out.push_back({{"seq", lines[index].seq}, {"text", lines[index].text}});
     }
-    return {{"lines", std::move(lines)},
-            {"latest_seq", snapshot.console.empty() ? 0 : snapshot.console.back().seq}};
+    // session_epoch lets since-polling clients notice a ClearSession(): seq
+    // numbers are never reused within a GUI run, but the archive behind them
+    // is discarded, so a remembered `since` may straddle nothing.
+    return {{"lines", std::move(out)},
+            {"latest_seq", latestSeq},
+            {"session_epoch", sessionEpoch}};
 }
 
 }  // namespace
@@ -144,21 +148,27 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
         }
         const std::string method = request.value("method", "");
         const json params = request.value("params", json::object());
-        const TelemetrySnapshot snapshot = store_.Snapshot();
+        // No hoisted Snapshot(): each endpoint fetches only what it needs.
+        // Snapshot() deep-copies every rolling history (up to 12000 points
+        // per signal), which made these 30+ Hz polls absurdly expensive.
         json result;
         if (method == "device.status") {
+            const auto stats = store_.GetStatsLine();
             result = {{"app", "RTE Studio"}, {"device_port", devicePort_},
-                      {"connected", !devicePort_.empty() && !snapshot.suspended},
-                      {"suspended", snapshot.suspended}, {"rx_hz", snapshot.rxHz},
+                      {"connected", !devicePort_.empty() && !stats.suspended},
+                      {"suspended", stats.suspended}, {"rx_hz", stats.rxHz},
                       {"external_writes_enabled", externalDeviceWritesEnabled_}};
         } else if (method == "device.telemetry") {
-            result = {{"rx_hz", snapshot.rxHz}, {"suspended", snapshot.suspended},
-                      {"signals", snapshot.latest}, {"strings", snapshot.latestStr}};
+            const auto view = store_.GetDeviceView();
+            result = {{"rx_hz", view.stats.rxHz}, {"suspended", view.stats.suspended},
+                      {"signals", view.latest}, {"strings", view.latestStr}};
         } else if (method == "device.console") {
             const std::uint64_t since = params.value("since", std::uint64_t{0});
             const auto lines = std::clamp(params.value("lines", std::size_t{100}),
                                           std::size_t{1}, std::size_t{1000});
-            result = ConsoleJson(snapshot, since, lines);
+            result = ConsoleJson(store_.ConsoleSince(since),
+                                 store_.LatestConsoleSeq(),
+                                 store_.SessionEpoch(), lines);
         } else if (method == "device.command") {
             if (!externalDeviceWritesEnabled_) {
                 return json{{"ok", false},
@@ -168,7 +178,8 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             if (command.empty()) {
                 return json{{"ok", false}, {"error", "command is empty"}}.dump();
             }
-            if (snapshot.suspended || !commandHandler_ || !commandHandler_(command)) {
+            if (store_.GetStatsLine().suspended || !commandHandler_
+                || !commandHandler_(command)) {
                 return json{{"ok", false}, {"error", "device command could not be sent"}}.dump();
             }
             result = {{"sent", true}, {"command", command}};

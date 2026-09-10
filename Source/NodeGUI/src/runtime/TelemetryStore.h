@@ -60,9 +60,17 @@ struct SessionCommand {
     bool sent = false;
 };
 
-// Full, non-rolling capture used by "Export Session". Plot histories below
-// remain bounded for rendering performance, while this archive lasts for the
-// lifetime of the RuntimeController.
+// Bounded session capture used by "Export Session". Without a bound a long
+// run would grow without limit (30 min at 3.5 kHz ≈ 6.3M samples per signal).
+//
+// Per-signal float policy (see TelemetryStore below): the newest
+// kSessionRecentSamples samples are kept at full rate; older samples live in
+// a progressively decimated archive whose resolution halves each time the
+// archive overflows (stride 1, 2, 4, ... starting from the fold). So the
+// archive covers the whole session at roughly logarithmic temporal density
+// while a full-rate window of the most recent samples is always retained.
+// Strings, console, and commands are capped outright (oldest half dropped
+// when the cap is reached).
 struct RuntimeSessionSnapshot {
     int64_t startedAtUnixMs = 0;
     double durationSeconds = 0.0;
@@ -76,7 +84,7 @@ struct RuntimeSessionSnapshot {
 // Point-in-time copy of everything the runtime knows. Mirrors the old ImGui
 // client's TelemetryState so the local automation session can expose it.
 // NOTE: expensive to produce (full history copies) — use GetStatsLine() for
-// high-frequency polling.
+// scalar polling and GetDeviceView() / ConsoleSince() for the HTTP endpoints.
 struct TelemetrySnapshot {
     std::deque<ConsoleLine> console;
     std::unordered_map<std::string, float> latest;
@@ -102,13 +110,25 @@ struct TelemetrySnapshot {
 // thread (from RuntimeController's drain timer) and read by the GUI and the
 // local session endpoint.
 //
-// Retention matches the old client: 30 seconds or 12000 samples per signal,
-// 6000 console lines.
+// Retention:
+//   Live path (plots/console views) matches the old client: 30 seconds or
+//   12000 samples per float signal, 6000 console lines.
+//   Session archive (export): bounded as documented on RuntimeSessionSnapshot
+//   — per float signal at most kSessionArchiveSamples decimated samples plus
+//   kSessionRecentSamples full-rate recent samples; strings capped per key,
+//   console and commands capped overall. All trimming happens on the writer
+//   side in small amortized batches so no large reallocation or drop happens
+//   while mtx_ is held.
 class TelemetryStore {
 public:
     static constexpr float kRetainSeconds = 30.0f;
     static constexpr std::size_t kMaxSamples = 12000;
     static constexpr std::size_t kConsoleCapLines = 6000;
+    static constexpr std::size_t kSessionArchiveSamples = 12000;
+    static constexpr std::size_t kSessionRecentSamples = 12000;
+    static constexpr std::size_t kSessionStringSamples = 12000;
+    static constexpr std::size_t kSessionConsoleCapLines = 50000;
+    static constexpr std::size_t kSessionCommandCap = 10000;
 
     void AddF32(const std::string& key, float value, float tsec);
     void AddString(const std::string& key, const std::string& value);
@@ -137,10 +157,22 @@ public:
     void SetSuspended(bool suspended);
 
     // Lightweight scalar stats (no histories) — cheap enough for ~30 Hz UI
-    // header updates, unlike Snapshot().
+    // header updates and HTTP status polling, unlike Snapshot().
     using StatsLine = TelemetryStats;
     StatsLine GetStatsLine() const;
 
+    // Cheap view for the device.telemetry HTTP endpoint: scalar stats plus
+    // the latest-value maps (one entry per signal). Unlike Snapshot() this
+    // does not copy any history.
+    struct DeviceView {
+        TelemetryStats stats;
+        std::unordered_map<std::string, float> latest;
+        std::unordered_map<std::string, std::string> latestStr;
+    };
+    DeviceView GetDeviceView() const;
+
+    // Full deep copy including every history — expensive; only for rare,
+    // user-triggered consumers (FRAM key export).
     TelemetrySnapshot Snapshot() const;
     RuntimeSessionSnapshot SessionSnapshot() const;
 
@@ -165,20 +197,52 @@ public:
     std::vector<ConsoleLine> ConsoleSince(uint64_t sinceSeq) const;
 
     // Seq of the most recent console line, 0 when the console is empty. Used
-    // by console views to detect a ClearConsole() (seq goes backwards).
+    // by console views to detect a ClearConsole() (seq goes backwards). Note
+    // that seq values themselves are never reused within a run: ClearSession()
+    // does not restart numbering (see SessionEpoch).
     uint64_t LatestConsoleSeq() const;
 
+    // Generation counter, incremented by every ClearSession() call. Console
+    // seq numbers are never reset within a GUI run, so the HTTP response
+    // carries this counter to let long-lived pollers detect that the archive
+    // they track was discarded.
+    uint64_t SessionEpoch() const;
+
 private:
+    // Per-signal session capture state: a decimated archive (oldest data,
+    // written one sample per `stride` arrivals) followed by a full-rate
+    // block of the most recent samples. Both vectors stay below their
+    // respective caps; when the recent block overflows, its oldest half is
+    // folded into the archive in one batch.
+    struct SessionSignalStore {
+        std::vector<float> archiveT;
+        std::vector<float> archiveY;
+        std::vector<float> recentT;
+        std::vector<float> recentY;
+        uint32_t stride = 1;
+        uint32_t phase = 0;  // arrivals since the last archive write
+    };
+
     void TrimHistoryLocked(SignalHistory& hist) const;
+    void AppendSessionF32Locked(SessionSignalStore& store, float t, float y);
+    void AppendSessionArchiveLocked(SessionSignalStore& store, float t, float y);
     double SessionElapsedSeconds() const;
+
+    static constexpr std::size_t kNoUnmarkedCommand =
+        std::numeric_limits<std::size_t>::max();
 
     mutable std::mutex mtx_;
     TelemetrySnapshot snap_;
-    std::unordered_map<std::string, SessionSignalHistory> sessionFloatSignals_;
+    std::unordered_map<std::string, SessionSignalStore> sessionFloatSignals_;
     std::unordered_map<std::string, std::vector<SessionStringSample>>
         sessionStringSignals_;
     std::vector<SessionConsoleLine> sessionConsole_;
     std::vector<SessionCommand> sessionCommands_;
+    // MarkLastCommandReceived() bookkeeping: the rolling console calls it on
+    // every line, so the interesting case is the cheap early-out; while a
+    // command is pending, unmarkedIndex_ bounds the backward scan start.
+    std::size_t unmarkedCommands_ = 0;
+    std::size_t unmarkedIndex_ = kNoUnmarkedCommand;
     bool sessionTelemetryClockInitialized_ = false;
     float sessionTelemetrySourceOrigin_ = 0.0f;
     double sessionTelemetryElapsedOrigin_ = 0.0;
@@ -187,8 +251,11 @@ private:
     std::chrono::system_clock::time_point sessionStartWall_ =
         std::chrono::system_clock::now();
     // Starts at 1: the HTTP console API filters `seq > since` with a default
-    // `since` of 0, so seq 0 would never be delivered.
+    // `since` of 0, so seq 0 would never be delivered. Never reset within a
+    // run so `since`-polling clients do not silently lose lines across a
+    // ClearSession(); sessionEpoch_ marks those resets instead.
     uint64_t nextConsoleSeq_ = 1;
+    uint64_t sessionEpoch_ = 1;
 };
 
 }  // namespace NodeGUI::runtime

@@ -2,6 +2,7 @@
 
 #include "IvpTcpClient.h"
 #include "LegacyTelemetryClient.h"
+#include "PendingQueue.h"
 #include "TelemetryStore.h"
 
 #include <inverter_protocol/host/host_client.h>
@@ -12,6 +13,8 @@
 #include <chrono>
 #include <cstdint>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -105,34 +108,13 @@ signals:
     void sessionCleared();
 
 private:
-    struct F32Item {
-        std::string key;
-        float value;
-        float tsec;
-    };
-    struct StringItem {
-        std::string key;
-        std::string value;
-    };
-    struct ConsoleItem {
-        std::string text;
-    };
-    struct StatsItem {
-        float rxHz;
-        float rxBytesPerSec;
-        uint64_t goodFrames;
-        uint64_t badFrames;
-        uint64_t rejectCrc;
-        uint64_t rejectHdr;
-        uint64_t rejectLen;
-        uint64_t rejectPayloadParse;
-        uint64_t rejectUnknownId;
-        uint32_t seq;
-    };
-    using PendingItem = std::variant<F32Item, StringItem, ConsoleItem, StatsItem>;
-
+    // Client callbacks fire from arbitrary producer threads; Push() appends
+    // to pending_ and the ~33 ms GUI timer drains. See PendingQueue for the
+    // bounding policy when the GUI stalls (coalesce/drop, counters reported
+    // throttled into the console).
     void Push(PendingItem item);
     void DrainQueue();
+    void NoteQueueBacklog(uint64_t coalesced, uint64_t dropped);
     void TickSimulator();
     float NowSec() const;
     bool SendLine(const std::string& line);
@@ -159,8 +141,9 @@ private:
     TelemetryStore store_;
     QTimer* drainTimer_ = nullptr;
 
-    std::mutex queueMtx_;
-    std::vector<PendingItem> queue_;
+    PendingQueue pending_;
+    // GUI thread only: throttles the console notice about queue drops.
+    std::chrono::steady_clock::time_point lastQueueNotice_{};
 
     // Simulator state.
     QTimer* simTimer_ = nullptr;

@@ -5,6 +5,8 @@
 #include <QString>
 #include <QStringList>
 
+class QTimer;
+
 namespace NodeGUI::simulation {
 
 // Default IVP telemetry endpoint of HostSim --live (matches run_spwm_live.sh
@@ -73,6 +75,10 @@ signals:
     void output(const QString& text);
     // Parsed from host_sim's "HostSim live: listening on <host>:<port>" line.
     void liveEndpoint(const QString& host, int port);
+    // Fires when the process produced no output for the watchdog window while
+    // no endpoint has been announced yet — the attach keeps retrying either
+    // way, this is purely an operator hint. The message names likely causes.
+    void attachTimeout(const QString& message);
     void finished(int exitCode, QProcess::ExitStatus status);
 
 private:
@@ -84,6 +90,9 @@ private:
     // Unterminated output tail kept between chunks so a "listening on" line
     // split across reads is still matched.
     QString lineBuffer_;
+    // Single-shot; re-armed while output streams and disarmed at the first
+    // announced endpoint or when the process ends.
+    QTimer* attachWatchdog_ = nullptr;
 };
 
 }  // namespace NodeGUI::simulation

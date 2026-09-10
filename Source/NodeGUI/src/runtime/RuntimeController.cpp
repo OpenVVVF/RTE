@@ -47,14 +47,14 @@ RuntimeController::RuntimeController(QString port,
     , protocol_(protocol)
     , startTime_(std::chrono::steady_clock::now()) {
     legacyClient_.onF32 = [this](const std::string& key, float value, float tsec) {
-        Push(F32Item{key, value, tsec});
+        Push(QueuedF32{key, value, tsec});
     };
     legacyClient_.onString = [this](const std::string& key, const std::string& value) {
-        Push(StringItem{key, value});
+        Push(QueuedString{key, value});
     };
-    legacyClient_.onConsole = [this](const std::string& line) { Push(ConsoleItem{line}); };
+    legacyClient_.onConsole = [this](const std::string& line) { Push(QueuedConsole{line}); };
     legacyClient_.onStats = [this](const LegacyTelemetryClient::Stats& s) {
-        Push(StatsItem{s.rxHz,
+        Push(QueuedStats{s.rxHz,
                        s.rxBytesPerSec,
                        s.goodFrames,
                        s.badFrames,
@@ -67,13 +67,13 @@ RuntimeController::RuntimeController(QString port,
     };
 
     ivpClient_.onF32Value([this](uint16_t, const std::string& key, float value, uint32_t) {
-        Push(F32Item{key, value, NowSec()});
+        Push(QueuedF32{key, value, NowSec()});
     });
     ivpClient_.onStringValue([this](uint16_t, const std::string& key, const std::string& value,
-                                    uint32_t) { Push(StringItem{key, value}); });
-    ivpClient_.onConsoleLine([this](const std::string& line) { Push(ConsoleItem{line}); });
+                                    uint32_t) { Push(QueuedString{key, value}); });
+    ivpClient_.onConsoleLine([this](const std::string& line) { Push(QueuedConsole{line}); });
     ivpClient_.onStats([this](const ivp::ClientStats& s) {
-        Push(StatsItem{s.rx_hz,
+        Push(QueuedStats{s.rx_hz,
                        s.rx_bytes_per_sec,
                        s.good_frames,
                        s.bad_frames,
@@ -86,13 +86,13 @@ RuntimeController::RuntimeController(QString port,
     });
 
     tcpClient_.onF32Value = [this](uint16_t, const std::string& key, float value, uint32_t) {
-        Push(F32Item{key, value, NowSec()});
+        Push(QueuedF32{key, value, NowSec()});
     };
     tcpClient_.onStringValue = [this](uint16_t, const std::string& key, const std::string& value,
-                                      uint32_t) { Push(StringItem{key, value}); };
-    tcpClient_.onConsoleLine = [this](const std::string& line) { Push(ConsoleItem{line}); };
+                                      uint32_t) { Push(QueuedString{key, value}); };
+    tcpClient_.onConsoleLine = [this](const std::string& line) { Push(QueuedConsole{line}); };
     tcpClient_.onStats = [this](const ivp::ClientStats& s) {
-        Push(StatsItem{s.rx_hz,
+        Push(QueuedStats{s.rx_hz,
                        s.rx_bytes_per_sec,
                        s.good_frames,
                        s.bad_frames,
@@ -295,29 +295,43 @@ void RuntimeController::ResumeAfterFlash() {
 }
 
 void RuntimeController::Push(PendingItem item) {
-    std::lock_guard lock(queueMtx_);
-    queue_.push_back(std::move(item));
+    pending_.Push(std::move(item));
+}
+
+void RuntimeController::NoteQueueBacklog(uint64_t coalesced, uint64_t dropped) {
+    if (coalesced == 0 && dropped == 0) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (lastQueueNotice_.time_since_epoch() != std::chrono::steady_clock::duration::zero()
+        && now - lastQueueNotice_ < std::chrono::seconds(5)) {
+        return;
+    }
+    lastQueueNotice_ = now;
+    store_.AddConsoleLine(
+        "runtime: GUI was busy; queue backlog resolved by coalescing "
+        + std::to_string(coalesced) + " and dropping " + std::to_string(dropped)
+        + " telemetry value(s) (latest values always win; console and stats are never dropped)");
 }
 
 void RuntimeController::DrainQueue() {
-    std::vector<PendingItem> items;
-    {
-        std::lock_guard lock(queueMtx_);
-        if (queue_.empty()) {
-            return;
-        }
-        items.swap(queue_);
+    uint64_t coalesced = 0;
+    uint64_t dropped = 0;
+    const std::vector<PendingItem> items = pending_.Drain(coalesced, dropped);
+    if (items.empty()) {
+        NoteQueueBacklog(coalesced, dropped);
+        return;
     }
 
     for (const auto& item : items) {
         std::visit(
             [this](const auto& v) {
                 using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, F32Item>) {
+                if constexpr (std::is_same_v<T, QueuedF32>) {
                     store_.AddF32(v.key, v.value, v.tsec);
-                } else if constexpr (std::is_same_v<T, StringItem>) {
+                } else if constexpr (std::is_same_v<T, QueuedString>) {
                     store_.AddString(v.key, v.value);
-                } else if constexpr (std::is_same_v<T, ConsoleItem>) {
+                } else if constexpr (std::is_same_v<T, QueuedConsole>) {
                     store_.AddConsoleLine(v.text);
                     store_.MarkLastCommandReceived();
                 } else {
@@ -336,6 +350,7 @@ void RuntimeController::DrainQueue() {
             item);
     }
 
+    NoteQueueBacklog(coalesced, dropped);
     emit storeChanged();
 }
 
@@ -351,17 +366,17 @@ void RuntimeController::TickSimulator() {
         const double phase = 2.0 * M_PI * w.freq * t + i * 1.1;
         const float value = static_cast<float>(w.offset + w.amplitude * std::sin(phase))
                             + noise(rng);
-        Push(F32Item{w.name, value, t});
+        Push(QueuedF32{w.name, value, t});
     }
 
     // Occasional console output so the console path is exercised.
     if (simTick_ % 100 == 0) {
-        Push(ConsoleItem{"sim: tick " + std::to_string(simTick_)});
+        Push(QueuedConsole{"sim: tick " + std::to_string(simTick_)});
     }
 
     // Stats every second.
     if (simTick_ % 100 == 0) {
-        Push(StatsItem{100.0f,
+        Push(QueuedStats{100.0f,
                        100.0f * 40.0f,
                        simTick_ / 100 * 100,
                        0,

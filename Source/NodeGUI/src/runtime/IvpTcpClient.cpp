@@ -41,6 +41,9 @@ void IvpTcpClient::Start(const QString& host, int port) {
     port_ = port;
     running_ = true;
     announcedFirstFrame_ = false;
+    // A previous endpoint's buffered bytes and id→key registry must not leak
+    // into a fresh link; the peer re-announces its DEFINEs after accept.
+    decoder_.Reset();
     windowStart_ = std::chrono::steady_clock::now();
     std::fprintf(stderr,
                  "IvpTcpClient: connecting to %s:%d (COBS-framed InverterProtocol)\n",
@@ -91,6 +94,9 @@ void IvpTcpClient::ConnectNow() {
 void IvpTcpClient::OnConnected() {
     connectionErrorLogged_ = false;
     std::fprintf(stderr, "IvpTcpClient: connected to %s\n", qPrintable(Endpoint()));
+    // Same reset as Start(): a reconnect after a drop may have died mid-frame
+    // and the peer restarts its DEFINE announcements for this new connection.
+    decoder_.Reset();
     windowStart_ = std::chrono::steady_clock::now();
     statsTimer_.start();
 }

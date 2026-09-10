@@ -32,6 +32,7 @@ add_executable(RTEStudio
     src/FrameRateMonitor.h
     src/runtime/TelemetryStore.cpp
     src/runtime/TelemetryStore.h
+    src/runtime/PendingQueue.h
     src/runtime/LegacyTelemetryClient.cpp
     src/runtime/LegacyTelemetryClient.h
     src/runtime/IvpStreamDecoder.cpp

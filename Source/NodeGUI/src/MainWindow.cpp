@@ -593,6 +593,16 @@ void MainWindow::SetupRuntime(const QString& serialPort,
             this, [this](int exitCode, QProcess::ExitStatus status) {
                 OnSimFinished(exitCode, status == QProcess::CrashExit);
             });
+    connect(simRunner_, &simulation::SimRunner::attachTimeout,
+            this, [this](const QString& message) {
+                AppendSimLog(message + u'\n');
+                statusBar()->showMessage(
+                    QStringLiteral(
+                        "Simulation live endpoint not announced after 60 s of "
+                        "silence — see the Simulation log for likely causes; "
+                        "attach keeps retrying in the background."),
+                    15000);
+            });
 
     if (runSimAction_) {
         runSimAction_->setEnabled(true);

@@ -23,6 +23,12 @@ namespace {
 
 constexpr int kGracefulStopMs = 3000;
 
+// How long the child may go without any output before Start() is presumed to
+// have missed the "HostSim live" announcement. Any output chunk (build
+// progress lines stream continually while cmake runs) re-arms the timer, so
+// this fires only on a genuinely quiet, unannounced run.
+constexpr int kAttachWatchdogMs = 60000;
+
 // rte's stdout (and host_sim's, relayed through it) is fully buffered when the
 // parent is a pipe, so the console would only update in 4 KiB chunks. Wrapping
 // the process in GNU stdbuf forces line buffering; the preload propagates to
@@ -49,8 +55,29 @@ SimRunner::SimRunner(QObject* parent)
     connect(process_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus status) {
                 HandleReadyRead();
+                attachWatchdog_->stop();
                 emit finished(exitCode, status);
             });
+
+    attachWatchdog_ = new QTimer(this);
+    attachWatchdog_->setSingleShot(true);
+    attachWatchdog_->setInterval(kAttachWatchdogMs);
+    connect(attachWatchdog_, &QTimer::timeout, this, [this] {
+        if (announcedEndpoint_ || !IsRunning()) {
+            return;
+        }
+        emit attachTimeout(QStringLiteral(
+            "[sim] no live telemetry endpoint announced yet (no output for %1 "
+            "s); still retrying the default %2:%3.\n"
+            "Likely causes: an older or stale emitted host_sim build that "
+            "never prints the \"HostSim live: listening on\" line (rebuild the "
+            "emitted tree), a failed emit/build step (see the log above), or a "
+            "scenario whose listen_port is bound elsewhere — possibly by a "
+            "leftover host_sim instance occupying the port.")
+            .arg(kAttachWatchdogMs / 1000)
+            .arg(QLatin1String(kDefaultLiveHost))
+            .arg(kDefaultLivePort));
+    });
 }
 
 SimRunner::~SimRunner() {
@@ -264,6 +291,7 @@ bool SimRunner::Start(const SimRunRequest& request, QString* error) {
         }
         return false;
     }
+    attachWatchdog_->start();
     return true;
 }
 
@@ -271,6 +299,7 @@ void SimRunner::Stop() {
     if (process_->state() == QProcess::NotRunning) {
         return;
     }
+    attachWatchdog_->stop();
     emit output(QStringLiteral("[sim] stopping (SIGINT to the process group)...\n"));
 #ifdef Q_OS_UNIX
     // Start() runs rte in its own session, so signalling its process group
@@ -297,6 +326,7 @@ void SimRunner::Stop() {
 }
 
 void SimRunner::Shutdown() {
+    attachWatchdog_->stop();
     // No signals from this path: receivers of output()/finished() may already
     // be mid-destruction when the application exits.
     process_->disconnect(this);
@@ -328,6 +358,9 @@ void SimRunner::HandleReadyRead() {
     }
     const QString text = QString::fromLocal8Bit(chunk);
     if (!announcedEndpoint_) {
+        // Any output is progress (cmake build lines, device chatter): keep the
+        // watchdog re-armed while the child is demonstrably alive.
+        attachWatchdog_->start();
         // Scan complete lines only and hold back the unterminated tail, so a
         // listening announcement split across two chunks is still matched.
         lineBuffer_ += text;
@@ -363,6 +396,7 @@ void SimRunner::AttachLiveEndpoint(const QString& line) {
         return;
     }
     announcedEndpoint_ = true;
+    attachWatchdog_->stop();
     emit liveEndpoint(match.captured(1), match.captured(2).toInt());
 }
 

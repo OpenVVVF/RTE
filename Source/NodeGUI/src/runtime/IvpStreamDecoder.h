@@ -36,6 +36,14 @@ public:
     // Consumes stream bytes. Safe to call with partial frames.
     void FeedBytes(const uint8_t* data, size_t n);
 
+    // Discards all stream state — the partially buffered frame, the
+    // id→key registry, and incomplete string fragments — for a (new)
+    // connection, whose peer re-sends its DEFINEs from scratch (HostSim sets
+    // needs_define on every accept). Cumulative stats survive; the rolling
+    // rate window restarts so the first EmitStats() after a reconnect only
+    // counts bytes received on the new connection.
+    void Reset();
+
     // Call ~1 Hz with the elapsed seconds since the last call; updates
     // rx_hz/rx_bytes_per_sec and fires onStats. Only depends on stats
     // gathered by FeedBytes, so it keeps ticking when the link is quiet.

@@ -341,13 +341,21 @@ void RuntimeTab::OnExportSession() {
 
     RuntimeSessionMetadata metadata;
     metadata.port = controller_->Port();
-    metadata.mode = controller_->IsSimulating()
-                        ? QStringLiteral("simulation")
-                        : QStringLiteral("device");
-    metadata.protocol =
-        controller_->GetProtocol() == Protocol::Legacy
-            ? QStringLiteral("legacy")
-            : QStringLiteral("inverter");
+    // Both TCP entry points (--tcp and a Build & Run attach override) speak
+    // InverterProtocol to HostSim, so the session is a simulation over ivp
+    // regardless of the configured serial protocol.
+    if (controller_->HasLinkOverride() || controller_->UsingTcp()) {
+        metadata.mode = QStringLiteral("simulation");
+        metadata.protocol = QStringLiteral("inverter");
+    } else {
+        metadata.mode = controller_->IsSimulating()
+                            ? QStringLiteral("simulation")
+                            : QStringLiteral("device");
+        metadata.protocol =
+            controller_->GetProtocol() == Protocol::Legacy
+                ? QStringLiteral("legacy")
+                : QStringLiteral("inverter");
+    }
 
     exportStatus_->setText(QStringLiteral("exporting\u2026"));
     const RuntimeSessionSnapshot session = controller_->CaptureSession();
