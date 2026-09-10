@@ -1,6 +1,7 @@
 #include "platform_api.h"
 
 #include "can_bridge.h"
+#include "current_observer.h"
 #include "motor_model.h"
 #include "pwm_scope.h"
 #include "sim_context.h"
@@ -256,10 +257,50 @@ constexpr uint32_t kPwmTimerArr = 27500u;
  * ADC burst = 6 us at the 275 MHz timer clock. */
 constexpr uint32_t kSampleMinGapTicks = 1650u;
 
-/* Store for the platform domain-dt pair (Gen6 storage semantics; see
- * platform_api.h for the HostSim scheduling caveat). */
+/* Store for the platform domain-dt pair (Gen6 storage semantics; the
+ * scheduler sets it before each generated domain step, see sim_runtime.cpp). */
 float g_current_domain_dt = 0.0f;
+
+/* --------------------------------------------------------------------------
+ * Current-observer platform state.
+ *
+ * Mirrors the Gen6 platform_api.cpp observer block: a plain use_observer flag
+ * (set by generated code / a shell command on hardware; nothing inside the
+ * base image consumes it) plus the calibration snapshot used by
+ * platform_observer_init_from_calibration().
+ *
+ * The sim has no FRAM-backed MotorCalibration; the scenario "motor"
+ * parameters are the calibration source.  SimRuntime seeds them through
+ * SimObserverConfigure() at domain init — before generated constructors run —
+ * applying and resetting the observer once so it is plausible even when the
+ * graph never instantiates hw.current_observer.  init_from_calibration()
+ * re-applies the snapshot and resets, matching the Gen6 generated-init path.
+ * -------------------------------------------------------------------------- */
+bool g_use_observer = false;
+
+struct ObserverCal {
+    float r_ohm = 0.0f;
+    float l_henry = 0.0f;
+    float flux_wb = 0.0f;
+    float pole_pairs = 0.0f;
+    bool valid = false;
+};
+
+ObserverCal g_observer_cal{};
+
+void ApplyObserverCal(const ObserverCal& cal) {
+    GlobalCurrentObserver().setMotorParameters(cal.r_ohm, cal.l_henry,
+                                               cal.flux_wb, cal.pole_pairs);
+}
 } // namespace
+
+void SimObserverConfigure(float r_ohm, float l_henry, float flux_wb,
+                          float pole_pairs) {
+    ObserverCal cal{r_ohm, l_henry, flux_wb, pole_pairs, true};
+    g_observer_cal = cal;
+    ApplyObserverCal(cal);
+    GlobalCurrentObserver().reset();
+}
 
 SimContext g_sim_ctx{};
 
@@ -447,6 +488,57 @@ bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a) {
     if (iv_a) *iv_a = iv;
     if (iw_a) *iw_a = -(iu + iv);
     return true;
+}
+
+/* --------------------------------------------------------------------------
+ * Current observer — thin wrappers over the ported CurrentObserver
+ * (src/current_observer.cpp), same call surfaces as the Gen6 platform_api.cpp
+ * observer block.  Gating on use_observer is deliberately NOT done here:
+ * Gen6 keeps the observer free-running and lets the control path (native
+ * FOC or a graph gate node) select feedback. */
+
+void platform_set_use_observer(bool enabled) {
+    hostsim::g_use_observer = enabled;
+}
+
+bool platform_get_use_observer(void) { return hostsim::g_use_observer; }
+
+void platform_get_observer_currents(float* iu_a, float* iv_a, float* iw_a) {
+    if (!iu_a || !iv_a || !iw_a) return;
+    hostsim::GlobalCurrentObserver().getPhaseCurrents(*iu_a, *iv_a, *iw_a);
+}
+
+void platform_observer_predict(float valpha_v, float vbeta_v,
+                               float theta_elec_rad, float dt_s) {
+    hostsim::GlobalCurrentObserver().predict(valpha_v, vbeta_v,
+                                             theta_elec_rad, dt_s);
+}
+
+void platform_observer_set_motor_params(float r_ohm, float l_henry,
+                                        float flux_linkage_wb,
+                                        float pole_pairs) {
+    hostsim::GlobalCurrentObserver().setMotorParameters(r_ohm, l_henry,
+                                                        flux_linkage_wb,
+                                                        pole_pairs);
+}
+
+void platform_observer_init_from_calibration(void) {
+    /* Gen6 re-reads MotorCalibration here and resets.  The sim's calibration
+     * is the scenario motor block, seeded via SimObserverConfigure() at
+     * domain init; without a seed (no scenario yet, e.g. a bare unit harness)
+     * the observer keeps its Gen6 default parameters. */
+    if (hostsim::g_observer_cal.valid) {
+        hostsim::ApplyObserverCal(hostsim::g_observer_cal);
+    }
+    hostsim::GlobalCurrentObserver().reset();
+}
+
+void platform_observer_correct(float iu_meas_a, float iv_meas_a,
+                               float diudt_a_per_s, float divdt_a_per_s,
+                               uint32_t t_us) {
+    hostsim::GlobalCurrentObserver().correct(iu_meas_a, iv_meas_a,
+                                             diudt_a_per_s, divdt_a_per_s,
+                                             t_us);
 }
 
 uint32_t platform_adc_get_injected_u_sig(void) {

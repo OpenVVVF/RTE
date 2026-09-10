@@ -213,20 +213,48 @@ state everywhere:
   `PWM_FindSafeSamplePoint` + its wrapper (1650-tick minimum quiet window,
   0 = bottom-trigger fallback). The sim's conversions stay adc_isr-tick
   driven; the firmware's CCR4 side effect has no sim equivalent.
-- **Domain dt** — `platform_set/get_current_domain_dt()` use Gen6's storage
-  semantics, but note HostSim's scheduler does not call the setter per domain
-  (unlike the Gen6 ISR wrappers), so the getter returns the last set value
-  (0.0 until set). Graphs that need a step size should carry a `Dt` parameter
-  like the bundled examples do.
+- **Current observer** — `platform_observer_predict/correct`,
+  `platform_observer_set_motor_params`,
+  `platform_observer_init_from_calibration`,
+  `platform_get_observer_currents` and `platform_set/get_use_observer`, used
+  by the `hw.current_observer` template. The observer itself is a faithful
+  port of Gen6 `Inverter::CurrentObserver` (`src/current_observer.cpp`;
+  same predict/correct math and gains as
+  `Images/Gen6FW/Src/Inverter/Control/CurrentObserver.cpp`). Calibration
+  semantics as on hardware: `platform_observer_init_from_calibration()`
+  re-reads the calibration snapshot and resets the state — and here the
+  scenario `motor` block (`rs_ohm`, `ld_h`, `flux_wb`, `pole_pairs`) plays
+  the role of Gen6's `MotorCalibration`, seeded at domain init by the runtime
+  (and re-applied by the node's constructor). For a salient machine the
+  predictor uses Ld, exactly like Gen6. The prediction dt comes from
+  `platform_get_current_domain_dt()` (the scheduler now sets it per domain —
+  see below), so `hw.current_observer` needs no manual `Dt` wiring.
+  `platform_set/get_use_observer` is a pure flag, as in Gen6: the platform
+  never gates the observer on it. On hardware the flag is set by the `obs`
+  shell command and *consumed* by the control path (Gen6
+  `FocControlManager::onPwmPeriod()` switches feedback); in a graph the
+  equivalent is a mux/gate node that calls `platform_get_use_observer()` and
+  selects between `Sensors.PhaseCurrents`/`hw.phase_currents` output and the
+  observer currents. Fidelity caveats: the observer estimates against the
+  same ideal ODE plant that produces the measurements, the ADC latch is
+  zero-order-held (no intra-burst droop), and no inverter nonidealities
+  (deadtime, device drops, switching ripple) exist — so estimates converge
+  within a few control ticks, much faster and cleaner than on hardware where
+  the observer battles real sensor noise and parameter error. The αβ voltage
+  vector keeps Gen6's leg-referenced convention (phase-leg average
+  `duty·vdc`, so the phase-neutral fundamental is half the |vαβ| magnitude) —
+  identical on hardware and in the sim, so the same disturbance/back-EMF
+  absorption behaviour applies to both.
+- **Domain dt** — `platform_set/get_current_domain_dt()`: the scheduler now
+  calls the setter before each generated domain step (`tim_dt`, `adc_dt`,
+  `app_dt` respectively), mirroring the Gen6 ISR wrappers
+  (`pwm.cpp`/`PhaseCurrentADC.cpp`/`InverterMain.cpp` all set
+  `platform_set_current_domain_dt()` ahead of `RTE_EMIT: <domain> step`).
+  `hw.current_observer` relies on this for its prediction step.
 
 Intentionally absent (graphs using these will fail to link — by design, they
 need hardware subsystems a position/current sim does not model):
 
-- **Current observer trio** — `platform_observer_predict/correct`,
-  `platform_observer_set_motor_params`,
-  `platform_observer_init_from_calibration`,
-  `platform_get_observer_currents`, `platform_set/get_use_observer`
-  (used by the `hw.current_observer` template).
 - **DC-link current/power** — `platform_get_dc_link_current/power()` (the sim
   models the DC link as an ideal voltage source).
 - **Supplemental trace channels** — `platform_trace_configure8/capture8`,

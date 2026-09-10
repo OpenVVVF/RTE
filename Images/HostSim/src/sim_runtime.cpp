@@ -632,6 +632,13 @@ void SimRuntime::InitDomains() {
         plant_->Reset();
     }
     SimRuntime_RegisterPlant(plant_.get());
+    /* Seed the current observer from the scenario motor parameters (the sim's
+     * MotorCalibration equivalent) before generated constructors run; a
+     * hw.current_observer node's constructor re-applies the same snapshot via
+     * platform_observer_init_from_calibration(). */
+    SimObserverConfigure(config_.motor.rs_ohm, config_.motor.ld_h,
+                         config_.motor.flux_wb,
+                         static_cast<float>(config_.motor.pole_pairs));
     next_telem_s_ = 0.0f;
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
@@ -732,6 +739,9 @@ bool SimRuntime::StepOnce() {
 
     if (time_s_ + 1e-9f >= next_tim_s_) {
         ctx.pwm_written = false;
+        /* Domain dt for generated code (Gen6 pwm.cpp TIM1 update ISR sets it
+         * before the generated step). */
+        platform_set_current_domain_dt(tim_dt_s_);
         // RTE_EMIT: tim_isr step
         if (!ctx.pwm_written && (throttle_a_ > 0.0f || throttle_b_ > 0.0f)) {
             if (config_.demo_fallback) {
@@ -821,11 +831,17 @@ bool SimRuntime::StepOnce() {
         /* Conversion trigger: latch a coherent ADC sample set from the plant
          * before the graph's adc_isr domain reads the injected channels. */
         SimAdcTriggerConversion();
+        /* Domain dt for generated code (Gen6 PhaseCurrentADC's injected
+         * conversion-complete ISR sets it before the generated step). */
+        platform_set_current_domain_dt(adc_dt_s_);
         // RTE_EMIT: adc_isr step
         next_adc_s_ += adc_dt_s_;
     }
 
     if (time_s_ + 1e-9f >= next_app_s_) {
+        /* Domain dt for generated code (Gen6 InverterMain sets the app-loop
+         * dt before stepping the generated domain). */
+        platform_set_current_domain_dt(app_dt_s_);
         // RTE_EMIT: app_loop step
         next_app_s_ += app_dt_s_;
         /* CAN bridge: one non-blocking poll per app-loop tick — accept new

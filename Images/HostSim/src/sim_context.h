@@ -61,5 +61,10 @@ void SimCanInject(uint8_t bus, uint32_t id, bool ext,
                   const uint8_t* data, uint8_t dlc);
 void SimConfigSetBackingFile(const char* path);
 void SimConfigPersist();
+/* Seed the current observer's calibration from scenario motor parameters
+ * (Gen6 MotorCalibration equivalent). Applied by SimRuntime at domain init,
+ * before generated constructors run. */
+void SimObserverConfigure(float r_ohm, float l_henry, float flux_wb,
+                          float pole_pairs);
 
 } // namespace hostsim

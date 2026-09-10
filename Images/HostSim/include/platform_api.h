@@ -44,6 +44,41 @@ float platform_pwm_scope_get_v_wu(void);
  * whenever a plant is present. */
 bool platform_get_phase_currents(float* iu_a, float* iv_a, float* iw_a);
 
+/* Current observer (Gen6FW Inverter::CurrentObserver; sim port lives in
+ * src/current_observer.cpp and keeps the same predict/correct math).
+ *
+ * platform_observer_init_from_calibration seeds R/L/flux from the scenario
+ * "motor" parameters (rs_ohm, ld_h, flux_wb, pole_pairs) — the sim's
+ * equivalent of the Gen6 MotorCalibration snapshot — and resets the state,
+ * exactly like Gen6's platform_api.cpp.  The runtime also applies those
+ * parameters once at domain init, so a graph that only drives
+ * predict/correct still sees plausible defaults.  The predict step uses
+ * platform_get_current_domain_dt() just like on hardware (the scheduler now
+ * sets it per domain, see below).
+ *
+ * platform_set/get_use_observer is pure flag storage, as on Gen6: the flag
+ * does not change what the observer computes — generated graph code (or the
+ * native FOC on hardware) decides whether to consume observer currents.
+ * (e.g. Gen6 FocControlManager reads m_use_observer to pick its feedback;
+ * a graph does the same with a gate node calling platform_get_use_observer.)
+ *
+ * As in Gen6, platform_get_observer_currents is only meaningful after at
+ * least one platform_observer_correct call.  All quantities use FOC
+ * convention: graphs feed the sign-corrected currents (the sim models the
+ * hardware's inverted sensor wiring, graphs negate as usual). */
+void platform_set_use_observer(bool enabled);
+bool platform_get_use_observer(void);
+void platform_get_observer_currents(float* iu_a, float* iv_a, float* iw_a);
+void platform_observer_predict(float valpha_v, float vbeta_v,
+                               float theta_elec_rad, float dt_s);
+void platform_observer_set_motor_params(float r_ohm, float l_henry,
+                                        float flux_linkage_wb,
+                                        float pole_pairs);
+void platform_observer_init_from_calibration(void);
+void platform_observer_correct(float iu_meas_a, float iv_meas_a,
+                               float diudt_a_per_s, float divdt_a_per_s,
+                               uint32_t t_us);
+
 /* Phase-current ADC injected channels, mirroring Gen6FW's PhaseCurrentADC
  * signal chain (16-bit ADC, resistor divider, current transducer with a
  * ~1.65 V zero-current reference rail; constants in RteParams.h), including
@@ -167,12 +202,14 @@ void platform_telemetry_log_f32(const char* key, float value);
 uint32_t platform_millis(void);
 uint32_t platform_micros(void);
 
-/* Time step of the currently executing generated domain. Gen6's ISR domain
- * wrappers call platform_set_current_domain_dt() before stepping each
- * domain; HostSim's scheduler does not, so the getter returns the last value
- * set (0.0 until then) — graphs that need a step size should carry a Dt
- * parameter (the bundled example graphs do). Present for link compatibility
- * with templates such as hw.current_observer. */
+/* Time step of the currently executing generated domain. Mirrors the Gen6
+ * ISR wrappers (pwm.cpp / PhaseCurrentADC.cpp / InverterMain.cpp): the
+ * scheduler calls platform_set_current_domain_dt() with the domain's step
+ * right before each generated domain step, so the getter returns 1/tim_isr_hz
+ * inside tim_isr nodes, 1/adc_isr_hz inside adc_isr nodes, and 1/app_loop_hz
+ * inside app_loop nodes.  hw.current_observer uses it for the prediction dt;
+ * nodes that need a step size outside a domain step should still carry a Dt
+ * parameter. */
 void platform_set_current_domain_dt(float dt_s);
 float platform_get_current_domain_dt(void);
 

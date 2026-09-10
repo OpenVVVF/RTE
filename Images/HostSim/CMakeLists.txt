@@ -22,6 +22,7 @@ endif()
 add_executable(host_sim
     src/main.cpp
     src/can_bridge.cpp
+    src/current_observer.cpp
     src/platform_api.cpp
     src/sim_runtime.cpp
     src/motor_model.cpp
