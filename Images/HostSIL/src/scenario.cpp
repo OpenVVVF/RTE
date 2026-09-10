@@ -124,6 +124,34 @@ void EnumerateKv(const std::string& blob,
     }
 }
 
+/* Enumerate "key": "string-value" pairs in a flat object blob — the string
+ * counterpart of EnumerateKv (used for the "commands" schedule). */
+void EnumerateStringKv(const std::string& blob,
+                       std::vector<std::pair<std::string, std::string>>& out) {
+    size_t i = 0;
+    while (i < blob.size()) {
+        const size_t q1 = blob.find('"', i);
+        if (q1 == std::string::npos) break;
+        const size_t q2 = blob.find('"', q1 + 1);
+        if (q2 == std::string::npos) break;
+        const std::string key = blob.substr(q1 + 1, q2 - q1 - 1);
+        const size_t colon = blob.find(':', q2);
+        if (colon == std::string::npos) break;
+        size_t start = colon + 1;
+        while (start < blob.size() &&
+               std::isspace(static_cast<unsigned char>(blob[start]))) ++start;
+        if (start >= blob.size() || blob[start] != '"') {
+            /* Non-string value: let EnumerateKv-style parsing own it. */
+            i = colon + 1;
+            continue;
+        }
+        const size_t vend = blob.find('"', start + 1);
+        if (vend == std::string::npos) break;
+        out.emplace_back(key, blob.substr(start + 1, vend - start - 1));
+        i = vend + 1;
+    }
+}
+
 ScalarProfile ParseProfile(const std::string& blob) {
     ScalarProfile p{};
     const std::string t = ExtractString(blob, "type");
@@ -205,6 +233,38 @@ bool LoadScenario(const char* path, Scenario& out, std::string& error) {
     const std::string cfg = ExtractObject(blob, "firmware_config");
     if (!cfg.empty()) {
         EnumerateKv(cfg, out.firmware_config);
+    }
+
+    const std::string faults = ExtractObject(blob, "faults");
+    if (!faults.empty()) {
+        if (ExtractNumber(faults, "vdc_glitch_time_s", &v)) out.vdc_glitch_time_s = v;
+        if (ExtractNumber(faults, "vdc_glitch_duration_s", &v)) out.vdc_glitch_duration_s = v;
+        if (ExtractNumber(faults, "vdc_glitch_v", &v)) out.vdc_glitch_v = v;
+        if (ExtractNumber(faults, "oc_inject_time_s", &v)) out.oc_inject_time_s = v;
+        if (ExtractNumber(faults, "oc_inject_duration_s", &v)) out.oc_inject_duration_s = v;
+        if (ExtractNumber(faults, "oc_inject_phase", &v)) out.oc_inject_phase = (int)v;
+        if (ExtractNumber(faults, "oc_inject_a", &v)) out.oc_inject_a = v;
+        if (ExtractNumber(faults, "encoder_freeze_time_s", &v)) out.encoder_freeze_time_s = v;
+        if (ExtractNumber(faults, "encoder_freeze_duration_s", &v)) out.encoder_freeze_duration_s = v;
+        if (ExtractNumber(faults, "encoder_loss_time_s", &v)) out.encoder_loss_time_s = v;
+        if (ExtractNumber(faults, "encoder_loss_duration_s", &v)) out.encoder_loss_duration_s = v;
+        if (ExtractNumber(faults, "temp_spike_time_s", &v)) out.temp_spike_time_s = v;
+        if (ExtractNumber(faults, "temp_spike_duration_s", &v)) out.temp_spike_duration_s = v;
+        if (ExtractNumber(faults, "temp_spike_channel", &v)) out.temp_spike_channel = (int)v;
+        if (ExtractNumber(faults, "temp_spike_c", &v)) out.temp_spike_c = v;
+    }
+
+    const std::string commands = ExtractObject(blob, "commands");
+    if (!commands.empty()) {
+        std::vector<std::pair<std::string, std::string>> kv;
+        EnumerateStringKv(commands, kv);
+        for (const auto& [k, line] : kv) {
+            char* end = nullptr;
+            const float t = std::strtof(k.c_str(), &end);
+            if (end != k.c_str() && *end == '\0') {
+                out.commands.emplace_back(t, line);
+            }
+        }
     }
 
     const std::string fram = ExtractString(blob, "fram_image");

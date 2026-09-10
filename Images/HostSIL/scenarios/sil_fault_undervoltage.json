@@ -1,0 +1,50 @@
+{
+  "comment": "HostSIL fault injection: DC-link undervoltage under graph FOC control. The firmware's MAX22530 comparator mask defaults keep UV disarmed, so the commands block arms it via the firmware shell at 1.5 s ('maxcfg_uv 20.0' — executed through CommandManager exactly like a typed command). Control starts at 1.6 s on a healthy 48 V bus; at 2.0 s the bus sags to 12 V (vdc_glitch, latching), the modeled COUTLO comparator of the MAX22530 shim latches CO_NEG_1 and the firmware raises Max22530Uv/Max22530Undervoltage (Critical: supervisor -> FAULT, PWM break + gate driver off, no auto-resume). Same motor/config as sil_foc_demo.",
+  "motor": {
+    "name": "sil_small_bldc",
+    "rs_ohm": 0.05,
+    "ld_h": 0.0001,
+    "lq_h": 0.0001,
+    "flux_wb": 0.008,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 0.001,
+    "friction_nm_per_rad_s": 0.001,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 2.6,
+    "app_loop_hz": 1000,
+    "trace_csv": "sil_fault_undervoltage_trace.csv",
+    "trace_decim_us": 500
+  },
+  "throttle_a": { "type": "constant", "value": 0.0 },
+  "control": {
+    "start": true,
+    "start_time_s": 1.6,
+    "iq_a": 8.0,
+    "id_a": 0.0
+  },
+  "commands": {
+    "1.5": "maxcfg_uv 20.0"
+  },
+  "faults": {
+    "vdc_glitch_time_s": 2.0,
+    "vdc_glitch_v": 12.0,
+    "vdc_glitch_duration_s": 0.0
+  },
+  "firmware_config": {
+    "Motor.Poles": 14.0,
+    "Motor.Encoder.SinCos.Sign": 1.0,
+    "Motor.Encoder.SinCos.OffsetDeg": 0.0,
+    "Motor.Encoder.SinCos.CyclesRev": 1.0,
+    "Motor.Encoder.Type": 1.0,
+    "Motor.Type": 2.0,
+    "Motor.Resistance.Avg": 0.05,
+    "Motor.Ld": 0.0001,
+    "Motor.Lq": 0.0001,
+    "Motor.Lambda": 0.008,
+    "Motor.PMSM.Inductance.Ld": 0.0001,
+    "Motor.PMSM.Inductance.Lq": 0.0001,
+    "Motor.PMSM.FluxLinkage.Wb": 0.008
+  }
+}

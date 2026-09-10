@@ -5,8 +5,19 @@
  * directly from the SIL world (DC-link on channel 0, phase pole voltages on
  * channels 1..3, both through the 1516:1 sense divider).  dataReady() is
  * always true once initialized (the real chip free-runs at 20 kHz into DMA).
+ *
+ * The comparator windows are modeled at register-behavior level:
+ * setComparatorThreshold() stores COUTHI/COUTLO counts and mirrors the
+ * hardware driver's INTERRUPT_ENABLE bookkeeping (INT_EEOC plus the
+ * per-channel CO_POS/CO_NEG bits); update() re-evaluates the (filtered ==
+ * raw in SIL) channel voltages against the windows, sticks matching bits
+ * into the latched INTERRUPT_STATUS word, and raises the same FaultManager
+ * faults the hardware driver raises from its EXTI/burst path (Max22530Ov /
+ * Max22530Uv on the DC-link channel).  SPI/CRC, field-loss and ADC-diagnostic
+ * INTERRUPT_STATUS bits are not modelable without a bus model and stay zero.
  */
 #include "Inverter/Drivers/Sensors/MAX22530.h"
+#include "Inverter/Control/FaultManager.h"
 
 #include "sil_world.h"
 
@@ -23,6 +34,24 @@ MAX22530::MAX22530(SPI_HandleTypeDef* hspi,
 }
 
 namespace {
+
+/* INTERRUPT_ENABLE / INTERRUPT_STATUS bits (same layout as the hardware
+ * driver's anonymous-namespace table in MAX22530.cpp). */
+constexpr uint16_t INT_CO_NEG_1 = (1U << 0);   /* channel 0 below COUTLO */
+constexpr uint16_t INT_CO_POS_1 = (1U << 4);   /* channel 0 above COUTHI */
+constexpr uint16_t INT_EEOC     = (1U << 12);
+
+/* Modeled comparator registers — one chip in this design (the
+ * DC-link sensor's instance), indexed by channel.  s_cout_status is the live
+ * (non-latching) COUT_STATUS word; INTERRUPT_STATUS lives in the driver's
+ * own m_int_status (latched, sticky until clearInterruptStatus()). */
+struct ComparatorModel {
+    uint16_t hi_counts = 0;
+    uint16_t lo_counts = 0;
+};
+ComparatorModel s_comp[4];
+uint16_t        s_cout_status = 0;
+
 float hostVoltage(uint8_t channel) {
     const SilWorld& w = silWorld();
     switch (channel) {
@@ -94,21 +123,49 @@ bool MAX22530::burstReadFiltered(uint16_t out_counts[4], uint16_t* int_status) {
     return true;
 }
 
-bool MAX22530::setComparatorThreshold(uint8_t, float, float,
-                                      bool, bool, bool, bool) {
+bool MAX22530::setComparatorThreshold(uint8_t channel, float high_v, float low_v,
+                                      bool use_filtered, bool digital_status,
+                                      bool enable_pos_interrupt, bool enable_neg_interrupt) {
+    if (channel > 3 || high_v < low_v) {
+        return false;
+    }
+    (void)use_filtered;    /* raw == filtered in the SIL model */
+    (void)digital_status;  /* always out-of-window digital-status semantics */
+
+    s_comp[channel].hi_counts = voltageToCounts(high_v);
+    s_comp[channel].lo_counts = voltageToCounts(low_v);
+
+    /* Mirror the hardware driver's INTERRUPT_ENABLE bookkeeping: the channel's
+     * bits are re-written from the enable args so a later call can disable a
+     * direction (e.g. UV disabled while OV stays armed). */
+    const uint16_t pos_bit = static_cast<uint16_t>(INT_CO_POS_1 << channel);
+    const uint16_t neg_bit = static_cast<uint16_t>(INT_CO_NEG_1 << channel);
+    uint16_t int_en = m_int_enable;
+    int_en = static_cast<uint16_t>(int_en & ~pos_bit);
+    int_en = static_cast<uint16_t>(int_en & ~neg_bit);
+    int_en = static_cast<uint16_t>(int_en | INT_EEOC);
+    if (enable_pos_interrupt) int_en = static_cast<uint16_t>(int_en | pos_bit);
+    if (enable_neg_interrupt) int_en = static_cast<uint16_t>(int_en | neg_bit);
+    m_int_enable = int_en;
+
+    /* Clear any comparator events latched before the interrupt was enabled so
+     * they are not mistaken for a new fault (same as the hardware driver). */
+    (void)clearInterruptStatus();
     return true;
 }
 
 bool MAX22530::getComparatorStatus(uint16_t& status) {
-    status = 0;
+    status = s_cout_status;
     return true;
 }
 
 bool MAX22530::readComparatorThreshold(uint8_t channel, uint16_t& high_counts,
                                        uint16_t& low_counts) {
-    (void)channel;
-    high_counts = 4095;
-    low_counts = 0;
+    if (channel > 3) {
+        return false;
+    }
+    high_counts = s_comp[channel].hi_counts;
+    low_counts  = s_comp[channel].lo_counts;
     return true;
 }
 
@@ -128,6 +185,38 @@ void MAX22530::update() {
         m_voltages[ch] = hostVoltage(ch);
     }
     m_data_ready = true;
+
+    /* Comparator model: the chip re-evaluates each window per conversion and
+     * latches matching INTERRUPT_STATUS bits until cleared. */
+    uint16_t cout = 0;
+    for (uint8_t ch = 0; ch < 4; ++ch) {
+        const uint16_t counts = voltageToCounts(m_voltages[ch]);
+        if (counts > s_comp[ch].hi_counts) {
+            cout |= static_cast<uint16_t>(INT_CO_POS_1 << ch);
+        }
+        if (counts < s_comp[ch].lo_counts) {
+            cout |= static_cast<uint16_t>(INT_CO_NEG_1 << ch);
+        }
+    }
+    s_cout_status = cout;
+
+    /* Same masking as the hardware driver's raiseFaultsFromInterruptStatus():
+     * only interrupt-enabled bits count; channel 0 maps to DC-link OV/UV.
+     * Raising on the latch edge keeps a persistent out-of-window condition
+     * from spamming; clearInterruptStatus() re-arms. */
+    const uint16_t enabled_status =
+        static_cast<uint16_t>(cout & m_int_enable);
+    const uint16_t prev = m_int_status;
+    m_int_status = static_cast<uint16_t>(m_int_status | enabled_status);
+    const uint16_t newly = static_cast<uint16_t>(m_int_status & ~prev);
+    if ((newly & INT_CO_POS_1) != 0U) {
+        FaultManager::instance().raise(FaultSource::Max22530Ov,
+                                       FaultReason::Max22530Overvoltage);
+    }
+    if ((newly & INT_CO_NEG_1) != 0U) {
+        FaultManager::instance().raise(FaultSource::Max22530Uv,
+                                       FaultReason::Max22530Undervoltage);
+    }
 }
 
 bool MAX22530::resetInternal(uint16_t) { return true; }

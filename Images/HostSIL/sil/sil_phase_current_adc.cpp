@@ -76,11 +76,26 @@ uint32_t sigCountsForCurrent(float i_a) {
 }
 
 /* One raw acquisition from the plant into the ADC data registers, in the
- * real hardware channel order (U sig/ref on rank 1/3, V sig/ref on 2/4). */
+ * real hardware channel order (U sig/ref on rank 1/3, V sig/ref on 2/4).
+ * Scenario overcurrent injection (faults.oc_inject_*) enters here, at the
+ * conversion level: the fault is exactly what a saturated/glitched current
+ * channel looks like — the plant itself stays physically consistent. */
 void silAcquireFromPlant() {
     const auto& st = silWorld().plant.State();
-    const uint32_t u_sig = sigCountsForCurrent(st.ia_a);
-    const uint32_t v_sig = sigCountsForCurrent(st.ib_a);
+    float ia = st.ia_a;
+    float ib = st.ib_a;
+    const SilWorld& w = silWorld();
+    if (w.oc_fault_active) {
+        /* iu+iv+iw=0 at the sensor: a W-channel spike is the negative
+         * injection into both measured channels. */
+        switch (w.oc_fault_phase) {
+            case 1:  ib += w.oc_fault_a; break;
+            case 2:  ia -= w.oc_fault_a; ib -= w.oc_fault_a; break;
+            default: ia += w.oc_fault_a; break;
+        }
+    }
+    const uint32_t u_sig = sigCountsForCurrent(ia);
+    const uint32_t v_sig = sigCountsForCurrent(ib);
     const uint32_t ref   = static_cast<uint32_t>(kRefMidCounts + 0.5f);
 
     sil_adc1.JDR1 = u_sig;

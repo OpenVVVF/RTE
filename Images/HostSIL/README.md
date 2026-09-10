@@ -93,6 +93,53 @@ graph at configure time with `-DSIL_GRAPH=<path>` and a fresh `-DSIL_FW_SRC`.
 App-loop (`InverterMain::loop()`) iterations run at `simulation.app_loop_hz`
 (default 1000 Hz): supervisor service, calibrators, shell, telemetry.
 
+### Fault-injection scenarios
+
+The scenario JSON accepts a top-level `faults` block that drives the modeled
+*sensor/actuator surface* the firmware reads — the firmware itself is never
+touched, so every trip is raised by real firmware code paths (with the
+hardware driver's verbatim logic where a SIL shim replaces the driver file).
+Each fault is a window `[time_s, time_s + duration_s)`; `duration_s <= 0`
+latches to end of run; `time_s < 0` (the default) disables it.  A companion
+top-level `commands` block (`{"<time_s>": "<shell line>"}`) feeds any
+firmware shell command through `CommandManager::processLine` at the given sim
+time — e.g. arming a protection threshold before injecting its trip, or
+starting legacy FOC control.
+
+| faults key | what it models | firmware trip path |
+|---|---|---|
+| `vdc_glitch_time_s` / `vdc_glitch_v` / `vdc_glitch_duration_s` | DC-link sag seen by the MAX22530 channel 0 sense divider (also collapses plant drive voltage) | with the UV comparator armed (`maxcfg_uv <V>` shell command): `MAX22530::update` (shim, register-level port) latches `INT_CO_NEG_1` → `FaultManager.raise(Max22530Uv, Max22530Undervoltage)` [Critical] |
+| `oc_inject_time_s` / `oc_inject_a` / `oc_inject_duration_s` / `oc_inject_phase` (0=U,1=V,2=W) | current spike added at the ADC *counts* level (saturated/glitched channel; plant stays physical) | `PhaseCurrentADC::onInjectedConversionComplete` software-OC check (verbatim port; 3 consecutive samples > `m_oc_threshold_a`, 500 A default, `ocset` to change) → `PhaseOvercurrent / PhaseOvercurrentSoftware` [Critical]. The ADC analog-watchdog AWD path is not modeled in SIL. |
+| `encoder_freeze_time_s` / `encoder_freeze_duration_s` | encoder sample stream stalls (no DMA completions at all) | legacy FOC path (`foc start`): `FocControlManager::onPwmPeriod` sample-age check (`HAL_GetTick() - lastSampleMs() > ENCODER_STALE_MS=5`) → `EncoderTimeout / EncoderSampleTimeout` [High] + safe stop. (The graph-control path has no firmware staleness check — see caveats below.) |
+| `encoder_loss_time_s` / `encoder_loss_duration_s` | sin/cos outputs collapse to the 32768 bias mid (excitation loss) | `EncoderADC::diagnose` amplitude-collapse check (verbatim port, 25 consecutive < 500 counts EMA) → `EncoderAmplitude / EncoderAmplitudeLow` [Warning: latched, does not stop the drive] |
+| `temp_spike_time_s` / `temp_spike_c` / `temp_spike_channel` (0..2 board, 3 motor) / `temp_spike_duration_s` | temperature channel driven to a value, round-tripped through the modeled sensor curve + divider (KV-configurable `Hw.Temp.Bx.*` / `Motor.Temp.*`, same keys/defaults as hardware) | ported `ApplicationSensors` evaluation: rail → `TempSensor` (Warning); over `CritC` sustained 500 ms with 5°C hysteresis → `OvertemperatureMotor` / `OvertemperatureInverter` (Critical). Board channels are disabled by KV default (enable via `firmware_config` `Hw.Temp.Bx.En: 1`). |
+
+Run the shipped demonstrations:
+
+```
+host_sil scenarios/sil_fault_injection.json       # encoder-loss Warning + overcurrent Critical (graph FOC, demo baseline)
+host_sil scenarios/sil_fault_encoder_stall.json   # encoder stream stall -> EncoderTimeout (legacy `foc start`)
+host_sil scenarios/sil_fault_undervoltage.json    # Vbus sag -> Max22530Uv (arms UV via shell first)
+host_sil scenarios/sil_fault_overtemp.json        # motor 200 C -> OvertemperatureMotor
+host_sil scenarios/sil_fault_none.json            # faults present but disabled: trace matches sil_foc_demo byte-for-byte
+```
+
+Batch runs log every fault edge twice: host-side `[SIL] t=… fault
+raised: source=… severity=…` at the sim µs tick and the firmware's own
+`[FW t=…] [FAULT][sev][category] Name triggered: reason` line (console
+mirror, below); the end-of-run summary lists the full trip history.
+
+### Firmware console mirror in batch mode
+
+`sil/sil_fw_console.*` taps the firmware's USART3 TX byte stream (the same
+COBS-framed InverterProtocol packets that `--live` proxies to TCP) and walks
+it with the shared Lib/InverterProtocol decoder; complete `print`-keyed
+strings land on stdout as `[FW t=…]` lines.  Boot chatter, shell responses
+and — most importantly — the firmware's own
+`[FAULT][C][category] Name triggered: reason` / `[SUP]` / `[SAFETY]` messages
+are therefore visible in batch runs, which previously only showed `[SIL]`
+host-side lines.
+
 ### Control start
 
 After boot (~1.3 s of sim time — the hardware `HAL_Delay` boot sequence runs
@@ -129,3 +176,16 @@ on the firmware thread.
   in-memory image (optional file backing via scenario `fram_image`).
 * The firmware's `platform_micros()`/DWT paths see cycles = sim_us *
   550 MHz.
+* **Fault-injection boundaries**: the modeled fault surface is the sensor
+  world (phase-current ADC counts, MAX22530 channel voltages + comparator
+  windows, encoder sin/cos stream, temperature channels) plus DC-link level.
+  Fault classes rooted in effects the shims don't model stay untrippable in
+  HostSIL: the ADC *hardware* analog watchdog (`AdcWatchdog` — SIL documents
+  `configureAnalogWatchdog()` as a no-op), MAX22530 SPI CRC/framing/DMA and
+  field-side loss (`Max22530Comm/Adc/Field`), gate-driver DESAT break
+  (`PwmBreak`), UVLO (`GateDriverUvlo` is modeled by the GPIO shim and always
+  healthy), supply-rail PVD/AVD/VOSRDY, CAN bus-off/error-passive, FRAM
+  errors.  On the graph-control path the firmware currently has **no**
+  encoder-staleness or Vdc sanity check — those live in the legacy
+  `FocControlManager` (used by `foc start`), which is why
+  `sil_fault_encoder_stall.json` runs that path.

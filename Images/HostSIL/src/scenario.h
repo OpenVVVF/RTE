@@ -65,6 +65,55 @@ struct Scenario {
 
     /* firmware config KV seeds applied post-boot (config set/save). */
     std::vector<std::pair<std::string, float>> firmware_config;
+
+    /* Scheduled firmware shell commands ("commands": {"<time_s>": "<line>"}):
+     * each line is run through CommandManager::processLine exactly like a
+     * typed shell command (e.g. "maxcfg_uv 20.0", "foc start 8 0"). */
+    std::vector<std::pair<float, std::string>> commands;
+
+    /* Fault injection ("faults" block).  Every fault is a time window
+     * [time_s, time_s + duration_s); duration_s <= 0 latches to the end of
+     * the run.  A negative time_s (the default) disables the fault.  The
+     * injection enters through the modeled sensor/actuator surface, never
+     * through the firmware, so the fault response (FaultManager source + reason)
+     * is produced by the firmware itself:
+     *
+     *   vdc_glitch_*     DC-link bus sag seen by the MAX22530 sense channel
+     *                    (and the plant).  Arms the firmware UV/OV comparator
+     *                    via shell ("maxcfg_uv <v>") to trip Max22530Uv/Ov.
+     *   oc_inject_*      Phase-current spike added at the ADC counts level
+     *                    (sil_phase_current_adc); 3 consecutive over-threshold
+     *                    injected samples raise PhaseOvercurrent (software OC,
+     *                    default threshold 500 A, "ocset" to change).
+     *   encoder_freeze_* Encoder sample stream stalls (no new DMA samples);
+     *                    trips firmware staleness checks (ENCODER_STALE_MS in
+     *                    FocControlManager — legacy `foc start` path).
+     *   encoder_loss_*   Sin/cos outputs collapse to the bias mid (sensor
+     *                    excitation loss); trips EncoderAmplitude in
+     *                    EncoderADC::diagnose (Warning severity).
+     *   temp_spike_*     Drives one temperature channel (0..2 board, 3 motor)
+     *                    to temp_c, through the sensor curve + divider model;
+     *                    trips Overtemperature* after the firmware's sustain
+     *                    window (500 ms). */
+    float vdc_glitch_time_s = -1.0f;
+    float vdc_glitch_duration_s = 0.0f;
+    float vdc_glitch_v = 0.0f;
+
+    float oc_inject_time_s = -1.0f;
+    float oc_inject_duration_s = 0.01f;
+    int   oc_inject_phase = 0;          /* 0 = U, 1 = V, 2 = W */
+    float oc_inject_a = 600.0f;
+
+    float encoder_freeze_time_s = -1.0f;
+    float encoder_freeze_duration_s = 0.0f;
+
+    float encoder_loss_time_s = -1.0f;
+    float encoder_loss_duration_s = 0.1f;
+
+    float temp_spike_time_s = -1.0f;
+    float temp_spike_duration_s = 0.0f;
+    int   temp_spike_channel = 3;       /* 0..2 = board, 3 = motor */
+    float temp_spike_c = 200.0f;
 };
 
 bool LoadScenario(const char* path, Scenario& out, std::string& error);

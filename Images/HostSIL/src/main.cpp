@@ -30,20 +30,24 @@
  *
  * Scenario JSON: see scenarios/sil_foc_demo.json and src/scenario.h.
  */
+#include <algorithm>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "scenario.h"
 
 #include "sil_rt.h"
 #include "sil_world.h"
 #include "sil_hooks.h"
+#include "sil_fw_console.h"
 #include "sil_live_server.h"
 
 #include "Inverter/AppState.h"
@@ -52,6 +56,7 @@
 #include "Inverter/Command/CommandManager.h"
 #include "Inverter/Calibration/CalKvStore.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/ApplicationSensors.h"
 
 #include "domain_tim_isr_generated.h"
 
@@ -83,10 +88,167 @@ sil::Scenario g_scn;
 bool          g_failed = false;
 Sched         g_sched;
 
+/* Sorted timeline of scenario shell commands (from the "commands" block). */
+std::vector<std::pair<float, std::string>> g_commands;
+size_t                                     g_cmd_next = 0;
+
+/* --------------------------------------------------------------------------
+ * Fault injection (scenario "faults" block)
+ *
+ * Each tick the scheduler recomputes which injection windows are active and
+ * writes the shared fault state consumed by the sensor shims.  Edges are
+ * logged as host-side "[SIL] inject ..." lines; the firmware-visible effect
+ * (bits latched in FaultManager) is logged separately by
+ * pollFaultTransitions() and by the firmware console mirror.
+ * ------------------------------------------------------------------------ */
+
+bool faultWindowActive(float t_s, float t0_s, float dur_s) {
+    if (t0_s < 0.0f || t_s < t0_s) return false;
+    return dur_s <= 0.0f || t_s < t0_s + dur_s;
+}
+
+struct FaultPrevState {
+    bool vdc = false;
+    bool oc = false;
+    bool enc_freeze = false;
+    bool enc_loss = false;
+    bool temp = false;
+};
+FaultPrevState g_fault_prev;
+
+void applyFaultWindows() {
+    SilWorld& w = silWorld();
+    const float t = static_cast<float>(sil_rt_now_us()) / 1.0e6f;
+
+    /* DC-link glitch: the sensed bus voltage and the plant's drive voltage
+     * dip together (the firmware reads bus V through the MAX22530 shim). */
+    const float vdc =
+        faultWindowActive(t, g_scn.vdc_glitch_time_s, g_scn.vdc_glitch_duration_s)
+            ? g_scn.vdc_glitch_v
+            : g_scn.vdc_v;
+    w.vdc_v = vdc;
+    if (std::fabs(w.plant.Model().Params().vdc_v - vdc) > 1.0e-3f) {
+        hostsim::MotorParams mp = w.plant.Model().Params();
+        mp.vdc_v = vdc;
+        w.plant.SetParams(mp);
+    }
+    const bool vdc_act = (vdc != g_scn.vdc_v);
+    if (vdc_act != g_fault_prev.vdc) {
+        std::printf("[SIL] t=%.3f inject vdc_glitch %s (bus %.1f V)\n",
+                    static_cast<double>(t), vdc_act ? "ON" : "off",
+                    static_cast<double>(vdc));
+        g_fault_prev.vdc = vdc_act;
+    }
+
+    /* Phase overcurrent at the ADC conversion level. */
+    const bool oc = faultWindowActive(t, g_scn.oc_inject_time_s,
+                                      g_scn.oc_inject_duration_s);
+    w.oc_fault_active = oc;
+    w.oc_fault_phase = g_scn.oc_inject_phase;
+    w.oc_fault_a = g_scn.oc_inject_a;
+    if (oc != g_fault_prev.oc) {
+        static const char* phase_name[3] = {"U", "V", "W"};
+        const int ph = (g_scn.oc_inject_phase >= 0 && g_scn.oc_inject_phase <= 2)
+                           ? g_scn.oc_inject_phase : 0;
+        std::printf("[SIL] t=%.3f inject oc_inject %s (phase %s, %+.1f A)\n",
+                    static_cast<double>(t), oc ? "ON" : "off",
+                    phase_name[ph], static_cast<double>(g_scn.oc_inject_a));
+        g_fault_prev.oc = oc;
+    }
+
+    /* Encoder stream faults. */
+    const bool enc_freeze =
+        faultWindowActive(t, g_scn.encoder_freeze_time_s,
+                          g_scn.encoder_freeze_duration_s);
+    w.encoder_frozen = enc_freeze;
+    if (enc_freeze != g_fault_prev.enc_freeze) {
+        std::printf("[SIL] t=%.3f inject encoder_freeze %s (no new samples)\n",
+                    static_cast<double>(t), enc_freeze ? "ON" : "off");
+        g_fault_prev.enc_freeze = enc_freeze;
+    }
+    const bool enc_loss =
+        faultWindowActive(t, g_scn.encoder_loss_time_s,
+                          g_scn.encoder_loss_duration_s);
+    w.encoder_sig_lost = enc_loss;
+    if (enc_loss != g_fault_prev.enc_loss) {
+        std::printf("[SIL] t=%.3f inject encoder_loss %s (sin/cos to bias mid)\n",
+                    static_cast<double>(t), enc_loss ? "ON" : "off");
+        g_fault_prev.enc_loss = enc_loss;
+    }
+
+    /* Temperature channel override. */
+    const bool temp = faultWindowActive(t, g_scn.temp_spike_time_s,
+                                        g_scn.temp_spike_duration_s);
+    for (int ch = 0; ch < 4; ++ch) {
+        w.temp_c[ch] = (temp && ch == g_scn.temp_spike_channel)
+                           ? g_scn.temp_spike_c
+                           : NAN;
+    }
+    if (temp != g_fault_prev.temp) {
+        std::printf("[SIL] t=%.3f inject temp_spike %s (ch%d -> %.1f C)\n",
+                    static_cast<double>(t), temp ? "ON" : "off",
+                    g_scn.temp_spike_channel,
+                    static_cast<double>(g_scn.temp_spike_c));
+        g_fault_prev.temp = temp;
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Firmware-observed fault transition log
+ *
+ * Watches FaultManager::activeFlags() from the scheduler side and prints
+ * every edge with the sim timestamp; trips are accumulated for the end-of-run
+ * summary.  The firmware's own "triggered" lines (with the FaultReason
+ * string) appear shortly after via the console mirror ([FW ...]).
+ * ------------------------------------------------------------------------ */
+struct FaultTrip {
+    double                t_s;
+    const char*           source;     /* static storage: FaultMeta::name */
+    const char*           description;
+    char                  severity;   /* 'W' / 'H' / 'C' */
+};
+std::vector<FaultTrip> g_fault_history;
+uint32_t               g_fault_flags_seen = 0;
+
+char severityChar(Inverter::FaultSeverity s) {
+    switch (s) {
+        case Inverter::FaultSeverity::Warning:  return 'W';
+        case Inverter::FaultSeverity::High:     return 'H';
+        case Inverter::FaultSeverity::Critical: return 'C';
+    }
+    return '?';
+}
+
+void pollFaultTransitions() {
+    const uint32_t flags = Inverter::FaultManager::instance().activeFlags();
+    if (flags == g_fault_flags_seen) return;
+    const double t = static_cast<double>(sil_rt_now_us()) / 1e6;
+    const uint32_t raised = flags & ~g_fault_flags_seen;
+    const uint32_t cleared = g_fault_flags_seen & ~flags;
+    for (size_t i = 0; i < Inverter::FaultManager::metaCount(); ++i) {
+        const auto* m = &Inverter::FaultManager::metaTable()[i];
+        const uint32_t bit = static_cast<uint32_t>(m->source);
+        if ((raised & bit) != 0U) {
+            const char sev = severityChar(m->severity);
+            std::printf("[SIL] t=%.3f fault raised: source=%s severity=%c (%s)\n",
+                        t, m->name, sev, m->description);
+            g_fault_history.push_back({t, m->name, m->description, sev});
+        }
+        if ((cleared & bit) != 0U) {
+            std::printf("[SIL] t=%.3f fault cleared: source=%s\n", t, m->name);
+        }
+    }
+    g_fault_flags_seen = flags;
+}
+
 /* One fast tick of modeled hardware.  Must only run while the firmware
  * context is blocked (sil_rt guarantees this at every call site). */
 void fastTick() {
     SilWorld& w = silWorld();
+
+    /* 0. Scenario fault windows feed the world state first, so every sensor
+     * shim below already sees the injected values. */
+    applyFaultWindows();
 
     /* 1. Plant step with the latched duties (0 V phases while not driving). */
     float du = 0.0f, dv = 0.0f, dw_ = 0.0f;
@@ -131,8 +293,9 @@ void fastTick() {
     }
 
     /* 3. Encoder: free-running TIM2 stream (or taken per update event when
-     * synchronized — handled below). */
-    if (silEncoderRunning() && !silEncoderSyncTrigger()) {
+     * synchronized — handled below).  encoder_frozen drops the sample stream
+     * entirely, so the firmware's sample-age bookkeeping goes stale. */
+    if (silEncoderRunning() && !w.encoder_frozen && !silEncoderSyncTrigger()) {
         if (static_cast<double>(now) >= g_sched.next_enc_us) {
             silEncoderSampleFromPlant();
             g_sched.next_enc_us += g_sched.enc_period_us;
@@ -150,7 +313,8 @@ void fastTick() {
             if (static_cast<double>(now) >= g_sched.next_upd_us) {
                 /* The encoder trigger is TIM1-synchronized while control
                  * runs: sample it just before the control step. */
-                if (silEncoderRunning() && silEncoderSyncTrigger()) {
+                if (silEncoderRunning() && silEncoderSyncTrigger() &&
+                    !w.encoder_frozen) {
                     silEncoderSampleFromPlant();
                 }
                 silTimFireUpdateIrq();
@@ -162,6 +326,10 @@ void fastTick() {
             g_sched.upd_period_us = period;
         }
     }
+
+    /* 5. Firmware-visible fault bookkeeping (source/severity edges with sim
+     * timestamps; the firmware console mirror prints the matching lines). */
+    pollFaultTransitions();
 }
 
 /* Throttle profile -> pin voltages for the slow-sensor shim. */
@@ -214,6 +382,12 @@ void writeTraceRow(FILE* f) {
 
 /* Deferred firmware-context actions ------------------------------------- */
 
+void runShellLines(const std::vector<std::string>* lines) {
+    for (const auto& line : *lines) {
+        CommandManager::instance().processLine(line.c_str());
+    }
+}
+
 void applyFirmwareConfig() {
     for (const auto& kv : g_scn.firmware_config) {
         char line[128];
@@ -226,6 +400,9 @@ void applyFirmwareConfig() {
     /* Refresh the runtime motor calibration from the seeded KV store so the
      * platform rpm/feedforward helpers see matching poles/sign. */
     Inverter::CalKvStore::loadMotorCalibration();
+    /* Same for the temperature channel config (firmware `temp reload`
+     * equivalent) so seeded Hw.Temp.* / Motor.Temp.* keys take effect. */
+    Inverter::appSensors().reloadConfig();
 }
 
 void engageControl() {
@@ -321,6 +498,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    /* Scheduled shell commands, sorted by absolute sim time (stable for
+     * equal times). */
+    g_commands = g_scn.commands;
+    std::stable_sort(g_commands.begin(), g_commands.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    g_cmd_next = 0;
+
     /* Plant + static world config. */
     {
         hostsim::MotorParams mp;
@@ -346,6 +530,7 @@ int main(int argc, char** argv) {
 
     sil_fram_attach(g_scn.fram_image.empty() ? nullptr : g_scn.fram_image.c_str());
     sil_hal_init();
+    silFwConsoleReset();
 
     FILE* trace = std::fopen(g_scn.trace_csv.c_str(), "w");
     if (trace == nullptr) {
@@ -369,6 +554,43 @@ int main(int argc, char** argv) {
                 static_cast<double>(g_scn.inertia_kg_m2),
                 static_cast<double>(g_scn.friction_nm_per_rad_s),
                 static_cast<double>(g_scn.vdc_v));
+
+    /* Announce configured fault injections and scheduled shell commands. */
+    {
+        auto window = [](float t0, float dur) -> std::string {
+            char buf[64];
+            if (dur > 0.0f) {
+                std::snprintf(buf, sizeof(buf), "@%.3f s for %.3f s",
+                              static_cast<double>(t0), static_cast<double>(dur));
+            } else {
+                std::snprintf(buf, sizeof(buf), "@%.3f s (latching)",
+                              static_cast<double>(t0));
+            }
+            return buf;
+        };
+        if (g_scn.vdc_glitch_time_s >= 0.0f)
+            std::printf("[SIL] fault cfg: vdc_glitch to %.1f V %s\n",
+                        static_cast<double>(g_scn.vdc_glitch_v),
+                        window(g_scn.vdc_glitch_time_s, g_scn.vdc_glitch_duration_s).c_str());
+        if (g_scn.oc_inject_time_s >= 0.0f)
+            std::printf("[SIL] fault cfg: oc_inject %.1f A phase %d %s\n",
+                        static_cast<double>(g_scn.oc_inject_a), g_scn.oc_inject_phase,
+                        window(g_scn.oc_inject_time_s, g_scn.oc_inject_duration_s).c_str());
+        if (g_scn.encoder_freeze_time_s >= 0.0f)
+            std::printf("[SIL] fault cfg: encoder_freeze %s\n",
+                        window(g_scn.encoder_freeze_time_s, g_scn.encoder_freeze_duration_s).c_str());
+        if (g_scn.encoder_loss_time_s >= 0.0f)
+            std::printf("[SIL] fault cfg: encoder_loss %s\n",
+                        window(g_scn.encoder_loss_time_s, g_scn.encoder_loss_duration_s).c_str());
+        if (g_scn.temp_spike_time_s >= 0.0f)
+            std::printf("[SIL] fault cfg: temp_spike ch%d to %.1f C %s\n",
+                        g_scn.temp_spike_channel,
+                        static_cast<double>(g_scn.temp_spike_c),
+                        window(g_scn.temp_spike_time_s, g_scn.temp_spike_duration_s).c_str());
+        for (const auto& [t_s, line] : g_commands)
+            std::printf("[SIL] command cfg: @%.3f s: %s\n",
+                        static_cast<double>(t_s), line.c_str());
+    }
 
     /* --- Boot the firmware on its own thread. --- */
     LiveServerGuard live_guard;
@@ -410,8 +632,33 @@ int main(int argc, char** argv) {
     while (sil_rt_now_us() < end_us) {
         const uint64_t now = sil_rt_now_us();
 
+        /* Due scenario shell commands (posted as one firmware-context call so
+         * a burst can't clobber the single pending slot; executes at the app
+         * gate below).  When commands fire this tick, control_start waits one
+         * app tick — the post slot is non-queueing. */
+        bool posted_command = false;
+        if (g_cmd_next < g_commands.size() &&
+            static_cast<double>(g_commands[g_cmd_next].first) * 1.0e6 <=
+                static_cast<double>(now) + 1.0) {
+            auto due_lines = std::make_shared<std::vector<std::string>>();
+            while (g_cmd_next < g_commands.size() &&
+                   static_cast<double>(g_commands[g_cmd_next].first) * 1.0e6 <=
+                       static_cast<double>(now) + 1.0) {
+                std::printf("[SIL] t=%.3f shell> %s\n",
+                            static_cast<double>(now) / 1e6,
+                            g_commands[g_cmd_next].second.c_str());
+                due_lines->push_back(g_commands[g_cmd_next].second);
+                ++g_cmd_next;
+            }
+            auto keepalive = due_lines;
+            const auto* lines_ptr = due_lines.get();
+            sil_rt_post([keepalive, lines_ptr]() { runShellLines(lines_ptr); });
+            posted_command = true;
+        }
+
         /* Control engagement at the scenario time. */
         if (g_scn.control_start && !g_sched.control_posted &&
+            !posted_command &&
             now >= static_cast<uint64_t>(g_scn.control_start_time_s * 1.0e6)) {
             sil_rt_post(&engageControl);
             g_sched.control_posted = true;
@@ -492,11 +739,23 @@ int main(int argc, char** argv) {
     std::printf("[SIL] simulation complete at t=%.3f s (sim)\n",
                 static_cast<double>(sil_rt_now_us()) / 1e6);
     {
+        pollFaultTransitions();   /* drain any late raise from the last tick */
         auto& sup = Inverter::ControlSupervisor::instance();
         std::printf("[SIL] final control state: %s (faults: %s)\n",
                     sup.stateName(),
                     Inverter::FaultManager::instance().isActive() ? "YES" : "no");
         printActiveFaults();
+        if (g_fault_history.empty()) {
+            std::printf("[SIL] fault history: none raised this run\n");
+        } else {
+            std::printf("[SIL] fault history (%zu trips raised this run):\n",
+                        g_fault_history.size());
+            for (const FaultTrip& trip : g_fault_history) {
+                std::printf("[SIL]   t=%.3f [%c] %s (%s)\n",
+                            trip.t_s, trip.severity, trip.source,
+                            trip.description);
+            }
+        }
     }
 
     sil_fram_detach_save();

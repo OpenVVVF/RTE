@@ -1,0 +1,48 @@
+{
+  "comment": "HostSIL fault injection: motor over-temperature under graph FOC control. The motor temperature channel (Motor.Temp.*, KTY84 over a 10k divider by default) is driven to 200 degC from 1.9 s (latching) through the sensor-chain model (temperature -> KTY84 resistance -> divider voltage). The firmware evaluation needs the condition sustained for 500 ms, so OvertemperatureMotor/OvertemperatureMotor (Critical) trips at ~2.4 s: supervisor -> FAULT, PWM break + gate driver off, no auto-resume. Same motor/config as sil_foc_demo.",
+  "motor": {
+    "name": "sil_small_bldc",
+    "rs_ohm": 0.05,
+    "ld_h": 0.0001,
+    "lq_h": 0.0001,
+    "flux_wb": 0.008,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 0.001,
+    "friction_nm_per_rad_s": 0.001,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 3.2,
+    "app_loop_hz": 1000,
+    "trace_csv": "sil_fault_overtemp_trace.csv",
+    "trace_decim_us": 500
+  },
+  "throttle_a": { "type": "constant", "value": 0.0 },
+  "control": {
+    "start": true,
+    "start_time_s": 1.6,
+    "iq_a": 8.0,
+    "id_a": 0.0
+  },
+  "faults": {
+    "temp_spike_time_s": 1.9,
+    "temp_spike_duration_s": 0.0,
+    "temp_spike_channel": 3,
+    "temp_spike_c": 200.0
+  },
+  "firmware_config": {
+    "Motor.Poles": 14.0,
+    "Motor.Encoder.SinCos.Sign": 1.0,
+    "Motor.Encoder.SinCos.OffsetDeg": 0.0,
+    "Motor.Encoder.SinCos.CyclesRev": 1.0,
+    "Motor.Encoder.Type": 1.0,
+    "Motor.Type": 2.0,
+    "Motor.Resistance.Avg": 0.05,
+    "Motor.Ld": 0.0001,
+    "Motor.Lq": 0.0001,
+    "Motor.Lambda": 0.008,
+    "Motor.PMSM.Inductance.Ld": 0.0001,
+    "Motor.PMSM.Inductance.Lq": 0.0001,
+    "Motor.PMSM.FluxLinkage.Wb": 0.008
+  }
+}

@@ -17,6 +17,7 @@
 #include "sil_rt.h"
 #include "sil_hooks.h"
 #include "sil_live_server.h"
+#include "sil_fw_console.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -341,7 +342,9 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef* hspi,
  * In this image the only in-firmware user of HAL_UART_Transmit_DMA is the
  * Telemetry module: the bytes handed over here are the COBS-framed
  * InverterProtocol stream exactly as it would leave USART3 on hardware.
- * When the live server is active, forward them verbatim to TCP clients.
+ * When the live server is active, forward them verbatim to TCP clients; the
+ * batch console mirror (sil_fw_console) also walks the same byte stream and
+ * prints "print" key strings to stdout.
  *
  * RX (huart3, IT mode): the firmware's CommandShell arms single-byte
  * reception in HAL_UART_Receive_IT and consumes bytes in
@@ -356,6 +359,7 @@ HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef* huart,
     if (huart != &huart3) return HAL_ERROR;
     if (g_uart3.tx_pending) return HAL_BUSY;
     sil_live_feed_tx(data, len);
+    silFwConsoleFeed(data, len);
     g_uart3.tx_pending = true;
     g_uart3.pending_huart = huart;
     return HAL_OK;

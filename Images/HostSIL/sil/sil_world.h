@@ -15,6 +15,7 @@
 
 #include "plant/ode_plant.h"
 
+#include <cmath>
 #include <cstdint>
 
 struct SilWorld {
@@ -42,6 +43,25 @@ struct SilWorld {
     /* Set by EncoderADC::start(); the scheduler only feeds the sin/cos
      * stream while the firmware has the channel running. */
     bool encoder_stream_running = false;
+
+    /* --- Fault-injection state (scenario "faults" block, applied by the
+     * scheduler in main.cpp; read by the shims).  Defaults inject nothing. */
+    /* Phase-current spike added at the ADC counts level in
+     * sil_phase_current_adc.cpp (oc_fault_phase: 0=U, 1=V, 2=W). */
+    bool  oc_fault_active = false;
+    int   oc_fault_phase = 0;
+    float oc_fault_a = 0.0f;
+
+    /* Encoder stream faults (sil_encoder_adc.cpp): frozen = no new samples
+     * (staleness), sig_lost = sin/cos pinned at the bias mid (amplitude
+     * collapse). */
+    bool encoder_frozen = false;
+    bool encoder_sig_lost = false;
+
+    /* Scenario-driven temperature channels [degC] (sil_app_sensors.cpp);
+     * NaN = channel not modeled (application reports NAN, as when the
+     * sensor is not populated).  0..2 = board, 3 = motor. */
+    float temp_c[4] = {NAN, NAN, NAN, NAN};
 };
 
 SilWorld& silWorld();

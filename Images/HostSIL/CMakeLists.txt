@@ -99,6 +99,7 @@ add_executable(host_sil
     sil/sil_fram.c
     sil/sil_uart_c.c
     sil/sil_uart_cpp.cpp
+    sil/sil_fw_console.cpp
     sil/sil_live_server.cpp
     # --- HostSim plant ---
     "${HOSTSIM_ROOT}/src/motor_model.cpp"

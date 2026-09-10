@@ -519,7 +519,17 @@ bool silEncoderSyncTrigger() {
 void silEncoderSampleFromPlant() {
     /* Render the plant's mechanical rotor angle as quantized sin/cos counts:
      * center 32768, amplitude 30000, one sin/cos cycle per mechanical rev. */
-    const auto& st = silWorld().plant.State();
+    const SilWorld& w = silWorld();
+    if (w.encoder_sig_lost) {
+        /* Sensor excitation loss: ratiometric sin/cos outputs fall back to
+         * the bias mid-supply, so the decoded signal magnitude collapses in
+         * the firmware's EncoderADC::diagnose amplitude check. */
+        Inverter::s_enc_dma_buffer[0] = 32768;
+        Inverter::s_enc_dma_buffer[1] = 32768;
+        Inverter::encoderADC().onDmaComplete();
+        return;
+    }
+    const auto& st = w.plant.State();
     const float pp = static_cast<float>(silWorld().plant.Model().Params().pole_pairs);
     const float two_pi = 6.28318530718f;
     float theta_m = (pp > 0.0f) ? (st.theta_e_rad / pp) : 0.0f;
