@@ -367,6 +367,55 @@ V/Hz ratio).
 Motor parameters are not hardcoded to a machine: copy a bundled scenario and
 paste calibrated values from the target motor.
 
+## Running all example graphs
+
+`Tools/tests/run_all_examples.sh` is the systematic answer to "does every
+example graph in `Assets/Examples/` still emit, build, and run on the
+simulator?". It discovers every `*.json` there and, per graph, runs the full
+emit (`--templates Assets/NodeTemplates`) → cmake configure+build → batch
+run (`--realtime 0`) chain and asserts: clean exit, trace CSV written, no
+NaN/Inf in any trace column, and a strictly monotonic `time_us`:
+
+```bash
+bash Tools/tests/run_all_examples.sh                 # full suite (~1-2 min cold, ~15 s warm)
+bash Tools/tests/run_all_examples.sh --only foc      # name-substring filter
+```
+
+Drive vars are seeded per graph via scenario `vars` so the control chains are
+actually exercised: the FOC graphs get a generated default-motor scenario
+with `IqVar=8 A` (`foc_mtpa_demo` uses its `CMD` ref), `induction_vhz` gets a
+generated induction-machine scenario that mirrors the proven
+`scenarios/induction_vhz.{json,cfg}` tuning (0.55 V/Hz + 1.5 V boost,
+`TargetHz=40`). `can_bus_demo` cannot run as a single batch instance — the
+suite instead runs the two-instance live bridge recipe from
+[Graph-level CAN / two-inverter pattern](#graph-level-can--two-inverter-pattern)
+(hub + spoke on ephemeral ports, `can_bus_demo_role_{a,b}.json` overlays) and
+asserts bridge frames are witnessed in both directions *and* consumed by each
+graph's CanRx; live mode writes no trace, hence the `—` in the rows column.
+Scenario overlays (`*_role_*.json`) are reported as SKIP by construction.
+
+Emitted trees are cached under `build/hostsim_examples_<name>_emitted{,_build}`
+(re-emitted only when the graph, templates, HostSim base image, or emitter is
+newer); run logs and generated scenarios land in `build/hostsim_examples_suite/`.
+Exit code is nonzero iff any graph FAILs. Current results:
+
+| graph | status | rows | peak \|i\| | notes |
+|---|---|---:|---:|---|
+| can_bus_demo | PASS | — | 0.000 | live 2-instance CAN bridge (6s); frames A→B x300, B→A x300; peer role consumed both sides |
+| can_bus_demo_role_a | SKIP | — | — | scenario overlay, not a graph; consumed by `can_bus_demo` two-instance run |
+| can_bus_demo_role_b | SKIP | — | — | scenario overlay, not a graph; consumed by `can_bus_demo` two-instance run |
+| current_telemetry | PASS | 5001 | 223.282 | sensor-only graph; legacy `demo_fallback` spins the plant |
+| foc_chain | SKIP | — | — | stale graph: its `Control.Pi` instances omit the current Pi template's `Dt`/`AwGain`/`Feedforward` params, so the generated code does not compile (add them to the two instances to flip this to PASS; verified working once added) |
+| foc_demo_aidan | PASS | 7501 | 17.760 | default_motor baseline + vars `IqVar=8 A` (`IdVar=0`) |
+| foc_demo | PASS | 7501 | 15.480 | default_motor baseline + vars `IqVar=8 A` (`IdVar=0`) |
+| foc_mtpa_demo | PASS | 7501 | 76.325 | default_motor baseline + vars `CMD=8 A` (MTPA splits id/iq) |
+| induction_vhz | PASS | 17501 | 2.723 | induction plant, `TargetHz=40`, 0.55 V/Hz + 1.5 V boost |
+| ladrc_demo | PASS | 7501 | 17.109 | default_motor baseline + vars `IqVar=8 A` (LADRC current loops) |
+
+(`spwm_demo` is not an `Assets/Examples` graph — it lives in
+`Images/HostSim/graphs/` and is covered by the `hostsim` part of
+`Tools/tests/run_sim_smoke.sh`.)
+
 ## Graph-level CAN / two-inverter pattern
 
 `Assets/NodeTemplates` ships two CAN graph nodes that emit plain

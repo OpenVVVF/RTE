@@ -302,7 +302,10 @@
         "Ki": "0.01",
         "Integral": "0.0",
         "OutputMax": "24.0",
-        "OutputMin": "-24.0"
+        "OutputMin": "-24.0",
+        "Dt": "0.0002",
+        "AwGain": "1.0",
+        "Feedforward": "0.0"
       }
     },
     {
@@ -318,7 +321,10 @@
         "Ki": "0.01",
         "Integral": "0.0",
         "OutputMax": "24.0",
-        "OutputMin": "-24.0"
+        "OutputMin": "-24.0",
+        "Dt": "0.0002",
+        "AwGain": "1.0",
+        "Feedforward": "0.0"
       }
     },
     {
