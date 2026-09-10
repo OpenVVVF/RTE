@@ -29,7 +29,7 @@ compiled control loop ──► platform_api.h ──► plant backend
       │    NgspicePlant (experimental) ── libngspice circuit sim
       │
       ▼
-telemetry → NodeGUI / CSV
+telemetry → RTEStudio / CSV
 ```
 
 The control code inside `host_sim` is the **same compiled firmware** that runs
@@ -69,7 +69,7 @@ Rates are configurable in the scenario JSON (`scenarios/default_motor.json`).
 cd Images\HostSim
 cmake -S . -B build
 cmake --build build
-.\build\host_sim.exe scenarios\default_motor.json
+.\build\Debug\host_sim.exe scenarios\default_motor.json
 ```
 
 Writes `trace.csv` with columns:
@@ -337,7 +337,7 @@ designed for app-loop-rate traffic, not 10 kHz ISR floods; a batch run's sim
 clock can advance far faster than wall time, so very high sim-time frame
 rates are just dropped when sockets would block).
 
-## SPWM demo (NodeGUI + HostSim live)
+## SPWM demo (RTEStudio + HostSim live)
 
 Open-loop **sinusoidal PWM** graph for the host simulator. Throttle A sets modulation
 index (0..1), throttle B maps to electrical frequency (1..20 Hz via the graph).
@@ -346,8 +346,8 @@ index (0..1), throttle B maps to electrical frequency (1..20 Hz via the graph).
 powershell -File Images\HostSim\scripts\run_spwm_live.ps1
 ```
 
-This emits `graphs/spwm_demo_graph.json`, builds `build/hostsim_spwm_emitted`, starts
-HostSim live, and opens NodeGUI with the graph loaded.
+This emits `graphs/spwm_demo_graph.json`, builds `build/hostsim_spwm_demo_graph_emitted`, starts
+HostSim live, and opens RTEStudio with the graph loaded.
 
 **Suggested Runtime plots (check G1/G2/G3):**
 - `duty_u`, `duty_v`, `duty_w` — slow SPWM duty commands (%)
@@ -357,11 +357,13 @@ HostSim live, and opens NodeGUI with the graph loaded.
 - `spwm_angle_deg`, `encoder_angle_deg` — field angle vs rotor angle
 - `mod_index`, `elec_freq_hz` — live control inputs
 
-PWM scope uses a triangle carrier (default 800 Hz in `spwm_demo.json`). Telemetry
-stays at `telem_hz` (500 Hz default); raise it in the scenario if you need
-finer PWM resolution. NodeGUI decimates bursts and refreshes plots at ~30 Hz.
+PWM scope uses a triangle carrier (default 800 Hz in `spwm_demo.json`). Scope
+channels ride their own auto-derived `pwm_telem_hz` (carrier × 12, clamped to
+1000–4000 Hz); the plain signal channels use `telem_hz` — and in live mode
+HostSim raises a `telem_hz` below 1500 Hz to 2000 Hz (set ≥1500 to keep a
+custom rate). RTEStudio decimates bursts and refreshes plots at ~30 Hz.
 
-Edit graph parameters in NodeGUI (`FreqMin`/`FreqMax`, `TimDt`) then re-run the script
+Edit graph parameters in RTEStudio (`FreqMin`/`FreqMax`, `TimDt`) then re-run the script
 to regenerate firmware.
 
 ```powershell
@@ -369,17 +371,17 @@ to regenerate firmware.
 python scripts\plot_sim.py trace.csv
 ```
 
-**Live dashboard (Path A — NodeGUI Runtime tab):**
+**Live dashboard (Path A — RTEStudio Runtime tab):**
 
 ```powershell
 # Terminal 1 — long-running HostSim with InverterProtocol over TCP
 .\build\Debug\host_sim.exe scenarios\default_motor.json --live --realtime 1.0
 
-# Terminal 2 — NodeGUI Runtime tab connected to HostSim
-.\build\Source\NodeGUI\NodeGUI.exe --tcp 127.0.0.1:14608 --protocol ivp
+# Terminal 2 — RTEStudio Runtime tab connected to HostSim
+.\build\bin\RTEStudio.exe --tcp 127.0.0.1:14608 --protocol ivp
 ```
 
-In the NodeGUI **Runtime** console, adjust live:
+In the RTEStudio **Runtime** console, adjust live:
 
 ```text
 throttle a 0.5
@@ -403,7 +405,7 @@ help from the OS scheduler:
 1. **Power plan** — set Windows to *High performance* or plug in AC power.
 2. **Close heavy apps** — browsers/GPU tools competing for the same cores.
 3. **Exclude from Game Bar capture** if recording causes stutter.
-4. **Start HostSim before NodeGUI** so the sim claims a performance core first.
+4. **Start HostSim before RTEStudio** so the sim claims a performance core first.
 
 **If plots still stutter:**
 - Use `--realtime 0` on HostSim to run as fast as possible (no wall-clock pacing).
@@ -411,9 +413,11 @@ help from the OS scheduler:
 - Set `HOSTSIM_TELEM_STDERR=1` only when debugging — stderr logging is off by default.
 
 **Waveform sampling (live plots):**
-- Default live telemetry is **500 Hz** (was 100 Hz) so duty/current waveforms have enough points per cycle.
+- Live mode forces the telemetry rate: a configured `telem_hz` (scenario key or
+  `--telem-hz N`; 500 Hz default) below 1500 Hz is raised to **2000 Hz** so
+  duty/current waveforms have enough points per cycle
+  (`src/sim_runtime.cpp` — set ≥1500 Hz to keep a custom rate).
 - Rule of thumb: `telem_hz` ≥ 10× your highest electrical frequency (e.g. 20 Hz → use ≥200 Hz).
-- Override with `--telem-hz 1000` or `"telem_hz": 1000` in the scenario JSON.
 - Use **Pause Sim** in the Runtime console to freeze the plant while inspecting a trace.
 - **Slow motion:** set sim speed to `0.25x` / `0.5x` in the Runtime console, or `speed 0.25` on the HostSim shell. `1x` = realtime, `turbo` = as fast as possible.
 

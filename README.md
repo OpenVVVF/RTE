@@ -94,7 +94,7 @@ cache, not to a nested directory in this checkout.
 
 ```bash
 cmake --build build --target RTEStudio -j8
-./build/bin/rte-studio Assets/Examples/foc_demo.json
+./build/bin/RTEStudio Assets/Examples/foc_demo.json
 ```
 
 On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
@@ -167,7 +167,7 @@ manifest under the user cache (`~/.cache/rte/projects/...` on Linux,
 
 ## Tools
 
-- `rte-studio` — lightweight editor and owner of live device/telemetry state.
+- `RTEStudio` — lightweight editor and owner of live device/telemetry state.
 - `rte` — portable automation backend and MCP stdio server (`rte mcp`).
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the
@@ -298,22 +298,28 @@ Done recently:
   rate telemetry (`hz_*`)
 - Bench builds default to Release — at `-O0` the CPU cannot service the
   control ISR load (`hz_app_loop` collapses to <100 Hz)
+- DC-microgrid converters, first step: HostSim `dcdc` plant mode runs one
+  3-phase power stage as three independent phase→DC-bus converters
+  (`scenarios/dcdc_3bus.json`) or with all legs paralleled into one shared
+  bus (`dcdc_parallel.json`), via averaged ngspice netlists behind the
+  `IPlant` seam. Still open: switched (non-averaged) netlists, a fast ODE
+  DC-bus plant for `--live` speed, and 2+1 split topologies
+- Multi-converter simulation, first step: concurrent `host_sim` instances
+  exchange CAN frames over a shared simulated bus (localhost TCP bridge,
+  `--can-bridge-listen` / `--can-bridge-connect`), demonstrated by the
+  one-graph two-role `Assets/Examples/can_bus_demo.json`. Still open: coupled
+  multi-instance plants and Windows support for the bridge
 
 Next up, roughly in priority order:
 
 - Current-loop tuning from measured motor parameters: run the R/L
   calibrators, compute PI gains for a target bandwidth, slew-limit the
   current references (the `control.slew` node exists, unwired)
-- ngspice plant backend beyond the experimental RL/PMSM netlists: switched
+- ngspice plant backend beyond the experimental RL/PMSM/dcdc netlists: switched
   device models, Gen6-oriented netlist templates
-- DC-microgrid converters: synchronous DC/DC testing of one 3-phase power
-  stage configured as three independent phase->bus converters, 2+1 split, or
-  all legs paralleled; needs a DC-bus/load plant model behind the IPlant seam
-  (ngspice netlists can already express a sync buck/boost of arbitrary shape)
-- Multi-converter simulation: several host_sim/host_sil instances over a
-  shared simulated CAN bus (HostSim already loopbacks CAN per-instance;
-  bridge instances over a socket) — covers 5-phase motors from two inverters
-  and microgrid AFE -> DC/DC -> output chains with cross-converter control
+- Coupled multi-instance plants: several converters acting on one electrical
+  model — a 5-phase motor driven by two 3-phase inverters, or a microgrid
+  AFE -> DC/DC -> output chain; plus a Windows port of the CAN bridge
 - 5-phase (and N-phase) machine model behind the same plant seam
 - Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node

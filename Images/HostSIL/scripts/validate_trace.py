@@ -95,16 +95,18 @@ def main() -> int:
                                 f"(span {max(d) - min(d):.3g} %)")
 
         # Iq tracking: measured q current should reach a good fraction of ref.
-        # Measure the last 20% of the control region itself — anchoring the
-        # window to ctl[0] (not to absolute row count) keeps it in the
-        # settled region regardless of row density (trace decimation) and of
-        # how many pre-control rows the trace contains.
+        # Settled window = last 20% of the trace (with sane scenarios that is
+        # deep inside the control region). Compare signed: a loop locked onto
+        # -Iq for a positive ref must fail, not pass through abs().
         iqm = cols["iq_meas_a"]
-        tail0 = ctl[0] + int(0.8 * (n - ctl[0]))
+        tail0 = int(0.8 * n)
         iq_tail = sum(iqm[tail0:]) / max(1, n - tail0)
-        if args.iq_a > 0 and abs(iq_tail) < 0.5 * args.iq_a:
+        if args.iq_a > 0 and iq_tail < 0.5 * args.iq_a:
             failures.append(
                 f"iq_meas mean {iq_tail:.3g} A far below ref {args.iq_a} A")
+        elif args.iq_a < 0 and iq_tail > 0.5 * args.iq_a:
+            failures.append(
+                f"iq_meas mean {iq_tail:.3g} A far above ref {args.iq_a} A")
 
     imax_all = max(max(map(abs, cols[p])) for p in ("i_a", "i_b", "i_c"))
     print(f"rows={n}  span={t[-1] - t[0]:.3f} s")

@@ -30,6 +30,8 @@
 # is removed on exit unless --keep is given.
 #
 # usage: run_sim_smoke.sh [--only hostsim|plants|ngspice|dcdc|hostsil|rte] [--keep]
+# env:   NGSPICE_WALL_LIMIT_S — wall-time cap per host_sim run (default 120);
+#        runs are SIGKILLed at the cap (rc 124/137 -> FAIL).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,13 +66,49 @@ DCDC_PARALLEL_SCENARIO_REL="scenarios/dcdc_parallel.json"
 # (the emitted spwm graph writes PWM every tick and shadows them).
 DCDC_BASE_BUILD="${BUILD_DIR}/hostsim_dcdc_base_build"
 
-NGSPICE_WALL_LIMIT_S=120
+NGSPICE_WALL_LIMIT_S="${NGSPICE_WALL_LIMIT_S:-120}"
 
 ONLY=""
 KEEP=0
 
 log()  { echo "[sim-smoke] $*"; }
 fail() { echo "[sim-smoke] FAIL: $*" >&2; return 1; }
+
+# wall_run <limit-s> <cmd...> — run cmd with a hard wall-time cap (SIGKILL on
+# expiry). Exit 124 means the cap fired; 137 means the process was SIGKILLed
+# (timeout without coreutils `timeout`, or an external kill — either way the
+# caller treats it as a wall-cap failure).
+wall_run() {
+    local limit="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout --signal=KILL "${limit}" "$@"
+    else
+        "$@"
+    fi
+}
+
+# fail_run <description> <log-file> <rc> — uniform run-failure report that
+# names the wall cap when rc says the run was killed on time.
+fail_run() {
+    local desc="$1" run_log="$2" rc="$3"
+    if [[ "${rc}" == "124" || "${rc}" == "137" ]]; then
+        echo "[sim-smoke] FAIL: ${desc} hit the ${NGSPICE_WALL_LIMIT_S}s wall-time cap (rc=${rc}); tail:" >&2
+    else
+        echo "[sim-smoke] FAIL: ${desc} exited nonzero (rc=${rc}); tail:" >&2
+    fi
+    tail -n 20 "${run_log}" >&2 || true
+    return 1
+}
+
+# tree_newer_than <dir> <marker> — true when a *source* file under dir is
+# newer than marker (skips VCS metadata, nested build trees, and trace CSVs,
+# whose mtimes say nothing about the emit inputs).
+tree_newer_than() {
+    [[ -n "$(find "$1" \
+        -name .git -prune -o \
+        -type d -name 'build*' -prune -o \
+        -type f ! -name '*.csv' -newer "$2" -print -quit 2>/dev/null)" ]]
+}
 
 usage() {
     echo "usage: $0 [--only hostsim|plants|ngspice|dcdc|hostsil|rte] [--keep]" >&2
@@ -92,6 +130,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+mkdir -p "${BUILD_DIR}"
 SCRATCH="$(mktemp -d "${BUILD_DIR}/sim_smoke.XXXXXXXX")"
 cleanup() {
     if [[ "${KEEP}" == "1" ]]; then
@@ -108,18 +147,15 @@ want() { [[ -z "${ONLY}" || "${ONLY}" == "$1" ]]; }
 # ---------------------------------------------------------------- prerequisites
 
 ensure_prereqs() {
-    local missing=0
-    [[ -x "${EMITTER}" ]] || missing=1
-    [[ -x "${RTE_CLI}" ]] || missing=1
-    [[ ${missing} == 1 ]] || return 0
-
-    log "building host prerequisites (RTECodeEmitter, rte)"
+    log "ensuring host prerequisites (RTECodeEmitter, rte)"
     if [[ ! -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
         cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
             || { echo "[sim-smoke] FAIL: cmake configure of host tools failed" >&2
                  echo "             (needs cmake, a C++20 compiler, and Qt6 — see README)" >&2
                  return 1; }
     fi
+    # Always build: a no-op when fresh, but catches a present-but-stale binary
+    # (e.g. older emitter left over under --keep after graph/codegen changes).
     cmake --build "${BUILD_DIR}" --target RTECodeEmitter rte --parallel "$(nproc)" \
         || { echo "[sim-smoke] FAIL: host prerequisite build failed" >&2; return 1; }
     [[ -x "${EMITTER}" && -x "${RTE_CLI}" ]] \
@@ -185,10 +221,10 @@ if sum_tol >= 0.0 and worst_sum > sum_tol:
     print(f"FAIL: {path}: max |i_a+i_b+i_c| = {worst_sum:.6g} > {sum_tol:g}")
     sys.exit(1)
 if omega_min >= 0.0:
-    om0, om1 = data[0][om], data[-1][om]
+    om0, om1 = float(data[0][om]), float(data[-1][om])
     if not (om_max > omega_min and om1 > om0):
         print(f"FAIL: {path}: omega_e did not ramp past {omega_min:g} rad/s "
-              f"(first={float(om0):.4g} last={float(om1):.4g} max={om_max:.4g})")
+              f"(first={om0:.4g} last={om1:.4g} max={om_max:.4g})")
         sys.exit(1)
 print(f"trace ok: {path} rows={len(data)}")
 PY
@@ -279,11 +315,20 @@ PY
 
 # ---------------------------------------------------------------- hostsim core
 
-# Emit spwm_demo_graph and build host_sim when the smoke binary is absent;
-# always re-emit when the tree exists from an interrupted run missing sources.
+# Emit spwm_demo_graph and build host_sim; reuse a kept tree only when it is
+# complete AND nothing it was baked from is newer — the graph, any HostSim
+# base-image source, or the emitter binary (so --keep runs never validate
+# stale code).
 ensure_hostsim_emitted() {
     if [[ -x "${EMITTED_BUILD}/host_sim" && -f "${EMITTED}/${SPWM_SCENARIO_REL}" ]]; then
-        return 0
+        local marker="${EMITTED_BUILD}/host_sim"
+        if [[ "${SPWM_GRAPH}" -nt "${marker}" ]] \
+            || [[ "${EMITTER}" -nt "${marker}" ]] \
+            || tree_newer_than "${HOSTSIM_SRC}" "${marker}"; then
+            log "graph/base image/emitter newer than the ${SMOKE_NAME} tree - re-emitting"
+        else
+            return 0
+        fi
     fi
     log "emitting ${SPWM_GRAPH##*/} -> ${EMITTED#"${REPO_ROOT}"/}"
     rm -rf "${EMITTED}" "${EMITTED_BUILD}"
@@ -297,8 +342,9 @@ ensure_hostsim_emitted() {
         || { echo "[sim-smoke] FAIL: emitted host_sim build failed" >&2; return 1; }
 }
 
-run_hostsim_scenario() { # <scenario-rel-path> <log-file>; cwd = emitted tree
-    (cd "${EMITTED}" && "${EMITTED_BUILD}/host_sim" "$1" --realtime 0) >"$2" 2>&1
+run_hostsim_scenario() { # <scenario-rel-path> <log-file> [wall-limit-s]; cwd = emitted tree
+    local limit="${3:-${NGSPICE_WALL_LIMIT_S}}"
+    (cd "${EMITTED}" && wall_run "${limit}" "${EMITTED_BUILD}/host_sim" "$1" --realtime 0) >"$2" 2>&1
 }
 
 # ---------------------------------------------------------------------- parts
@@ -310,8 +356,7 @@ part_hostsim() {
     local run_log="${SCRATCH}/hostsim_spwm_run.log"
     rm -f "${EMITTED}/trace_spwm.csv"
     run_hostsim_scenario "${SPWM_SCENARIO_REL}" "${run_log}" || {
-        echo "[sim-smoke] FAIL: host_sim spwm_demo run exited nonzero; tail:" >&2
-        tail -n 20 "${run_log}" >&2 || true
+        fail_run "host_sim spwm_demo run" "${run_log}" $?
         return 1
     }
     local trace="${EMITTED}/trace_spwm.csv"
@@ -344,14 +389,19 @@ part_ngspice() {
     fi
     ensure_prereqs || return 1
     ensure_hostsim_emitted || return 1
+    # The ngspice scenario postdates the smoke tree in cached emits; re-emit
+    # when the copy lacks it (same guard as the dcdc/plants parts).
+    if [[ ! -f "${EMITTED}/${NGSPICE_SCENARIO_REL}" ]]; then
+        rm -rf "${EMITTED}" "${EMITTED_BUILD}"
+        ensure_hostsim_emitted || return 1
+    fi
 
     local run_log="${SCRATCH}/hostsim_ngspice_run.log"
     local trace="${EMITTED}/ngspice_trace.csv"
     rm -f "${trace}"
     local start=${SECONDS}
     run_hostsim_scenario "${NGSPICE_SCENARIO_REL}" "${run_log}" || {
-        echo "[sim-smoke] FAIL: host_sim ngspice_rl_demo run exited nonzero; tail:" >&2
-        tail -n 20 "${run_log}" >&2 || true
+        fail_run "host_sim ngspice_rl_demo run" "${run_log}" $?
         return 1
     }
     local elapsed=$((SECONDS - start))
@@ -529,8 +579,10 @@ PY
 
 # Graph-less base-image host_sim (no generated domains) — the harness for the
 # scenario-driven dcdc duty path, since bundled graphs write PWM every tick.
+# Reuse a kept build only when no base-image source is newer than the binary.
 ensure_dcdc_base() {
-    if [[ -x "${DCDC_BASE_BUILD}/host_sim" ]]; then
+    if [[ -x "${DCDC_BASE_BUILD}/host_sim" ]] \
+        && ! tree_newer_than "${HOSTSIM_SRC}" "${DCDC_BASE_BUILD}/host_sim"; then
         return 0
     fi
     log "building base-image host_sim -> ${DCDC_BASE_BUILD#"${REPO_ROOT}"/}"
@@ -551,10 +603,10 @@ dcdc_run_base() {
     local start=${SECONDS}
     # Run from scratch: the trace_csv lands there (netlist resolves relative
     # to the scenario file's directory when the CWD lookup fails).
-    (cd "${run_dir}" && "${DCDC_BASE_BUILD}/host_sim" "${scenario}" --realtime 0) \
+    (cd "${run_dir}" && wall_run "${NGSPICE_WALL_LIMIT_S}" \
+        "${DCDC_BASE_BUILD}/host_sim" "${scenario}" --realtime 0) \
         >"${run_log}" 2>&1 || {
-        echo "[sim-smoke] FAIL: base host_sim ${tag} run exited nonzero; tail:" >&2
-        tail -n 20 "${run_log}" >&2 || true
+        fail_run "base host_sim ${tag} run" "${run_log}" $?
         return 1
     }
     local elapsed=$((SECONDS - start))
@@ -595,8 +647,7 @@ part_dcdc() {
     rm -f "${trace}"
     local start=${SECONDS}
     run_hostsim_scenario "${DCDC_SCENARIO_REL}" "${run_log}" || {
-        echo "[sim-smoke] FAIL: host_sim dcdc_3bus (emitted) exited nonzero; tail:" >&2
-        tail -n 20 "${run_log}" >&2 || true
+        fail_run "host_sim dcdc_3bus (emitted)" "${run_log}" $?
         return 1
     }
     local elapsed=$((SECONDS - start))
@@ -629,13 +680,21 @@ part_dcdc() {
 
 part_hostsil() {
     ensure_prereqs || return 1
-    if [[ ! -x "${HOSTSIL_BUILD}/host_sil" ]]; then
-        log "building host_sil -> ${HOSTSIL_BUILD#"${REPO_ROOT}"/}"
-        # SIL_FW_SRC pinned inside the build tree so reconfigures reuse the
-        # emitted firmware copy deterministically.
+    # SIL_FW_SRC pinned inside the build tree so reconfigures reuse the
+    # emitted firmware copy deterministically — but the pin must not mask
+    # staleness: re-emit when Gen6FW sources or the SIL graph are newer than
+    # the copy (marker: a file the emitter writes on every emit).
+    local sil_fw_src="${HOSTSIL_BUILD}/hostsil_fw_src"
+    local sil_marker="${sil_fw_src}/Src/Inverter/InverterMain.cpp"
+    local sil_graph="${REPO_ROOT}/Assets/Examples/foc_demo.json"
+    if [[ ! -x "${HOSTSIL_BUILD}/host_sil" ]] || [[ ! -f "${sil_marker}" ]] \
+        || tree_newer_than "${REPO_ROOT}/Images/Gen6FW" "${sil_marker}" \
+        || [[ "${sil_graph}" -nt "${sil_marker}" ]]; then
+        log "emitting + configuring host_sil -> ${HOSTSIL_BUILD#"${REPO_ROOT}"/}"
+        rm -rf "${sil_fw_src}"
         cmake -S "${HOSTSIL_SRC}" -B "${HOSTSIL_BUILD}" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSIL_FW_SRC="${HOSTSIL_BUILD}/hostsil_fw_src" \
+            -DSIL_FW_SRC="${sil_fw_src}" \
             || { echo "[sim-smoke] FAIL: HostSIL cmake configure failed" >&2; return 1; }
     fi
     cmake --build "${HOSTSIL_BUILD}" --parallel "$(nproc)" \
@@ -690,10 +749,18 @@ part_rte() {
 }
 
 # Emits the induction_vhz example graph and builds host_sim in a dedicated
-# tree; reused (like the spwm tree) across parts and runs.
+# tree; reused (like the spwm tree) across parts and runs, with the same
+# staleness guard (graph / base image / emitter newer -> re-emit).
 ensure_induction_emitted() {
     if [[ -x "${IND_EMITTED_BUILD}/host_sim" && -f "${IND_EMITTED}/${INDUCTION_SCENARIO_REL}" ]]; then
-        return 0
+        local marker="${IND_EMITTED_BUILD}/host_sim"
+        if [[ "${IND_GRAPH}" -nt "${marker}" ]] \
+            || [[ "${EMITTER}" -nt "${marker}" ]] \
+            || tree_newer_than "${HOSTSIM_SRC}" "${marker}"; then
+            log "graph/base image/emitter newer than the induction tree - re-emitting"
+        else
+            return 0
+        fi
     fi
     log "emitting ${IND_GRAPH##*/} -> ${IND_EMITTED#"${REPO_ROOT}"/}"
     rm -rf "${IND_EMITTED}" "${IND_EMITTED_BUILD}"
@@ -723,8 +790,7 @@ part_plants() {
     local trace="${EMITTED}/trace_salient_pmsm.csv"
     rm -f "${trace}"
     run_hostsim_scenario "${SALIENT_SCENARIO_REL}" "${run_log}" || {
-        echo "[sim-smoke] FAIL: host_sim salient_pmsm run exited nonzero; tail:" >&2
-        tail -n 20 "${run_log}" >&2 || true
+        fail_run "host_sim salient_pmsm run" "${run_log}" $?
         return 1
     }
     [[ -f "${trace}" ]] || { echo "[sim-smoke] FAIL: trace_salient_pmsm.csv not written" >&2; return 1; }
@@ -739,10 +805,10 @@ part_plants() {
     run_log="${SCRATCH}/hostsim_induction_run.log"
     trace="${IND_EMITTED}/trace_induction_vhz.csv"
     rm -f "${trace}"
-    (cd "${IND_EMITTED}" && "${IND_EMITTED_BUILD}/host_sim" \
+    (cd "${IND_EMITTED}" && wall_run "${NGSPICE_WALL_LIMIT_S}" \
+        "${IND_EMITTED_BUILD}/host_sim" \
         "${INDUCTION_SCENARIO_REL}" --realtime 0) >"${run_log}" 2>&1 || {
-        echo "[sim-smoke] FAIL: host_sim induction_vhz run exited nonzero; tail:" >&2
-        tail -n 20 "${run_log}" >&2 || true
+        fail_run "host_sim induction_vhz run" "${run_log}" $?
         return 1
     }
     [[ -f "${trace}" ]] || { echo "[sim-smoke] FAIL: trace_induction_vhz.csv not written" >&2; return 1; }

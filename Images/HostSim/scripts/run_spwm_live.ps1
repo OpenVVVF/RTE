@@ -1,5 +1,6 @@
-# Emit a graph into HostSim, build it, and launch live + NodeGUI.
+# Emit a graph into HostSim, build it, and launch live + RTEStudio.
 # Defaults to the SPWM demo graph for backward compatibility with the demo menu.
+# Mirrors run_spwm_live.sh: RTE_EMITTER / RTE_GUI override the tool paths.
 param(
     [switch]$NoGui,
     [switch]$ForceEmit,
@@ -16,10 +17,13 @@ if ([string]::IsNullOrEmpty($Graph)) {
     $Graph = Join-Path $hostSimRoot "graphs\spwm_demo_graph.json"
 }
 if (-not (Test-Path $Graph)) { throw "Graph not found: $Graph" }
+$graph = (Resolve-Path $Graph).Path
 
-$graphName = [System.IO.Path]::GetFileNameWithoutExtension($Graph)
+$graphName = [System.IO.Path]::GetFileNameWithoutExtension($graph)
 
 if ([string]::IsNullOrEmpty($Scenario)) {
+    # Prefer a scenario named after the graph (minus a trailing _graph),
+    # else the generic motor scenario — same rule as `rte sim`.
     $scenarioBase = $graphName
     if ($scenarioBase.EndsWith("_graph")) {
         $scenarioBase = $scenarioBase.Substring(0, $scenarioBase.Length - 6)
@@ -32,41 +36,27 @@ if ([string]::IsNullOrEmpty($Scenario)) {
     }
 }
 if (-not (Test-Path $Scenario)) { throw "Scenario not found: $Scenario" }
+$scenario = (Resolve-Path $Scenario).Path
 
-$graph = $Graph
-$scenario = $Scenario
+$emitter = if ($env:RTE_EMITTER) { $env:RTE_EMITTER } else { Join-Path $repoRoot "build\bin\RTECodeEmitter.exe" }
+$rteGui  = if ($env:RTE_GUI)     { $env:RTE_GUI }     else { Join-Path $repoRoot "build\bin\RTEStudio.exe" }
 
-function To-WslPath([string]$p) {
-    $full = (Resolve-Path $p).Path
-    return "/mnt/" + $full.Substring(0, 1).ToLower() + ($full.Substring(2) -replace '\\', '/')
+if (-not (Test-Path $emitter)) {
+    throw "RTECodeEmitter not found at $emitter (set RTE_EMITTER; build host tools: cmake -B build && cmake --build build --target RTECodeEmitter)"
 }
 
-$wslRepo = To-WslPath $repoRoot
-$wslGraph = To-WslPath $graph
-$emitter = "/opt/rtehost/build/Source/RTECodeEmitter/RTECodeEmitter"
-
 function Stop-SimApps {
-    Get-Process | Where-Object { $_.ProcessName -match '^(host_sim|NodeGUI)$' } |
+    # Exact names only: never kill the powershell host or an unrelated RTEStudio
+    # instance launched by the IDE.
+    Get-Process | Where-Object { $_.ProcessName -match '^(host_sim|RTEStudio)$' } |
         Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }
 
-function Clear-EmittedTree([string]$repoRoot, [string]$relativePath) {
-    $winPath = Join-Path $repoRoot $relativePath
-    if (Test-Path $winPath) {
-        Remove-Item -LiteralPath $winPath -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    $wslRepo = To-WslPath $repoRoot
-    wsl -d Ubuntu -u root -- bash -lc "cd $wslRepo && rm -rf $relativePath" 2>$null
-}
+$emittedRel = "build\hostsim_${graphName}_emitted"
+$emitted = Join-Path $repoRoot $emittedRel
+$buildDir = Join-Path $repoRoot "${emittedRel}_build"
 
-$emittedRel = "build/hostsim_${graphName}_emitted"
-$buildDir = Join-Path $repoRoot "build\hostsim_${graphName}_emitted_build"
-
-Write-Host "Stopping running HostSim / NodeGUI (unlocks emit output)..."
-Stop-SimApps
-
-$emitted = Join-Path $repoRoot "build\hostsim_${graphName}_emitted"
 $exe = Join-Path $buildDir "Debug\host_sim.exe"
 if (-not (Test-Path $exe)) { $exe = Join-Path $buildDir "host_sim.exe" }
 
@@ -80,13 +70,15 @@ if (-not $needEmit -and (Test-Path $exe)) {
     }
 }
 
+Write-Host "Stopping running HostSim / RTEStudio (unlocks emit output and the 14608 port)..."
+Stop-SimApps
+
 if ($needEmit) {
-    Clear-EmittedTree $repoRoot $emittedRel
-    Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue
+    if (Test-Path $emitted) { Remove-Item -LiteralPath $emitted -Recurse -Force }
+    if (Test-Path $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
 
     Write-Host "Emitting ${graphName} graph into HostSim..."
-    $emitCmd = "cd $wslRepo && ${emitter} --base-src Images/HostSim --graph $wslGraph --output $emittedRel --verbosity info"
-    wsl -d Ubuntu -u root -- bash -lc $emitCmd
+    & $emitter --base-src $hostSimRoot --graph $graph --output $emitted --verbosity info
     if ($LASTEXITCODE -ne 0) { throw "RTECodeEmitter failed" }
 
     cmake -S $emitted -B $buildDir
@@ -107,12 +99,15 @@ Start-Process -FilePath $exe -ArgumentList $scenario, "--live", "--realtime", "1
 
 if (-not $NoGui) {
     Start-Sleep -Seconds 1
-    $guiWd = Join-Path $repoRoot "build\Source\NodeGUI"
-    $graphArg = (Resolve-Path $graph).Path
-    Start-Process -FilePath (Join-Path $guiWd "NodeGUI.exe") `
-        -ArgumentList $graphArg, "--tcp", "127.0.0.1:14608", "--protocol", "ivp" `
-        -WorkingDirectory $guiWd
-    Write-Host "NodeGUI opened with ${graphName} graph + live telemetry."
+    if (Test-Path $rteGui) {
+        Start-Process -FilePath $rteGui `
+            -ArgumentList $graph, "--tcp", "127.0.0.1:14608", "--protocol", "ivp" `
+            -WorkingDirectory $repoRoot
+        Write-Host "RTEStudio opened with ${graphName} graph + live telemetry."
+    } else {
+        Write-Host "RTEStudio not found at $rteGui (set RTE_GUI; build with: cmake --build build --target RTEStudio)"
+        Write-Host "HostSim is still running."
+    }
 }
 
 Write-Host ""

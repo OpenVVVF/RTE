@@ -92,7 +92,7 @@ jobs:
       # libngspice.so, so the Windows/macOS legs cannot run these parts.
       # Each part reuses the host tools built above (build/bin/RTECodeEmitter,
       # build/bin/rte) — the script rebuilds them if missing. Locally the same
-      # script runs from any cwd with no args and covers all four parts,
+      # script runs from any cwd with no args and covers all six parts,
       # including ngspice against a locally installed libngspice.
       - name: HostSim simulator smoke
         if: runner.os == 'Linux'
@@ -106,7 +106,7 @@ jobs:
       - name: Install ngspice
         if: runner.os == 'Linux'
         shell: bash
-        run: sudo apt-get install -y libngspice0-dev
+        run: sudo apt-get update && sudo apt-get install -y libngspice0-dev
 
       - name: HostSim ngspice-backend smoke
         if: runner.os == 'Linux'

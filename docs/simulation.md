@@ -42,7 +42,8 @@ The `rte` automation CLI performs emit → build → run in one step:
 ```
 
 Batch mode runs as fast as the host can (`--realtime 0` default). The trace
-CSV lands in `build/hostsim_<name>_emitted_build/run/`. Full flag spec,
+CSV — batch mode only; `--live` runs write no trace — lands in
+`build/hostsim_<name>_emitted_build/run/`. Full flag spec,
 scenario-resolution rules (`--name`, `--scenario` fallback to the matching
 scenario or `default_motor.json`), `--no-build`, and output formats are
 documented in [automation-backend.md](automation-backend.md) — including the
@@ -136,9 +137,25 @@ wire — verbatim on `127.0.0.1:14608` (override with `--port P`), and implies
 `--realtime 1.0` unless passed explicitly. RTE Studio attaches exactly as
 with HostSim (`--tcp 127.0.0.1:14608 --protocol ivp`); the firmware emits the
 usual 100 Hz DATA frames plus periodic DEFINE re-announces, so the full key
-table appears regardless of attach time. It is a one-way link: bytes a client
-sends are logged, not forwarded to the firmware shell. For a headless decode
-of the stream there is `Images/HostSIL/scripts/ivp_probe.py`.
+table appears regardless of attach time.
+
+The link is **bidirectional**: bytes a client sends — RTE Studio's console
+input, or any raw TCP client — are forwarded verbatim into the firmware's
+USART3 IT-RX path (the SIL HAL models the single-byte
+`HAL_UART_Receive_IT` / `HAL_UART_RxCpltCallback` pairing the Gen6FW
+CommandShell expects), so shell commands typed over the socket take the real
+firmware code path exactly as a serial terminal on hardware would. Both
+`\n` and `\r\n` line endings work. Try it headlessly with the stdlib-only
+client (shell responses arrive as `print` string values inside the telemetry
+stream):
+
+```bash
+python3 Images/HostSIL/scripts/shell_client.py 127.0.0.1:14608 \
+    "help" "var get IqVar" "var set IqVar 5.0" "var get IqVar"
+```
+
+For a headless decode of the telemetry stream itself there is
+`Images/HostSIL/scripts/ivp_probe.py`.
 
 HostSIL scenarios extend the HostSim scenario format (see below) with
 `control` (`start`, `start_time_s`, `iq_a`, `id_a` — posted through the
@@ -200,7 +217,7 @@ HostSIL parses the same keys (`Images/HostSIL/src/scenario.cpp`); its
 | `duration_s` | 1.0 | Batch run length (ignored in live mode) |
 | `tim_isr_hz` / `adc_isr_hz` | 10000 | Fast domain tick rates |
 | `app_loop_hz` | 1000 | Slow domain tick rate |
-| `telem_hz` | 500 | Live telemetry publish rate |
+| `telem_hz` | 500 | Live telemetry publish rate; in `--live` mode a value below 1500 is raised to 2000 Hz so waveforms stay dense (set ≥1500 to keep a custom rate) |
 | `realtime_factor` | 1.0 | Wall-clock pacing; 0 = as fast as possible |
 | `live` | false | Long-running mode with TCP telemetry |
 | `listen_host` / `listen_port` | 127.0.0.1 / 14608 | Telemetry endpoint |
@@ -214,7 +231,7 @@ HostSIL parses the same keys (`Images/HostSIL/src/scenario.cpp`); its
 | Key | Default | Meaning |
 |---|---|---|
 | `backend` | `ode` | `ode` or `ngspice` |
-| `netlist` | — | ngspice netlist path, relative to the `host_sim` working directory (bundled netlists live in `Images/HostSim/plants/`); as a fallback the runtime also tries the path relative to the scenario file's directory |
+| `netlist` | — | ngspice netlist path; probed relative to the `host_sim` working directory first, then the scenario file's directory, then that directory's parent (the image root) — so bundled netlists in `Images/HostSim/plants/` resolve from any working directory |
 | `substeps` | 4 | SPICE substeps per control tick (zero-order hold on phase voltages across the tick) |
 | `mode` | `motor` | `motor` = 3-phase machine semantics (neutral-point subtraction, back-EMF, PMSM mechanics); `dcdc` = 3-leg converter semantics (per-leg `duty`×Vdc into a DC/DC netlist, see below). `dcdc` requires `backend: "ngspice"` and a dcdc-contract netlist; mismatched mode/netlist pairings are refused loudly with an ODE fallback. |
 
@@ -487,9 +504,10 @@ your library lives somewhere non-standard, point the loader at it:
 LD_LIBRARY_PATH=/path/to/dir-with-libngspice ./build_linux/host_sim scenarios/ngspice_rl_demo.json
 ```
 
-Then run a demo **from `Images/HostSim`** (netlist paths are relative to the
-process working directory — `rte sim` runs `host_sim` from its own run
-directory, so launch ngspice scenarios directly):
+Then run a demo **from `Images/HostSim`** (run from the image root so the
+relative scenario path below resolves; the netlist itself is also found via
+the scenario-relative fallback, so `rte sim --scenario` with these scenarios
+resolves bundled netlists too — no special working directory needed there):
 
 ```bash
 cd Images/HostSim
