@@ -445,12 +445,16 @@ simulator block and the root README roadmap):
   (`plants/dcdc_buck.cir` / `dcdc_parallel.cir`). Still open: a fast ODE/RTL
   DC-bus plant behind the `IPlant` seam (`src/plant/plant_backend.h`) for
   `--live` speed, and 2+1 split topologies.
-- **Multiple inverters at once.** Two instances (e.g. a 5-phase motor driven
-  by two 3-phase inverters, or a microgrid AFE → DC/DC → output chain) need a
-  shared simulated CAN: HostSim already models loopback CAN per instance; the
-  bridge is a small socket relay between instances. Sim instances already take
-  distinct ports (`host_sim --listen`, `host_sil --port`) so N RTEStudio
-  sessions can attach independently.
+- **Multiple inverters at once.** The shared simulated CAN landed: concurrent
+  `host_sim` instances exchange CAN frames over localhost TCP via
+  `--can-bridge-listen` / `--can-bridge-connect` (hub-and-spoke relay; see
+  "Multi-instance CAN bridge" in
+  [Images/HostSim/README.md](../Images/HostSim/README.md)). Sim instances
+  already take distinct ports (`host_sim --listen`, `host_sil --port`) so N
+  RTEStudio sessions can attach independently. Still open: coupled
+  multi-instance *plants* (e.g. a 5-phase motor driven by two 3-phase
+  inverters, or a microgrid AFE → DC/DC → output chain sharing one electrical
+  model) and Windows support for the bridge.
 - **N-phase machines.** The induction/PMSM models are 3-phase dq/αβ; a
   5-phase machine means generalizing the plant transforms behind the same
   seam.

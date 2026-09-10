@@ -1,6 +1,7 @@
 #include "sim_runtime.h"
 
 #include "AppState.h"
+#include "can_bridge.h"
 #include "pwm_scope.h"
 #include "sim_context.h"
 #include "telemetry_publisher.h"
@@ -827,6 +828,10 @@ bool SimRuntime::StepOnce() {
     if (time_s_ + 1e-9f >= next_app_s_) {
         // RTE_EMIT: app_loop step
         next_app_s_ += app_dt_s_;
+        /* CAN bridge: one non-blocking poll per app-loop tick — accept new
+         * spokes, drain reads, inject received frames, run the selftest
+         * emitter. Never blocks the sim. */
+        GlobalCanBridge().Poll(time_s_);
     }
 
     for (auto& frame : config_.can_frames) {
@@ -937,6 +942,7 @@ void SimRuntime::PaceRealtimeWallClock() const {
 
 int SimRuntime::Run() {
     InitDomains();
+    GlobalCanBridge().Start();
 
     if (config_.live) {
         auto& pub = GlobalTelemetryPublisher();
@@ -996,6 +1002,7 @@ int SimRuntime::Run() {
 }
 
 void SimRuntime::Shutdown() {
+    GlobalCanBridge().Shutdown();
     if (trace_.is_open()) trace_.close();
     SimConfigPersist();
 }

@@ -233,6 +233,82 @@ need hardware subsystems a position/current sim does not model):
   `platform_trace_register_event/event` (use `Debug.TelemetryLog` /
   `TelemetryCurrentSink` instead).
 
+## Multi-instance CAN bridge
+
+Concurrently running `host_sim` instances can share one simulated CAN over
+localhost TCP (Linux only; on Windows the flags print a notice and the bridge
+stays off). Topology is hub-and-spoke: one instance listens, the rest connect,
+and the hub rebroadcasts every record it receives to all *other* spokes — so
+every participant sees everyone else's frames. Start the hub before the
+spokes (batch runs finish in a fraction of a second; a spoke that connects
+after the hub has exited runs unbridged by design, see limits below).
+
+| Flag | Meaning |
+|---|---|
+| `--can-bridge-listen PORT` | Run as the hub (binds `0.0.0.0:PORT`) |
+| `--can-bridge-connect HOST:PORT` | Connect to a hub (dotted IPv4) |
+| `--can-bridge-id N` | Instance tag used for loop-back filtering (default: pid-derived) |
+| `--can-bridge-debug` | Also log transmitted frames |
+| `--can-selftest` | Emit one `platform_can_send` per 100 ms of sim time (bus 0, id `0x123`, stepping payload) — a headless proof channel |
+
+Everything is mirrored through the existing CAN path: every
+`platform_can_send` is also published to the bridge, and frames arriving from
+the bridge are injected exactly like scenario `can.frames` traffic
+(`SimCanInject` into the latest-frame store keyed by (bus, id), so
+queue/dlc/seq semantics match). Two refinements:
+
+- The graph/shell bus numbering stays 1-based (1 = "A", 2 = "B"); bus 0 is
+  not a local bus and exists **only on the bridge** as the
+  selftest/diagnostic channel, so `--can-selftest` traffic cannot collide
+  with real graph traffic and never enters the sender's own store.
+- A received record tagged with the instance's own id is treated as a loop
+  and dropped (`filtered` in the shutdown stats) — an instance never reads
+  back its own transmissions.
+
+Two-instance headless demo (after emitting the SPWM harness, e.g. into
+`build/hostsim_can_emitted`). Use live mode so both instances overlap in wall
+time (batch runs full-speed; note each instance needs its own telemetry port):
+
+```bash
+cd build/hostsim_can_emitted
+../hostsim_can_emitted_build/host_sim scenarios/spwm_demo.json --live --realtime 1.0 \
+    --listen 127.0.0.1:14608 --can-bridge-listen 7900 --can-bridge-id 1 --can-selftest \
+    > /tmp/canA.log 2>&1 &
+sleep 0.5
+../hostsim_can_emitted_build/host_sim scenarios/spwm_demo.json --live --realtime 1.0 \
+    --listen 127.0.0.1:14609 --can-bridge-connect 127.0.0.1:7900 --can-bridge-id 2 \
+    --can-selftest > /tmp/canB.log 2>&1 &
+sleep 3.5 && kill %1 %2
+grep "id=0x123" /tmp/canB.log   # one line per bridged frame, stepping payload
+```
+
+Received frames are always witnessed one per line
+(`[CAN bridge] rx bus=... id=0x... src=... data=...`); startup announces
+(`[CAN bridge] hub on :7900 id=1`, peer connect/disconnect) and a shutdown
+`stats` line (tx/rx/dropped/filtered counters) are the only other output.
+
+**Wire format (v1)** — the first word is a framing magic, then a fixed-size
+record; all multi-byte fields little-endian:
+
+```
+u16 payload_len (= 24)
+u32 magic = 0x314E4143 ("CAN1")
+u32 src instance id
+u32 CAN id
+u8  bus | u8 ext | u8 dlc | u8 reserved
+u8  data[8]
+```
+
+**Limits (v1):** Linux only; intended for localhost (plain TCP, no
+auth/encryption — the hub binds the wildcard address); no reconnect — a
+failed connect, a dead spoke or a lost hub is logged once and the sim
+continues unbridged; sends are best-effort (a peer that cannot keep up misses
+frames — counted as `dropped`, never queued, so the sim never blocks on the
+bridge); IPv4 numeric addresses only; use realistic CAN rates (the bridge is
+designed for app-loop-rate traffic, not 10 kHz ISR floods; a batch run's sim
+clock can advance far faster than wall time, so very high sim-time frame
+rates are just dropped when sockets would block).
+
 ## SPWM demo (NodeGUI + HostSim live)
 
 Open-loop **sinusoidal PWM** graph for the host simulator. Throttle A sets modulation

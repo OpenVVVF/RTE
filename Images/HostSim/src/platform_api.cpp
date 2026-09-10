@@ -1,5 +1,6 @@
 #include "platform_api.h"
 
+#include "can_bridge.h"
 #include "motor_model.h"
 #include "pwm_scope.h"
 #include "sim_context.h"
@@ -603,6 +604,12 @@ void platform_digital_write(uint8_t pin, bool value) {
 
 bool platform_can_send(uint8_t bus, uint32_t id, bool ext,
                        const uint8_t* data, uint8_t dlc) {
+    /* Mirror every send onto the multi-instance CAN bridge (no-op until a
+     * --can-bridge-* flag configured it). Deliberately ahead of the bus
+     * validity check: bus 0 is not a local bus (Gen6 numbering is 1-based)
+     * but exists on the bridge as the selftest/diagnostic channel; it never
+     * enters the local store below. */
+    hostsim::GlobalCanBridge().Publish(bus, id, ext, data, dlc);
     if (bus < 1 || bus > 2) return false;
     {
         std::lock_guard<std::mutex> lock(hostsim::g_can_mu);
