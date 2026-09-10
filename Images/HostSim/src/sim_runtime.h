@@ -27,7 +27,8 @@ struct StimulusProfile {
 };
 
 /* Scenario-driven CAN frame injector. period_s > 0 repeats from start_s,
- * otherwise a single frame at start_s. */
+ * otherwise a single frame at start_s. next_fire_s is a sim-time schedule
+ * anchor, kept in double for the same reason as SimRuntime's anchors. */
 struct SimCanInjectFrame {
     uint8_t bus = 1;
     uint32_t id = 0;
@@ -36,7 +37,7 @@ struct SimCanInjectFrame {
     uint8_t data[8] = {0};
     float start_s = 0.0f;
     float period_s = 0.0f;
-    float next_fire_s = 0.0f;
+    double next_fire_s = 0.0;
     bool done = false;
 };
 
@@ -117,7 +118,11 @@ public:
     IPlant& Plant() { return *plant_; }
     const IPlant& Plant() const { return *plant_; }
 
-    float TimeSeconds() const { return time_s_; }
+    /* Sim time is tracked in double internally: at tim_isr_hz = 10 kHz the
+     * 1e-4 s step equals the float ulp at t ≈ 2048 s, so float anchors would
+     * freeze time_s_ and the batch loop would never terminate. Floats are
+     * exported only at API boundaries (float return values below). */
+    float TimeSeconds() const { return static_cast<float>(time_s_); }
     uint64_t TimeMicros() const {
         return static_cast<uint64_t>(time_s_ * 1.0e6);
     }
@@ -133,22 +138,25 @@ private:
     SimConfig config_{};
     std::unique_ptr<IPlant> plant_{};
     std::ofstream trace_{};
+    /* false when the trace stream failed to open: batch runs then report the
+     * failure at exit instead of claiming they wrote the CSV. */
+    bool trace_ok_ = false;
 
-    float time_s_ = 0.0f;
-    float next_tim_s_ = 0.0f;
-    float next_adc_s_ = 0.0f;
-    float next_app_s_ = 0.0f;
-    float tim_dt_s_ = 1.0e-4f;
-    float adc_dt_s_ = 1.0e-4f;
-    float app_dt_s_ = 1.0e-3f;
+    double time_s_ = 0.0;
+    double next_tim_s_ = 0.0;
+    double next_adc_s_ = 0.0;
+    double next_app_s_ = 0.0;
+    double tim_dt_s_ = 1.0e-4;
+    double adc_dt_s_ = 1.0e-4;
+    double app_dt_s_ = 1.0e-3;
 
     float throttle_a_ = 0.0f;
     float throttle_b_ = 0.0f;
     float duty_u_ = 0.0f;
     float duty_v_ = 0.0f;
     float duty_w_ = 0.0f;
-    float next_telem_s_ = 0.0f;
-    float next_pwm_telem_s_ = 0.0f;
+    double next_telem_s_ = 0.0;
+    double next_pwm_telem_s_ = 0.0;
 
     bool demo_fallback_warned_ = false;
     bool vdc_glitch_applied_ = false;
@@ -169,7 +177,7 @@ private:
     void PaceRealtimeWallClock() const;
 
     std::chrono::steady_clock::time_point wall_anchor_{};
-    float sim_anchor_s_ = 0.0f;
+    double sim_anchor_s_ = 0.0;
 };
 
 SimRuntime& GlobalSimRuntime();

@@ -66,6 +66,44 @@ int CaseInsensitiveCompare(const char* a, const char* b) {
 #endif
 }
 
+/* SPICE literal like "10us", "1meg", "0.33m": decimal mantissa plus the
+ * ngspice suffix table (t/g/meg/k/m/mil/u/n/p/f). ngspice ignores trailing
+ * letters past a recognized suffix, so "1s" is 1 and "10us" is 1e-5. Returns
+ * false when the token is no plain literal (e.g. a {param} expression). */
+bool ParseSpiceValue(const std::string& tok, double* out) {
+    if (!out) return false;
+    char* end = nullptr;
+    const double mantissa = std::strtod(tok.c_str(), &end);
+    if (end == tok.c_str()) return false;
+    std::string suffix(end);
+    for (auto& c : suffix) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    double mult = 1.0;
+    if (suffix.rfind("meg", 0) == 0) {
+        mult = 1.0e6;
+    } else if (suffix.rfind("mil", 0) == 0) {
+        mult = 25.4e-6;
+    } else if (!suffix.empty()) {
+        switch (suffix[0]) {
+        case 't': mult = 1.0e12; break;
+        case 'g': mult = 1.0e9; break;
+        case 'k': mult = 1.0e3; break;
+        case 'm': mult = 1.0e-3; break;
+        case 'u': mult = 1.0e-6; break;
+        case 'n': mult = 1.0e-9; break;
+        case 'p': mult = 1.0e-12; break;
+        case 'f': mult = 1.0e-15; break;
+        default: mult = 1.0; break; /* trailing letters ngspice ignores */
+        }
+    }
+    *out = mantissa * mult;
+    return std::isfinite(*out);
+}
+
+/* Stand-in TSTOP for live runs (no scenario duration bounds them). */
+constexpr double kLiveTstopS = 1.0e9;
+
 } // namespace
 
 NgspicePlant::NgspicePlant() {
@@ -78,6 +116,9 @@ NgspicePlant::NgspicePlant() {
                  this);
         fn_ngSpice_Init_Sync_(CallbackGetVSRCData, CallbackGetISRCData,
                       CallbackGetSyncData, &ident, this);
+        /* From here on the library may own a live background worker thread;
+         * UnloadSharedLibrary must never dlclose it again. */
+        spice_initialized_ = true;
         std::cerr << "HostSim: libngspice loaded; experimental ngspice plant "
                      "backend active\n";
     } else {
@@ -105,6 +146,14 @@ bool NgspicePlant::LoadSharedLibrary() {
 
 void NgspicePlant::UnloadSharedLibrary() {
     if (!lib_handle_) return;
+    if (spice_initialized_) {
+        /* ngSpice_Init has no shutdown counterpart and the library may still
+         * own a live background worker; dlclose would unmap code that thread
+         * executes (crash during static teardown of g_runtime). Deliberate
+         * one-time leak: the OS reclaims the mapping at process exit. */
+        lib_handle_ = nullptr;
+        return;
+    }
 #if defined(_WIN32)
     FreeLibrary(static_cast<HMODULE>(lib_handle_));
 #else
@@ -238,8 +287,88 @@ bool NgspicePlant::DetectDcdcSenseSources(
     return found[0] && found[1] && found[2];
 }
 
+bool NgspicePlant::DetectMotorVoltageSources(
+    const std::vector<std::string>& lines) {
+    static const char* const kNames[3] = {"vu", "vv", "vw"};
+    bool found[3] = {false, false, false};
+    // Same scanning idiom as DetectBackEmfSources: first-token element names,
+    // case-insensitive, comments/blank lines skipped, "external" required.
+    for (const auto& raw : lines) {
+        std::string line = Trim(raw);
+        if (line.empty() || line[0] == '*') continue;
+        for (auto& c : line) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (line.find("external") == std::string::npos) continue;
+        std::istringstream iss(line);
+        std::string name;
+        iss >> name;
+        for (int k = 0; k < 3; ++k) {
+            if (name == kNames[k]) found[k] = true;
+        }
+    }
+    return found[0] && found[1] && found[2];
+}
+
+/* Parse the first .tran card's TSTOP and, when the planned scenario/live run
+ * reaches past it, rewrite the card in place before ngSpice_Circ sees it.
+ * Rationale: a completed analysis looks like a pause to the host, then a
+ * resume that never answers — the run froze with a 10 s stall per step.
+ * Auto-raising keeps user netlists safe without a dance of manual edits;
+ * the runtime pre-/post-checks in AdvanceSpiceTo cover the unparseable case. */
+void NgspicePlant::RaiseTranTstopForRun(std::vector<std::string>* lines) {
+    if (!lines || (!live_mode_ && planned_duration_s_ <= 0.0)) return;
+    const double needed =
+        live_mode_ ? kLiveTstopS : planned_duration_s_ + 1.0e-3;
+    for (auto& raw : *lines) {
+        const std::string trimmed = Trim(raw);
+        if (trimmed.empty() || trimmed[0] == '*') continue;
+        std::istringstream iss(trimmed);
+        std::vector<std::string> toks;
+        for (std::string t; iss >> t;) toks.push_back(t);
+        if (toks.size() < 3) continue;
+        std::string card = toks[0];
+        for (auto& c : card) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (card != ".tran") continue;
+
+        double tstop_s = 0.0;
+        if (!ParseSpiceValue(toks[2], &tstop_s) || tstop_s <= 0.0) {
+            /* Leave the line alone: AdvanceSpiceTo still catches an early
+             * completion via the reached-time check. */
+            std::cerr << "HostSim: WARNING: cannot parse .tran TSTOP token \""
+                      << toks[2] << "\" in " << netlist_path_
+                      << "; TSTOP auto-raise skipped\n";
+            return;
+        }
+        netlist_tstop_s_ = tstop_s;
+        if (needed > tstop_s) {
+            std::ostringstream nv;
+            nv << std::setprecision(12) << needed;
+            std::ostringstream joined;
+            for (size_t i = 0; i < toks.size(); ++i) {
+                joined << (i > 0 ? " " : "") << (i == 2 ? nv.str() : toks[i]);
+            }
+            std::cerr << "HostSim: netlist " << netlist_path_
+                      << " .tran TSTOP " << tstop_s
+                      << " s is shorter than the planned run (" << needed
+                      << " s); raising TSTOP so the analysis cannot complete "
+                         "mid-run\n";
+            raw = joined.str();
+            netlist_tstop_s_ = needed;
+        }
+        return;
+    }
+}
+
 void NgspicePlant::LoadNetlist() {
-    if (netlist_path_.empty() || !fn_ngSpice_Circ_) return;
+    if (!fn_ngSpice_Circ_) return;
+    if (netlist_path_.empty()) {
+        std::cerr << "HostSim: ERROR: ngspice backend selected but no "
+                     "plant.netlist given\n";
+        return;
+    }
 
     std::ifstream in(netlist_path_);
     if (!in) {
@@ -254,12 +383,19 @@ void NgspicePlant::LoadNetlist() {
         storage.push_back(line);
     }
 
+    /* .tran TSTOP must cover the planned run; raise it in the text before
+     * ngSpice_Circ ever sees the deck (finding: completed analyses looked
+     * like a breakpoint pause, then froze the run). */
+    netlist_tstop_s_ = -1.0;
+    RaiseTranTstopForRun(&storage);
+
     has_bemf_sources_ = DetectBackEmfSources(storage);
     if (has_bemf_sources_) {
         std::cerr << "HostSim: netlist exposes Veu/Vev/Vew back-EMF sources; "
                      "back-EMF is driven in-circuit\n";
     }
 
+    has_motor_vsources_ = DetectMotorVoltageSources(storage);
     netlist_is_dcdc_ = DetectDcdcSenseSources(storage);
     // Mode/netlist consistency — never run silently on a mismatched pairing;
     // the runtime replaces the plant after Reset() when this fires.
@@ -274,6 +410,14 @@ void NgspicePlant::LoadNetlist() {
                   << " is a dcdc converter netlist (Vsen1/Vsen2/Vsen3 present) "
                      "but plant.mode is \"motor\"; refusing to run it with "
                      "motor semantics\n";
+    } else if (mode_ == NgspicePlantMode::Motor && !has_motor_vsources_) {
+        /* Motor-mode contract: without Vu/Vv/Vw external sources the
+         * GetVSRCData callback never fires and the plant integrates silent
+         * zeros — refuse loudly the same way the dcdc mismatch does. */
+        std::cerr << "HostSim: ERROR: netlist " << netlist_path_
+                  << " lacks the Vu/Vv/Vw external voltage sources required "
+                     "for plant.mode \"motor\"; refusing to run it (the plant "
+                     "would see 0 V on every phase)\n";
     } else if (mode_ == NgspicePlantMode::Dcdc) {
         std::cerr << "HostSim: ngspice plant running in dcdc mode: leg "
                      "voltage = duty*VDC, currents from Vsen1..3, bus probes "
@@ -306,6 +450,16 @@ void NgspicePlant::ApplyParams() {
     };
 
     alter("rs", params_.rs_ohm);
+    /* The netlists expose a single isotropic Ls; a salient machine is
+     * collapsed to its mean. Say so once — the ODE backend stays the
+     * saliency reference. */
+    if (!saliency_note_printed_ && params_.ld_h != params_.lq_h) {
+        saliency_note_printed_ = true;
+        std::cerr << "HostSim: ngspice plant: Ld (" << params_.ld_h
+                  << " H) != Lq (" << params_.lq_h
+                  << " H); using the isotropic mean Ls=(Ld+Lq)/2 for the "
+                     "netlist (ODE backend is the saliency reference)\n";
+    }
     alter("ls", 0.5 * (params_.ld_h + params_.lq_h));
     alter("vdc", params_.vdc_v);
 }
@@ -346,11 +500,19 @@ void NgspicePlant::UpdatePendingVoltages(float du_pct, float dv_pct,
     }
 }
 
-float NgspicePlant::ReadVecLast(const char* vecname) const {
-    if (!fn_ngGet_Vec_Info_) return 0.0f;
+bool NgspicePlant::ReadVecLast(const char* vecname, double* out) const {
+    if (out) *out = 0.0;
+    if (!out || !fn_ngGet_Vec_Info_) return false;
     pvector_info info = fn_ngGet_Vec_Info_(const_cast<char*>(vecname));
-    if (!info || !info->v_realdata || info->v_length <= 0) return 0.0f;
-    return static_cast<float>(info->v_realdata[info->v_length - 1]);
+    if (!info || !info->v_realdata || info->v_length <= 0) return false;
+    *out = info->v_realdata[info->v_length - 1];
+    return true;
+}
+
+float NgspicePlant::ReadVecLastF(const char* vecname) const {
+    double v = 0.0;
+    ReadVecLast(vecname, &v);
+    return static_cast<float>(v);
 }
 
 void NgspicePlant::IntegrateMechanics(float dt_s) {
@@ -395,9 +557,9 @@ void NgspicePlant::Step(float duty_u_pct, float duty_v_pct, float duty_w_pct,
     }
     current_sim_time_ = t0 + static_cast<double>(dt_s);
 
-    const float ia = ReadVecLast("i(vu)");
-    const float ib = ReadVecLast("i(vv)");
-    const float ic = ReadVecLast("i(vw)");
+    const float ia = ReadVecLastF("i(vu)");
+    const float ib = ReadVecLastF("i(vv)");
+    const float ic = ReadVecLastF("i(vw)");
 
     state_.ia_a = ia;
     state_.ib_a = ib;
@@ -444,15 +606,15 @@ void NgspicePlant::StepDcdc(float duty_u_pct, float duty_v_pct,
     }
     current_sim_time_ = t0 + static_cast<double>(dt_s);
 
-    const float i1 = ReadVecLast("i(vsen1)");
-    const float i2 = ReadVecLast("i(vsen2)");
-    const float i3 = ReadVecLast("i(vsen3)");
+    const float i1 = ReadVecLastF("i(vsen1)");
+    const float i2 = ReadVecLastF("i(vsen2)");
+    const float i3 = ReadVecLastF("i(vsen3)");
     probes_.i_leg[0] = i1;
     probes_.i_leg[1] = i2;
     probes_.i_leg[2] = i3;
-    probes_.v_bus[0] = ReadVecLast("v(bus1)");
-    probes_.v_bus[1] = ReadVecLast("v(bus2)");
-    probes_.v_bus[2] = ReadVecLast("v(bus3)");
+    probes_.v_bus[0] = ReadVecLastF("v(bus1)");
+    probes_.v_bus[1] = ReadVecLastF("v(bus2)");
+    probes_.v_bus[2] = ReadVecLastF("v(bus3)");
 
     // Leg currents ride the phase-current channels so the ADC latch, the
     // overcurrent fault injection and the existing trace/telemetry plumbing
@@ -465,6 +627,20 @@ void NgspicePlant::StepDcdc(float duty_u_pct, float duty_v_pct,
 }
 
 bool NgspicePlant::AdvanceSpiceTo(double target_time) {
+    /* Never arm a breakpoint past the netlist's TSTOP: the analysis would
+     * COMPLETE instead of pausing — the completion fires one resume callback
+     * that looks like a pause, and every bg_resume after that never answers
+     * (the run froze one CV timeout per step). Fail loudly, freeze the plant. */
+    if (netlist_tstop_s_ > 0.0 && target_time > netlist_tstop_s_) {
+        if (!analysis_failed_.exchange(true)) {
+            std::cerr << "HostSim: ERROR: ngspice .tran TSTOP of "
+                      << netlist_path_ << " (" << netlist_tstop_s_
+                      << " s) is before the requested t=" << target_time
+                      << " s — raise .tran TSTOP in the netlist or shorten "
+                         "simulation.duration_s; plant state frozen\n";
+        }
+        return false;
+    }
     if (stop_active_) {
         Command("delete all");
         stop_active_ = false;
@@ -494,7 +670,26 @@ bool NgspicePlant::AdvanceSpiceTo(double target_time) {
         Command("bg_resume");
     }
 
-    return WaitForBgPause(target_pauses);
+    if (!WaitForBgPause(target_pauses)) return false;
+
+    /* A healthy `stop when time > target` pause lands strictly PAST the
+     * target. Landing short means the analysis completed on us instead (a
+     * TSTOP that dodged the auto-raise, e.g. an unparseable card token or a
+     * live session running past the loaded card): treat as analysis failure,
+     * not as a usable pause. */
+    double reached = 0.0;
+    if (ReadVecLast("time", &reached) &&
+        reached < target_time - 1e-9 * std::max(1.0, std::fabs(target_time))) {
+        if (!analysis_failed_.exchange(true)) {
+            std::cerr << "HostSim: ERROR: ngspice transient completed early "
+                         "at t=" << reached
+                      << " s before the requested t=" << target_time
+                      << " s (.tran TSTOP too short for this run?); plant "
+                         "state frozen\n";
+        }
+        return false;
+    }
+    return true;
 }
 
 bool NgspicePlant::WaitForBgPause(uint64_t target_pauses) {
@@ -527,11 +722,19 @@ int NgspicePlant::CallbackSendStat(char* /*output*/, int /*ident*/,
     return 0;
 }
 
-int NgspicePlant::CallbackControlledExit(int /*exitstatus*/,
-                                          bool /*immediate*/,
+int NgspicePlant::CallbackControlledExit(int exitstatus, bool /*immediate*/,
                                           bool /*quit*/, int /*ident*/,
-                                          void* /*userdata*/) {
-    return 0;
+                                          void* userdata) {
+    /* Return NONZERO: 0 would permit the ngspice library to exit() the whole
+     * host process on an internal fatal. Keep the host alive and mark the
+     * analysis failed instead — Step() then freezes the plant loudly. */
+    if (auto* self = static_cast<NgspicePlant*>(userdata)) {
+        self->analysis_failed_.store(true);
+    }
+    std::cerr << "HostSim: ngspice requested process exit (status "
+              << exitstatus << "); suppressed — analysis marked failed, plant "
+                 "state frozen\n";
+    return 1;
 }
 
 int NgspicePlant::CallbackSendData(pvecvaluesall /*data*/,
@@ -566,6 +769,28 @@ int NgspicePlant::CallbackBGThreadRunning(bool running, int /*ident*/,
     return 0;
 }
 
+/* Shared log-once for the external-source callbacks: an unrecognized source
+ * name means the netlist wants driving data we have no actor for; silently
+ * answering 0 hides exactly the wiring bugs the mode contracts exist to
+ * catch. Called from the ngspice analysis thread. */
+void NgspicePlant::LogUnknownSourceOnce(const char* node, bool is_voltage) {
+    if (!node) return;
+    std::string key = node;
+    for (auto& c : key) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    key += is_voltage ? " (V)" : " (I)";
+    {
+        std::lock_guard<std::mutex> lk(unknown_srcs_mu_);
+        if (!logged_unknown_srcs_.insert(key).second) return;
+    }
+    std::cerr << "HostSim: ngspice netlist requests " << (is_voltage ? "voltage" : "current")
+              << " data for unknown external source \"" << node
+              << "\"; answering 0 — expected source names: Vu/Vv/Vw"
+              << (has_bemf_sources_ ? ", Veu/Vev/Vew" : "")
+              << " (further repeats of this source not logged)\n";
+}
+
 int NgspicePlant::CallbackGetVSRCData(double* vval, double /*timeval*/,
                                        char* node, int /*ident*/,
                                        void* userdata) {
@@ -592,14 +817,20 @@ int NgspicePlant::CallbackGetVSRCData(double* vval, double /*timeval*/,
         *vval = self->pending_ew_.load();
     } else {
         *vval = 0.0;
+        self->LogUnknownSourceOnce(node, /*is_voltage=*/true);
     }
     return 0;
 }
 
 int NgspicePlant::CallbackGetISRCData(double* ival, double /*timeval*/,
-                                       char* /*node*/, int /*ident*/,
-                                       void* /*userdata*/) {
+                                       char* node, int /*ident*/,
+                                       void* userdata) {
+    /* No external current source is part of any supported contract; answer 0
+     * A but name the source once so a mismatched netlist is not silent. */
     if (ival) *ival = 0.0;
+    if (auto* self = static_cast<NgspicePlant*>(userdata)) {
+        self->LogUnknownSourceOnce(node, /*is_voltage=*/false);
+    }
     return 0;
 }
 

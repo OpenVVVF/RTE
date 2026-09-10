@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -49,13 +50,31 @@ public:
     void SetSubsteps(int substeps) { substeps_ = (substeps > 0) ? substeps : 1; }
     void SetMode(NgspicePlantMode mode) { mode_ = mode; }
     NgspicePlantMode GetMode() const { return mode_; }
+    /* Sim-time horizon the plant must cover, handed over before the first
+     * Reset() (i.e. before the netlist is parsed). LoadNetlist raises a
+     * .tran TSTOP shorter than this so the analysis cannot complete early;
+     * live mode is unbounded and gets a stand-in horizon. */
+    void SetPlannedDuration(double duration_s, bool live) {
+        planned_duration_s_ = duration_s;
+        live_mode_ = live;
+    }
 
     /* Valid after the netlist has loaded (first Reset()). */
     bool NetlistIsDcdc() const { return netlist_is_dcdc_; }
+    bool CircuitLoaded() const { return circuit_loaded_; }
+    /* TSTOP parsed from the netlist's .tran card (post auto-raise), seconds;
+     * < 0 when unknown (no .tran card or an unparseable value). */
+    double NetlistTstopSeconds() const { return netlist_tstop_s_; }
     /* dcdc mode is only live when the netlist matches it; ModeMatchesNetlist
-     * is the runtime's cue to fall back to another backend loudly. */
+     * is the runtime's cue to fall back to another backend loudly. Motor mode
+     * additionally requires the Vu/Vv/Vw external-source contract — without
+     * them GetVSRCData never fires and the plant would run on silent zeros. */
     bool ModeMatchesNetlist() const {
-        return netlist_is_dcdc_ == (mode_ == NgspicePlantMode::Dcdc);
+        if (netlist_is_dcdc_ != (mode_ == NgspicePlantMode::Dcdc)) return false;
+        if (mode_ == NgspicePlantMode::Motor && !has_motor_vsources_) {
+            return false;
+        }
+        return true;
     }
     bool DcdcActive() const {
         return mode_ == NgspicePlantMode::Dcdc && netlist_is_dcdc_;
@@ -75,11 +94,18 @@ private:
     std::string netlist_path_{};
     int substeps_ = 4;
     bool sharedspice_loaded_ = false;
+    /* ngSpice_Init has run: the library may own a live worker thread, so the
+     * shared library must never be dlclose'd again (deliberate one-time leak
+     * instead of a crash while g_runtime tears down statically). */
+    bool spice_initialized_ = false;
     bool circuit_loaded_ = false;
     // True when the loaded netlist exposes Veu/Vev/Vew external sources,
     // meaning the back-EMF is in-circuit and the V-sources take only the
     // inverter terminal voltages.
     bool has_bemf_sources_ = false;
+    // True when the loaded netlist exposes Vu/Vv/Vw external sources — the
+    // motor-mode drive contract (dcdc netlists expose them too).
+    bool has_motor_vsources_ = false;
     // True when the loaded netlist exposes the Vsen1/Vsen2/Vsen3 sense-source
     // trio — the dcdc netlist contract marker (see plants/dcdc_buck.cir).
     bool netlist_is_dcdc_ = false;
@@ -87,6 +113,11 @@ private:
     DcdcProbes probes_{};
     bool first_step_ = true;
     double current_sim_time_ = 0.0;
+    // See SetPlannedDuration / NetlistTstopSeconds.
+    double planned_duration_s_ = 0.0;
+    bool live_mode_ = false;
+    double netlist_tstop_s_ = -1.0;
+    bool saliency_note_printed_ = false;
 
     // Read by ngspice's analysis thread via GetVSRCData; written by the host
     // thread in Step(). Atomics keep that cross-thread handoff safe.
@@ -124,7 +155,14 @@ private:
     bool bg_running_ = false;
     uint64_t bg_pauses_ = 0;
     bool stop_active_ = false;
-    bool analysis_failed_ = false;
+    /* Written by the ngspice analysis thread (CallbackControlledExit) and the
+     * host thread alike. */
+    std::atomic<bool> analysis_failed_{false};
+
+    /* Log-once sets for external-source names the callbacks don't recognize
+     * (called from the analysis thread; host thread never touches them). */
+    std::mutex unknown_srcs_mu_;
+    std::set<std::string> logged_unknown_srcs_;
 
     using FN_ngSpice_Init =
         int (*)(SendChar*, SendStat*, ControlledExit*, SendData*,
@@ -176,11 +214,18 @@ private:
     void LoadNetlist();
     static bool DetectBackEmfSources(const std::vector<std::string>& lines);
     static bool DetectDcdcSenseSources(const std::vector<std::string>& lines);
+    static bool DetectMotorVoltageSources(
+        const std::vector<std::string>& lines);
+    void RaiseTranTstopForRun(std::vector<std::string>* lines);
     void ApplyParams();
     void UpdatePendingVoltages(float du_pct, float dv_pct, float dw_pct);
     bool AdvanceSpiceTo(double target_time);
     bool WaitForBgPause(uint64_t target_pauses);
-    float ReadVecLast(const char* vecname) const;
+    /* Last sample of a tran vector; false when the vector is unknown/empty —
+     * callers must not treat 0 as a reading in that case. */
+    bool ReadVecLast(const char* vecname, double* out) const;
+    float ReadVecLastF(const char* vecname) const;
+    void LogUnknownSourceOnce(const char* node, bool is_voltage);
     void IntegrateMechanics(float dt_s);
     void StepDcdc(float duty_u_pct, float duty_v_pct, float duty_w_pct,
                   float dt_s);

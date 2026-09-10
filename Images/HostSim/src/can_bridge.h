@@ -62,7 +62,12 @@ public:
 private:
     struct Peer {
         int fd = -1;
-        uint8_t rx[64] = {0};
+        /* Sized for a burst between app-tick polls (~19 records); the
+         * recv/parse loop drains complete records between recv() calls, so
+         * sustained throughput is unbounded and the buffer only ever holds
+         * one partial record. Only genuinely unparseable framing (a partial
+         * record filling the whole buffer) drops the peer. */
+        uint8_t rx[512] = {0};
         size_t rx_len = 0;
     };
 
@@ -70,10 +75,19 @@ private:
     bool StartSpoke();
     void AcceptAll();
     void CheckConnect();
-    void ServicePeer(Peer& p, Peer* rebroadcast_origin);
-    bool HandleRecord(const uint8_t* record, Peer* rebroadcast_origin);
-    /* true = record written; on a hard error the peer fd is closed (-1). */
+    void ServicePeer(Peer& p);
+    /* origin_fd: fd of the peer the record came from (hub rebroadcast skips
+     * it), -1 when there is nothing to rebroadcast to (spoke side). Passed
+     * by fd, never by pointer into peers_, so a dead-peer marking can never
+     * invalidate it. */
+    bool HandleRecord(const uint8_t* record, int origin_fd);
+    /* true = record written; on a hard error the peer is closed and marked
+     * dead (fd = -1) but left in peers_ for SweepDeadPeers to erase. */
     bool SendRecord(Peer& p, const uint8_t* record, size_t len);
+    /* erase-remove pass over dead peers; runs only when no Peer&/record
+     * pointer into peers_ is still live (SendRecord/ServicePeer never
+     * erase mid-iteration). */
+    void SweepDeadPeers();
     void DropHubLink(const char* reason);
     void RunSelftest(float now_s);
 

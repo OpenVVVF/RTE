@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -291,13 +292,14 @@ float SimRuntime::EvaluateStimulus(const StimulusProfile& profile) const {
         if (time_s_ >= profile.end_s) return profile.end;
         if (profile.end_s <= profile.start_s) return profile.end;
         {
-            const float t = (time_s_ - profile.start_s) /
-                            (profile.end_s - profile.start_s);
-            return profile.start + t * (profile.end - profile.start);
+            const double t = (time_s_ - static_cast<double>(profile.start_s)) /
+                             (static_cast<double>(profile.end_s) - profile.start_s);
+            return profile.start + static_cast<float>(t) * (profile.end - profile.start);
         }
     case StimulusType::Step:
-        return time_s_ >= profile.step_time_s ? profile.step_value
-                                              : profile.value;
+        return time_s_ >= static_cast<double>(profile.step_time_s)
+                   ? profile.step_value
+                   : profile.value;
     }
     return 0.0f;
 }
@@ -500,9 +502,45 @@ bool SimRuntime::ParseScenario(const char* path) {
 
 bool SimRuntime::LoadScenario(const char* path) {
     if (!ParseScenario(path)) return false;
-    tim_dt_s_ = 1.0f / std::max(1.0f, config_.tim_isr_hz);
-    adc_dt_s_ = 1.0f / std::max(1.0f, config_.adc_isr_hz);
-    app_dt_s_ = 1.0f / std::max(1.0f, config_.app_loop_hz);
+
+    /* Scenario validation: the PMSM plant divides by rs, Ld, Lq and J and the
+     * encoder model divides by pole_pairs — a zero/negative value would make
+     * the plant state NaN, and the fault checks (max comparisons) then never
+     * fire (all NaN comparisons are false), silently defeating protection.
+     * Reject at load instead. (The induction model clamps its derived terms
+     * in InductionMachine::Step; here the shared params are always checked
+     * and the dq-inductances only when the PMSM path would use them.) */
+    {
+        const MotorParams& m = config_.motor;
+        const auto nonpos = [](float x) { return !std::isfinite(x) || x <= 0.0f; };
+        std::string bad;
+        if (nonpos(m.rs_ohm)) bad = "rs_ohm";
+        if (nonpos(m.inertia_kg_m2)) bad = "inertia_kg_m2";
+        if (m.pole_pairs < 1) bad = "pole_pairs";
+        if (!std::isfinite(m.friction_nm_per_rad_s) ||
+            m.friction_nm_per_rad_s < 0.0f) bad = "friction_nm_per_rad_s";
+        if (m.machine == MachineType::Pmsm) {
+            if (nonpos(m.ld_h)) bad = "ld_h";
+            if (nonpos(m.lq_h)) bad = "lq_h";
+            if (!std::isfinite(m.flux_wb) || m.flux_wb < 0.0f) bad = "flux_wb";
+        } else {
+            if (nonpos(m.rr_ohm)) bad = "rr_ohm";
+            if (nonpos(m.lm_h)) bad = "lm_h";
+            if (nonpos(m.lls_h)) bad = "lls_h";
+            if (nonpos(m.llr_h)) bad = "llr_h";
+        }
+        if (!bad.empty()) {
+            std::cerr << "HostSim: ERROR: scenario " << path
+                      << " has invalid motor parameter \"" << bad
+                      << "\" (must be positive/finite); refusing to run a "
+                         "simulation whose protection checks would be inert\n";
+            return false;
+        }
+    }
+
+    tim_dt_s_ = 1.0 / std::max(1.0, static_cast<double>(config_.tim_isr_hz));
+    adc_dt_s_ = 1.0 / std::max(1.0, static_cast<double>(config_.adc_isr_hz));
+    app_dt_s_ = 1.0 / std::max(1.0, static_cast<double>(config_.app_loop_hz));
 
     SimAdcConfigure(config_.adc);
     SimCanSetLoopback(config_.can_loopback);
@@ -534,22 +572,29 @@ bool SimRuntime::LoadScenario(const char* path) {
     if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
         if (!config_.ngspice_netlist.empty()) {
             /* Netlist paths are relative to the process CWD; as a fallback
-             * (so a scenario can be launched from any directory) also try the
-             * scenario file's directory. */
+             * (so a scenario can be launched from any directory) probe the
+             * scenario file's directory first, then the parent's — the
+             * emitted layout keeps plants/ next to scenarios/, so a
+             * "plants/x.cir" reference resolves via the parent. */
             std::string netlist = config_.ngspice_netlist;
             {
                 std::ifstream probe(netlist);
                 if (!probe) {
                     const size_t slash = std::string(path).find_last_of("/\\");
                     if (slash != std::string::npos) {
-                        const std::string alt =
-                            std::string(path).substr(0, slash + 1) +
-                            "../" + netlist;
-                        std::ifstream probe2(alt);
-                        if (probe2) {
-                            netlist = alt;
-                            std::cerr << "HostSim: netlist resolved relative "
-                                         "to scenario: " << netlist << '\n';
+                        const std::string dir =
+                            std::string(path).substr(0, slash + 1);
+                        const std::string candidates[2] = {dir + netlist,
+                                                           dir + "../" + netlist};
+                        for (const std::string& alt : candidates) {
+                            std::ifstream probe2(alt);
+                            if (probe2) {
+                                netlist = alt;
+                                std::cerr << "HostSim: netlist resolved "
+                                             "relative to scenario: "
+                                          << netlist << '\n';
+                                break;
+                            }
                         }
                     }
                 }
@@ -557,6 +602,8 @@ bool SimRuntime::LoadScenario(const char* path) {
             ng->SetNetlistPath(netlist);
         }
         ng->SetSubsteps(config_.ngspice_substeps);
+        /* Lets LoadNetlist raise a too-short .tran TSTOP to cover the run. */
+        ng->SetPlannedDuration(config_.duration_s, config_.live);
         ng->SetMode(want_dcdc && config_.plant_backend == "ngspice"
                         ? NgspicePlantMode::Dcdc
                         : NgspicePlantMode::Motor);
@@ -566,12 +613,19 @@ bool SimRuntime::LoadScenario(const char* path) {
 
     /* Mode vs netlist class guard (the plant detected the mismatch while
      * loading and already logged specifics): never keep running a mismatched
-     * pair — fall back to the ODE plant loudly. */
+     * pair — fall back to the ODE plant loudly. A netlist that failed to
+     * load gets the same treatment: without it Step() would silently no-op
+     * forever with a frozen all-zero state. */
     dcdc_mode_ = false;
     if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
-        if (!ng->ModeMatchesNetlist()) {
-            std::cerr << "HostSim: ERROR: plant mode/netlist mismatch — "
-                         "falling back to OdePlant\n";
+        if (!ng->CircuitLoaded() || !ng->ModeMatchesNetlist()) {
+            if (!ng->CircuitLoaded()) {
+                std::cerr << "HostSim: ERROR: ngspice backend has no usable "
+                             "circuit — falling back to OdePlant\n";
+            } else {
+                std::cerr << "HostSim: ERROR: plant mode/netlist mismatch — "
+                             "falling back to OdePlant\n";
+            }
             plant_ = CreatePlantBackend("ode", config_.motor.machine);
             plant_->SetParams(config_.motor);
             plant_->Reset();
@@ -579,17 +633,19 @@ bool SimRuntime::LoadScenario(const char* path) {
             dcdc_mode_ = ng->DcdcActive();
         }
     }
-    time_s_ = 0.0f;
-    next_tim_s_ = 0.0f;
-    next_adc_s_ = 0.0f;
-    next_app_s_ = 0.0f;
+    time_s_ = 0.0;
+    next_tim_s_ = 0.0;
+    next_adc_s_ = 0.0;
+    next_app_s_ = 0.0;
     return true;
 }
 
 void SimRuntime::OpenTrace() {
     trace_.open(config_.trace_csv, std::ios::out | std::ios::trunc);
-    if (!trace_) {
-        std::cerr << "HostSim: cannot open trace " << config_.trace_csv << '\n';
+    trace_ok_ = static_cast<bool>(trace_);
+    if (!trace_ok_) {
+        std::cerr << "HostSim: ERROR: cannot open trace " << config_.trace_csv
+                  << " — batch results will NOT be recorded\n";
         return;
     }
     trace_ << std::setprecision(8);
@@ -626,6 +682,7 @@ void SimRuntime::InitDomains() {
     ctx.plant_vdc_v = config_.motor.vdc_v;
     ctx.motor_temp_c = config_.motor_temp_c;
     ctx.inverter_temp_c = config_.inverter_temp_c;
+    ctx.pole_pairs = config_.motor.pole_pairs;
     if (!plant_) {
         plant_ = CreatePlantBackend(config_.plant_backend, config_.motor.machine);
         plant_->SetParams(config_.motor);
@@ -725,7 +782,7 @@ bool SimRuntime::StepOnce() {
     /* Fault injection: timed DC-link voltage drop, seen by both the control
      * code (ctx.vdc_v) and the plant (motor params). Applied once. */
     if (config_.vdc_glitch_time_s >= 0.0f && !vdc_glitch_applied_ &&
-        time_s_ + 1e-9f >= config_.vdc_glitch_time_s) {
+        time_s_ + 1e-9 >= config_.vdc_glitch_time_s) {
         vdc_glitch_applied_ = true;
         config_.motor.vdc_v = config_.vdc_glitch_v;
         ctx.vdc_v = config_.vdc_glitch_v;
@@ -737,11 +794,11 @@ bool SimRuntime::StepOnce() {
                      static_cast<double>(config_.vdc_glitch_v));
     }
 
-    if (time_s_ + 1e-9f >= next_tim_s_) {
+    if (time_s_ + 1e-9 >= next_tim_s_) {
         ctx.pwm_written = false;
         /* Domain dt for generated code (Gen6 pwm.cpp TIM1 update ISR sets it
          * before the generated step). */
-        platform_set_current_domain_dt(tim_dt_s_);
+        platform_set_current_domain_dt(static_cast<float>(tim_dt_s_));
         // RTE_EMIT: tim_isr step
         if (!ctx.pwm_written && (throttle_a_ > 0.0f || throttle_b_ > 0.0f)) {
             if (config_.demo_fallback) {
@@ -752,9 +809,13 @@ bool SimRuntime::StepOnce() {
                 const float freq_hz = throttle_b_ > 0.0f
                                           ? (1.0f + 19.0f * throttle_b_)
                                           : 10.0f;
-                platform_spwm_step(throttle_a_, freq_hz, tim_dt_s_,
+                platform_spwm_step(throttle_a_, freq_hz,
+                                   static_cast<float>(tim_dt_s_),
                                    &ctx.duty_u, &ctx.duty_v, &ctx.duty_w);
-            } else if (!demo_fallback_warned_) {
+            } else if (!demo_fallback_warned_ && !dcdc_mode_) {
+                /* Suppressed in dcdc mode: converter legs take their duties
+                 * from the scenario "dcdc" keys below, so a silent zero duty
+                 * there means the scenario asked for 0%, not a dead graph. */
                 demo_fallback_warned_ = true;
                 std::fprintf(stderr,
                              "HostSim: throttle is non-zero but no graph node "
@@ -766,7 +827,8 @@ bool SimRuntime::StepOnce() {
         /* dcdc duty defaults: only when nothing drove the PWM outputs this
          * tick. Precedence (highest first): live duty override (applied
          * below) > graph platform_pwm_set (ctx.pwm_written) > scenario
-         * "dcdc" duties (here) > legacy demo_fallback (overwritten above). */
+         * "dcdc" duties (here) > legacy demo_fallback (written above,
+         * overwritten here). */
         if (dcdc_mode_ && !ctx.pwm_written) {
             ctx.duty_u = config_.dcdc_duty_u_pct;
             ctx.duty_v = config_.dcdc_duty_v_pct;
@@ -785,10 +847,11 @@ bool SimRuntime::StepOnce() {
             auto& pwm = GlobalPwmScope();
             pwm.SetVdc(ctx.vdc_v);
             pwm.SetDuties(duty_u_, duty_v_, duty_w_);
-            pwm.AdvanceInterval(tim_dt_s_);
+            pwm.AdvanceInterval(static_cast<float>(tim_dt_s_));
         }
         if (plant_) {
-            plant_->Step(duty_u_, duty_v_, duty_w_, tim_dt_s_);
+            plant_->Step(duty_u_, duty_v_, duty_w_,
+                         static_cast<float>(tim_dt_s_));
             ++ctx.plant_step_seq;
 
             /* Fault injection: surface limits through platform_raise_fault so
@@ -827,32 +890,32 @@ bool SimRuntime::StepOnce() {
         next_tim_s_ += tim_dt_s_;
     }
 
-    if (time_s_ + 1e-9f >= next_adc_s_) {
+    if (time_s_ + 1e-9 >= next_adc_s_) {
         /* Conversion trigger: latch a coherent ADC sample set from the plant
          * before the graph's adc_isr domain reads the injected channels. */
         SimAdcTriggerConversion();
         /* Domain dt for generated code (Gen6 PhaseCurrentADC's injected
          * conversion-complete ISR sets it before the generated step). */
-        platform_set_current_domain_dt(adc_dt_s_);
+        platform_set_current_domain_dt(static_cast<float>(adc_dt_s_));
         // RTE_EMIT: adc_isr step
         next_adc_s_ += adc_dt_s_;
     }
 
-    if (time_s_ + 1e-9f >= next_app_s_) {
+    if (time_s_ + 1e-9 >= next_app_s_) {
         /* Domain dt for generated code (Gen6 InverterMain sets the app-loop
          * dt before stepping the generated domain). */
-        platform_set_current_domain_dt(app_dt_s_);
+        platform_set_current_domain_dt(static_cast<float>(app_dt_s_));
         // RTE_EMIT: app_loop step
         next_app_s_ += app_dt_s_;
         /* CAN bridge: one non-blocking poll per app-loop tick — accept new
          * spokes, drain reads, inject received frames, run the selftest
          * emitter. Never blocks the sim. */
-        GlobalCanBridge().Poll(time_s_);
+        GlobalCanBridge().Poll(static_cast<float>(time_s_));
     }
 
     for (auto& frame : config_.can_frames) {
         if (frame.done) continue;
-        if (time_s_ + 1e-9f >= frame.next_fire_s) {
+        if (time_s_ + 1e-9 >= frame.next_fire_s) {
             SimCanInject(frame.bus, frame.id, frame.ext, frame.data,
                          frame.dlc);
             if (frame.period_s > 0.0f) {
@@ -863,17 +926,18 @@ bool SimRuntime::StepOnce() {
         }
     }
 
-    if (time_s_ + 1e-9f >= next_telem_s_) {
+    if (time_s_ + 1e-9 >= next_telem_s_) {
         PublishTelemetry();
-        const float telem_dt = 1.0f / std::max(1.0f, config_.telem_hz);
+        const double telem_dt =
+            1.0 / std::max(1.0, static_cast<double>(config_.telem_hz));
         next_telem_s_ += telem_dt;
     }
 
     if (config_.pwm_scope_enabled && EffectivePwmTelemHz() > 0.0f &&
-        time_s_ + 1e-9f >= next_pwm_telem_s_) {
+        time_s_ + 1e-9 >= next_pwm_telem_s_) {
         PublishPwmScopeFrame();
-        const float pwm_hz = EffectivePwmTelemHz();
-        next_pwm_telem_s_ += 1.0f / std::max(1.0f, pwm_hz);
+        const double pwm_hz = static_cast<double>(EffectivePwmTelemHz());
+        next_pwm_telem_s_ += 1.0 / std::max(1.0, pwm_hz);
     }
 
     if (!config_.live) {
@@ -937,7 +1001,7 @@ void SimRuntime::PublishTelemetry() {
 void SimRuntime::PaceRealtimeWallClock() const {
     if (config_.realtime_factor <= 0.0f) return;
 
-    const double sim_delta_s = static_cast<double>(time_s_ - sim_anchor_s_);
+    const double sim_delta_s = time_s_ - sim_anchor_s_;
     const auto target =
         wall_anchor_ + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                            std::chrono::duration<double>(sim_delta_s /
@@ -979,9 +1043,23 @@ int SimRuntime::Run() {
         std::fflush(stdout);
 
         RealtimeSession realtime_session;
+        /* CLI --live reaches here after LoadScenario already loaded the
+         * netlist, so the TSTOP auto-raise saw live=false; warn loudly that
+         * the analysis will still stop (loudly) at the card's TSTOP. */
+        if (auto* ng = dynamic_cast<NgspicePlant*>(plant_.get())) {
+            const double tstop = ng->NetlistTstopSeconds();
+            if (tstop > 0.0 && tstop < 1.0e8) {
+                std::fprintf(stderr,
+                             "HostSim: WARNING: live mode with ngspice netlist "
+                             ".tran TSTOP=%.6g s — the analysis halts loudly "
+                             "and the plant freezes once sim time passes that "
+                             "mark; raise .tran TSTOP for long sessions\n",
+                             tstop);
+            }
+        }
         ResetWallClockAnchor();
-        float last_pace_sim_s = 0.0f;
-        constexpr float kPaceIntervalSimS = 0.001f;
+        double last_pace_sim_s = 0.0;
+        constexpr double kPaceIntervalSimS = 0.001;
         bool was_paused = false;
         while (true) {
             if (!pub.PollCommands()) break;
@@ -1013,6 +1091,13 @@ int SimRuntime::Run() {
     while (StepOnce()) {
     }
     Shutdown();
+    if (!trace_ok_) {
+        std::fprintf(stderr,
+                     "HostSim: ERROR: trace %s was not written (open failed "
+                     "earlier); exiting nonzero\n",
+                     config_.trace_csv.c_str());
+        return 1;
+    }
     std::printf("HostSim: wrote %s\n", config_.trace_csv.c_str());
     return 0;
 }

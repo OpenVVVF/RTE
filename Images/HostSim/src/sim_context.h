@@ -41,6 +41,11 @@ struct SimContext {
     /* Set by platform_pwm_set; consumed by the scheduler each tim_isr tick to
      * tell graph-driven duties apart from "nobody is driving the plant". */
     bool pwm_written = false;
+    /* Scenario pole-pair count, stashed by SimRuntime at domain init. IPlant
+     * does not expose motor params, so platform_api derives mechanical angle
+     * and rpm from this for plant backends other than OdePlant (whose
+     * MotorModel params are reachable directly). */
+    int pole_pairs = 7;
     uint64_t time_us = 0;
     /* Incremented after every plant Step(); lets the ADC sample latch tell
      * fresh conversions apart from leftovers of an older plant state. */

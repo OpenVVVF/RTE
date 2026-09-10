@@ -3,6 +3,7 @@
 #include "platform_api.h" /* platform_can_send (selftest emitter) */
 #include "sim_context.h"  /* SimCanInject */
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -33,11 +34,13 @@ void CanBridge::Configure(const CanBridgeConfig& cfg) {
         /* Deliberately pid-derived, not telemetry-port-derived: concurrent
          * instances commonly share the default telemetry port (14608), which
          * would tag their frames identically and make them filter each
-         * other out. The pid is unique by construction. */
+         * other out. The full pid (31-bit on Linux) is unique by
+         * construction; truncation to a byte would collide after ~256
+         * instances. */
 #ifdef _WIN32
-        cfg_.instance_id = static_cast<uint32_t>(_getpid()) & 0xFFu;
+        cfg_.instance_id = static_cast<uint32_t>(_getpid());
 #else
-        cfg_.instance_id = static_cast<uint32_t>(::getpid()) & 0xFFu;
+        cfg_.instance_id = static_cast<uint32_t>(::getpid());
 #endif
         if (cfg_.instance_id == 0) cfg_.instance_id = 1;
     }
@@ -243,7 +246,7 @@ bool CanBridge::SendRecord(Peer& p, const uint8_t* record, size_t len) {
     return false;
 }
 
-bool CanBridge::HandleRecord(const uint8_t* record, Peer* rebroadcast_origin) {
+bool CanBridge::HandleRecord(const uint8_t* record, int origin_fd) {
     const uint8_t* p = record + 2; /* skip length prefix */
     if (GetLe32(p) != kMagic) return false;
     const uint32_t src = GetLe32(p + 4);
@@ -273,78 +276,84 @@ bool CanBridge::HandleRecord(const uint8_t* record, Peer* rebroadcast_origin) {
     std::printf("\n");
     std::fflush(stdout);
 
-    if (rebroadcast_origin) {
+    if (origin_fd >= 0) {
         /* Hub: forward the verbatim record (origin tag preserved) to every
-         * other spoke. */
-        for (size_t i = 0; i < peers_.size();) {
-            Peer& other = peers_[i];
-            if (&other == rebroadcast_origin || other.fd < 0) {
-                ++i;
-                continue;
-            }
+         * other spoke. SendRecord only marks a failed peer dead (fd = -1);
+         * erasing is deferred to SweepDeadPeers() because `record` aliases
+         * the origin peer's rx buffer and the caller holds a Peer& into
+         * peers_ — erasing mid-loop would invalidate both. */
+        for (auto& other : peers_) {
+            if (other.fd < 0 || other.fd == origin_fd) continue;
             SendRecord(other, record, kRecordLen);
-            if (other.fd < 0) {
-                peers_.erase(peers_.begin() + static_cast<std::ptrdiff_t>(i));
-                std::printf("[CAN bridge] peer disconnected (%zu remaining)\n",
-                            peers_.size());
-                std::fflush(stdout);
-                continue;
-            }
-            ++i;
         }
     }
     return true;
 }
 
-void CanBridge::ServicePeer(Peer& p, Peer* rebroadcast_origin) {
+void CanBridge::ServicePeer(Peer& p) {
     if (p.fd < 0) return;
-    uint8_t chunk[256];
     bool alive = true;
-    while (true) {
-        const ssize_t n = ::recv(p.fd, chunk, sizeof(chunk), 0);
-        if (n > 0) {
-            if (p.rx_len + static_cast<size_t>(n) > sizeof(p.rx)) {
-                alive = false; /* unparsable backlog; drop the peer */
-                p.rx_len = 0;
+    bool framing_ok = true;
+    while (alive && framing_ok) {
+        /* Drain every complete record already buffered before reading more:
+         * a burst between app-tick polls is then limited only by what a
+         * single iteration can read, not by the buffer size, and the buffer
+         * never holds more than one partial record. */
+        size_t off = 0;
+        while (p.rx_len - off >= 2) {
+            const uint16_t plen = GetLe16(p.rx + off);
+            if (plen != kPayloadLen) {
+                framing_ok = false; /* unknown protocol; drop the peer */
                 break;
             }
-            std::memcpy(p.rx + p.rx_len, chunk, static_cast<size_t>(n));
+            if (p.rx_len - off < 2u + static_cast<size_t>(plen)) break; /* wait for the remainder */
+            if (!HandleRecord(p.rx + off, is_hub_ ? p.fd : -1)) {
+                framing_ok = false; /* bad magic */
+                break;
+            }
+            off += 2 + plen;
+        }
+        if (!framing_ok) break;
+        if (off > 0 && off < p.rx_len) {
+            std::memmove(p.rx, p.rx + off, p.rx_len - off);
+        }
+        p.rx_len -= off;
+        if (p.rx_len == sizeof(p.rx)) {
+            /* A full buffer after draining means one unterminated record
+             * spans everything: genuinely unparseable framing, not load. */
+            framing_ok = false;
+            break;
+        }
+
+        const ssize_t n =
+            ::recv(p.fd, p.rx + p.rx_len, sizeof(p.rx) - p.rx_len, 0);
+        if (n > 0) {
             p.rx_len += static_cast<size_t>(n);
         } else if (n == 0) {
-            alive = false; /* orderly EOF; buffered records are drained below */
-            break;
+            alive = false; /* orderly EOF; any buffered records were drained above */
         } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
             break;
         } else {
             alive = false; /* hard error */
-            break;
         }
     }
-
-    size_t off = 0;
-    bool framing_ok = true;
-    while (framing_ok && p.rx_len - off >= 2) {
-        const uint16_t plen = GetLe16(p.rx + off);
-        if (plen != kPayloadLen) {
-            framing_ok = false; /* unknown protocol; drop the peer */
-            break;
-        }
-        if (p.rx_len - off < 2u + static_cast<size_t>(plen)) break; /* wait for the remainder */
-        if (!HandleRecord(p.rx + off, rebroadcast_origin)) {
-            framing_ok = false; /* bad magic */
-            break;
-        }
-        off += 2 + plen;
-    }
-    if (off > 0 && off < p.rx_len) {
-        std::memmove(p.rx, p.rx + off, p.rx_len - off);
-    }
-    p.rx_len -= off;
 
     if (!alive || !framing_ok) {
         ::close(p.fd);
-        p.fd = -1;
+        p.fd = -1; /* dead marker; SweepDeadPeers does the erase */
         p.rx_len = 0;
+    }
+}
+
+void CanBridge::SweepDeadPeers() {
+    const size_t before = peers_.size();
+    peers_.erase(std::remove_if(peers_.begin(), peers_.end(),
+                                [](const Peer& p) { return p.fd < 0; }),
+                 peers_.end());
+    if (peers_.size() != before) {
+        std::printf("[CAN bridge] peer disconnected (%zu remaining)\n",
+                    peers_.size());
+        std::fflush(stdout);
     }
 }
 
@@ -415,24 +424,20 @@ void CanBridge::Poll(float now_s) {
 
     if (is_hub_) {
         AcceptAll();
-        for (size_t i = 0; i < peers_.size();) {
-            ServicePeer(peers_[i], &peers_[i]);
-            if (peers_[i].fd < 0) {
-                peers_.erase(peers_.begin() + static_cast<std::ptrdiff_t>(i));
-                std::printf("[CAN bridge] peer disconnected (%zu remaining)\n",
-                            peers_.size());
-                std::fflush(stdout);
-                continue;
-            }
-            ++i;
+        for (auto& p : peers_) {
+            ServicePeer(p);
         }
+        /* Dead peers were only marked while servicing (no erases happened
+         * above — ServicePeer/HandleRecord may alias into peers_); erase
+         * them now that nothing holds a reference. */
+        SweepDeadPeers();
     } else {
         if (spoke_state_ == SpokeState::Pending) {
             CheckConnect();
         }
         if (spoke_state_ == SpokeState::Connected) {
             const int fd_before = hub_link_.fd;
-            ServicePeer(hub_link_, nullptr);
+            ServicePeer(hub_link_);
             if (hub_link_.fd < 0 && fd_before >= 0) {
                 DropHubLink("disconnected");
             }
@@ -467,17 +472,10 @@ void CanBridge::Publish(uint8_t bus, uint32_t id, bool ext,
     }
 
     if (is_hub_) {
-        for (size_t i = 0; i < peers_.size();) {
-            SendRecord(peers_[i], rec, kRecordLen);
-            if (peers_[i].fd < 0) {
-                peers_.erase(peers_.begin() + static_cast<std::ptrdiff_t>(i));
-                std::printf("[CAN bridge] peer disconnected (%zu remaining)\n",
-                            peers_.size());
-                std::fflush(stdout);
-                continue;
-            }
-            ++i;
+        for (auto& p : peers_) {
+            SendRecord(p, rec, kRecordLen);
         }
+        SweepDeadPeers();
     } else if (spoke_state_ == SpokeState::Connected) {
         SendRecord(hub_link_, rec, kRecordLen);
         if (hub_link_.fd < 0) {

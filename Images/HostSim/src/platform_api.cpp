@@ -43,7 +43,15 @@ const MotorState* CurrentPlantState() {
 }
 
 int PlantPolePairs() {
-    return g_motor ? g_motor->Params().pole_pairs : 7;
+    if (g_motor) {
+        return g_motor->Params().pole_pairs > 0 ? g_motor->Params().pole_pairs
+                                                : 1;
+    }
+    /* Non-ODE backends: IPlant exposes no params, so SimRuntime stashes the
+     * scenario's pole_pairs in the SimContext at domain init (InitDomains).
+     * Clamped to >= 1: a division by zero here would poison the encoder. */
+    const int pp = GetSimContext().pole_pairs;
+    return pp > 0 ? pp : 1;
 }
 
 std::mutex g_cfg_mu;
