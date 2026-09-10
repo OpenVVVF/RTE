@@ -248,6 +248,7 @@ bool SimRunner::Start(const SimRunRequest& request, QString* error) {
     const QStringList wrapped = WrapLineBuffered(rte, arguments, &program);
 
     announcedEndpoint_ = false;
+    lineBuffer_.clear();
     process_->setWorkingDirectory(QFileInfo(request.graphPath).absolutePath());
 #ifdef Q_OS_UNIX
     // Own session: rte forks host_sim without a group of its own, so the
@@ -279,16 +280,44 @@ void SimRunner::Stop() {
         ::kill(static_cast<pid_t>(-pid), SIGINT);
     }
     QTimer::singleShot(kGracefulStopMs, this, [this, pid] {
-        if (process_->state() != QProcess::NotRunning) {
-            emit output(QStringLiteral("[sim] still running after SIGINT; killing\n"));
-            if (pid > 0) {
-                ::kill(static_cast<pid_t>(-pid), SIGKILL);
-            }
-            process_->kill();
+        // A new run may have started inside the grace period after the old
+        // process exited; only escalate against the process Stop() targeted.
+        if (process_->state() == QProcess::NotRunning || process_->processId() != pid) {
+            return;
         }
+        emit output(QStringLiteral("[sim] still running after SIGINT; killing\n"));
+        if (pid > 0) {
+            ::kill(static_cast<pid_t>(-pid), SIGKILL);
+        }
+        process_->kill();
     });
 #else
     process_->kill();
+#endif
+}
+
+void SimRunner::Shutdown() {
+    // No signals from this path: receivers of output()/finished() may already
+    // be mid-destruction when the application exits.
+    process_->disconnect(this);
+    if (process_->state() == QProcess::NotRunning) {
+        return;
+    }
+#ifdef Q_OS_UNIX
+    const qint64 pid = process_->processId();
+    if (pid > 0) {
+        ::kill(static_cast<pid_t>(-pid), SIGINT);
+    }
+    if (!process_->waitForFinished(kGracefulStopMs)) {
+        if (pid > 0 && process_->processId() == pid) {
+            ::kill(static_cast<pid_t>(-pid), SIGKILL);
+        }
+        process_->kill();
+        process_->waitForFinished(kGracefulStopMs);
+    }
+#else
+    process_->kill();
+    process_->waitForFinished(kGracefulStopMs);
 #endif
 }
 
@@ -299,11 +328,25 @@ void SimRunner::HandleReadyRead() {
     }
     const QString text = QString::fromLocal8Bit(chunk);
     if (!announcedEndpoint_) {
-        // Scan line by line; a chunk can carry several lines or a partial one,
-        // but the listening announcement is always terminated by a newline.
-        const QStringList lines = text.split(u'\n');
-        for (const QString& l : lines) {
-            AttachLiveEndpoint(l);
+        // Scan complete lines only and hold back the unterminated tail, so a
+        // listening announcement split across two chunks is still matched.
+        lineBuffer_ += text;
+        qsizetype start = 0;
+        for (;;) {
+            const qsizetype newline = lineBuffer_.indexOf(u'\n', start);
+            if (newline < 0) {
+                break;
+            }
+            AttachLiveEndpoint(lineBuffer_.mid(start, newline - start));
+            start = newline + 1;
+        }
+        lineBuffer_.remove(0, start);
+        if (announcedEndpoint_) {
+            lineBuffer_.clear();
+        } else if (lineBuffer_.size() > 4096) {
+            // A pathological line with no newline cannot be the announcement;
+            // do not let it grow the buffer without bound.
+            lineBuffer_.clear();
         }
     }
     emit output(text);

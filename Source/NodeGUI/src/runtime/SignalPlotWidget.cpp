@@ -95,7 +95,7 @@ void SignalPlotWidget::SetSignals(const QStringList& names)
 
 void SignalPlotWidget::SetViewSeconds(double seconds)
 {
-    viewSeconds_ = std::clamp(seconds, 0.5, 60.0);
+    viewSeconds_ = std::clamp(seconds, 0.05, 60.0);
     update();
 }
 

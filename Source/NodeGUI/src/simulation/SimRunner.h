@@ -63,6 +63,12 @@ public:
     // escalating to SIGKILL after a grace period. finished() still fires.
     void Stop();
 
+    // Blocking teardown for application shutdown: SIGINT, then SIGKILL after
+    // the grace period, waiting for the process each time. Emits no signals
+    // (the process is disconnected first), so it is safe to call while the
+    // owning window is being destroyed.
+    void Shutdown();
+
 signals:
     void output(const QString& text);
     // Parsed from host_sim's "HostSim live: listening on <host>:<port>" line.
@@ -75,6 +81,9 @@ private:
 
     QProcess* process_ = nullptr;
     bool announcedEndpoint_ = false;
+    // Unterminated output tail kept between chunks so a "listening on" line
+    // split across reads is still matched.
+    QString lineBuffer_;
 };
 
 }  // namespace NodeGUI::simulation

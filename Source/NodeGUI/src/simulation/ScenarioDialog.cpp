@@ -147,10 +147,29 @@ ScenarioDialog::ScenarioDialog(const QString& graphPath, bool editOnly, QWidget*
                 QStringLiteral("The ngspice backend needs a netlist path (or pick ode)."));
             return;
         }
+        // rte reads the scenario file from disk: persist unsaved edits so the
+        // run uses exactly what the form shows. Without a loaded file there
+        // is nowhere to save (auto selection with no resolvable file).
+        if (dirty_ && !loadedPath_.isEmpty() && !SaveTo(loadedPath_)) {
+            return;  // note already reports the failure; keep the dialog open
+        }
         runRequested_ = true;
         accept();
     });
     connect(closeButton, &QPushButton::clicked, this, &QDialog::reject);
+
+    // Track user edits to the form so Run can persist them before starting.
+    for (QDoubleSpinBox* spin : {rsOhm_, ldH_, lqH_, fluxWb_, vdcV_, inertia_,
+                                 friction_, duration_, timIsrHz_, appLoopHz_}) {
+        connect(spin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                this, [this](double) { MarkDirty(); });
+    }
+    connect(polePairs_, qOverload<int>(&QSpinBox::valueChanged),
+            this, [this](int) { MarkDirty(); });
+    connect(backend_, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { MarkDirty(); });
+    connect(netlist_, &QLineEdit::textChanged,
+            this, [this](const QString&) { MarkDirty(); });
 
     // Save the side the previous run used.
     PopulateScenarios();
@@ -244,9 +263,11 @@ void ScenarioDialog::LoadSelection() {
     }
     Fill(file_.Values());
     OnBackendChanged();
+    dirty_ = false;
 }
 
 void ScenarioDialog::Fill(const ScenarioValues& values) {
+    fillingForm_ = true;
     rsOhm_->setValue(values.rsOhm);
     ldH_->setValue(values.ldH);
     lqH_->setValue(values.lqH);
@@ -261,6 +282,7 @@ void ScenarioDialog::Fill(const ScenarioValues& values) {
     const int backendIndex = backend_->findData(values.backend);
     backend_->setCurrentIndex(backendIndex >= 0 ? backendIndex : 0);
     netlist_->setText(values.netlist);
+    fillingForm_ = false;
 }
 
 ScenarioValues ScenarioDialog::Gather() const {
@@ -289,12 +311,19 @@ bool ScenarioDialog::SaveTo(const QString& path) {
         return false;
     }
     loadedPath_ = path;
+    dirty_ = false;
     selectionNote_->setText(QStringLiteral("Saved %1").arg(path));
     return true;
 }
 
 void ScenarioDialog::OnBackendChanged() {
     netlist_->setEnabled(backend_->currentData().toString() == QStringLiteral("ngspice"));
+}
+
+void ScenarioDialog::MarkDirty() {
+    if (!fillingForm_) {
+        dirty_ = true;
+    }
 }
 
 }  // namespace NodeGUI::simulation

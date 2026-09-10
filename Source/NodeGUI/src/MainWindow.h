@@ -48,6 +48,7 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
 
     // Open a graph file at startup.
     bool OpenGraph(const std::string& path);
@@ -123,6 +124,10 @@ private:
     void OnScenarioEditor();
     bool StartSimulation(const QString& graphPath, const QString& scenarioPath);
     void OnSimFinished(int exitCode, bool crashed);
+    // Blocks until the sim child tree is dead, with SimRunner detached from
+    // this window first; used by closeEvent and the destructor so no signal
+    // can arrive while members are being torn down.
+    void ShutdownSimRunner();
     void ShowSimulationLog();
     void AppendSimLog(const QString& text);
     void ConnectModelSignals();

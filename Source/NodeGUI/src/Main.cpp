@@ -21,7 +21,10 @@ void PrintUsage(const char* exe) {
               << "  --serial <port>      override the saved telemetry serial port\n"
               << "  --tcp <host:port>    connect InverterProtocol over TCP "
                  "(implies --protocol ivp)\n"
-              << "                       e.g. --tcp 127.0.0.1:14608 for HostSim --live\n"
+              << "                       e.g. --tcp 127.0.0.1:14608 for HostSim --live; "
+                 "host is an\n"
+              << "                       IPv4 address or hostname (IPv6 literals are not "
+                 "supported)\n"
               << "  --protocol <mode>    wire protocol: 'legacy' (current firmware, default)\n"
               << "                       or 'ivp' (new InverterProtocol stack)\n"
               << "  --simulate           feed synthetic 100 Hz telemetry instead of the serial port\n"
@@ -36,9 +39,15 @@ bool ParseHostPort(const std::string& spec, QString* host, int* port) {
     if (colon == std::string::npos || colon == 0 || colon + 1 >= spec.size()) {
         return false;
     }
+    const std::string portText = spec.substr(colon + 1);
+    std::size_t consumed = 0;
     try {
-        *port = std::stoi(spec.substr(colon + 1));
+        *port = std::stoi(portText, &consumed);
     } catch (...) {
+        return false;
+    }
+    // std::stoi stops at the first non-digit; reject "14608x"-style specs.
+    if (consumed != portText.size()) {
         return false;
     }
     *host = QString::fromStdString(spec.substr(0, colon));

@@ -67,10 +67,9 @@ bool IvpTcpClient::SendLine(const std::string& line) {
         out.push_back('\n');
     }
     const qint64 wrote = socket_.write(out.data(), static_cast<qint64>(out.size()));
-    if (wrote != static_cast<qint64>(out.size())) {
-        return false;
-    }
-    return socket_.flush();
+    // A queued write is success: flush() reports false whenever the kernel
+    // buffer still holds bytes, which is normal back-pressure, not failure.
+    return wrote == static_cast<qint64>(out.size());
 }
 
 bool IvpTcpClient::IsConnected() const {

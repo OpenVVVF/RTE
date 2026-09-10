@@ -19,12 +19,21 @@ void IvpStreamDecoder::FeedBytes(const uint8_t* data, size_t n) {
 
     for (size_t i = 0; i < n; ++i) {
         const uint8_t b = data[i];
+        if (skipUntilDelimiter_) {
+            // Discard the remainder of an oversize frame; the delimiter after
+            // it ends the frame instead of opening a parsed one.
+            if (b == 0x00) {
+                skipUntilDelimiter_ = false;
+            }
+            continue;
+        }
         if (b != 0x00) {
             if (frameLen_ < kMaxEncodedFrame) {
                 frameBuf_[frameLen_++] = b;
             } else {
-                // Oversize frame: drop everything up to the next delimiter.
+                // Oversize frame: drop the buffered prefix and skip the rest.
                 frameLen_ = 0;
+                skipUntilDelimiter_ = true;
             }
             continue;
         }

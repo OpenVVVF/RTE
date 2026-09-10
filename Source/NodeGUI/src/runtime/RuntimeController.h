@@ -85,7 +85,8 @@ public:
     // (Build & Run Simulation attach) without changing the configured link;
     // ClearLinkOverride() restores it. The TCP client reconnects on its own
     // until host_sim is listening, so calling this before the simulator is up
-    // is safe.
+    // is safe. Wildcard bind hosts (0.0.0.0/::) are normalized to loopback,
+    // and re-attaching to the endpoint already in use is a no-op.
     void ConnectTcpOverride(const QString& host, int port);
     void ClearLinkOverride();
     bool HasLinkOverride() const { return linkOverride_; }

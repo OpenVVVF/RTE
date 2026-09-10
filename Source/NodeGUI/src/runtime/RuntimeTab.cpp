@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 
 namespace NodeGUI::runtime {
@@ -117,15 +118,20 @@ void RuntimeTab::ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout) {
 }
 
 void RuntimeTab::ApplySpwmViewWindows() {
-    // G1 scope (~4 carrier periods @ 100 Hz), G2 duty slow, G3 current.
-    telemetryPanel_->SetGraphViewSeconds({0.04, 1.0, 0.5});
+    // G1 scope (~5 carrier periods @ 100 Hz), G2 duty slow, G3 current.
+    // The slider path only syncs the shared-window control; its
+    // viewSecondsChanged emission must not fire here, or it would stomp the
+    // per-plot windows with one uniform window.
+    const QSignalBlocker blockSignals(signalTablePanel_);
     signalTablePanel_->SetViewSeconds(1.0);
+    telemetryPanel_->SetGraphViewSeconds({0.05, 1.0, 0.5});
 }
 
 void RuntimeTab::ApplyFocViewWindows() {
     // G1 d/q current, G2 d/q voltage, G3 phase currents.
-    telemetryPanel_->SetGraphViewSeconds({0.5, 0.5, 0.5});
+    const QSignalBlocker blockSignals(signalTablePanel_);
     signalTablePanel_->SetViewSeconds(0.5);
+    telemetryPanel_->SetGraphViewSeconds({0.5, 0.5, 0.5});
 }
 
 RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)

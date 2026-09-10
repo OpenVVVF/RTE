@@ -64,6 +64,8 @@ private:
 
     uint8_t frameBuf_[kMaxEncodedFrame] = {};
     size_t frameLen_ = 0;
+    // True while discarding an oversize frame's remainder (till next 0x00).
+    bool skipUntilDelimiter_ = false;
 
     ivp::ClientStats stats_;
     uint64_t framesInWindow_ = 0;

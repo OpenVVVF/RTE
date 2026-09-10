@@ -443,6 +443,23 @@ MainWindow::MainWindow(QWidget* parent)
     }
 }
 
+MainWindow::~MainWindow() {
+    // Stack-destroyed (e.g. after --sim-smoke exits) without a closeEvent:
+    // make sure the sim child tree is dead before member teardown starts.
+    ShutdownSimRunner();
+}
+
+void MainWindow::ShutdownSimRunner() {
+    if (!simRunner_) {
+        return;
+    }
+    // Detach before stopping: the kill inside Shutdown() must not deliver
+    // finished()/output() into the lambdas above while members die.
+    disconnect(simRunner_, nullptr, this, nullptr);
+    simStopRequested_ = true;
+    simRunner_->Shutdown();
+}
+
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
                               runtime::Protocol protocol,
@@ -560,15 +577,12 @@ void MainWindow::SetupRuntime(const QString& serialPort,
                 AppendSimLog(QStringLiteral("[sim] live telemetry endpoint %1:%2\n")
                                  .arg(host)
                                  .arg(port));
-                if (simAttached_) {
+                if (simAttached_ && runtimeController_) {
                     // A custom scenario can pick a non-default listen_port;
                     // re-attach to whatever host_sim actually announced.
-                    const bool moved = runtimeController_
-                        && (host != QStringLiteral("127.0.0.1")
-                            || port != simulation::kDefaultLivePort);
-                    if (moved && runtimeController_) {
-                        runtimeController_->ConnectTcpOverride(host, port);
-                    }
+                    // ConnectTcpOverride normalizes wildcard bind addresses
+                    // and ignores an endpoint it is already attached to.
+                    runtimeController_->ConnectTcpOverride(host, port);
                 }
                 // The simulator is up: switch from the build log to live plots.
                 if (appSwitcher_ && appSwitcher_->count() > 1) {
@@ -1296,10 +1310,11 @@ void MainWindow::StartSimSmoke(const QString& graphPath) {
                            .arg(exitCode));
             });
 
-    // Overall watchdog: first-time emit+build dominates the budget.
+    // Overall watchdog: first-time emit+build dominates the budget, and a
+    // cold CI machine may build HostSim from scratch inside the smoke run.
     auto* watchdog = new QTimer(this);
     watchdog->setSingleShot(true);
-    watchdog->setInterval(300000);
+    watchdog->setInterval(600000);
     connect(watchdog, &QTimer::timeout, this,
             [finish] { finish(false, QStringLiteral("timeout waiting for telemetry")); });
     watchdog->start();
@@ -1646,12 +1661,10 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-    // Stage a graceful stop; the SimRunner destructor force-kills anything
-    // left during MainWindow teardown.
-    if (simRunner_ && simRunner_->IsRunning()) {
-        simStopRequested_ = true;
-        simRunner_->Stop();
-    }
+    // A staged (async) Stop() could still deliver finished() via the QTimer
+    // escalation or the SimRunner destructor while member teardown is under
+    // way; stop to completion (signal-free) before anything is destroyed.
+    ShutdownSimRunner();
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }

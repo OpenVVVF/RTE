@@ -153,7 +153,17 @@ void RuntimeController::StopActiveLink() {
 }
 
 void RuntimeController::ConnectTcpOverride(const QString& host, int port) {
-    overrideHost_ = host.trimmed();
+    QString normalized = host.trimmed();
+    // A listener may announce a wildcard bind address; connect via loopback.
+    if (normalized == QStringLiteral("0.0.0.0")) {
+        normalized = QStringLiteral("127.0.0.1");
+    } else if (normalized == QStringLiteral("::")) {
+        normalized = QStringLiteral("::1");
+    }
+    if (linkOverride_ && overrideHost_ == normalized && overridePort_ == port) {
+        return;  // already attached to exactly this endpoint
+    }
+    overrideHost_ = normalized;
     overridePort_ = port;
     linkOverride_ = true;
     if (suspended_) {
@@ -262,18 +272,26 @@ void RuntimeController::ResumeAfterFlash() {
     if (!suspended_) {
         return;
     }
-    if (!simulate_ || linkOverride_) {
-        if (linkOverride_ || UsingTcp()) {
-            tcpClient_.Start(linkOverride_ ? overrideHost_ : tcpHost_,
-                             linkOverride_ ? overridePort_ : tcpPort_);
-        } else if (protocol_ == Protocol::Legacy) {
-            legacyClient_.resume();
-        } else {
-            ivpClient_.start(port_.toStdString());
-        }
-    }
     suspended_ = false;
     store_.SetSuspended(false);
+    if (simulate_ && !linkOverride_) {
+        // The simulated feed keeps running across a flash suspend, so there
+        // is normally nothing to restart. If it is down, a live-link override
+        // was cleared while suspended: start whatever link is current rather
+        // than leaving a dead feed.
+        if (!simTimer_ || !simTimer_->isActive()) {
+            StartActiveLink();
+        }
+        return;
+    }
+    if (linkOverride_ || UsingTcp()) {
+        tcpClient_.Start(linkOverride_ ? overrideHost_ : tcpHost_,
+                         linkOverride_ ? overridePort_ : tcpPort_);
+    } else if (protocol_ == Protocol::Legacy) {
+        legacyClient_.resume();
+    } else {
+        ivpClient_.start(port_.toStdString());
+    }
 }
 
 void RuntimeController::Push(PendingItem item) {

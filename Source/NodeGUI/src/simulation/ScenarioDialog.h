@@ -19,7 +19,9 @@ namespace NodeGUI::simulation {
 // entry that defers to rte's automatic selection. The form edits the common
 // motor/simulation/plant keys of the selected file; Save / Save As write the
 // file through ScenarioFile, which preserves unknown keys but not key order
-// or comments. Run accepts the dialog with the current selection.
+// or comments. Run accepts with the current selection; because rte reads the
+// scenario file from disk, unsaved form edits are saved back to the loaded
+// file first (when the dialog has a file to write to).
 class ScenarioDialog : public QDialog {
     Q_OBJECT
 
@@ -42,6 +44,9 @@ private:
     bool SaveTo(const QString& path);
     void OnBackendChanged();
     void SelectPath(const QString& path);
+    // Flags user edits to the form fields; Fill() is guarded so loading a
+    // scenario does not mark the form dirty.
+    void MarkDirty();
 
     QString graphPath_;
     bool runRequested_ = false;
@@ -49,6 +54,8 @@ private:
     // Where Save writes for the current selection; "" means the current
     // selection has no file yet (Save falls through to Save As).
     QString loadedPath_;
+    bool dirty_ = false;
+    bool fillingForm_ = false;
 
     QComboBox* scenarioCombo_ = nullptr;
     QLabel* selectionNote_ = nullptr;
