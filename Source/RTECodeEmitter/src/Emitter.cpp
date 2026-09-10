@@ -515,6 +515,17 @@ bool Emitter::Run(const EmitterOptions& options) const {
         return false;
     }
 
+    // Warn loudly about the opposite mismatch: a graph domain that the base
+    // image has no marker for. The generated <domain> files are then compiled
+    // but never constructed/init'd/stepped — a silent drop (vsense was this).
+    for (const auto& domain : generatedDomains) {
+        if (markerDomains.count(domain) == 0) {
+            logger_.Warning("Domain '" + domain +
+                            "' has graph content but no RTE_EMIT markers in the "
+                            "base image; its generated code will not run");
+        }
+    }
+
     // The effective set of domains is the union of graph domains and marker-only
     // stub domains.
     std::unordered_set<std::string> allDomains = generatedDomains;

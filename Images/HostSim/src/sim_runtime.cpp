@@ -32,10 +32,12 @@
 #if defined(__has_include)
 #if __has_include("../generated/domain_tim_isr_generated.h") && \
     __has_include("../generated/domain_app_loop_generated.h") && \
-    __has_include("../generated/domain_adc_isr_generated.h")
+    __has_include("../generated/domain_adc_isr_generated.h") && \
+    __has_include("../generated/domain_vsense_generated.h")
 #include "../generated/domain_tim_isr_generated.h"
 #include "../generated/domain_app_loop_generated.h"
 #include "../generated/domain_adc_isr_generated.h"
+#include "../generated/domain_vsense_generated.h"
 #define HOSTSIM_HAS_GENERATED_DOMAINS 1
 #endif
 #endif
@@ -700,6 +702,7 @@ void SimRuntime::InitDomains() {
     // RTE_EMIT: app_loop init
     // RTE_EMIT: tim_isr init
     // RTE_EMIT: adc_isr init
+    // RTE_EMIT: vsense init
     ApplyGraphVars();
 }
 
@@ -715,6 +718,7 @@ void SimRuntime::ApplyGraphVars() {
         {app::g_tim_isr_vars, app::g_tim_isr_var_count, &appState.tim_isr},
         {app::g_app_loop_vars, app::g_app_loop_var_count, &appState.app_loop},
         {app::g_adc_isr_vars, app::g_adc_isr_var_count, &appState.adc_isr},
+        {app::g_vsense_vars, app::g_vsense_var_count, &appState.vsense},
     };
     for (const auto& [name, value] : config_.graph_vars) {
         bool applied = false;
@@ -906,6 +910,10 @@ bool SimRuntime::StepOnce() {
          * dt before stepping the generated domain). */
         platform_set_current_domain_dt(static_cast<float>(app_dt_s_));
         // RTE_EMIT: app_loop step
+        /* Voltage-sense domain (Gen6 InverterMain steps vsense at the same
+         * app-loop cadence, with its own 10 ms dt). */
+        platform_set_current_domain_dt(0.01f);
+        // RTE_EMIT: vsense step
         next_app_s_ += app_dt_s_;
         /* CAN bridge: one non-blocking poll per app-loop tick — accept new
          * spokes, drain reads, inject received frames, run the selftest

@@ -11,6 +11,7 @@
 // RTE_EMIT: app_loop state
 // RTE_EMIT: tim_isr state
 // RTE_EMIT: adc_isr state
+// RTE_EMIT: vsense state
 
 #if !__has_include("../generated/domain_app_loop_generated.h")
 namespace app { struct AppLoopState {}; }
@@ -21,11 +22,15 @@ namespace app { struct TimIsrState {}; }
 #if !__has_include("../generated/domain_adc_isr_generated.h")
 namespace app { struct AdcIsrState {}; }
 #endif
+#if !__has_include("../generated/domain_vsense_generated.h")
+namespace app { struct VsenseState {}; }
+#endif
 
 struct AppState {
     app::AppLoopState app_loop;
     app::TimIsrState  tim_isr;
     app::AdcIsrState  adc_isr;
+    app::VsenseState  vsense;
 };
 
 extern AppState appState;
