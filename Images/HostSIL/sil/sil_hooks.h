@@ -41,8 +41,9 @@ bool  silGateOutputsEnabled();  /* power rail on AND reset released         */
 void  silUartPumpTxCompletion();
 
 /* Queue client->firmware bytes (live-link RX) into the modeled huart3 FIFO.
- * Call on the scheduler context only (from sil_live_poll).  FIFO is
- * cap-bounded; excess bytes are dropped. */
+ * Call on the scheduler context only (from sil_live_poll).  Hardware overrun
+ * model: bytes arriving while reception is disarmed are dropped; the FIFO is
+ * cap-bounded and excess bytes are dropped (throttled stderr notice). */
 void  silUartRxEnqueue(const uint8_t* data, size_t len);
 
 /* Deliver queued RX bytes to the armed IT reception: one byte per

@@ -95,8 +95,13 @@ def main() -> int:
                                 f"(span {max(d) - min(d):.3g} %)")
 
         # Iq tracking: measured q current should reach a good fraction of ref.
+        # Measure the last 20% of the control region itself — anchoring the
+        # window to ctl[0] (not to absolute row count) keeps it in the
+        # settled region regardless of row density (trace decimation) and of
+        # how many pre-control rows the trace contains.
         iqm = cols["iq_meas_a"]
-        iq_tail = sum(iqm[int(0.8 * ctl[0]) : ]) / max(1, n - int(0.8 * ctl[0]))
+        tail0 = ctl[0] + int(0.8 * (n - ctl[0]))
+        iq_tail = sum(iqm[tail0:]) / max(1, n - tail0)
         if args.iq_a > 0 and abs(iq_tail) < 0.5 * args.iq_a:
             failures.append(
                 f"iq_meas mean {iq_tail:.3g} A far below ref {args.iq_a} A")

@@ -50,8 +50,10 @@ bool sil_live_active();
 void sil_live_feed_tx(const uint8_t* data, size_t len);
 
 /* Scheduler context: accept pending connects, flush queued bytes to every
- * client (slow clients are dropped), and drain client RX bytes into the
- * modeled huart3 IT-RX FIFO (silUartRxEnqueue).
+ * client (bytes a slow client cannot take stay queued in a per-client
+ * backlog, cap-bounded like the shared buffer; only a wedged client is
+ * dropped), and drain client RX bytes into the modeled huart3 IT-RX FIFO
+ * (silUartRxEnqueue) — bounded to one FIFO's worth per client per poll.
  * Call once per app-loop iteration. */
 void sil_live_poll();
 

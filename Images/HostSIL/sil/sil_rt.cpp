@@ -3,8 +3,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cxxabi.h>
+#include <deque>
 #include <exception>
+#include <future>
 #include <mutex>
 #include <pthread.h>
 #include <string>
@@ -31,9 +34,11 @@ struct SilRtState {
     uint64_t sched_release_gen = 0;
     bool     fw_parked         = false;
 
-    /* Deferred host->firmware command (run at next gate entry). */
-    bool                 has_pending = false;
-    std::function<void()> pending;
+    /* Deferred host->firmware commands, run FIFO at the next gate entry.
+     * A queue (not a single slot) so posts made between gate releases —
+     * e.g. a command batch and the engageControl post in the same app
+     * period — all execute in order instead of silently overwriting. */
+    std::deque<std::function<void()>> pending;
 
     bool        abort   = false;
     bool        fw_done = false;      /* thread function returned          */
@@ -104,10 +109,16 @@ bool idle_to_gate_impl(SilPumpFn pump, uint64_t seen_park_gen) {
         }
         if (std::chrono::steady_clock::now() - t0 > kWatchdog) {
             std::lock_guard<std::mutex> lk(g_rt.mtx);
-            fprintf(stderr,
-                    "[SIL] watchdog: firmware did not reach the app gate "
-                    "(delay_waiting=%d parked=%d)\n",
-                    g_rt.delay_waiting ? 1 : 0, g_rt.fw_parked ? 1 : 0);
+            /* Leave the reason in fw_error for the caller's error path; the
+             * stderr line alone is lost from main()'s "failed: %s" print. */
+            char reason[128];
+            std::snprintf(
+                reason, sizeof(reason),
+                "watchdog: firmware did not reach the app gate "
+                "(delay_waiting=%d parked=%d)",
+                g_rt.delay_waiting ? 1 : 0, g_rt.fw_parked ? 1 : 0);
+            g_rt.fw_error = reason;
+            fprintf(stderr, "[SIL] %s\n", g_rt.fw_error.c_str());
             return false;
         }
     }
@@ -139,9 +150,11 @@ void sil_rt_delay_ms(uint32_t ms) {
 void sil_rt_app_gate() {
     std::unique_lock<std::mutex> lk(g_rt.mtx);
 
-    if (g_rt.has_pending) {
-        auto fn = std::move(g_rt.pending);
-        g_rt.has_pending = false;
+    /* Drain the posted host commands on the firmware context, in post order
+     * (a command that posts again is run in this same drain pass). */
+    while (!g_rt.pending.empty()) {
+        auto fn = std::move(g_rt.pending.front());
+        g_rt.pending.pop_front();
         lk.unlock();
         fn();                 /* host command on firmware context */
         lk.lock();
@@ -203,8 +216,7 @@ void sil_rt_advance_time_us(uint64_t us) {
 
 void sil_rt_post(std::function<void()> fn) {
     std::lock_guard<std::mutex> lk(g_rt.mtx);
-    g_rt.pending = std::move(fn);
-    g_rt.has_pending = true;
+    g_rt.pending.push_back(std::move(fn));
     g_rt.cv.notify_all();
 }
 
@@ -229,9 +241,27 @@ void sil_rt_shutdown() {
         g_rt.abort = true;
         g_rt.cv.notify_all();
     }
-    if (g_rt.fw_thread.joinable()) {
-        g_rt.fw_thread.join();
+    if (!g_rt.fw_thread.joinable()) return;
+
+    /* Timed join: abort is only observed at a delay/gate point, so a
+     * firmware spin that never reaches one would wedge join() (and the
+     * harness) forever.  Bound the wait, then abandon the thread: the future
+     * (holding the thread object, still joinable inside its task) is leaked
+     * on purpose — with the firmware still running, unwinding statics is
+     * unsafe, so exit the process immediately.  Callers have already
+     * flushed the trace/FRAM at this point. */
+    auto* join_fut = new std::future<void>(std::async(
+        std::launch::async,
+        [t = std::move(g_rt.fw_thread)]() mutable { t.join(); }));
+    if (join_fut->wait_for(std::chrono::seconds(10)) ==
+        std::future_status::timeout) {
+        fprintf(stderr, "[SIL] shutdown: firmware thread did not exit within "
+                        "10 s of abort (never reached a delay/gate point) — "
+                        "detaching and exiting immediately\n");
+        fflush(stderr);
+        std::quick_exit(0);
     }
+    delete join_fut;
 }
 
 bool sil_rt_fw_failed() {

@@ -48,6 +48,18 @@ std::string ExtractString(const std::string& blob, const std::string& key) {
     return blob.substr(q1 + 1, q2 - q1 - 1);
 }
 
+/* Index just past the closing quote of the JSON string whose opening quote
+ * sits at `open`, honoring backslash escapes (\" must not terminate the
+ * value).  npos when unterminated.  Shared scanner primitive: the readers
+ * below must never treat quotes/braces inside a string literal as syntax. */
+size_t StringEnd(const std::string& s, size_t open) {
+    for (size_t i = open + 1; i < s.size(); ++i) {
+        if (s[i] == '\\') { ++i; continue; }
+        if (s[i] == '"') return i + 1;
+    }
+    return std::string::npos;
+}
+
 bool ExtractNumber(const std::string& blob, const std::string& key, float* out) {
     const std::string needle = "\"" + key + "\"";
     const size_t pos = blob.find(needle);
@@ -68,8 +80,16 @@ std::string ExtractObject(const std::string& blob, const std::string& key) {
     if (pos == std::string::npos) return {};
     const size_t brace = blob.find('{', pos);
     if (brace == std::string::npos) return {};
+    /* Match braces while skipping quoted regions wholesale (a '{' inside a
+     * string value — e.g. a "commands" line — must not corrupt the count). */
     int depth = 0;
     for (size_t i = brace; i < blob.size(); ++i) {
+        if (blob[i] == '"') {
+            const size_t end = StringEnd(blob, i);
+            if (end == std::string::npos) return {};
+            i = end - 1;
+            continue;
+        }
         if (blob[i] == '{') ++depth;
         if (blob[i] == '}') {
             --depth;
@@ -100,19 +120,19 @@ void EnumerateKv(const std::string& blob,
     while (i < blob.size()) {
         const size_t q1 = blob.find('"', i);
         if (q1 == std::string::npos) break;
-        const size_t q2 = blob.find('"', q1 + 1);
+        const size_t q2 = StringEnd(blob, q1);
         if (q2 == std::string::npos) break;
-        const std::string key = blob.substr(q1 + 1, q2 - q1 - 1);
+        const std::string key = blob.substr(q1 + 1, q2 - q1 - 2);
         const size_t colon = blob.find(':', q2);
         if (colon == std::string::npos) break;
         size_t start = colon + 1;
         while (start < blob.size() &&
                std::isspace(static_cast<unsigned char>(blob[start]))) ++start;
         if (start < blob.size() && blob[start] == '"') {
-            /* String value: skip to its closing quote so it cannot alias the
-             * next pair's colon. */
-            const size_t vend = blob.find('"', start + 1);
-            i = (vend != std::string::npos) ? vend + 1 : blob.size();
+            /* String value: skip it wholesale so neither its colon nor its
+             * braces can alias the next pair's syntax. */
+            const size_t vend = StringEnd(blob, start);
+            i = (vend != std::string::npos) ? vend : blob.size();
             continue;
         }
         char* end = nullptr;
@@ -125,16 +145,18 @@ void EnumerateKv(const std::string& blob,
 }
 
 /* Enumerate "key": "string-value" pairs in a flat object blob — the string
- * counterpart of EnumerateKv (used for the "commands" schedule). */
+ * counterpart of EnumerateKv (used for the "commands" schedule).  Keys and
+ * values with backslash escapes are tolerated for scanning purposes (the
+ * extracted value keeps its raw, escape-encoded text). */
 void EnumerateStringKv(const std::string& blob,
                        std::vector<std::pair<std::string, std::string>>& out) {
     size_t i = 0;
     while (i < blob.size()) {
         const size_t q1 = blob.find('"', i);
         if (q1 == std::string::npos) break;
-        const size_t q2 = blob.find('"', q1 + 1);
+        const size_t q2 = StringEnd(blob, q1);
         if (q2 == std::string::npos) break;
-        const std::string key = blob.substr(q1 + 1, q2 - q1 - 1);
+        const std::string key = blob.substr(q1 + 1, q2 - q1 - 2);
         const size_t colon = blob.find(':', q2);
         if (colon == std::string::npos) break;
         size_t start = colon + 1;
@@ -145,10 +167,10 @@ void EnumerateStringKv(const std::string& blob,
             i = colon + 1;
             continue;
         }
-        const size_t vend = blob.find('"', start + 1);
+        const size_t vend = StringEnd(blob, start);
         if (vend == std::string::npos) break;
-        out.emplace_back(key, blob.substr(start + 1, vend - start - 1));
-        i = vend + 1;
+        out.emplace_back(key, blob.substr(start + 1, vend - start - 2));
+        i = vend;
     }
 }
 

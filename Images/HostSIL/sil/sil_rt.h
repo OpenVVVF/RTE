@@ -57,7 +57,8 @@ bool sil_rt_run_app_iteration(SilPumpFn pump);
 void sil_rt_advance_time_us(uint64_t us);
 
 /* Queue `fn` to run on the firmware context at the next app-gate entry,
- * before the firmware parks. */
+ * before the firmware parks.  Posts are queued FIFO: any number posted
+ * between gate releases all execute, in post order. */
 void sil_rt_post(std::function<void()> fn);
 
 /* Current simulated time in microseconds. */

@@ -17,6 +17,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -37,17 +38,27 @@ constexpr Socket kInvalid = -1;
  * exists to bound memory if poll() stops being called. */
 constexpr size_t kPendingCap = 1u << 20;
 
-/* send() attempts per client per poll before treating it as stalled; a
- * client that stays stalled for this many polls is dropped.  Polls run once
- * per app-loop iteration (1 kHz at --realtime 1.0), so 500 stalls ~ 0.5 s
- * of a completely wedged client. */
+/* send() attempts per client per poll; a client whose socket buffer never
+ * drains is called stalled, and one stalled for this many polls is dropped.
+ * Polls run once per app-loop iteration (1 kHz at --realtime 1.0), so
+ * 500 stalls ~ 0.5 s of a completely wedged client. */
 constexpr int kSendAttemptsPerPoll = 64;
 constexpr int kMaxStallPolls = 500;
+
+/* Bound on client->firmware bytes drained per client per poll: one modeled
+ * UART RX FIFO's worth (sil_hal.cpp caps g_uart3.rx_fifo at the same size).
+ * Without a cap a flooding client's recv loop never exits and starves the
+ * app loop; excess bytes simply stay in the socket buffer until next poll. */
+constexpr size_t kRxDrainCapPerPoll = 4096;
 
 struct Client {
     Socket fd = kInvalid;
     std::string rx;      /* demux buffer for client->device text lines */
     int stall_polls = 0; /* polls where the socket buffer stayed full */
+    /* Firmware UART TX bytes this client has not yet acknowledged (sent
+     * remainder requeued after a partial write; cap-dropped like the shared
+     * pending buffer so a slow client loses oldest bytes, not the tail). */
+    std::vector<uint8_t> tx_backlog;
 };
 
 struct LiveServer {
@@ -73,28 +84,27 @@ void CloseSock(Socket s) {
     if (s != kInvalid) ::close(s);
 }
 
-/* Write all bytes within a bounded number of send() attempts.
- * Returns false if the socket errored; on a full socket buffer it returns
- * true but sets progressed=false. */
-bool WriteAll(Socket fd, const uint8_t* data, size_t n, bool& progressed) {
-    progressed = false;
-    size_t total = 0;
-    for (int attempt = 0; attempt < kSendAttemptsPerPoll && total < n; ++attempt) {
+/* Write as many bytes as possible within a bounded number of send()
+ * attempts.  Returns false on a hard socket error (caller drops the client);
+ * otherwise `written` reports how many bytes the client accepted (0 = the
+ * socket buffer stayed full through every attempt = stalled this poll). */
+bool WriteAll(Socket fd, const uint8_t* data, size_t n, size_t& written) {
+    written = 0;
+    for (int attempt = 0; attempt < kSendAttemptsPerPoll && written < n;
+         ++attempt) {
 #ifdef MSG_NOSIGNAL
         const ssize_t wrote =
-            ::send(fd, data + total, n - total, MSG_NOSIGNAL);
+            ::send(fd, data + written, n - written, MSG_NOSIGNAL);
 #else
-        const ssize_t wrote = ::send(fd, data + total, n - total, 0);
+        const ssize_t wrote = ::send(fd, data + written, n - written, 0);
 #endif
         if (wrote < 0) {
             if (WouldBlock()) continue;
             return false;
         }
         if (wrote == 0) break;
-        progressed = true;
-        total += static_cast<size_t>(wrote);
+        written += static_cast<size_t>(wrote);
     }
-    if (total < n) progressed = false; /* did not finish this poll */
     return true;
 }
 
@@ -210,13 +220,17 @@ void sil_live_poll() {
 
     /* Drain client -> server bytes: forward every byte verbatim into the
      * modeled huart3 IT-RX FIFO (the firmware CommandShell path) and mirror
-     * complete text lines to stdout. */
+     * complete text lines to stdout.  Bounded per client per poll so a
+     * flooding client cannot starve the app loop. */
     for (size_t i = 0; i < g_live.clients.size();) {
         Client& c = g_live.clients[i];
         char buf[256];
+        size_t drained = 0;
         bool drop = false;
-        for (;;) {
-            const ssize_t n = ::recv(c.fd, buf, sizeof(buf), 0);
+        while (drained < kRxDrainCapPerPoll) {
+            const size_t room =
+                std::min(sizeof(buf), kRxDrainCapPerPoll - drained);
+            const ssize_t n = ::recv(c.fd, buf, room, 0);
             if (n < 0) {
                 drop = !WouldBlock();
                 break;
@@ -225,6 +239,7 @@ void sil_live_poll() {
                 drop = true;
                 break;
             }
+            drained += static_cast<size_t>(n);
             silUartRxEnqueue(reinterpret_cast<const uint8_t*>(buf),
                              static_cast<size_t>(n));
             c.rx.append(buf, buf + n);
@@ -243,28 +258,44 @@ void sil_live_poll() {
         ++i;
     }
 
-    /* Flush queued firmware UART bytes to every client. */
+    /* Flush queued firmware UART bytes to every client.  The per-client
+     * backlog keeps bytes a client could not take yet (previously a slow but
+     * alive client lost the unsent tail — telemetry frames vanished);
+     * oldest bytes are dropped past the same cap as the shared buffer. */
     std::vector<uint8_t> bytes;
     {
         std::lock_guard<std::mutex> lock(g_live.mu);
         bytes.swap(g_live.pending);
     }
-    if (bytes.empty()) return;
 
     for (size_t i = 0; i < g_live.clients.size();) {
         Client& c = g_live.clients[i];
-        bool progressed = false;
-        const bool ok = WriteAll(c.fd, bytes.data(), bytes.size(), progressed);
-        if (!ok) {
-            DropClient(g_live, i);
-            continue;
-        }
-        c.stall_polls = progressed ? 0 : c.stall_polls + 1;
-        if (c.stall_polls >= kMaxStallPolls) {
-            std::printf("[SIL live] dropping stalled client\n");
-            std::fflush(stdout);
-            DropClient(g_live, i);
-            continue;
+        c.tx_backlog.insert(c.tx_backlog.end(), bytes.begin(), bytes.end());
+        if (!c.tx_backlog.empty()) {
+            size_t written = 0;
+            const bool ok = WriteAll(c.fd, c.tx_backlog.data(),
+                                     c.tx_backlog.size(), written);
+            if (!ok) {
+                DropClient(g_live, i);
+                continue;
+            }
+            c.tx_backlog.erase(
+                c.tx_backlog.begin(),
+                c.tx_backlog.begin() + static_cast<std::ptrdiff_t>(written));
+            if (c.tx_backlog.size() > kPendingCap) {
+                c.tx_backlog.erase(
+                    c.tx_backlog.begin(),
+                    c.tx_backlog.begin() +
+                        static_cast<std::ptrdiff_t>(c.tx_backlog.size() -
+                                                    kPendingCap));
+            }
+            c.stall_polls = (written > 0) ? 0 : c.stall_polls + 1;
+            if (c.stall_polls >= kMaxStallPolls) {
+                std::printf("[SIL live] dropping stalled client\n");
+                std::fflush(stdout);
+                DropClient(g_live, i);
+                continue;
+            }
         }
         ++i;
     }

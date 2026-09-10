@@ -269,6 +269,8 @@ void              HAL_TIM_IRQHandler(TIM_HandleTypeDef* htim);
     ((__HANDLE__)->Instance->SR = ~(__FLAG__))
 #define __HAL_TIM_MOE_ENABLE(__HANDLE__) \
     ((__HANDLE__)->Instance->BDTR |= TIM_BDTR_MOE)
+#define __HAL_TIM_MOE_DISABLE(__HANDLE__) \
+    ((__HANDLE__)->Instance->BDTR &= ~TIM_BDTR_MOE)
 
 /* Channel compare accessors used by __HAL_TIM_SET_COMPARE / GET_COMPARE. */
 uint32_t* SIL_TIM_CcrPtr(TIM_HandleTypeDef* htim, uint32_t channel);

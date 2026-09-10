@@ -87,6 +87,10 @@ struct Sched {
 sil::Scenario g_scn;
 bool          g_failed = false;
 Sched         g_sched;
+FILE*         g_trace = nullptr;    /* open trace CSV (set in main)       */
+bool          g_boot_done = false;  /* boot-pump ticks emit no trace rows */
+
+void writeTraceRow(FILE* f);
 
 /* Sorted timeline of scenario shell commands (from the "commands" block). */
 std::vector<std::pair<float, std::string>> g_commands;
@@ -176,13 +180,19 @@ void applyFaultWindows() {
         g_fault_prev.enc_loss = enc_loss;
     }
 
-    /* Temperature channel override. */
+    /* Temperature channel override.  Only the scenario's spike channel is
+     * modeled; outside the fault window it reads the ambient baseline (a
+     * populated sensor does not vanish when the fault ends — previously the
+     * channel snapped back to NAN = "not populated"). */
     const bool temp = faultWindowActive(t, g_scn.temp_spike_time_s,
                                         g_scn.temp_spike_duration_s);
     for (int ch = 0; ch < 4; ++ch) {
-        w.temp_c[ch] = (temp && ch == g_scn.temp_spike_channel)
-                           ? g_scn.temp_spike_c
-                           : NAN;
+        if (ch == g_scn.temp_spike_channel &&
+            g_scn.temp_spike_time_s >= 0.0f) {
+            w.temp_c[ch] = temp ? g_scn.temp_spike_c : w.ambient_temp_c;
+        } else {
+            w.temp_c[ch] = NAN;
+        }
     }
     if (temp != g_fault_prev.temp) {
         std::printf("[SIL] t=%.3f inject temp_spike %s (ch%d -> %.1f C)\n",
@@ -330,6 +340,18 @@ void fastTick() {
     /* 5. Firmware-visible fault bookkeeping (source/severity edges with sim
      * timestamps; the firmware console mirror prints the matching lines). */
     pollFaultTransitions();
+
+    /* 6. Trace CSV row cadence — time-driven at the fast tick so
+     * trace_decim_us below the app-loop period still takes effect (an
+     * app-boundary cadence would silently clamp the row period to
+     * 1/app_loop_hz).  Boot pump ticks are skipped: the trace covers the
+     * scheduled run, from boot-complete on. */
+    if (g_boot_done && g_trace != nullptr &&
+        static_cast<double>(now) >= g_sched.next_trace_us) {
+        writeTraceRow(g_trace);
+        g_sched.next_trace_us = static_cast<double>(now) +
+                                static_cast<double>(g_scn.trace_decim_us);
+    }
 }
 
 /* Throttle profile -> pin voltages for the slow-sensor shim. */
@@ -384,6 +406,10 @@ void writeTraceRow(FILE* f) {
 
 void runShellLines(const std::vector<std::string>* lines) {
     for (const auto& line : *lines) {
+        /* Logged at execution (firmware context), not when queued: every
+         * "shell>" line reflects work that actually ran. */
+        std::printf("[SIL] t=%.3f shell> %s\n",
+                    static_cast<double>(sil_rt_now_us()) / 1e6, line.c_str());
         CommandManager::instance().processLine(line.c_str());
     }
 }
@@ -539,6 +565,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::fputs(SIL_TRACE_HEADER, trace);
+    g_trace = trace;   /* rows are emitted time-driven from fastTick() */
 
     std::printf("[SIL] scenario=%s duration=%.2f s app_loop=%.0f Hz trace=%s\n",
                 scenario_path, static_cast<double>(g_scn.duration_s),
@@ -609,6 +636,7 @@ int main(int argc, char** argv) {
     }
     std::printf("[SIL] firmware boot complete at t=%.3f s (sim)\n",
                 static_cast<double>(sil_rt_now_us()) / 1e6);
+    g_boot_done = true;   /* trace rows run from here on (fastTick-gated) */
 
     /* Post-boot config seeds (graph config live values + FRAM persistence). */
     if (!g_scn.firmware_config.empty()) {
@@ -632,11 +660,11 @@ int main(int argc, char** argv) {
     while (sil_rt_now_us() < end_us) {
         const uint64_t now = sil_rt_now_us();
 
-        /* Due scenario shell commands (posted as one firmware-context call so
-         * a burst can't clobber the single pending slot; executes at the app
-         * gate below).  When commands fire this tick, control_start waits one
-         * app tick — the post slot is non-queueing. */
-        bool posted_command = false;
+        /* Due scenario shell commands (posted as one firmware-context call
+         * per due batch; sil_rt_post is a FIFO, so a batch shares the app
+         * period safely with the control-start post below and everything
+         * runs in post order at the next gate).  The "shell>" log lines
+         * print on execution (see runShellLines). */
         if (g_cmd_next < g_commands.size() &&
             static_cast<double>(g_commands[g_cmd_next].first) * 1.0e6 <=
                 static_cast<double>(now) + 1.0) {
@@ -644,21 +672,16 @@ int main(int argc, char** argv) {
             while (g_cmd_next < g_commands.size() &&
                    static_cast<double>(g_commands[g_cmd_next].first) * 1.0e6 <=
                        static_cast<double>(now) + 1.0) {
-                std::printf("[SIL] t=%.3f shell> %s\n",
-                            static_cast<double>(now) / 1e6,
-                            g_commands[g_cmd_next].second.c_str());
                 due_lines->push_back(g_commands[g_cmd_next].second);
                 ++g_cmd_next;
             }
             auto keepalive = due_lines;
             const auto* lines_ptr = due_lines.get();
             sil_rt_post([keepalive, lines_ptr]() { runShellLines(lines_ptr); });
-            posted_command = true;
         }
 
         /* Control engagement at the scenario time. */
         if (g_scn.control_start && !g_sched.control_posted &&
-            !posted_command &&
             now >= static_cast<uint64_t>(g_scn.control_start_time_s * 1.0e6)) {
             sil_rt_post(&engageControl);
             g_sched.control_posted = true;
@@ -700,13 +723,6 @@ int main(int argc, char** argv) {
                     }
                     s_reported = true;
                 }
-            }
-
-            /* Trace row cadence. */
-            if (static_cast<double>(sil_rt_now_us()) >= g_sched.next_trace_us) {
-                writeTraceRow(trace);
-                g_sched.next_trace_us = static_cast<double>(sil_rt_now_us()) +
-                                        static_cast<double>(g_scn.trace_decim_us);
             }
             continue;
         }

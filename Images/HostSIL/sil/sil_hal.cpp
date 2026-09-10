@@ -86,6 +86,10 @@ struct UartState {
  * the cap only bounds memory if the firmware stops polling). */
 constexpr size_t kUartRxFifoCap = 4096;
 
+/* Throttle for the cap-drop notice: at most one line per ~1 s of sim time —
+ * a permanently stuffed FIFO stays visible without spamming the log. */
+uint64_t g_rx_cap_warn_after_us = 0;
+
 UartState g_uart3;
 } // namespace
 
@@ -200,6 +204,11 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* port, uint16_t pin) {
 
 void HAL_GPIO_TogglePin(GPIO_TypeDef* port, uint16_t pin) {
     if (port == nullptr || port->sil_index >= 7) return;
+    /* Real BSRR is write-only and edge-triggered; our retained model latches
+     * the last WritePin in BSRR, and a set/reset bit there would keep
+     * masking the ODR toggle at read time.  Clear the pin's latch bits so the
+     * toggle actually shows. */
+    port->BSRR &= ~(static_cast<uint32_t>(pin) | (static_cast<uint32_t>(pin) << 16U));
     port->ODR ^= pin;
 }
 
@@ -235,6 +244,11 @@ HAL_StatusTypeDef HAL_TIMEx_PWMN_Start(TIM_HandleTypeDef* htim, uint32_t channel
     if (channel <= TIM_CHANNEL_4) {
         htim->sil_active_channels_n |= (1U << (channel >> 2));
     }
+    /* Real HAL: the complementary-output start sets BDTR.MOE (the plain
+     * HAL_TIM_PWM_Start does not).  silTimOutputsDriving() then observes a
+     * genuinely driven bridge without the firmware having to call
+     * PWM_ClearFault() first. */
+    __HAL_TIM_MOE_ENABLE(htim);
     return HAL_OK;
 }
 
@@ -245,6 +259,7 @@ HAL_StatusTypeDef HAL_TIMEx_PWMN_Stop(TIM_HandleTypeDef* htim, uint32_t channel)
     if (channel <= TIM_CHANNEL_4) {
         htim->sil_active_channels_n &= ~(1U << (channel >> 2));
     }
+    __HAL_TIM_MOE_DISABLE(htim);   /* real HAL clears BDTR.MOE on stop */
     return HAL_OK;
 }
 
@@ -419,9 +434,25 @@ void silUartPumpTxCompletion() {
 void silUartRxEnqueue(const uint8_t* data, size_t len) {
     if (data == nullptr || len == 0) return;
     auto& fifo = g_uart3.rx_fifo;
+    if (!g_uart3.rx_armed) {
+        /* Hardware overrun model: with reception disarmed the UART drops
+         * incoming bytes (RXNE is masked, nothing is retained); the FIFO
+         * must not hold them for the next arm either. */
+        return;
+    }
     size_t n = len;
     if (fifo.size() + n > kUartRxFifoCap) {
-        n = fifo.size() < kUartRxFifoCap ? kUartRxFifoCap - fifo.size() : 0;
+        const size_t keep =
+            fifo.size() < kUartRxFifoCap ? kUartRxFifoCap - fifo.size() : 0;
+        const uint64_t now_us = sil_rt_now_us();
+        if (now_us >= g_rx_cap_warn_after_us) {
+            g_rx_cap_warn_after_us = now_us + 1000000ULL;
+            std::fprintf(stderr,
+                         "[SIL] uart3 rx fifo full (%zu B cap): dropped %zu "
+                         "client byte(s)\n",
+                         kUartRxFifoCap, n - keep);
+        }
+        n = keep;
     }
     fifo.insert(fifo.end(), data, data + n);
 }
