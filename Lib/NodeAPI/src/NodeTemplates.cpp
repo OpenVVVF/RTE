@@ -80,11 +80,18 @@ bool LoadFolderTemplate(Graph& graph,
         return false;
     }
 
-    // Load optional code block files from the same folder.
-    nodeType.classHeader = ReadCodeBlock(dir, "class_header.h");
-    nodeType.classDefinition = ReadCodeBlock(dir, "class_definition.cpp");
-    nodeType.constructorCode = ReadCodeBlock(dir, "constructor.cpp");
-    nodeType.inlineCode = ReadCodeBlock(dir, "inline.cpp");
+    // Load optional code block files from the same folder. A sibling file
+    // overrides the value embedded in node.json; when the file is missing the
+    // embedded value is kept (the file being absent must not erase it).
+    const auto overrideFromFile = [&dir](const char* filename, std::string& target) {
+        if (std::filesystem::is_regular_file(dir / filename)) {
+            target = ReadCodeBlock(dir, filename);
+        }
+    };
+    overrideFromFile("class_header.h", nodeType.classHeader);
+    overrideFromFile("class_definition.cpp", nodeType.classDefinition);
+    overrideFromFile("constructor.cpp", nodeType.constructorCode);
+    overrideFromFile("inline.cpp", nodeType.inlineCode);
 
     if (!graph.AddNodeType(nodeType)) {
         result.ok = false;

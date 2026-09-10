@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 
 using namespace NodeAPI;
 
@@ -94,6 +95,65 @@ TEST(NodeTemplates, AllShippedMetadataHasDescriptions) {
             EXPECT_FALSE(description->empty());
         }
     }
+}
+
+TEST(NodeTemplates, MissingCodeFilesKeepCodeEmbeddedInNodeJson) {
+    /* A folder template may carry its code pieces inline in node.json.  A
+     * missing sibling file (inline.cpp etc.) must not overwrite the embedded
+     * code with an empty string. */
+    const auto root =
+        std::filesystem::temp_directory_path() / "nodeapi_embedded_code_test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "test.embedded");
+    {
+        std::ofstream file(root / "test.embedded" / "node.json");
+        file << R"({
+            "id": "test.embedded",
+            "displayName": "Embedded",
+            "inputPorts": [],
+            "outputPorts": [],
+            "inlineCode": "/* embedded inline */",
+            "constructorCode": "/* embedded ctor */"
+        })";
+    }
+
+    Graph graph;
+    const auto result = LoadNodeTypesFromDirectory(graph, root);
+    ASSERT_TRUE(result.ok);
+    const auto type = graph.FindNodeType("test.embedded");
+    ASSERT_TRUE(type.has_value());
+    EXPECT_EQ(type->inlineCode, "/* embedded inline */");
+    EXPECT_EQ(type->constructorCode, "/* embedded ctor */");
+    EXPECT_TRUE(type->classHeader.empty());
+    EXPECT_TRUE(type->classDefinition.empty());
+    std::filesystem::remove_all(root);
+}
+
+TEST(NodeTemplates, ExistingCodeFileOverridesEmbeddedCode) {
+    const auto root =
+        std::filesystem::temp_directory_path() / "nodeapi_code_file_override_test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "test.split");
+    {
+        std::ofstream file(root / "test.split" / "node.json");
+        file << R"({
+            "id": "test.split",
+            "displayName": "Split",
+            "inputPorts": [],
+            "outputPorts": [],
+            "inlineCode": "/* embedded inline */"
+        })";
+        std::ofstream code(root / "test.split" / "inline.cpp");
+        code << "/* from file */\n";
+    }
+
+    Graph graph;
+    const auto result = LoadNodeTypesFromDirectory(graph, root);
+    ASSERT_TRUE(result.ok);
+    const auto type = graph.FindNodeType("test.split");
+    ASSERT_TRUE(type.has_value());
+    EXPECT_EQ(type->inlineCode, "/* from file */\n");
+    std::filesystem::remove_all(root);
 }
 
 TEST(NodeTemplates, RejectsMissingDirectory) {

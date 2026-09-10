@@ -376,11 +376,12 @@ TEST(Graph, RemoveNodeCleansConnections) {
 
 TEST(Graph, TypeCheckMatchingPorts) {
     Graph graph = MakeDemoGraph();
+    graph.AddNode(Node{.id = "sink2", .type = "display.value", .domain = "app_loop"});
 
     Connection c{
         .id = "c2",
         .from = PortRef{.nodeId = "source", .portName = "out"},
-        .to = PortRef{.nodeId = "sink", .portName = "in"},
+        .to = PortRef{.nodeId = "sink2", .portName = "in"},
     };
 
     EXPECT_TRUE(graph.TypeCheck(c));
@@ -751,4 +752,120 @@ TEST(Serialization, BridgeRoundTrip) {
     EXPECT_EQ(bridge->producer.nodeId, "source");
     EXPECT_EQ(bridge->consumer.nodeId, "sink");
     EXPECT_EQ(bridge->type, scalar);
+}
+
+TEST(Graph, RejectSecondWireToSameInput) {
+    // An input port accepts exactly one wire; previously the second Connect
+    // silently succeeded and codegen bound only the first wire.
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source_a", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "source_b", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    EXPECT_TRUE(graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "source_a", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+    EXPECT_FALSE(graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "source_b", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+    EXPECT_EQ(graph.GetConnections().size(), 1u);
+
+    // After disconnecting, a different source may take over the input.
+    EXPECT_TRUE(graph.Disconnect("c1"));
+    EXPECT_TRUE(graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "source_b", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+}
+
+TEST(Serialization, LoadKeepsPreloadedNodeTypes) {
+    // Templates loaded before the graph JSON keep their definition; the
+    // graph's embedded copy of the same type id is an intentional overlay
+    // (SaveToJson embeds all known types), not an error.
+    Graph graph;
+    ASSERT_TRUE(graph.AddNodeType(MakeValueType()));  // inlineCode "return 0.5f;"
+
+    const std::string json = R"({
+        "nodeTypes": [
+            {"id": "constant.value", "displayName": "Value",
+             "inputPorts": [], "outputPorts": [], "inlineCode": "return 1.0f;"}
+        ],
+        "nodes": [
+            {"id": "n", "type": "constant.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}}
+        ],
+        "connections": []
+    })";
+    EXPECT_NO_THROW(LoadIntoGraph(graph, json));
+    const auto type = graph.FindNodeType("constant.value");
+    ASSERT_TRUE(type.has_value());
+    EXPECT_EQ(type->inlineCode, "return 0.5f;");
+    EXPECT_TRUE(graph.FindNode("n").has_value());
+}
+
+TEST(Serialization, LoadFailsLoudlyOnInvalidItems) {
+    // Every invalid item is collected with its id and reported in one throw
+    // instead of vanishing silently (and confusing codegen later).
+    const std::string json = R"({
+        "nodeTypes": [
+            {"id": "constant.value", "displayName": "Value",
+             "inputPorts": [],
+             "outputPorts": [{"name": "out", "direction": "output",
+                              "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}]},
+            {"id": "display.value", "displayName": "Display",
+             "inputPorts": [{"name": "in", "direction": "input",
+                             "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}],
+             "outputPorts": []}
+        ],
+        "nodes": [
+            {"id": "a", "type": "constant.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}},
+            {"id": "b", "type": "constant.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}},
+            {"id": "sink", "type": "display.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}},
+            {"id": "ghost", "type": "missing.type", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}}
+        ],
+        "connections": [
+            {"id": "c1", "from": {"nodeId": "a", "portName": "out"},
+             "to": {"nodeId": "sink", "portName": "in"}},
+            {"id": "c2", "from": {"nodeId": "b", "portName": "out"},
+             "to": {"nodeId": "sink", "portName": "in"}},
+            {"id": "c3", "from": {"nodeId": "a", "portName": "nope"},
+             "to": {"nodeId": "sink", "portName": "in"}}
+        ],
+        "bridges": [
+            {"id": "b1",
+             "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+             "producer": {"nodeId": "a", "portName": "out"},
+             "consumer": {"nodeId": "sink", "portName": "missing_in"}}
+        ]
+    })";
+
+    Graph graph;
+    try {
+        LoadIntoGraph(graph, json);
+        FAIL() << "expected LoadIntoGraph to throw on invalid items";
+    } catch (const std::runtime_error& e) {
+        const std::string message = e.what();
+        EXPECT_NE(message.find("'ghost'"), std::string::npos) << message;  // unknown type
+        EXPECT_NE(message.find("missing.type"), std::string::npos) << message;
+        EXPECT_NE(message.find("'c2'"), std::string::npos) << message;   // double-wired input
+        EXPECT_NE(message.find("'c3'"), std::string::npos) << message;   // missing output port
+        EXPECT_NE(message.find("'b1'"), std::string::npos) << message;   // bad bridge endpoint
+        EXPECT_NE(message.find("missing_in"), std::string::npos) << message;
+    }
+
+    // The valid items are still in place; nothing was silently discarded.
+    EXPECT_TRUE(graph.FindNode("sink").has_value());
+    EXPECT_TRUE(graph.FindConnection("c1").has_value());
+    EXPECT_FALSE(graph.FindConnection("c2").has_value());
 }

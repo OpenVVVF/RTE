@@ -2,6 +2,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <stdexcept>
+#include <vector>
+
 namespace NodeAPI {
 
 using json = nlohmann::json;
@@ -301,19 +304,65 @@ void LoadIntoGraph(Graph& graph, std::string_view jsonText) {
 
     graph.SetName(j.value("name", graph.GetName()));
 
+    /* Every item that fails to attach to the graph is collected with its JSON
+     * id and reported in one loud error at the end.  Silently dropping an
+     * invalid node, wire, or bridge here used to surface much later as a
+     * misleading codegen error (e.g. "input port not connected"). */
+    std::vector<std::string> errors;
+
     for (const auto& item : j.at("nodeTypes")) {
-        graph.AddNodeType(NodeTypeFromJson(item));
+        NodeType nodeType = NodeTypeFromJson(item);
+        /* Node types are commonly pre-loaded from a template directory before
+         * the graph JSON is parsed; an already-known id is an intentional
+         * overlay (the graph embeds its own copy), not an error. */
+        if (graph.FindNodeType(nodeType.id).has_value()) continue;
+        const std::string id = nodeType.id;
+        if (!graph.AddNodeType(std::move(nodeType))) {
+            errors.push_back("node type '" + id + "' could not be added"
+                             " (empty id?)");
+        }
     }
     for (const auto& item : j.at("nodes")) {
-        graph.AddNode(NodeFromJson(item));
+        Node node = NodeFromJson(item);
+        const std::string id = node.id;
+        const std::string type = node.type;
+        if (!graph.AddNode(std::move(node))) {
+            errors.push_back("node '" + id + "' could not be added"
+                             " (duplicate id, unknown type '" + type +
+                             "', or maxInstances reached)");
+        }
     }
     for (const auto& item : j.at("connections")) {
-        graph.Connect(ConnectionFromJson(item));
+        Connection connection = ConnectionFromJson(item);
+        if (!graph.Connect(connection)) {
+            errors.push_back("connection '" + connection.id + "' (" +
+                             connection.from.nodeId + "." + connection.from.portName +
+                             " -> " + connection.to.nodeId + "." + connection.to.portName +
+                             ") is invalid: check that both endpoints exist with the right"
+                             " direction, that the wire types match, and that the input"
+                             " has no other wire or bridge");
+        }
     }
     if (j.contains("bridges")) {
         for (const auto& item : j.at("bridges")) {
-            graph.AddBridge(BridgeFromJson(item));
+            Bridge bridge = BridgeFromJson(item);
+            if (!graph.AddBridge(bridge)) {
+                errors.push_back("bridge '" + bridge.id + "' (" +
+                                 bridge.producer.nodeId + "." + bridge.producer.portName +
+                                 " -> " + bridge.consumer.nodeId + "." + bridge.consumer.portName +
+                                 ") is invalid: check that both endpoints exist with the right"
+                                 " direction, that the bridge type matches, and that the input"
+                                 " has no other wire or bridge");
+            }
         }
+    }
+
+    if (!errors.empty()) {
+        std::string message = "graph load failed:";
+        for (const auto& error : errors) {
+            message += "\n  - " + error;
+        }
+        throw std::runtime_error(message);
     }
 }
 

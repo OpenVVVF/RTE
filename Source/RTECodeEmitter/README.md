@@ -118,24 +118,33 @@ Direct node connections must stay inside a single timing domain. To pass data be
 }
 ```
 
-The codegen emits a global `std::atomic<float>` for each bridge:
+The codegen emits one `Bridge<Id>` object per bridge in `bridges_generated.h` /
+`bridges_generated.cpp`. A bridge is not a plain atomic: the carried wire type
+may be a multi-field struct that is not atomically loadable, so each bridge is
+a small struct whose `store()` / `load()` copy the value under a critical
+section (`platform_critical_enter()` / `platform_critical_exit()`):
 
 ```cpp
 namespace app {
-extern std::atomic<float> bridge_throttle_cmd;
+struct BridgeThrottleCmdType {
+    rte::Dimensionless data;
+    void store(const rte::Dimensionless& value);
+    rte::Dimensionless load() const;
+};
+extern BridgeThrottleCmdType BridgeThrottleCmd;
 } // namespace app
 ```
 
 The producer domain writes to it after computing its output:
 
 ```cpp
-bridge_throttle_cmd.store(out, std::memory_order_relaxed);
+BridgeThrottleCmd.store(out);
 ```
 
 The consumer domain reads it as its input:
 
 ```cpp
-const float in = bridge_throttle_cmd.load(std::memory_order_relaxed);
+const rte::Dimensionless in = BridgeThrottleCmd.load();
 ```
 
 Bridges are type-checked by NodeAPI against the producer and consumer port types.
@@ -147,7 +156,8 @@ Bridges are type-checked by NodeAPI against the producer and consumer port types
 3. Run `NodeAPI::Timing::Validator`; fail fast on timing errors.
 4. Recursively copy `--base-src` to `--output`, skipping `.git`, `build`, etc.
 5. Generate domain files into `output/<generated-dir>/` via `InverterCodegenLib`.
-6. If the graph has bridges, generate `bridges_generated.h` / `.cpp` with global atomic variables.
+6. If the graph has bridges, generate `bridges_generated.h` / `.cpp` with the
+   critical-section-protected `Bridge<Id>` objects described above.
 7. Scan the copied source tree for `// RTE_EMIT:` markers.
 8. For each marker:
    - Replace the marker line with the matching snippet.
