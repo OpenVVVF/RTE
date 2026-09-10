@@ -1,0 +1,11 @@
+{
+  "comment": "can_bus_demo role A (hub side of a two-instance CAN bridge run). vars seed the graph's Role and TxPeriod Var nodes: Role=1 transmits id 0x2A1 and listens for 0x2A2; D0 carries a 0.4 s sawtooth. Run against can_bus_demo_role_b.json — recipe in docs/simulation.md, 'Graph-level CAN / two-inverter pattern'.",
+  "simulation": {
+    "app_loop_hz": 1000,
+    "telem_hz": 500
+  },
+  "vars": {
+    "Role": 1.0,
+    "TxPeriod": 0.4
+  }
+}

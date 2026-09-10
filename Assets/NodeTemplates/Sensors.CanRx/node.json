@@ -2,9 +2,9 @@
   "id": "Sensors.CanRx",
   "displayName": "CAN RX",
   "defaultName": "CanRx",
-  "description": "Reads the latest frame from a configured CAN receive mailbox and exposes its payload.",
+  "description": "Reads the latest frame from a configured CAN receive mailbox and exposes its payload. Not an entry point, so the Bus/Id parameters may be wired from other nodes (e.g. a role router); the mailbox read has no in-graph dependencies.",
   "maxInstances": 0,
-  "isEntryPoint": true,
+  "isEntryPoint": false,
   "domain": "",
   "inputPorts": [],
   "outputPorts": [

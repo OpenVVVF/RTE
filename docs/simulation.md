@@ -346,6 +346,109 @@ V/Hz ratio).
 Motor parameters are not hardcoded to a machine: copy a bundled scenario and
 paste calibrated values from the target motor.
 
+## Graph-level CAN / two-inverter pattern
+
+`Assets/NodeTemplates` ships two CAN graph nodes that emit plain
+`platform_can_*` calls (same signatures on HostSim and Gen6FW), so graph
+logic can talk CAN end-to-end without firmware changes:
+
+- **Actuators.CanTx** — sends a frame on `Bus` (1 = A, 2 = B) with arbitration
+  `Id`, payload bytes `D0..D7` (each wireable, `Dlc` selects how many), at most
+  `Rate` times per second (`platform_millis`-paced; `Rate <= 0` sends every
+  step). `Id`, like any parameter, may be wire-fed (`parameterInputs`).
+- **Sensors.CanRx** — Gen6 latest-frame receive mailbox for (`Bus`, `Id`):
+  outputs `D0..D7`, `Dlc`, and `Fresh` (true for one step per arrival; the
+  store is seq-counted so polling is idempotent). It is *not* an entry point,
+  so `Bus`/`Id` may be wired from in-graph logic.
+
+### Bridge topology
+
+The multi-instance bridge (flags in
+[Images/HostSim/README.md](../Images/HostSim/README.md#multi-instance-can-bridge))
+maps instances onto a shared bus rather than buses onto buses: every
+`platform_can_send` is mirrored to *all* other instances (hub rebroadcast),
+where it lands in the rx store keyed by `(bus, id)` exactly like scenario
+`can.frames` traffic. Two instances both using "bus 1" therefore model two
+inverters sharing one physical bus; per-instance `bus 2` traffic stays a
+second logical bus. Own transmissions are filtered by instance id, and
+scenario `can.loopback` (default on) only mirrors frames into the *sender's*
+own store — so assign each role a distinct tx id and loopback never collides
+with bridged traffic. Bus 0 is reserved for the `--can-selftest` diagnostic
+channel and never reaches a graph mailbox.
+
+Batch runs ignore `--realtime` (max speed), so overlapping multi-instance
+demos must use `--live --realtime 1.0` plus a distinct `--listen` port per
+instance.
+
+### Demo: `Assets/Examples/can_bus_demo.json`
+
+One graph, two roles, selected by scenario `vars` (no per-role edits):
+
+- `Role` + `TxPeriod` — `Values.Var` nodes seeded from the scenario
+  (`can_bus_demo_role_a.json`: `Role=1`, `TxPeriod=0.4`; `..._role_b.json`:
+  `Role=2`, `TxPeriod=0.9`).
+- `Demo.RoleRouter` (graph-local type) maps Role onto ids: role 1 transmits
+  `0x2A1` and listens for `0x2A2`, role 2 the mirror.
+- `Demo.TxPattern` generates a sawtooth test byte (period `TxPeriod`);
+  CanTx sends it in `D0` with the role number in `D1`, 50 fps in `app_loop`.
+- CanRx feeds telemetry keys `can_rx_d0`, `can_rx_tag`, `can_rx_dlc`
+  (peer's byte / role tag / frame length observed *inside* the consuming
+  graph); `can_tx_d0` logs the local byte for comparison.
+
+Recipe (emit + build once, run two live instances):
+
+```bash
+./build/bin/RTECodeEmitter --base-src Images/HostSim \
+    --graph Assets/Examples/can_bus_demo.json \
+    --output build/hostsim_can_bus_demo_emitted
+cmake -S build/hostsim_can_bus_demo_emitted -B build/hostsim_can_bus_demo_emitted_build
+cmake --build build/hostsim_can_bus_demo_emitted_build -j
+
+cd build/hostsim_can_bus_demo_emitted   # scenario-relative paths resolve from here
+HOSTSIM_TELEM_STDERR=1 ../hostsim_can_bus_demo_emitted_build/host_sim \
+    ../../Assets/Examples/can_bus_demo_role_a.json \
+    --live --realtime 1.0 --listen 127.0.0.1:14608 \
+    --can-bridge-listen 7900 --can-bridge-id 1 > /tmp/canA.log 2>&1 &
+sleep 0.7   # hub must be up before the spoke connects
+HOSTSIM_TELEM_STDERR=1 ../hostsim_can_bus_demo_emitted_build/host_sim \
+    ../../Assets/Examples/can_bus_demo_role_b.json \
+    --live --realtime 1.0 --listen 127.0.0.1:14609 \
+    --can-bridge-connect 127.0.0.1:7900 --can-bridge-id 2 > /tmp/canB.log 2>&1 &
+sleep 6 && kill %1 %2
+```
+
+Proof (bridge witnesses *and* graph-side consumption; A's ramp steps ≈13 per
+20 ms/0.4 s period, B's ≈6 per 20 ms/0.9 s):
+
+```bash
+grep "id=0x2A1" /tmp/canB.log | head      # A→B frames: data=CC 01, D9 01, E6 01, ...
+grep "id=0x2A2" /tmp/canA.log | head      # B→A frames: data=05 02, 0B 02, 11 02, ...
+grep can_rx_tag= /tmp/canB.log | tail -1  # =1: B's graph consumes role-A frames
+grep can_rx_d0= /tmp/canA.log | awk 'NR%100==1' | head   # ≈ +28.4 per 100 ms (0.9 s ramp)
+```
+
+Causality: raise A's `TxPeriod` in `can_bus_demo_role_a.json` (e.g. 0.15 s)
+and re-run — B's `can_rx_d0` ramp wraps proportionally faster while B→A is
+unchanged. RTE Studio can attach to either endpoint (`--tcp 127.0.0.1:14608`
+or `:14609`) to plot the keys live.
+
+### Limits
+
+- **App-loop-rate traffic only.** The bridge relays one record per send over
+  best-effort TCP; put CanTx/CanRx in `app_loop` and keep `Rate` well under
+  the loop cadence. Placing CanTx in the 10 kHz `tim_isr` with `Rate <= 0`
+  would attempt 10 000 sends/s and the bridge just drops what it cannot
+  carry (counted as `dropped`).
+- **One app-loop tick of aliasing.** The bridge polls after each app step, so
+  a bridged frame becomes visible to the peer's CanRx on the peer's next
+  tick; between two 1 kHz loops expect ≤ ~2–3 ms of staleness plus socket
+  jitter.
+- **Latest-frame semantics.** The mailbox keeps only the newest frame per
+  `(bus, id)`; two senders on the same id interleave and the receiver sees
+  whichever is newest (same as hardware). Use one tx id per sender per bus.
+- Live mode runs until killed; stop instances with SIGTERM/SIGINT (`kill`),
+  same as the bridge selftest demo in the HostSim README.
+
 ## Plant backends
 
 | Backend | Scenario | What it models |

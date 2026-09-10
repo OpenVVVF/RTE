@@ -1,0 +1,813 @@
+{
+ "bridges": [],
+ "connections": [
+  {
+   "id": "c_role_router",
+   "from": {
+    "nodeId": "Role",
+    "portName": "Value"
+   },
+   "to": {
+    "nodeId": "RoleRouter",
+    "portName": "Role"
+   }
+  },
+  {
+   "id": "c_period_wave",
+   "from": {
+    "nodeId": "TxPeriod",
+    "portName": "Value"
+   },
+   "to": {
+    "nodeId": "TxWave",
+    "portName": "PeriodS"
+   }
+  },
+  {
+   "id": "c_txid",
+   "from": {
+    "nodeId": "RoleRouter",
+    "portName": "TxId"
+   },
+   "to": {
+    "nodeId": "CanTx",
+    "portName": "Id"
+   }
+  },
+  {
+   "id": "c_rxid",
+   "from": {
+    "nodeId": "RoleRouter",
+    "portName": "RxId"
+   },
+   "to": {
+    "nodeId": "CanRx",
+    "portName": "Id"
+   }
+  },
+  {
+   "id": "c_wave_d0",
+   "from": {
+    "nodeId": "TxWave",
+    "portName": "Value"
+   },
+   "to": {
+    "nodeId": "CanTx",
+    "portName": "D0"
+   }
+  },
+  {
+   "id": "c_role_d1",
+   "from": {
+    "nodeId": "Role",
+    "portName": "Value"
+   },
+   "to": {
+    "nodeId": "CanTx",
+    "portName": "D1"
+   }
+  },
+  {
+   "id": "c_rx_d0_log",
+   "from": {
+    "nodeId": "CanRx",
+    "portName": "D0"
+   },
+   "to": {
+    "nodeId": "LogRxByte0",
+    "portName": "Value"
+   }
+  },
+  {
+   "id": "c_rx_d1_log",
+   "from": {
+    "nodeId": "CanRx",
+    "portName": "D1"
+   },
+   "to": {
+    "nodeId": "LogRxTag",
+    "portName": "Value"
+   }
+  },
+  {
+   "id": "c_rx_dlc_log",
+   "from": {
+    "nodeId": "CanRx",
+    "portName": "Dlc"
+   },
+   "to": {
+    "nodeId": "LogRxDlc",
+    "portName": "Value"
+   }
+  },
+  {
+   "id": "c_tx_wave_log",
+   "from": {
+    "nodeId": "TxWave",
+    "portName": "Value"
+   },
+   "to": {
+    "nodeId": "LogTxByte0",
+    "portName": "Value"
+   }
+  }
+ ],
+ "name": "can_bus_demo",
+ "nodeTypes": [
+  {
+   "id": "Values.Var",
+   "displayName": "Var",
+   "defaultName": "Var",
+   "description": "Stores a scalar value and updates it when the Set input is true.",
+   "maxInstances": 0,
+   "isEntryPoint": false,
+   "domain": "",
+   "inputPorts": [
+    {
+     "name": "In",
+     "description": "New scalar value to store when Set is true.",
+     "direction": "input",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": true
+    },
+    {
+     "name": "Set",
+     "description": "Write enable. When true, copies In into the stored value.",
+     "direction": "input",
+     "type": {
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": true
+    }
+   ],
+   "outputPorts": [
+    {
+     "name": "Value",
+     "description": "Current stored scalar value.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    }
+   ],
+   "parameterTypes": {
+    "Stored": {
+     "description": "Persistent scalar storage state.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "Set": {
+     "description": "Fallback write-enable value when the Set input is not wired.",
+     "quantity": "boolean",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "In": {
+     "description": "Fallback new value when the In input is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    }
+   },
+   "inlineCode": "if (Set) Stored = In;\nValue = Stored;\n",
+   "constructorCode": "",
+   "classHeader": "",
+   "classDefinition": ""
+  },
+  {
+   "id": "Actuators.CanTx",
+   "displayName": "CAN TX",
+   "defaultName": "CanTx",
+   "description": "Transmits up to eight data bytes on a selected CAN bus at a configurable maximum rate.",
+   "maxInstances": 0,
+   "isEntryPoint": false,
+   "domain": "",
+   "inputPorts": [
+    {
+     "name": "D0",
+     "description": "Payload byte 0. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D1",
+     "description": "Payload byte 1. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D2",
+     "description": "Payload byte 2. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D3",
+     "description": "Payload byte 3. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D4",
+     "description": "Payload byte 4. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D5",
+     "description": "Payload byte 5. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D6",
+     "description": "Payload byte 6. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "D7",
+     "description": "Payload byte 7. Values are converted to an unsigned 8-bit integer.",
+     "direction": "input",
+     "optional": true,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    }
+   ],
+   "outputPorts": [],
+   "parameterTypes": {
+    "Bus": {
+     "description": "CAN controller number: 1 selects bus A/FDCAN1 and 2 selects bus B/FDCAN2.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "Id": {
+     "description": "CAN arbitration identifier to transmit.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "Ext": {
+     "description": "Use an extended 29-bit identifier when greater than 0.5; otherwise use a standard identifier.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "Dlc": {
+     "description": "Number of payload bytes to transmit, clamped to the range 0 through 8.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "Rate": {
+     "description": "Maximum transmission rate in frames per second. Values at or below zero send every step.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "LastMs": {
+     "description": "Internal timestamp of the previous transmission in milliseconds.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D0": {
+     "description": "Fallback value for payload byte 0 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D1": {
+     "description": "Fallback value for payload byte 1 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D2": {
+     "description": "Fallback value for payload byte 2 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D3": {
+     "description": "Fallback value for payload byte 3 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D4": {
+     "description": "Fallback value for payload byte 4 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D5": {
+     "description": "Fallback value for payload byte 5 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D6": {
+     "description": "Fallback value for payload byte 6 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "D7": {
+     "description": "Fallback value for payload byte 7 when its input port is not wired.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    }
+   },
+   "inlineCode": "/* CAN transmit, rate-limited by wall clock: sends when 1000/Rate ms have\n * elapsed since the previous send (Rate <= 0 sends every step).\n * D0..D7 = payload bytes (unconnected = 0), Dlc = how many of the 8 to\n * send, Ext: 0 std / 1 ext. */\nconst uint32_t period_ms = (Rate > 0.0f) ? static_cast<uint32_t>(1000.0f / Rate) : 0U;\nconst uint32_t now_ms = platform_millis();\nif (period_ms == 0U || (now_ms - static_cast<uint32_t>(LastMs)) >= period_ms) {\n    LastMs = static_cast<float>(now_ms);\n    const uint8_t b[8] = {\n        static_cast<uint8_t>(D0), static_cast<uint8_t>(D1),\n        static_cast<uint8_t>(D2), static_cast<uint8_t>(D3),\n        static_cast<uint8_t>(D4), static_cast<uint8_t>(D5),\n        static_cast<uint8_t>(D6), static_cast<uint8_t>(D7),\n    };\n    uint8_t n = static_cast<uint8_t>(Dlc);\n    if (n > 8) n = 8;\n    platform_can_send(static_cast<uint8_t>(Bus), static_cast<uint32_t>(Id),\n                      Ext > 0.5f, b, n);\n}\n",
+   "constructorCode": "",
+   "classHeader": "",
+   "classDefinition": ""
+  },
+  {
+   "id": "Sensors.CanRx",
+   "displayName": "CAN RX",
+   "defaultName": "CanRx",
+   "description": "Reads the latest frame from a configured CAN receive mailbox and exposes its payload. Not an entry point, so the Bus/Id parameters may be wired from other nodes (e.g. a role router); the mailbox read has no in-graph dependencies.",
+   "maxInstances": 0,
+   "isEntryPoint": false,
+   "domain": "",
+   "inputPorts": [],
+   "outputPorts": [
+    {
+     "name": "D0",
+     "description": "Most recently received payload byte 0.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D1",
+     "description": "Most recently received payload byte 1.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D2",
+     "description": "Most recently received payload byte 2.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D3",
+     "description": "Most recently received payload byte 3.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D4",
+     "description": "Most recently received payload byte 4.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D5",
+     "description": "Most recently received payload byte 5.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D6",
+     "description": "Most recently received payload byte 6.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "D7",
+     "description": "Most recently received payload byte 7.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "Dlc",
+     "description": "Data length of the latest received frame.",
+     "direction": "output",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    },
+    {
+     "name": "Fresh",
+     "description": "True for one execution step when a new frame has arrived.",
+     "direction": "output",
+     "type": {
+      "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    }
+   ],
+   "parameterTypes": {
+    "Bus": {
+     "description": "CAN controller number: 1 selects bus A/FDCAN1 and 2 selects bus B/FDCAN2.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "Id": {
+     "description": "CAN arbitration identifier accepted by the receive mailbox.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    },
+    "LastSeq": {
+     "description": "Internal sequence counter used to detect newly received frames.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    }
+   },
+   "inlineCode": "/* CAN receive mailbox for Id on Bus (1=A/FDCAN1, 2=B/FDCAN2).\n * Fresh is true for one step when a new frame arrived; Dlc/bytes hold the\n * latest payload otherwise. */\nuint8_t buf[8] = {};\nuint32_t seq = 0;\nconst int dlc = platform_can_rx(static_cast<uint8_t>(Bus),\n                                static_cast<uint32_t>(Id), buf, &seq);\nFresh = (seq != LastSeq);\nLastSeq = static_cast<float>(seq);\nif (dlc > 0) {\n    Dlc = static_cast<float>(dlc);\n    D0 = buf[0]; D1 = buf[1]; D2 = buf[2]; D3 = buf[3];\n    D4 = buf[4]; D5 = buf[5]; D6 = buf[6]; D7 = buf[7];\n} else {\n    Dlc = 0.0f;\n}\n",
+   "constructorCode": "",
+   "classHeader": "",
+   "classDefinition": ""
+  },
+  {
+   "id": "Debug.TelemetryLog",
+   "displayName": "Telemetry Log",
+   "defaultName": "Log",
+   "description": "Publishes a scalar value to runtime telemetry under a configurable key.",
+   "maxInstances": 0,
+   "isEntryPoint": false,
+   "domain": "",
+   "inputPorts": [
+    {
+     "name": "Value",
+     "description": "Scalar value to publish.",
+     "direction": "input",
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     },
+     "optional": false
+    }
+   ],
+   "outputPorts": [],
+   "parameterTypes": {
+    "Key": {
+     "description": "Telemetry channel name used when publishing the value.",
+     "quantity": "string",
+     "frame": "scalar",
+     "dtype": "f32"
+    }
+   },
+   "inlineCode": "platform_telemetry_log_f32(Key, Value);\n",
+   "constructorCode": "",
+   "classHeader": "",
+   "classDefinition": ""
+  },
+  {
+   "id": "Demo.RoleRouter",
+   "displayName": "CAN Role Router",
+   "defaultName": "RoleRouter",
+   "description": "Maps the instance Role (1 or 2) onto CAN ids: role 1 transmits IdBase and receives IdBase+1; role 2 transmits IdBase+1 and receives IdBase. Role values outside 0.5..1.5 take the role-2 mapping.",
+   "maxInstances": 0,
+   "isEntryPoint": false,
+   "domain": "",
+   "inputPorts": [
+    {
+     "name": "Role",
+     "description": "Instance role: 1 = bus node A (sends IdBase), 2 = node B (sends IdBase+1).",
+     "direction": "input",
+     "optional": false,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    }
+   ],
+   "outputPorts": [
+    {
+     "name": "TxId",
+     "description": "CAN arbitration id this role transmits.",
+     "direction": "output",
+     "optional": false,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    },
+    {
+     "name": "RxId",
+     "description": "CAN arbitration id this role listens to.",
+     "direction": "output",
+     "optional": false,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    }
+   ],
+   "parameterTypes": {
+    "IdBase": {
+     "description": "Arbitration id transmitted by role 1; role 2 transmits IdBase+1.",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    }
+   },
+   "inlineCode": "const bool role_one = (Role > 0.5f && Role < 1.5f);\nTxId = IdBase + (role_one ? 0.0f : 1.0f);\nRxId = IdBase + (role_one ? 1.0f : 0.0f);\n",
+   "constructorCode": "",
+   "classHeader": "",
+   "classDefinition": ""
+  },
+  {
+   "id": "Demo.TxPattern",
+   "displayName": "Ramp Test Pattern",
+   "defaultName": "TxPattern",
+   "description": "Sawtooth test byte 0..255 driven by sim time (platform_millis) with period PeriodS seconds; wraps at 255 back to 0.",
+   "maxInstances": 0,
+   "isEntryPoint": false,
+   "domain": "",
+   "inputPorts": [],
+   "outputPorts": [
+    {
+     "name": "Value",
+     "description": "Sawtooth test byte (0..255).",
+     "direction": "output",
+     "optional": false,
+     "type": {
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+     }
+    }
+   ],
+   "parameterTypes": {
+    "PeriodS": {
+     "description": "Sawtooth period in seconds (wire-fed from the TxPeriod Var in this graph).",
+     "quantity": "dimensionless",
+     "frame": "scalar",
+     "dtype": "f32"
+    }
+   },
+   "inlineCode": "const float t_s = static_cast<float>(platform_millis()) * 0.001f;\nconst float p = (PeriodS > 0.0001f) ? PeriodS : 0.0001f;\nconst float phase = t_s / p - floorf(t_s / p);\nValue = floorf(phase * 256.0f);\nif (Value > 255.0f) Value = 255.0f;\n",
+   "constructorCode": "",
+   "classHeader": "",
+   "classDefinition": ""
+  }
+ ],
+ "nodes": [
+  {
+   "id": "Role",
+   "type": "Values.Var",
+   "domain": "app_loop",
+   "parameters": {
+    "In": "0.0",
+    "Set": "0.0",
+    "Stored": "0.0"
+   },
+   "position": {
+    "x": 60.0,
+    "y": 60.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "TxPeriod",
+   "type": "Values.Var",
+   "domain": "app_loop",
+   "parameters": {
+    "In": "0.0",
+    "Set": "0.0",
+    "Stored": "0.5"
+   },
+   "position": {
+    "x": 60.0,
+    "y": 220.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "RoleRouter",
+   "type": "Demo.RoleRouter",
+   "domain": "app_loop",
+   "parameters": {
+    "IdBase": "673.0"
+   },
+   "position": {
+    "x": 320.0,
+    "y": 60.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "TxWave",
+   "type": "Demo.TxPattern",
+   "domain": "app_loop",
+   "parameterInputs": [
+    "PeriodS"
+   ],
+   "parameters": {
+    "PeriodS": "0.5"
+   },
+   "position": {
+    "x": 320.0,
+    "y": 220.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "CanTx",
+   "type": "Actuators.CanTx",
+   "domain": "app_loop",
+   "parameterInputs": [
+    "Id"
+   ],
+   "parameters": {
+    "Bus": "1.0",
+    "Id": "673.0",
+    "Ext": "0.0",
+    "Dlc": "2.0",
+    "Rate": "50.0",
+    "LastMs": "0.0",
+    "D0": "0.0",
+    "D1": "0.0",
+    "D2": "0.0",
+    "D3": "0.0",
+    "D4": "0.0",
+    "D5": "0.0",
+    "D6": "0.0",
+    "D7": "0.0"
+   },
+   "position": {
+    "x": 600.0,
+    "y": 140.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "CanRx",
+   "type": "Sensors.CanRx",
+   "domain": "app_loop",
+   "parameterInputs": [
+    "Id"
+   ],
+   "parameters": {
+    "Bus": "1.0",
+    "Id": "674.0",
+    "LastSeq": "0.0"
+   },
+   "position": {
+    "x": 600.0,
+    "y": 420.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "LogRxByte0",
+   "type": "Debug.TelemetryLog",
+   "domain": "app_loop",
+   "parameters": {
+    "Key": "can_rx_d0"
+   },
+   "position": {
+    "x": 860.0,
+    "y": 360.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "LogRxTag",
+   "type": "Debug.TelemetryLog",
+   "domain": "app_loop",
+   "parameters": {
+    "Key": "can_rx_tag"
+   },
+   "position": {
+    "x": 860.0,
+    "y": 450.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "LogRxDlc",
+   "type": "Debug.TelemetryLog",
+   "domain": "app_loop",
+   "parameters": {
+    "Key": "can_rx_dlc"
+   },
+   "position": {
+    "x": 860.0,
+    "y": 540.0
+   },
+   "displayName": ""
+  },
+  {
+   "id": "LogTxByte0",
+   "type": "Debug.TelemetryLog",
+   "domain": "app_loop",
+   "parameters": {
+    "Key": "can_tx_d0"
+   },
+   "position": {
+    "x": 600.0,
+    "y": 300.0
+   },
+   "displayName": ""
+  }
+ ],
+ "schemaVersion": 1
+}
