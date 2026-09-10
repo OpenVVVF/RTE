@@ -113,6 +113,20 @@ jobs:
         shell: bash
         run: Tools/tests/run_sim_smoke.sh --only ngspice
 
+      # Machine/plant coverage: salient PMSM field-lock and the induction
+      # machine under V/Hz (slip bounds), plus DC/DC mode — three-leg sync
+      # buck to separate buses and the paralleled variant (bus voltage
+      # tracks duty x Vdc within 5%).
+      - name: HostSim machine-plant smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only plants
+
+      - name: HostSim dcdc-mode smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only dcdc
+
       # HostSIL: builds Images/HostSIL (real Gen6FW app on the host shims)
       # and validates the sil_foc_demo trace with scripts/validate_trace.py.
       # The `rte sim` part reuses the emitted host_sim tree from the hostsim
