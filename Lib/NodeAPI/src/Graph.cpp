@@ -157,6 +157,10 @@ std::map<std::string, std::string> Graph::ComputeExcludedNodes() const {
     }
 
     // Producer -> consumers adjacency across connections and bridges.
+    // Exclusion follows data provenance rather than schedule order, so it
+    // deliberately crosses bridges: a bridge consumer still reads the
+    // producer's value (one domain step later), unlike cycle detection where
+    // a bridge is a unit delay that breaks the dependency.
     std::unordered_map<std::string, std::vector<std::string>> children;
     for (const auto& connection : connections_) {
         children[connection.from.nodeId].push_back(connection.to.nodeId);
@@ -193,6 +197,10 @@ bool Graph::Connect(Connection connection) {
     if (!EndpointExists(connection.from, PortDirection::Output)) return false;
     if (!EndpointExists(connection.to, PortDirection::Input)) return false;
     if (!TypeCheck(connection)) return false;
+    /* An input port accepts exactly one wire: the bridge check below covers
+     * the cross-domain case; without this check a second wire would be
+     * accepted here and codegen would silently bind only the first. */
+    if (ConsumerHasConnection(connection.to)) return false;
     if (ConsumerHasBridge(connection.to)) return false;
     connections_.push_back(std::move(connection));
     return true;

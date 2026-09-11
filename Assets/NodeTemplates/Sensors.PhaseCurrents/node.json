@@ -2,7 +2,7 @@
   "id": "Sensors.PhaseCurrents",
   "displayName": "Phase Currents",
   "defaultName": "PhaseCurrents",
-  "description": "Samples the three inverter phase-current channels from the platform current sensors.",
+  "description": "Samples the three inverter phase-current channels from the platform current sensors. Also exposes the latest ADC micro-burst metadata: per-phase measured-current slopes (cross-burst finite difference) and the burst timestamp consumed by the current observer's correct().",
   "maxInstances": 1,
   "isEntryPoint": true,
   "domain": "",
@@ -40,7 +40,7 @@
     },
     {
       "name": "Diudt",
-      "description": "Estimated phase-U current slope from the ADC sample burst.",
+      "description": "Estimated measured phase-U current slope in A/s: finite difference between successive ADC micro-bursts (InvertPolarity applied, raw-path sign convention). Zero until two bursts have been sampled.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -50,7 +50,7 @@
     },
     {
       "name": "Divdt",
-      "description": "Estimated phase-V current slope from the ADC sample burst.",
+      "description": "Estimated measured phase-V current slope in A/s: finite difference between successive ADC micro-bursts (InvertPolarity applied, raw-path sign convention). Zero until two bursts have been sampled.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -60,7 +60,7 @@
     },
     {
       "name": "BurstTimeUs",
-      "description": "Elapsed time in microseconds across the ADC sample burst.",
+      "description": "Timestamp of the latest latched ADC micro-burst in microseconds, as reported by platform_adc_get_burst_sample. Suitable as the t_us argument of platform_observer_correct.",
       "direction": "output",
       "type": {
         "quantity": "dimensionless",
@@ -71,8 +71,26 @@
   ],
   "parameterTypes": {
     "InvertPolarity": {
-      "description": "Negate all three phase currents to match the FOC sign convention on hardware with inverted current sensors.",
+      "description": "Negate all three phase currents (and the burst slope estimates) to match the FOC sign convention on hardware with inverted current sensors.",
       "quantity": "boolean",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "PrevIuA": {
+      "description": "Persistent slope-estimator state: previous burst-averaged phase-U current in amperes. Leave at the graph default (0).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "PrevIvA": {
+      "description": "Persistent slope-estimator state: previous burst-averaged phase-V current in amperes. Leave at the graph default (0).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "PrevBurstUs": {
+      "description": "Persistent slope-estimator state: timestamp in microseconds of the previous burst. Leave at the graph default (0).",
+      "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     }

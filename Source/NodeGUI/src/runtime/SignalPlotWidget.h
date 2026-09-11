@@ -33,7 +33,7 @@ public:
     void SetStore(const TelemetryStore* store);  // call once
     void SetSignals(const QStringList& names);   // signals assigned to this plot
     QStringList Signals() const { return signals_; }
-    void SetViewSeconds(double seconds);         // sliding X window, 0.5..60
+    void SetViewSeconds(double seconds);         // sliding X window, 0.05..60
     double ViewSeconds() const { return viewSeconds_; }
 
 public slots:

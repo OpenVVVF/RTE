@@ -1,0 +1,28 @@
+{
+  "simulation": {
+    "duration_s": 0.5,
+    "tim_isr_hz": 10000.0,
+    "app_loop_hz": 1000.0,
+    "telem_hz": 500.0,
+    "trace_csv": "ngspice_pmsm_trace.csv",
+    "plant": {
+      "backend": "ngspice",
+      "netlist": "plants/inverter_pmsm.cir",
+      "substeps": 4
+    }
+  },
+  "motor": {
+    "rs_ohm": 0.05,
+    "ld_h": 0.0001,
+    "lq_h": 0.0001,
+    "flux_wb": 0.008,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 0.0005,
+    "friction_nm_per_rad_s": 0.001,
+    "vdc_v": 48.0
+  },
+  "throttle_a": {
+    "type": "constant",
+    "value": 1.0
+  }
+}

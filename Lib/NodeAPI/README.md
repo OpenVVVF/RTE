@@ -175,7 +175,7 @@ if (!result.ok) {
     for (const auto& error : result.errors) {
         // "node 'x' has no timing domain assigned"
         // "connection 'c1' connects domain 'adc_sample' to domain 'app_loop'; ..."
-        // "graph contains a directed cycle involving nodes: a b c"
+        // "graph contains an algebraic cycle of plain connections involving nodes: a b c; ..."
     }
 }
 ```
@@ -185,7 +185,7 @@ Rules:
 - Connections may only connect nodes in the same domain.
 - Bridges may only connect nodes in different domains (use a `Connection` for same-domain links).
 - Entry-point node types (`isEntryPoint = true`) may not have any incoming connections or bridges.
-- The graph must be a DAG (no directed cycles); bridges participate in cycle detection.
+- Plain connections must not form a cycle (an algebraic, within-step loop). A cycle that passes through a bridge is legal: a bridge is a unit delay — the producer's value is stored during its own domain's step and read by the consumer in a later step — so bridge-mediated cycles are the supported way to close a feedback loop across domains.
 
 `NodeType::maxInstances` limits how many instances of a type can be added to the graph (`0` = unlimited).
 

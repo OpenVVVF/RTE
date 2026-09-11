@@ -1,0 +1,79 @@
+* HostSim 3-leg synchronous buck -> 3 independent DC buses (AVERAGED model).
+*
+* Why averaged: the HostSim<->ngspice seam injects one voltage per control
+* step (zero-order hold across the tick); there is no per-carrier-cycle
+* signal path, so each leg's switch node is an ideal behavioral V-source
+* driven by the host at the control rate with duty*VDC. Inductor ripple and
+* dead-time effects are intentionally out of scope -- the same
+* "averaged-duty drive" convention the motor netlists (inverter_rl.cir /
+* inverter_pmsm.cir) already use.
+*
+* Contract with NgspicePlant dcdc mode (src/plant/ngspice_plant.cpp,
+* scenario: plant.mode "dcdc"):
+*   Vu/Vv/Vw    external sources   per-leg averaged switch-node voltage,
+*                                  driven by the host with duty_pct * VDC
+*   Vsen1..3    0V sense sources   leg current read-back: i(vsenN) > 0 means
+*                                  current flowing leg -> bus (power out)
+*   bus1..3     bus nodes          probed per control step as v(busN)
+* The sense sources exist so the current read-back sign/point is fixed once,
+* here in the netlist, instead of depending on how the driven sources are
+* wired. Do not rename Vu/Vv/Vw/Vsen1..3/bus1..3; dcdc-mode detection keys
+* on the Vsen trio.
+*
+* alterparam tolerance: NgspicePlant::ApplyParams always pushes
+* RS / LS / VDC (from the scenario motor.rs_ohm / ld_h+ld_q / vdc_v), so all
+* three are defined AND used here:
+*   VDC  documented retune knob; the host scales duty*VDC itself, so it is
+*        intentionally not referenced by any element
+*   RS   per-leg conduction resistance (FET Rds_on + winding DCR)
+*   LS   leg filter inductance; the scenario's motor.ld_h/lq_h set it, same
+*        convention as the motor netlists
+* DCDC-side retuning (edit or `alterparam` at runtime): BUS_CAP_UF,
+* BUS_ESR_MO, LOAD1/2/3_OHM. Note ngspice brace substitution spacing: unit
+* suffixes must live inside the braces — `{BUS_CAP_UF}u` expands to
+* "470 u" and the element is dropped with "unknown parameter (u)".
+
+.param VDC = 48.0
+.param RS = 0.02
+.param LS = 33u
+.param BUS_CAP_UF = 470
+.param BUS_ESR_MO = 20
+.param LOAD1_OHM = 5
+.param LOAD2_OHM = 10
+.param LOAD3_OHM = 2.5
+
+* Leg 1: averaged switch node -> sense -> RS (conduction loss) -> L -> bus
+Vu u1_sw 0 dc 0 external
+Vsen1 u1_sw u1_r dc 0
+Rs1 u1_r u1_f {RS}
+L1 u1_f bus1 {LS}
+* Bus 1: capacitor (with ESR) + resistive load
+Cbus1 bus1 bus1_c {BUS_CAP_UF*1e-6}
+Resr1 bus1_c 0 {BUS_ESR_MO*1e-3}
+Rload1 bus1 0 {LOAD1_OHM}
+
+* Leg 2
+Vv u2_sw 0 dc 0 external
+Vsen2 u2_sw u2_r dc 0
+Rs2 u2_r u2_f {RS}
+L2 u2_f bus2 {LS}
+Cbus2 bus2 bus2_c {BUS_CAP_UF*1e-6}
+Resr2 bus2_c 0 {BUS_ESR_MO*1e-3}
+Rload2 bus2 0 {LOAD2_OHM}
+
+* Leg 3
+Vw u3_sw 0 dc 0 external
+Vsen3 u3_sw u3_r dc 0
+Rs3 u3_r u3_f {RS}
+L3 u3_f bus3 {LS}
+Cbus3 bus3 bus3_c {BUS_CAP_UF*1e-6}
+Resr3 bus3_c 0 {BUS_ESR_MO*1e-3}
+Rload3 bus3 0 {LOAD3_OHM}
+
+* UIC: zero-current / zero-voltage cold start; without it the OP shorts the
+* inductors and opens the capacitors. TSTOP is deliberately generous -- the
+* host pauses the run with stop breakpoints each control substep and can
+* abandon the analysis mid-way.
+.tran 10us 10s uic
+
+.end

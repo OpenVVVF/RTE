@@ -5,9 +5,13 @@
  * is computed from the analytical MTPA condition.
  *
  * Torque equation: T = (3/2)*pp*(Lambda*Iq + (Ld-Lq)*Id*Iq)
- * MTPA condition:  Lambda*cos(beta) + (Ld-Lq)*Is*cos(2*beta) = 0
- * Solving for cos(beta) with delta = Lq - Ld:
- *   cos(beta) = (sqrt(Lambda^2 + 8*delta^2*Is^2) - Lambda) / (4*delta*Is)
+ * The current angle beta is measured from the NEGATIVE d axis, so
+ *   Id = -Is*cos(beta),  Iq = Is*sin(beta).
+ * MTPA condition:  Lambda*cos(beta) - (Ld-Lq)*Is*cos(2*beta) = 0
+ * Solving the resulting quadratic in Is (delta = Lq - Ld) gives the
+ * closed-form d-axis reference:
+ *   id = (Lambda - sqrt(Lambda^2 + 8*delta^2*Is^2)) / (4*delta)
+ * which is negative for IPMSM (delta > 0) and collapses to 0 for SPM.
  */
 const float i_cmd = CurrentRef * CurrentMax.in(au::amperes);
 const float i_abs = fabsf(i_cmd);
@@ -17,10 +21,11 @@ if (i_abs > 1e-6f) {
     const float delta = Lq - Ld;
     if (fabsf(delta) > 1e-9f) {
         const float radical = sqrtf(Lambda * Lambda + 8.0f * delta * delta * i_abs * i_abs);
-        float cos_beta = (radical - Lambda) / (4.0f * delta * i_abs);
-        if (cos_beta > 1.0f) cos_beta = 1.0f;
-        if (cos_beta < -1.0f) cos_beta = -1.0f;
-        id_ref = i_abs * cos_beta;
+        id_ref = (Lambda - radical) / (4.0f * delta);
+        /* Keep the reference inside the current circle for degenerate
+         * parameter sets (e.g. Ld > Lq at very high current). */
+        if (id_ref > i_abs) id_ref = i_abs;
+        if (id_ref < -i_abs) id_ref = -i_abs;
     }
 }
 

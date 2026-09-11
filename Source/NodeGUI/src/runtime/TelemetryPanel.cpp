@@ -39,6 +39,12 @@ void TelemetryPanel::SetViewSeconds(double seconds) {
     }
 }
 
+void TelemetryPanel::SetGraphViewSeconds(const std::array<double, 3>& seconds) {
+    for (int i = 0; i < 3; ++i) {
+        plots_[i]->SetViewSeconds(seconds[i]);
+    }
+}
+
 void TelemetryPanel::OnStoreChanged() {
     for (auto* plot : plots_) {
         plot->Refresh();

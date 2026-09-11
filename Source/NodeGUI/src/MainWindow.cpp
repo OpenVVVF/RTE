@@ -9,6 +9,9 @@
 #include "runtime/RuntimeTab.h"
 #include "runtime/SignalTablePanel.h"
 
+#include "simulation/ScenarioDialog.h"
+#include "simulation/SimRunner.h"
+
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Platform.h>
 
@@ -51,6 +54,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <cstdio>
 #include <filesystem>
 #include <set>
 
@@ -439,14 +443,33 @@ MainWindow::MainWindow(QWidget* parent)
     }
 }
 
+MainWindow::~MainWindow() {
+    // Stack-destroyed (e.g. after --sim-smoke exits) without a closeEvent:
+    // make sure the sim child tree is dead before member teardown starts.
+    ShutdownSimRunner();
+}
+
+void MainWindow::ShutdownSimRunner() {
+    if (!simRunner_) {
+        return;
+    }
+    // Detach before stopping: the kill inside Shutdown() must not deliver
+    // finished()/output() into the lambdas above while members die.
+    disconnect(simRunner_, nullptr, this, nullptr);
+    simStopRequested_ = true;
+    simRunner_->Shutdown();
+}
+
 void MainWindow::SetupRuntime(const QString& serialPort,
                               bool simulate,
-                              runtime::Protocol protocol) {
+                              runtime::Protocol protocol,
+                              const QString& tcpHost,
+                              int tcpPort) {
     const QString effectiveSerialPort =
         serialPort.trimmed().isEmpty() ? preferences_.serialPort : serialPort.trimmed();
     preferences_.serialPort = effectiveSerialPort;
-    runtimeController_ =
-        std::make_unique<runtime::RuntimeController>(effectiveSerialPort, simulate, protocol);
+    runtimeController_ = std::make_unique<runtime::RuntimeController>(
+        effectiveSerialPort, simulate, protocol, tcpHost, tcpPort);
     localSessionServer_ = std::make_unique<runtime::LocalSessionServer>(
         runtimeController_->Store(), this);
 
@@ -522,9 +545,71 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     logsLayout->addWidget(buildLogView_, 1);
     editorConsoleTabs_->addTab(logsPage, QStringLiteral("Logs"));
 
+    // Simulation page: streamed `rte sim` output for Build & Run Simulation.
+    auto* simPage = new QWidget(editorConsoleTabs_);
+    auto* simLayout = new QVBoxLayout(simPage);
+    simLayout->setContentsMargins(0, 0, 0, 0);
+    auto* clearSimLogButton = new QPushButton(QStringLiteral("Clear"), simPage);
+    connect(clearSimLogButton, &QPushButton::clicked, this, [this] {
+        if (simLogView_) {
+            simLogView_->clear();
+        }
+    });
+    simLayout->addWidget(clearSimLogButton, 0, Qt::AlignLeft);
+    simLogView_ = new QPlainTextEdit(simPage);
+    simLogView_->setReadOnly(true);
+    simLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
+    simLayout->addWidget(simLogView_, 1);
+    editorConsoleTabs_->addTab(simPage, QStringLiteral("Simulation"));
+
     editorConsoleDock_->setWidget(editorConsoleTabs_);
     addDockWidget(Qt::BottomDockWidgetArea, editorConsoleDock_);
     editorConsoleDock_->hide();
+
+    // The Build & Run Simulation runner. Output streams to the Simulation
+    // page; the live-endpoint announcement re-points the attach and jumps to
+    // the Runtime tab.
+    simRunner_ = new simulation::SimRunner(this);
+    connect(simRunner_, &simulation::SimRunner::output,
+            this, [this](const QString& text) { AppendSimLog(text); });
+    connect(simRunner_, &simulation::SimRunner::liveEndpoint,
+            this, [this](const QString& host, int port) {
+                AppendSimLog(QStringLiteral("[sim] live telemetry endpoint %1:%2\n")
+                                 .arg(host)
+                                 .arg(port));
+                if (simAttached_ && runtimeController_) {
+                    // A custom scenario can pick a non-default listen_port;
+                    // re-attach to whatever host_sim actually announced.
+                    // ConnectTcpOverride normalizes wildcard bind addresses
+                    // and ignores an endpoint it is already attached to.
+                    runtimeController_->ConnectTcpOverride(host, port);
+                }
+                // The simulator is up: switch from the build log to live plots.
+                if (appSwitcher_ && appSwitcher_->count() > 1) {
+                    appSwitcher_->setCurrentIndex(1);
+                }
+            });
+    connect(simRunner_, &simulation::SimRunner::finished,
+            this, [this](int exitCode, QProcess::ExitStatus status) {
+                OnSimFinished(exitCode, status == QProcess::CrashExit);
+            });
+    connect(simRunner_, &simulation::SimRunner::attachTimeout,
+            this, [this](const QString& message) {
+                AppendSimLog(message + u'\n');
+                statusBar()->showMessage(
+                    QStringLiteral(
+                        "Simulation live endpoint not announced after 60 s of "
+                        "silence — see the Simulation log for likely causes; "
+                        "attach keeps retrying in the background."),
+                    15000);
+            });
+
+    if (runSimAction_) {
+        runSimAction_->setEnabled(true);
+    }
+    if (scenarioEditorAction_) {
+        scenarioEditorAction_->setEnabled(true);
+    }
 
     runtimeController_->Start();
 
@@ -805,6 +890,47 @@ void MainWindow::SetupMenu() {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
     });
 
+    // HostSim graph-mode simulation: emit + build + run --live via `rte sim`,
+    // then attach the Runtime tab to its TCP telemetry.
+    QMenu* simulationMenu = menuBar()->addMenu(QStringLiteral("&Simulation"));
+
+    runSimAction_ =
+        simulationMenu->addAction(QStringLiteral("&Build && Run Simulation (Live)..."));
+    runSimAction_->setToolTip(QStringLiteral(
+        "Emit the graph into HostSim, build host_sim, run it live, and attach "
+        "the Runtime tab to its telemetry"));
+    RegisterShortcut(runSimAction_,
+                     QStringLiteral("simulation.buildAndRun"),
+                     QStringLiteral("Simulation"),
+                     QStringLiteral("Build & Run Simulation (Live)"),
+                     QKeySequence(Qt::Key_F6));
+    connect(runSimAction_, &QAction::triggered, this, &MainWindow::OnRunSimulation);
+
+    stopSimAction_ = simulationMenu->addAction(QStringLiteral("&Stop Simulation"));
+    RegisterShortcut(stopSimAction_,
+                     QStringLiteral("simulation.stop"),
+                     QStringLiteral("Simulation"),
+                     QStringLiteral("Stop Simulation"),
+                     QKeySequence(QStringLiteral("Shift+F6")));
+    connect(stopSimAction_, &QAction::triggered, this, &MainWindow::OnStopSimulation);
+
+    simulationMenu->addSeparator();
+
+    scenarioEditorAction_ =
+        simulationMenu->addAction(QStringLiteral("Scenario &Editor..."));
+    RegisterShortcut(scenarioEditorAction_,
+                     QStringLiteral("simulation.scenarioEditor"),
+                     QStringLiteral("Simulation"),
+                     QStringLiteral("Scenario Editor"),
+                     {});
+    connect(scenarioEditorAction_, &QAction::triggered, this,
+            &MainWindow::OnScenarioEditor);
+
+    // Enabled once SetupRuntime has created the runtime controller/panels.
+    runSimAction_->setEnabled(false);
+    stopSimAction_->setEnabled(false);
+    scenarioEditorAction_->setEnabled(false);
+
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu_ = viewMenu;
 
@@ -1012,6 +1138,226 @@ bool MainWindow::EnsureGraphSaved() {
         return false;
     }
     return DoSave(fileName.toStdString());
+}
+
+void MainWindow::ShowSimulationLog() {
+    if (!editorConsoleDock_ || !editorConsoleTabs_ || !simLogView_) {
+        return;
+    }
+    if (appSwitcher_->currentIndex() != 0) {
+        appSwitcher_->setCurrentIndex(0);
+    }
+    editorConsoleDock_->show();
+    editorConsoleDock_->raise();
+    // "Simulation" is the third page of the editor console (Console, Logs,
+    // Simulation).
+    editorConsoleTabs_->setCurrentIndex(2);
+}
+
+void MainWindow::AppendSimLog(const QString& text) {
+    if (!simLogView_ || text.isEmpty()) {
+        return;
+    }
+    QTextCursor cursor = simLogView_->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(text);
+    simLogView_->setTextCursor(cursor);
+    simLogView_->verticalScrollBar()->setValue(
+        simLogView_->verticalScrollBar()->maximum());
+}
+
+void MainWindow::OnRunSimulation() {
+    if (!runtimeController_ || !simRunner_) {
+        ShowToast(QStringLiteral("Runtime is not initialized"));
+        return;
+    }
+    if (simRunner_->IsRunning()) {
+        ShowToast(QStringLiteral("A simulation is already running"));
+        return;
+    }
+
+    // Same rule as the firmware path: the graph on disk is what gets run.
+    if (!EnsureGraphSaved()) {
+        return;
+    }
+    const QString graphPath =
+        QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
+
+    simulation::ScenarioDialog dialog(graphPath, /*editOnly=*/false, this);
+    if (dialog.exec() != QDialog::Accepted || !dialog.RunRequested()) {
+        return;
+    }
+    StartSimulation(graphPath, dialog.SelectedScenarioPath());
+}
+
+void MainWindow::OnScenarioEditor() {
+    if (currentPath_.empty()) {
+        ShowToast(QStringLiteral("Open or save a graph first"));
+        return;
+    }
+    const QString graphPath =
+        QFileInfo(QString::fromStdString(currentPath_)).absoluteFilePath();
+    simulation::ScenarioDialog dialog(graphPath, /*editOnly=*/true, this);
+    dialog.exec();
+}
+
+void MainWindow::OnStopSimulation() {
+    if (simRunner_ && simRunner_->IsRunning()) {
+        simStopRequested_ = true;
+        simRunner_->Stop();
+    }
+}
+
+bool MainWindow::StartSimulation(const QString& graphPath, const QString& scenarioPath) {
+    QString error;
+    QString rteError;
+    const QString rtePath = simulation::SimRunner::FindRteExecutable(&rteError);
+    if (rtePath.isEmpty()) {
+        AppendSimLog(QStringLiteral("\n[error] %1\n").arg(rteError));
+        ShowSimulationLog();
+        ShowToast(rteError);
+        return false;
+    }
+
+    simulation::SimRunRequest request;
+    // rte anchors relative paths to ITS working directory, which SimRunner
+    // sets to the graph's directory; normalize to absolute here.
+    request.graphPath = QFileInfo(graphPath).absoluteFilePath();
+    request.scenarioPath = scenarioPath.isEmpty()
+        ? QString{}
+        : QFileInfo(scenarioPath).absoluteFilePath();
+    AppendSimLog(
+        QStringLiteral("\n============================================================\n"
+                       "Build & Run Simulation\n"
+                       "Graph:    %1\n"
+                       "Scenario: %2\n"
+                       "============================================================\n")
+            .arg(graphPath,
+                 scenarioPath.isEmpty() ? QStringLiteral("(auto)") : scenarioPath));
+    if (!simRunner_->Start(request, &error)) {
+        AppendSimLog(QStringLiteral("[error] %1\n").arg(error));
+        ShowSimulationLog();
+        return false;
+    }
+
+    ShowSimulationLog();
+    if (runSimAction_) runSimAction_->setEnabled(false);
+    if (stopSimAction_) stopSimAction_->setEnabled(true);
+    simStopRequested_ = false;
+    statusBar()->showMessage(QStringLiteral("Simulation starting (emit, build, live run)..."));
+
+    // Attach immediately: the TCP client retries every 2 s, so it picks up
+    // host_sim as soon as the build finishes and it starts listening. The
+    // live-endpoint announcement re-attaches if the scenario uses a
+    // non-default port.
+    runtimeController_->ConnectTcpOverride(
+        QString::fromLatin1(simulation::kDefaultLiveHost),
+        simulation::kDefaultLivePort);
+    simAttached_ = true;
+    return true;
+}
+
+void MainWindow::OnSimFinished(int exitCode, bool crashed) {
+    const bool userStop = simStopRequested_;
+    simStopRequested_ = false;
+    AppendSimLog(QStringLiteral("[sim] %1 (exit code %2)\n")
+                     .arg(crashed ? QStringLiteral("crashed")
+                          : userStop ? QStringLiteral("stopped by user")
+                                     : QStringLiteral("exited"))
+                     .arg(exitCode));
+    if (simAttached_ && runtimeController_) {
+        runtimeController_->ClearLinkOverride();
+        simAttached_ = false;
+    }
+    if (runSimAction_) runSimAction_->setEnabled(true);
+    if (stopSimAction_) stopSimAction_->setEnabled(false);
+    statusBar()->showMessage(userStop || exitCode == 0
+                                 ? QStringLiteral("Simulation stopped")
+                                 : QStringLiteral("Simulation failed (exit code %1)")
+                                       .arg(exitCode),
+                             5000);
+}
+
+void MainWindow::StartSimSmoke(const QString& graphPath) {
+    if (!runtimeController_ || !simRunner_) {
+        std::printf("SIM_SMOKE FAIL: runtime/sim runner not initialized\n");
+        QCoreApplication::exit(1);
+        return;
+    }
+    simSmokeActive_ = true;
+
+    auto finish = [this](bool pass, const QString& detail) {
+        if (!simSmokeActive_) {
+            return;
+        }
+        simSmokeActive_ = false;
+        std::printf("SIM_SMOKE %s: %s\n", pass ? "PASS" : "FAIL", qPrintable(detail));
+        if (!pass && simLogView_) {
+            // Context for CI failure diagnosis: the tail of the rte stream.
+            const QString log = simLogView_->toPlainText();
+            const QString tail = log.mid(qMax(0, log.size() - 4000));
+            std::printf("---- rte sim output tail ----\n%s\n------------------------------\n",
+                        qPrintable(tail));
+        }
+        std::fflush(stdout);
+        if (simRunner_->IsRunning()) {
+            simStopRequested_ = true;
+            simRunner_->Stop();
+            // Quit once the process tree is gone; bail out anyway after 8 s.
+            connect(simRunner_, &simulation::SimRunner::finished, qApp,
+                    [pass] { QCoreApplication::exit(pass ? 0 : 1); });
+            QTimer::singleShot(8000, qApp, [pass] { QCoreApplication::exit(pass ? 0 : 1); });
+        } else {
+            QCoreApplication::exit(pass ? 0 : 1);
+        }
+    };
+
+    // rte exiting before any telemetry means the emit/build/run phase failed.
+    connect(simRunner_, &simulation::SimRunner::finished,
+            this, [finish](int exitCode, QProcess::ExitStatus) {
+                finish(false,
+                       QStringLiteral("rte sim exited before telemetry attach (exit %1)")
+                           .arg(exitCode));
+            });
+
+    // Overall watchdog: first-time emit+build dominates the budget, and a
+    // cold CI machine may build HostSim from scratch inside the smoke run.
+    auto* watchdog = new QTimer(this);
+    watchdog->setSingleShot(true);
+    watchdog->setInterval(600000);
+    connect(watchdog, &QTimer::timeout, this,
+            [finish] { finish(false, QStringLiteral("timeout waiting for telemetry")); });
+    watchdog->start();
+
+    auto* poll = new QTimer(this);
+    poll->setInterval(200);
+    connect(poll, &QTimer::timeout, this, [this, finish] {
+        if (!runtimeController_) {
+            return;
+        }
+        if (!simSmokeAttached_) {
+            if (runtimeController_->IsTcpConnected()) {
+                simSmokeAttached_ = true;
+                simSmokeBaselineFrames_ =
+                    runtimeController_->Store().GetStatsLine().goodFrames;
+            }
+            return;
+        }
+        const uint64_t good = runtimeController_->Store().GetStatsLine().goodFrames;
+        const auto signalNames = runtimeController_->Store().SignalNames();
+        if (good > simSmokeBaselineFrames_ && !signalNames.empty()) {
+            finish(true,
+                   QStringLiteral("tcp attached, %1 frames decoded, %2 signals (e.g. %3)")
+                       .arg(good - simSmokeBaselineFrames_)
+                       .arg(signalNames.size())
+                       .arg(QString::fromStdString(signalNames.front())));
+        }
+    });
+    poll->start();
+
+    if (!StartSimulation(graphPath, QString{})) {
+        finish(false, QStringLiteral("could not start rte sim (see Simulation log)"));
+    }
 }
 
 void MainWindow::ShowBuildLogs() {
@@ -1325,6 +1671,10 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // A staged (async) Stop() could still deliver finished() via the QTimer
+    // escalation or the SimRunner destructor while member teardown is under
+    // way; stop to completion (signal-free) before anything is destroyed.
+    ShutdownSimRunner();
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }

@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -69,6 +70,22 @@ std::wstring WindowsQuote(const std::wstring& value) {
     }
     out.append(slashes * 2, L'\\');
     return out + L"\"";
+}
+#else
+/* Child pid a caught signal should be forwarded to (-1 = none). Set/reset by
+ * RunProcess around the wait only for callers that opt in via
+ * ProcessSpec::terminateWithParent. Process launches are serialized by this
+ * runner's callers, so a single slot is sufficient. */
+volatile sig_atomic_t g_forwardPid = -1;
+
+void ForwardToChild(int sig) {
+    if (g_forwardPid > 0) ::kill(g_forwardPid, sig);
+    struct sigaction restore{};
+    restore.sa_handler = SIG_DFL;
+    sigemptyset(&restore.sa_mask);
+    sigaction(sig, &restore, nullptr);
+    ::raise(sig);
+    _exit(128 + sig);
 }
 #endif
 
@@ -203,6 +220,28 @@ ProcessResult RunProcess(const ProcessSpec& spec, ProcessOutput output) {
     }
     result.started = true;
     close(pipes[1]);
+
+    struct sigaction prevTerm{};
+    struct sigaction prevInt{};
+    struct sigaction prevHup{};
+    bool forwarding = false;
+    if (spec.terminateWithParent) {
+        g_forwardPid = pid;
+        struct sigaction forward{};
+        forward.sa_handler = &ForwardToChild;
+        sigemptyset(&forward.sa_mask);
+        const bool okTerm = sigaction(SIGTERM, &forward, &prevTerm) == 0;
+        const bool okInt = sigaction(SIGINT, &forward, &prevInt) == 0;
+        const bool okHup = sigaction(SIGHUP, &forward, &prevHup) == 0;
+        forwarding = okTerm && okInt && okHup;
+        if (!forwarding) {
+            g_forwardPid = -1;
+            if (okTerm) sigaction(SIGTERM, &prevTerm, nullptr);
+            if (okInt) sigaction(SIGINT, &prevInt, nullptr);
+            if (okHup) sigaction(SIGHUP, &prevHup, nullptr);
+        }
+    }
+
     std::array<char, 4096> buffer{};
     std::string pending;
     ssize_t count = 0;
@@ -213,6 +252,13 @@ ProcessResult RunProcess(const ProcessSpec& spec, ProcessOutput output) {
     if (!pending.empty() && output) output(pending);
     int status = 0;
     while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+
+    if (forwarding) {
+        g_forwardPid = -1;
+        sigaction(SIGTERM, &prevTerm, nullptr);
+        sigaction(SIGINT, &prevInt, nullptr);
+        sigaction(SIGHUP, &prevHup, nullptr);
+    }
     if (WIFEXITED(status)) result.exitCode = WEXITSTATUS(status);
     else if (WIFSIGNALED(status)) result.exitCode = 128 + WTERMSIG(status);
 #endif

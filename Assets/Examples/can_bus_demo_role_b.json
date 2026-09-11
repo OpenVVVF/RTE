@@ -1,0 +1,11 @@
+{
+  "comment": "can_bus_demo role B (spoke side of a two-instance CAN bridge run). Role=2 transmits id 0x2A2 and listens for 0x2A1; D0 carries a 0.9 s sawtooth, deliberately slower than role A's 0.4 s so the two directions are easy to tell apart in telemetry. Run against can_bus_demo_role_a.json — recipe in docs/simulation.md, 'Graph-level CAN / two-inverter pattern'.",
+  "simulation": {
+    "app_loop_hz": 1000,
+    "telem_hz": 500
+  },
+  "vars": {
+    "Role": 2.0,
+    "TxPeriod": 0.9
+  }
+}

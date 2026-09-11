@@ -20,7 +20,10 @@ public:
 
 public slots:
     void SetGraphSignals(const std::array<QStringList, 3>& sets);
+    // Applies one rolling window to all three plots (shared slider path).
     void SetViewSeconds(double seconds);
+    // Applies per-plot rolling windows (built-in SPWM/FOC layout presets).
+    void SetGraphViewSeconds(const std::array<double, 3>& seconds);
 
 private slots:
     void OnStoreChanged();

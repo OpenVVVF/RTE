@@ -10,7 +10,7 @@ validation, firmware builds, and flashing are finite CLI jobs.
 - `RTEAutomation` contains reusable, Qt-free generation, CMake, process,
   flashing, cache, and Studio-session code.
 - `rte` exposes that library to terminals, scripts, CI, RTE Studio, and MCP.
-- `rte-studio` edits graphs and owns the live device session. It launches `rte`
+- `RTEStudio` edits graphs and owns the live device session. It launches `rte`
   with argument arrays and consumes JSON Lines events; it does not invoke a
   shell or host the build system.
 - `RTECodeEmitter` and `RTEFirmwareBuilder` are compatibility wrappers. New
@@ -38,10 +38,48 @@ rte validate --graph graph.json --templates Assets/NodeTemplates
 rte generate --graph graph.json --base-source Images/Gen6FW --output out
 rte build --graph graph.json --base-source Images/Gen6FW
 rte flash --firmware firmware.bin --serial /dev/ttyACM0
+rte sim --graph graph.json [--scenario file.json] [--base-source DIR] [--name NAME]
+        [--live] [--realtime F] [--no-build] [--output-format text|json|jsonl]
 ```
 
 Use `--format json` for one structured result or `--format jsonl` for progress
 events. Commands never require a local web server.
+
+`rte sim` emits a graph into the HostSim base image (default `Images/HostSim`
+in the same checkout, discovered by walking up from the `rte` executable),
+builds it with cmake under `build/hostsim_<name>_emitted_build`, and runs
+`host_sim` in the foreground. `<name>` defaults to the graph file stem and is
+restricted to `[A-Za-z0-9_.-]` (no separators, not `.`/`..`) because it
+composes build directories that are wiped between emits. When `rte` runs
+outside a source checkout (an installed binary finds no repo root), the sim
+workspace moves to the user cache (`~/.cache/rte/sim/` on Linux) instead of
+the install prefix.
+
+- `RTE_EMITTER` overrides the RTECodeEmitter executable path; a set-but-missing
+  value falls through to the emitter next to `rte` (or on `PATH`), and the
+  final error names the bad path.
+- Without `--scenario`, the scenario matching the effective name — `--name` if
+  given, else the graph stem — minus a trailing `_graph` under
+  `<base-source>/scenarios/` is used, falling back to
+  `scenarios/default_motor.json` — the same rule as
+  `Images/HostSim/scripts/run_spwm_live.sh`.
+- Batch mode defaults to `--realtime 0` (as fast as the host can run); with
+  `--live` the default is 1.0 (wall-clock). Live mode reports the IVP telemetry
+  endpoint in the progress message/structured event — the scenario's
+  `simulation.listen_host`/`listen_port` when set (passed to `host_sim` as
+  `--listen`, because a bare `--live` there would otherwise pin its CLI
+  defaults), else the default `127.0.0.1:14608` — and stays in the foreground
+  until Ctrl+C.
+- POSIX: SIGINT/SIGTERM/SIGHUP delivered to `rte` are forwarded to the running
+  sim child before exit, so an interrupted run never orphans `host_sim`.
+  Windows: `host_sim` is created with `CREATE_NO_WINDOW`, so Ctrl+C in a
+  console does not reach it and closing the terminal can leave it running —
+  stop it with Task Manager or `Stop-Process -Name host_sim`.
+- The simulator's trace CSV is a batch-mode artifact (live runs write none);
+  it lands in the run directory
+  `build/hostsim_<name>_emitted_build/run/`; the completed run reports the
+  absolute path as a `sim-trace` artifact event. `--no-build` reuses the most
+  recent emit and/or build for the name.
 
 `rte flash` controls MCP2221A GP0 (BOOT0) and GP1 (active-low NRST) directly
 before and after invoking STM32CubeProgrammer. It uses the kernel GPIO

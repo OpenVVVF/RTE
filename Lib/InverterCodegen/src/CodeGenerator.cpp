@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <regex>
 #include <set>
@@ -41,6 +43,22 @@ bool IsValidIdentifier(std::string_view id) {
     if (std::isdigit(static_cast<unsigned char>(id[0]))) return false;
     for (char c : id) {
         if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') return false;
+    }
+    return true;
+}
+
+/* Bridge ids are spliced into C++ symbol names via Capitalize() ("Bridge" +
+ * Capitalize(id)), so they may only contain characters that either survive in
+ * an identifier (alnum, '_') or act as Capitalize() word separators
+ * ('-', ' ').  Anything else (e.g. '.') would silently leak into the emitted
+ * symbol and produce uncompilable code. */
+bool IsValidBridgeId(std::string_view id) {
+    if (id.empty()) return false;
+    for (char c : id) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' &&
+            c != '-' && c != ' ') {
+            return false;
+        }
     }
     return true;
 }
@@ -215,33 +233,92 @@ std::string WireTypeToCpp(const NodeAPI::WireType& type) {
     return "float";
 }
 
-std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string& value) {
+/* Graph parameter values are plain strings and are spliced verbatim into
+ * generated C++.  Parse them as decimal floats and re-emit a canonical
+ * literal so that e.g. "0x10" cannot compile as hex 16, "nan" is not emitted
+ * as a bare (undefined) identifier, and "10" gets a decimal point so the
+ * appended 'f' suffix is legal ("10f" is not a C++ literal).
+ *
+ * The non-finite spellings inf/infinity/nan (case-insensitive, optional sign
+ * for inf) are accepted explicitly and emitted as the INFINITY / NAN macros;
+ * the generated sources include <math.h>. */
+std::optional<std::string> CanonicalFloatLiteral(const std::string& value) {
+    const size_t begin = value.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) return std::nullopt;
+    const size_t end = value.find_last_not_of(" \t\r\n");
+    std::string s = value.substr(begin, end - begin + 1);
+
+    std::string lower;
+    lower.reserve(s.size());
+    for (char c : s) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    std::string_view body(lower);
+    bool negative = false;
+    if (body.starts_with('-')) {
+        negative = true;
+        body.remove_prefix(1);
+    } else if (body.starts_with('+')) {
+        body.remove_prefix(1);
+    }
+    if (body == "inf" || body == "infinity") return negative ? "(-INFINITY)" : "INFINITY";
+    if (body == "nan" && !negative) return "NAN";
+    /* Everything else that strtof would misread is rejected here: hex floats
+     * ("0x10" parses as 16), nan(...) payloads, and the inf/nan spellings not
+     * handled above. */
+    if (body.starts_with("0x") || body.starts_with("nan") || body.starts_with("inf")) {
+        return std::nullopt;
+    }
+
+    char* parseEnd = nullptr;
+    std::strtof(s.c_str(), &parseEnd);
+    if (parseEnd != s.c_str() + s.size()) return std::nullopt;  // partial or no parse
+
+    if (s.find_first_of(".eE") == std::string::npos) s += ".0";
+    return s + "f";
+}
+
+std::optional<std::string> ParameterValueToCpp(const NodeAPI::WireType& type,
+                                               const std::string& value) {
     // Emit a C++ expression that constructs the right unit-wrapped value from a
-    // plain numeric literal. Framed parameter types are not supported.
+    // plain numeric literal. Framed parameter types get the bare literal.
+    if (type.quantity == NodeAPI::Quantity::String) {
+        // String params are stored unquoted in the graph JSON; quote them
+        // for C++ emission.
+        return "\"" + value + "\"";
+    }
+    const auto literal = CanonicalFloatLiteral(value);
+    if (!literal) return std::nullopt;
     switch (type.quantity) {
         case NodeAPI::Quantity::Voltage:
             if (type.frame != NodeAPI::Frame::Scalar) break;
-            return "rte::Volts(" + value + "f)";
+            return "rte::Volts(" + *literal + ")";
         case NodeAPI::Quantity::Current:
             if (type.frame != NodeAPI::Frame::Scalar) break;
-            return "rte::Amperes(" + value + "f)";
+            return "rte::Amperes(" + *literal + ")";
         case NodeAPI::Quantity::AngularVelocity:
-            return "rte::RadiansPerSecond(" + value + "f)";
+            return "rte::RadiansPerSecond(" + *literal + ")";
         case NodeAPI::Quantity::Torque:
-            return "rte::NewtonMeters(" + value + "f)";
+            return "rte::NewtonMeters(" + *literal + ")";
         case NodeAPI::Quantity::Temperature:
-            return "rte::Celsius(" + value + "f)";
+            return "rte::Celsius(" + *literal + ")";
         case NodeAPI::Quantity::Dimensionless:
         case NodeAPI::Quantity::Boolean:
-            return value + "f";
+            return *literal;
         case NodeAPI::Quantity::String:
-            // String params are stored unquoted in the graph JSON; quote them
-            // for C++ emission.
-            return "\"" + value + "\"";
+            break;  // handled above
     }
     // Unknown / framed: fall back to a plain float so existing templates keep
     // working, but this loses unit safety for those parameters.
-    return value + "f";
+    return *literal;
+}
+
+/* Parameter expression for emission: typed parameters go through
+ * ParameterValueToCpp; parameters the type does not declare are still emitted
+ * (as dimensionless state members) and therefore need the same validation. */
+std::optional<std::string> ParameterExpr(const std::optional<NodeAPI::WireType>& paramType,
+                                         const std::string& value) {
+    if (paramType) return ParameterValueToCpp(*paramType, value);
+    return CanonicalFloatLiteral(value);
 }
 
 // Config nodes (type id "config.*") expose a FRAM-backed value by a user-chosen
@@ -477,9 +554,50 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         }
     }
 
+    // Validate bridge ids: each one is spliced into a C++ symbol
+    // ("Bridge" + Capitalize(id)), so reject characters that would leak into
+    // the symbol ("weird.id") and reject id pairs whose Capitalize()d forms
+    // collide ("my-bridge" and "my_bridge" both emit "BridgeMyBridge").
+    std::map<std::string, std::string> bridgeSymbols;
+    for (const auto& bridge : graph_.GetBridges()) {
+        if (!IsValidBridgeId(bridge.id)) {
+            error = "Bridge id is not usable in a C++ symbol: '" + bridge.id +
+                    "' (allowed: letters, digits, '_', '-', ' ')";
+            return false;
+        }
+        const std::string symbol = Capitalize(bridge.id);
+        const auto [existing, inserted] = bridgeSymbols.emplace(symbol, bridge.id);
+        if (!inserted) {
+            error = "Bridge ids '" + existing->second + "' and '" + bridge.id +
+                    "' both generate the symbol 'Bridge" + symbol + "'";
+            return false;
+        }
+    }
+
     auto domains = GroupNodesByDomain(graph_);
 
-    for (const auto& [domain, nodes] : domains) {
+    // Emit domains in sorted order so outputs do not depend on unordered_map
+    // iteration order.
+    std::vector<std::string> domainNames;
+    for (const auto& entry : domains) domainNames.push_back(entry.first);
+    std::sort(domainNames.begin(), domainNames.end());
+
+    /* Class-based node types are hoisted into one shared header/source pair
+     * (node_types_generated.h/.cpp) emitted once per run, instead of being
+     * repeated in every domain file: a class-based type used by nodes in
+     * several domains would otherwise produce duplicate class and member
+     * function definitions.  Sorted set for deterministic emission. */
+    std::set<std::string> classTypeIds;
+    for (const auto& node : graph_.GetNodes()) {
+        const auto nodeType = graph_.FindNodeType(node.type);
+        if (!nodeType) continue;
+        if (!nodeType->classHeader.empty() || !nodeType->classDefinition.empty()) {
+            classTypeIds.insert(node.type);
+        }
+    }
+
+    for (const auto& domain : domainNames) {
+        const auto& nodes = domains[domain];
         if (domain.empty()) {
             error = "Domain name is empty for one or more nodes";
             return false;
@@ -495,12 +613,6 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             return false;
         }
 
-        // Collect node types used in this domain.
-        std::unordered_set<std::string> typeIdsUsed;
-        for (const auto& node : nodes) {
-            typeIdsUsed.insert(node.type);
-        }
-
         std::string stateStruct = BuildStateStruct(domainTitle, order, graph_, error);
         if (!error.empty()) return false;
 
@@ -510,19 +622,13 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         header << "// Generated by InverterCodegen. Do not edit by hand.\n\n";
         header << "#include <stdint.h>\n";
         header << "#include \"InverterCodegen/RteQuantity.h\"\n";
+        if (!classTypeIds.empty()) {
+            header << "#include \"node_types_generated.h\"\n";
+        }
         if (!graph_.GetBridges().empty()) {
             header << "#include \"bridges_generated.h\"\n";
         }
         header << "\n";
-
-        for (const auto& typeId : typeIdsUsed) {
-            const auto nodeType = graph_.FindNodeType(typeId);
-            if (!nodeType) continue;
-            if (!nodeType->classHeader.empty()) {
-                header << "// From node type: " << typeId << "\n";
-                header << nodeType->classHeader << "\n\n";
-            }
-        }
 
         header << "namespace app {\n\n";
         header << stateStruct << "\n\n";
@@ -543,16 +649,8 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
         std::ostringstream source;
         source << "// Generated by InverterCodegen. Do not edit by hand.\n\n";
         source << "#include \"domain_" << domainCpp << "_generated.h\"\n";
-        source << "#include \"platform_api.h\"\n\n";
-
-        for (const auto& typeId : typeIdsUsed) {
-            const auto nodeType = graph_.FindNodeType(typeId);
-            if (!nodeType) continue;
-            if (!nodeType->classDefinition.empty()) {
-                source << "// From node type: " << typeId << "\n";
-                source << nodeType->classDefinition << "\n\n";
-            }
-        }
+        source << "#include \"platform_api.h\"\n";
+        source << "#include <math.h>\n\n";
 
         source << "namespace app {\n\n";
 
@@ -575,21 +673,31 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 for (const auto& [key, value] : node->parameters) {
                     if (used.count(key)) {
                         auto paramType = nodeType->FindParameterType(key);
+                        auto expr = ParameterExpr(paramType, value);
+                        if (!expr) {
+                            error = "Node '" + node->id + "' parameter '" + key +
+                                    "' has invalid numeric value '" + value +
+                                    "' (expected a decimal float)";
+                            return false;
+                        }
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                               << " " << key << " = "
-                               << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
-                               << ";\n";
+                               << " " << key << " = " << *expr << ";\n";
                     }
                 }
             } else {
                 for (const auto& [key, value] : node->parameters) {
                     if (IsParameterInput(*node, key)) continue;
                     auto paramType = nodeType->FindParameterType(key);
+                    auto expr = ParameterExpr(paramType, value);
+                    if (!expr) {
+                        error = "Node '" + node->id + "' parameter '" + key +
+                                "' has invalid numeric value '" + value +
+                                "' (expected a decimal float)";
+                        return false;
+                    }
                     source << "        state." << node->id << "." << key << " = "
-                           << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
-                           << ";\n";
+                           << *expr << ";\n";
                 }
                 /* Bind local refs for parameters used by constructorCode. */
                 if (!nodeType->constructorCode.empty()) {
@@ -706,12 +814,16 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 for (const auto& [key, value] : node->parameters) {
                     if (used.count(key)) {
                         auto paramType = nodeType->FindParameterType(key);
+                        auto expr = ParameterExpr(paramType, value);
+                        if (!expr) {
+                            error = "Node '" + node->id + "' parameter '" + key +
+                                    "' has invalid numeric value '" + value +
+                                    "' (expected a decimal float)";
+                            return false;
+                        }
                         source << "        const "
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                               << " " << key << " = "
-                               << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
-                               << ";\n";
+                               << " " << key << " = " << *expr << ";\n";
                     }
                 }
             } else {
@@ -783,9 +895,15 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
             for (const auto& [key, value] : node->parameters) {
                 if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
+                auto expr = ParameterExpr(paramType, value);
+                if (!expr) {
+                    error = "Node '" + node->id + "' parameter '" + key +
+                            "' has invalid numeric value '" + value +
+                            "' (expected a decimal float)";
+                    return false;
+                }
                 source << "        state." << node->id << "." << key << " = "
-                       << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
-                       << ";\n";
+                       << *expr << ";\n";
             }
             source << "    }\n";
         }
@@ -926,6 +1044,43 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
 
         if (!WriteFile(hPath, header.str(), error)) return false;
         if (!WriteFile(cppPath, source.str(), error)) return false;
+    }
+
+    /* Class-based node types: emit the class declarations/definitions exactly
+     * once, shared by every domain (each domain header includes this header). */
+    if (!classTypeIds.empty()) {
+        std::ostringstream classHeader;
+        classHeader << "#pragma once\n\n";
+        classHeader << "// Generated by InverterCodegen. Do not edit by hand.\n\n";
+        classHeader << "#include \"InverterCodegen/RteQuantity.h\"\n\n";
+        for (const auto& typeId : classTypeIds) {
+            const auto nodeType = graph_.FindNodeType(typeId);
+            if (!nodeType) continue;
+            if (!nodeType->classHeader.empty()) {
+                classHeader << "// From node type: " << typeId << "\n";
+                classHeader << nodeType->classHeader << "\n\n";
+            }
+        }
+
+        std::ostringstream classSource;
+        classSource << "// Generated by InverterCodegen. Do not edit by hand.\n\n";
+        classSource << "#include \"node_types_generated.h\"\n";
+        classSource << "#include \"platform_api.h\"\n\n";
+        for (const auto& typeId : classTypeIds) {
+            const auto nodeType = graph_.FindNodeType(typeId);
+            if (!nodeType) continue;
+            if (!nodeType->classDefinition.empty()) {
+                classSource << "// From node type: " << typeId << "\n";
+                classSource << nodeType->classDefinition << "\n\n";
+            }
+        }
+
+        if (!WriteFile(outPath / "node_types_generated.h", classHeader.str(), error)) {
+            return false;
+        }
+        if (!WriteFile(outPath / "node_types_generated.cpp", classSource.str(), error)) {
+            return false;
+        }
     }
 
     // Generate cross-domain bridge globals if any bridges exist.

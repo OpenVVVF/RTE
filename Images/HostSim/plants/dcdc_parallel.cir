@@ -1,0 +1,58 @@
+* HostSim 3-leg synchronous buck with all legs PARALLELED into one shared DC
+* bus (averaged model; see dcdc_buck.cir for the rationale and the full
+* interface contract).
+*
+* Same NgspicePlant dcdc-mode contract as dcdc_buck.cir:
+*   Vu/Vv/Vw    external sources   per-leg averaged switch-node voltage
+*   Vsen1..3    0V sense sources   per-leg current, + = leg -> shared bus
+*   bus1..3     bus nodes          v(busN) probes
+*
+* The three legs share ONE bus node (bus1): one capacitor bank and one load.
+* Vtie2/Vtie3 alias bus2/bus3 onto bus1 so the uniform v(bus1..3) probe
+* contract holds (they carry no current; all load current returns via the
+* legs' sense sources).
+*
+* Current sharing note: with equal duties and symmetric legs the load current
+* splits in exact thirds; a small duty mismatch redistributes current by
+* (delta_D*VDC)/RS because averaged legs are near-ideal voltage sources --
+* on hardware this is exactly why paralleled converters need current-mode or
+* droop control.
+
+.param VDC = 48.0
+.param RS = 0.02
+.param LS = 33u
+.param BUS_CAP_UF = 470
+.param BUS_ESR_MO = 20
+.param LOAD_OHM = 2.5
+
+* Leg 1
+Vu u1_sw 0 dc 0 external
+Vsen1 u1_sw u1_r dc 0
+Rs1 u1_r u1_f {RS}
+L1 u1_f bus1 {LS}
+
+* Leg 2
+Vv u2_sw 0 dc 0 external
+Vsen2 u2_sw u2_r dc 0
+Rs2 u2_r u2_f {RS}
+L2 u2_f bus1 {LS}
+
+* Leg 3
+Vw u3_sw 0 dc 0 external
+Vsen3 u3_sw u3_r dc 0
+Rs3 u3_r u3_f {RS}
+L3 u3_f bus1 {LS}
+
+* Shared bus: single capacitor bank (with ESR) and single load.
+Cbus bus1 bus_c {BUS_CAP_UF*1e-6}
+Resr bus_c 0 {BUS_ESR_MO*1e-3}
+Rload bus1 0 {LOAD_OHM}
+
+* bus2/bus3 aliases (uniform v(busN) probe contract)
+Vtie2 bus1 bus2 dc 0
+Vtie3 bus1 bus3 dc 0
+
+* UIC cold start, generous TSTOP (host drives with stop breakpoints).
+.tran 10us 10s uic
+
+.end

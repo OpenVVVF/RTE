@@ -95,7 +95,7 @@ void SignalPlotWidget::SetSignals(const QStringList& names)
 
 void SignalPlotWidget::SetViewSeconds(double seconds)
 {
-    viewSeconds_ = std::clamp(seconds, 0.5, 60.0);
+    viewSeconds_ = std::clamp(seconds, 0.05, 60.0);
     update();
 }
 
@@ -120,7 +120,12 @@ void SignalPlotWidget::Refresh()
     }
     if (store_) {
         for (Series& s : series_) {
-            store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y);
+            // Clear on failure: after Clear Session the signal may be unknown
+            // until it streams again, and the old trace must not linger.
+            if (!store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y)) {
+                s.t.clear();
+                s.y.clear();
+            }
         }
     }
     update();

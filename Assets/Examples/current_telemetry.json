@@ -128,7 +128,10 @@
       "parameters": {
         "InvertPolarity": "0.0",
         "OffsetU": "0.0",
-        "OffsetV": "0.0"
+        "OffsetV": "0.0",
+        "PrevBurstUs": "0.0",
+        "PrevIuA": "0.0",
+        "PrevIvA": "0.0"
       }
     },
     {

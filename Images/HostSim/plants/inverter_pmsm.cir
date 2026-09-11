@@ -1,0 +1,39 @@
+* HostSim 3-Phase Inverter + PMSM (wye) SPICE Netlist
+* Per phase the R-L sits in series with an external back-EMF source, so the
+* back-EMF is part of the circuit equation instead of being subtracted
+* analytically before driving the plant.
+* Inverter terminal voltages (Vu/Vv/Vw) and back-EMFs (Veu/Vev/Vew) are
+* driven by HostSim via libngspice callbacks. The back-EMF sources must keep
+* a 'V' name prefix: ngspice would parse 'Eu'-style names as VCVS elements.
+*
+* Per-phase KVL (current flows Vu -> Ru -> Veu -> Lu -> neutral):
+*   v_terminal = R*i + e + L*di/dt
+* matches the analytic model v_terminal = R*i + L*di/dt + emf used elsewhere,
+* so Veu/Vev/Vew take the plain back-EMF value (e of that phase).
+
+.param VDC = 48.0
+.param RS = 0.05
+.param LS = 0.0001
+
+* Phase U external source
+Vu u_node 0 dc 0 external
+Ru u_node u_e {RS}
+Veu u_e u_mid dc 0 external
+Lu u_mid n_node {LS}
+
+* Phase V external source
+Vv v_node 0 dc 0 external
+Rv v_node v_e {RS}
+Vev v_e v_mid dc 0 external
+Lv v_mid n_node {LS}
+
+* Phase W external source
+Vw w_node 0 dc 0 external
+Rw w_node w_e {RS}
+Vew w_e w_mid dc 0 external
+Lw w_mid n_node {LS}
+
+* UIC: zero-current cold start; no DC OP shorting the inductors.
+.tran 10us 1s uic
+
+.end

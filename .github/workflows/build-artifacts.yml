@@ -87,6 +87,60 @@ jobs:
           --clean
           --build-type Release
 
+      # Simulator smoke tests (Tools/tests/run_sim_smoke.sh). Linux leg only:
+      # the harness is bash+python3 and the ngspice backend dlopens
+      # libngspice.so, so the Windows/macOS legs cannot run these parts.
+      # Each part reuses the host tools built above (build/bin/RTECodeEmitter,
+      # build/bin/rte) — the script rebuilds them if missing. Locally the same
+      # script runs from any cwd with no args and covers all six parts,
+      # including ngspice against a locally installed libngspice.
+      - name: HostSim simulator smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only hostsim
+
+      # ngspice backend smoke: the dev package provides the libngspice.so
+      # linker name that host_sim dlopens first (plus the libngspice0 runtime
+      # as a dependency). The run also asserts a wall-time ceiling that guards
+      # against the old O(n^2) resume regression.
+      - name: Install ngspice
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y libngspice0-dev
+
+      - name: HostSim ngspice-backend smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only ngspice
+
+      # Machine/plant coverage: salient PMSM field-lock and the induction
+      # machine under V/Hz (slip bounds), plus DC/DC mode — three-leg sync
+      # buck to separate buses and the paralleled variant (bus voltage
+      # tracks duty x Vdc within 5%).
+      - name: HostSim machine-plant smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only plants
+
+      - name: HostSim dcdc-mode smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only dcdc
+
+      # HostSIL: builds Images/HostSIL (real Gen6FW app on the host shims)
+      # and validates the sil_foc_demo trace with scripts/validate_trace.py.
+      # The `rte sim` part reuses the emitted host_sim tree from the hostsim
+      # smoke step (rebuilt inside this job if it is absent).
+      - name: HostSIL firmware-in-the-loop smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only hostsil
+
+      - name: rte sim CLI smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        run: Tools/tests/run_sim_smoke.sh --only rte
+
       - name: Stage portable install
         shell: bash
         run: cmake --install build --prefix "${{ github.workspace }}/stage"

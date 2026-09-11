@@ -100,6 +100,23 @@ Graph MakeDemoGraph() {
     return graph;
 }
 
+#ifdef NODEAPI_BUILD_TIMING
+// Timing-validator fixtures: the Validator only exists when NodeAPI is built
+// with NODEAPI_BUILD_TIMING (test_timing.cpp is likewise conditional), so
+// keep the helper under the same guard to avoid an unused-function warning.
+NodeType MakePassThroughType() {
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    return NodeType{
+        .id = "test.passthrough",
+        .displayName = "Pass",
+        .inputPorts = {Port{.name = "in", .direction = PortDirection::Input, .type = scalar}},
+        .outputPorts = {Port{.name = "out", .direction = PortDirection::Output, .type = scalar}},
+    };
+}
+#endif
+
 }  // namespace
 
 TEST(WireType, UnitLabels) {
@@ -376,11 +393,12 @@ TEST(Graph, RemoveNodeCleansConnections) {
 
 TEST(Graph, TypeCheckMatchingPorts) {
     Graph graph = MakeDemoGraph();
+    graph.AddNode(Node{.id = "sink2", .type = "display.value", .domain = "app_loop"});
 
     Connection c{
         .id = "c2",
         .from = PortRef{.nodeId = "source", .portName = "out"},
-        .to = PortRef{.nodeId = "sink", .portName = "in"},
+        .to = PortRef{.nodeId = "sink2", .portName = "in"},
     };
 
     EXPECT_TRUE(graph.TypeCheck(c));
@@ -752,3 +770,279 @@ TEST(Serialization, BridgeRoundTrip) {
     EXPECT_EQ(bridge->consumer.nodeId, "sink");
     EXPECT_EQ(bridge->type, scalar);
 }
+
+TEST(Graph, RejectSecondWireToSameInput) {
+    // An input port accepts exactly one wire; previously the second Connect
+    // silently succeeded and codegen bound only the first wire.
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "source_a", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "source_b", .type = "constant.value", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "sink", .type = "display.value", .domain = "app_loop"});
+
+    EXPECT_TRUE(graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "source_a", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+    EXPECT_FALSE(graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "source_b", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+    EXPECT_EQ(graph.GetConnections().size(), 1u);
+
+    // After disconnecting, a different source may take over the input.
+    EXPECT_TRUE(graph.Disconnect("c1"));
+    EXPECT_TRUE(graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "source_b", .portName = "out"},
+        .to = PortRef{.nodeId = "sink", .portName = "in"},
+    }));
+}
+
+TEST(Serialization, LoadKeepsPreloadedNodeTypes) {
+    // Templates loaded before the graph JSON keep their definition; the
+    // graph's embedded copy of the same type id is an intentional overlay
+    // (SaveToJson embeds all known types), not an error.
+    Graph graph;
+    ASSERT_TRUE(graph.AddNodeType(MakeValueType()));  // inlineCode "return 0.5f;"
+
+    const std::string json = R"({
+        "nodeTypes": [
+            {"id": "constant.value", "displayName": "Value",
+             "inputPorts": [], "outputPorts": [], "inlineCode": "return 1.0f;"}
+        ],
+        "nodes": [
+            {"id": "n", "type": "constant.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}}
+        ],
+        "connections": []
+    })";
+    EXPECT_NO_THROW(LoadIntoGraph(graph, json));
+    const auto type = graph.FindNodeType("constant.value");
+    ASSERT_TRUE(type.has_value());
+    EXPECT_EQ(type->inlineCode, "return 0.5f;");
+    EXPECT_TRUE(graph.FindNode("n").has_value());
+}
+
+TEST(Serialization, LoadFailsLoudlyOnInvalidItems) {
+    // Every invalid item is collected with its id and reported in one throw
+    // instead of vanishing silently (and confusing codegen later).
+    const std::string json = R"({
+        "nodeTypes": [
+            {"id": "constant.value", "displayName": "Value",
+             "inputPorts": [],
+             "outputPorts": [{"name": "out", "direction": "output",
+                              "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}]},
+            {"id": "display.value", "displayName": "Display",
+             "inputPorts": [{"name": "in", "direction": "input",
+                             "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}],
+             "outputPorts": []}
+        ],
+        "nodes": [
+            {"id": "a", "type": "constant.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}},
+            {"id": "b", "type": "constant.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}},
+            {"id": "sink", "type": "display.value", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}},
+            {"id": "ghost", "type": "missing.type", "domain": "app_loop",
+             "position": {"x": 0.0, "y": 0.0}}
+        ],
+        "connections": [
+            {"id": "c1", "from": {"nodeId": "a", "portName": "out"},
+             "to": {"nodeId": "sink", "portName": "in"}},
+            {"id": "c2", "from": {"nodeId": "b", "portName": "out"},
+             "to": {"nodeId": "sink", "portName": "in"}},
+            {"id": "c3", "from": {"nodeId": "a", "portName": "nope"},
+             "to": {"nodeId": "sink", "portName": "in"}}
+        ],
+        "bridges": [
+            {"id": "b1",
+             "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"},
+             "producer": {"nodeId": "a", "portName": "out"},
+             "consumer": {"nodeId": "sink", "portName": "missing_in"}}
+        ]
+    })";
+
+    Graph graph;
+    try {
+        LoadIntoGraph(graph, json);
+        FAIL() << "expected LoadIntoGraph to throw on invalid items";
+    } catch (const std::runtime_error& e) {
+        const std::string message = e.what();
+        EXPECT_NE(message.find("'ghost'"), std::string::npos) << message;  // unknown type
+        EXPECT_NE(message.find("missing.type"), std::string::npos) << message;
+        EXPECT_NE(message.find("'c2'"), std::string::npos) << message;   // double-wired input
+        EXPECT_NE(message.find("'c3'"), std::string::npos) << message;   // missing output port
+        EXPECT_NE(message.find("'b1'"), std::string::npos) << message;   // bad bridge endpoint
+        EXPECT_NE(message.find("missing_in"), std::string::npos) << message;
+    }
+
+    // The valid items are still in place; nothing was silently discarded.
+    EXPECT_TRUE(graph.FindNode("sink").has_value());
+    EXPECT_TRUE(graph.FindConnection("c1").has_value());
+    EXPECT_FALSE(graph.FindConnection("c2").has_value());
+}
+
+#ifdef NODEAPI_BUILD_TIMING
+TEST(Timing, PlainConnectionCycleFails) {
+    // A -> B -> A of pure same-domain connections is an algebraic cycle and
+    // must be rejected.
+    Graph graph;
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNode(Node{.id = "a", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "b", .type = "test.passthrough", .domain = "app_loop"});
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "a", .portName = "out"},
+        .to = PortRef{.nodeId = "b", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "b", .portName = "out"},
+        .to = PortRef{.nodeId = "a", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.errors.size(), 1u);
+    EXPECT_NE(result.errors[0].find("algebraic cycle of plain connections"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" a"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" b"), std::string::npos);
+}
+
+TEST(Timing, BridgeMediatedFeedbackLoopPasses) {
+    // Closing a feedback loop through bridges is sampled-time legal: each
+    // bridge is a unit delay, so the loop carries no algebraic (within-step)
+    // constraint. The loop needs two bridges — connections must stay inside
+    // one domain while bridges must cross domains, so domain switches come
+    // in pairs: fast ->conn-> fast ->bridge-> slow ->conn-> slow ->bridge->
+    // back to fast.
+    Graph graph;
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNode(Node{.id = "ctl_a", .type = "test.passthrough", .domain = "fast"});
+    graph.AddNode(Node{.id = "ctl_b", .type = "test.passthrough", .domain = "fast"});
+    graph.AddNode(Node{.id = "plant_c", .type = "test.passthrough", .domain = "slow"});
+    graph.AddNode(Node{.id = "plant_d", .type = "test.passthrough", .domain = "slow"});
+
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "ctl_a", .portName = "out"},
+        .to = PortRef{.nodeId = "ctl_b", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "plant_c", .portName = "out"},
+        .to = PortRef{.nodeId = "plant_d", .portName = "in"},
+    });
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "loop_forward",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "ctl_b", .portName = "out"},
+        .consumer = PortRef{.nodeId = "plant_c", .portName = "in"},
+    });
+    // The return bridge closes the loop: plant_d (slow) feeds ctl_a (fast),
+    // read one domain step later.
+    graph.AddBridge(Bridge{
+        .id = "loop_return",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "plant_d", .portName = "out"},
+        .consumer = PortRef{.nodeId = "ctl_a", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_TRUE(result.ok);
+    EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(Timing, BridgeDoesNotLaunderConnectionCycle) {
+    // Mixing an innocent cross-domain bridge into the graph must not launder
+    // a genuine connection-only cycle elsewhere: A <-> B stays illegal.
+    Graph graph;
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "a", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "b", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "monitor", .type = "display.value", .domain = "host"});
+
+    // The connection-only cycle the other way: b -> a -> b.
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "b", .portName = "out"},
+        .to = PortRef{.nodeId = "a", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "a", .portName = "out"},
+        .to = PortRef{.nodeId = "b", .portName = "in"},
+    });
+
+    // A legal bridge hanging off the cycle: b (app_loop) -> monitor (host).
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "telemetry",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "b", .portName = "out"},
+        .consumer = PortRef{.nodeId = "monitor", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_FALSE(result.ok);
+    // Exactly one error — the cycle. The bridge itself is legal and adds none.
+    EXPECT_EQ(result.errors.size(), 1u);
+    EXPECT_NE(result.errors[0].find("algebraic cycle of plain connections"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" a"), std::string::npos);
+    EXPECT_NE(result.errors[0].find(" b"), std::string::npos);
+}
+
+TEST(Timing, AcyclicMultiDomainGraphWithBridgePasses) {
+    // No regression for innocent graphs: two acyclic chains in separate
+    // domains, one feeding the other through a bridge, validate untouched.
+    Graph graph;
+    graph.AddNodeType(MakeValueType());
+    graph.AddNodeType(MakePassThroughType());
+    graph.AddNodeType(MakeDisplayType());
+    graph.AddNode(Node{.id = "sense", .type = "constant.value", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "scale", .type = "test.passthrough", .domain = "adc_sample"});
+    graph.AddNode(Node{.id = "filter", .type = "test.passthrough", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "gauge", .type = "display.value", .domain = "app_loop"});
+
+    graph.Connect(Connection{
+        .id = "c1",
+        .from = PortRef{.nodeId = "sense", .portName = "out"},
+        .to = PortRef{.nodeId = "scale", .portName = "in"},
+    });
+    graph.Connect(Connection{
+        .id = "c2",
+        .from = PortRef{.nodeId = "filter", .portName = "out"},
+        .to = PortRef{.nodeId = "gauge", .portName = "in"},
+    });
+
+    const WireType scalar = WireType{.quantity = Quantity::Dimensionless,
+                                     .frame = Frame::Scalar,
+                                     .dtype = DType::F32};
+    graph.AddBridge(Bridge{
+        .id = "sample_handoff",
+        .type = scalar,
+        .producer = PortRef{.nodeId = "scale", .portName = "out"},
+        .consumer = PortRef{.nodeId = "filter", .portName = "in"},
+    });
+
+    Timing::Validator validator;
+    const auto result = validator.Validate(graph);
+    EXPECT_TRUE(result.ok);
+    EXPECT_TRUE(result.errors.empty());
+}
+#endif

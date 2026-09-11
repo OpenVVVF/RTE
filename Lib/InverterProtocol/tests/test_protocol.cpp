@@ -466,6 +466,75 @@ TEST(UartTransport, SplitFrameCompletes) {
     EXPECT_EQ(std::memcmp(out, p1.data(), p1.size()), 0);
 }
 
+// When rx_buf_ overflows on a chunk with no delimiter at all, the transport
+// resyncs: -1 once, then the next valid frame comes through intact.
+TEST(UartTransport, RxOverflowDropsDelimiterlessGarbage) {
+    Pty pty;
+    ASSERT_TRUE(OpenPty(pty));
+
+    ivp::UartTransport transport;
+    ASSERT_TRUE(transport.open(pty.slaveName));
+
+    uint8_t out[ivp::UartTransport::RX_FRAME_CAP];
+
+    // Fill the accumulation buffer (RX_FRAME_CAP * 2 = 8192) with
+    // delimiter-less garbage, one RX_RAW_CAP-sized chunk at a time.
+    const std::vector<uint8_t> chunk(ivp::UartTransport::RX_RAW_CAP, 0xAA);
+    for (int i = 0; i < 16; ++i) {
+        WriteAll(pty.master, chunk);
+        EXPECT_EQ(transport.receivePacket(out, sizeof(out)), 0);
+    }
+    // Mop up in case a fill read came back short.
+    transport.receivePacket(out, sizeof(out));
+    transport.receivePacket(out, sizeof(out));
+
+    // This chunk has no delimiter and overflows the buffer: resync.
+    WriteAll(pty.master, chunk);
+    EXPECT_EQ(transport.receivePacket(out, sizeof(out)), -1);
+
+    // The link recovers on the next frame.
+    const auto p1 = MakePacket(21);
+    std::vector<uint8_t> stream;
+    AppendFramed(stream, p1);
+    WriteAll(pty.master, stream);
+    const int n = transport.receivePacket(out, sizeof(out));
+    ASSERT_EQ(n, static_cast<int>(p1.size()));
+    EXPECT_EQ(std::memcmp(out, p1.data(), p1.size()), 0);
+}
+
+// Overflow triggered by a chunk that contains a delimiter must keep the bytes
+// after it: a valid frame starting inside the triggering chunk survives.
+TEST(UartTransport, RxOverflowKeepsBytesAfterDelimiter) {
+    Pty pty;
+    ASSERT_TRUE(OpenPty(pty));
+
+    ivp::UartTransport transport;
+    ASSERT_TRUE(transport.open(pty.slaveName));
+
+    uint8_t out[ivp::UartTransport::RX_FRAME_CAP];
+
+    // Fill the buffer completely with delimiter-less garbage.
+    const std::vector<uint8_t> chunk(ivp::UartTransport::RX_RAW_CAP, 0xAA);
+    for (int i = 0; i < 16; ++i) {
+        WriteAll(pty.master, chunk);
+        EXPECT_EQ(transport.receivePacket(out, sizeof(out)), 0);
+    }
+    transport.receivePacket(out, sizeof(out));
+    transport.receivePacket(out, sizeof(out));
+
+    // This chunk overflows the buffer; its first 0x00 ends the garbage and the
+    // good frame begins right after it.
+    const auto p1 = MakePacket(22);
+    std::vector<uint8_t> tail(100, 0xAA);
+    tail.push_back(0x00);
+    AppendFramed(tail, p1);
+    WriteAll(pty.master, tail);
+
+    const int n = transport.receivePacket(out, sizeof(out));
+    ASSERT_EQ(n, static_cast<int>(p1.size()));
+    EXPECT_EQ(std::memcmp(out, p1.data(), p1.size()), 0);
+}
+
 #endif  // _WIN32
 
 /* ========================================================================
@@ -505,4 +574,262 @@ TEST(SessionMessages, OutOfRangeTypeRejected) {
     uint16_t payload_len = 0;
     EXPECT_EQ(ivp_packet_parse(packet, len, &h, &payload, &payload_len),
               IVP_ERR_BAD_MSG_TYPE);
+}
+
+/* ========================================================================
+ * Wire-header layout tests (field-by-field LE encode)
+ * ======================================================================== */
+TEST(PacketEncode, HeaderIsLittleEndianByField) {
+    const uint8_t payload[] = {0x01};
+    uint8_t packet[64];
+    size_t len = 0;
+    ASSERT_EQ(ivp_packet_encode(IVP_MSG_TELEMETRY_DEFINE, 0x0A0B0C0D, 0x01020304,
+                                payload, sizeof(payload),
+                                packet, sizeof(packet), &len),
+              IVP_OK);
+    ASSERT_EQ(len, IVP_HEADER_SIZE + sizeof(payload) + 2u);
+
+    /* magic "TLM1" (0x544C4D31) little-endian first. */
+    EXPECT_EQ(packet[0], 0x31);
+    EXPECT_EQ(packet[1], 0x4D);
+    EXPECT_EQ(packet[2], 0x4C);
+    EXPECT_EQ(packet[3], 0x54);
+    EXPECT_EQ(packet[4], IVP_VERSION);
+    EXPECT_EQ(packet[5], IVP_MSG_TELEMETRY_DEFINE);
+    EXPECT_EQ(packet[6], 0x01);  /* payload_len lo */
+    EXPECT_EQ(packet[7], 0x00);  /* payload_len hi */
+    EXPECT_EQ(packet[8],  0x0D); /* seq LE */
+    EXPECT_EQ(packet[9],  0x0C);
+    EXPECT_EQ(packet[10], 0x0B);
+    EXPECT_EQ(packet[11], 0x0A);
+    EXPECT_EQ(packet[12], 0x04); /* time_us LE */
+    EXPECT_EQ(packet[13], 0x03);
+    EXPECT_EQ(packet[14], 0x02);
+    EXPECT_EQ(packet[15], 0x01);
+}
+
+/* ========================================================================
+ * Builder limit tests: key/string oversize and 255-item count cap
+ * ======================================================================== */
+TEST(BuilderLimits, DefineRejectsOversizeKey) {
+    uint8_t payload[256];
+    ivp_define_builder_t b;
+    ASSERT_EQ(ivp_telemetry_define_begin(&b, payload, sizeof(payload)), IVP_OK);
+
+    /* Exactly at the cap still fits. */
+    const std::string ok_key(IVP_KEY_MAX_LEN, 'k');
+    EXPECT_EQ(ivp_telemetry_define_add_f32(&b, 1, ok_key.c_str(), IVP_KEY_MAX_LEN), IVP_OK);
+
+    /* Longer keys are refused instead of truncated: two distinct over-long
+     * keys must never alias to the same wire key. */
+    const std::string long_a(IVP_KEY_MAX_LEN + 1u, 'a');
+    const std::string long_b(IVP_KEY_MAX_LEN + 1u, 'b');
+    const auto over = static_cast<uint8_t>(IVP_KEY_MAX_LEN + 1u);
+    EXPECT_EQ(ivp_telemetry_define_add_f32(&b, 2, long_a.c_str(), over), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(ivp_telemetry_define_add_str(&b, 3, long_b.c_str(), over), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(b.count, 1u);  /* the failed adds left no partial entries */
+}
+
+TEST(BuilderLimits, DataRejectsOversizeString) {
+    uint8_t payload[256];
+    ivp_data_builder_t b;
+    ASSERT_EQ(ivp_telemetry_data_begin(&b, payload, sizeof(payload)), IVP_OK);
+
+    const std::string ok_str(IVP_STR_MAX_LEN, 's');
+    EXPECT_EQ(ivp_telemetry_data_add_str(&b, 1, ok_str.c_str(), IVP_STR_MAX_LEN), IVP_OK);
+
+    const std::string long_str(IVP_STR_MAX_LEN + 1u, 'x');
+    const auto over = static_cast<uint8_t>(IVP_STR_MAX_LEN + 1u);
+    EXPECT_EQ(ivp_telemetry_data_add_str(&b, 2, long_str.c_str(), over), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(ivp_telemetry_data_add_str_frag(&b, 3, IVP_SF_COMPLETE,
+                                              long_str.c_str(), over),
+              IVP_ERR_OVERSIZE);
+    EXPECT_EQ(b.count, 1u);
+}
+
+TEST(BuilderLimits, CommandRejectsOversizeString) {
+    uint8_t payload[128];
+    ivp_command_req_builder_t req;
+    ASSERT_EQ(ivp_command_req_begin(&req, payload, sizeof(payload), 0x10, 0x01), IVP_OK);
+    EXPECT_EQ(ivp_command_req_add_str(&req, "x", IVP_STR_MAX_LEN), IVP_OK);
+    EXPECT_EQ(ivp_command_req_add_str(&req, "x", IVP_STR_MAX_LEN + 1u), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(req.count, 1u);
+
+    ivp_command_rsp_builder_t rsp;
+    ASSERT_EQ(ivp_command_rsp_begin(&rsp, payload, sizeof(payload), 0x01, 0x00), IVP_OK);
+    EXPECT_EQ(ivp_command_rsp_add_str(&rsp, "x", IVP_STR_MAX_LEN), IVP_OK);
+    EXPECT_EQ(ivp_command_rsp_add_str(&rsp, "x", IVP_STR_MAX_LEN + 1u), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(rsp.count, 1u);
+}
+
+TEST(BuilderLimits, DefineCountStopsAt255) {
+    /* Worst case per entry: id(2) type(1) len(1) + 1-char key. */
+    std::vector<uint8_t> payload(1u + 256u * 5u);
+    ivp_define_builder_t b;
+    ASSERT_EQ(ivp_telemetry_define_begin(&b, payload.data(), payload.size()), IVP_OK);
+    for (uint32_t i = 0; i < 255u; ++i) {
+        ASSERT_EQ(ivp_telemetry_define_add_f32(&b, static_cast<uint16_t>(i + 1), "k", 1),
+                  IVP_OK) << "i=" << i;
+    }
+    EXPECT_EQ(b.count, 255u);
+    EXPECT_EQ(payload[0], 255u);
+    /* The 256th item must fail cleanly, not wrap the count byte to 0. */
+    EXPECT_EQ(ivp_telemetry_define_add_f32(&b, 256, "k", 1), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(b.count, 255u);
+    EXPECT_EQ(payload[0], 255u);
+}
+
+TEST(BuilderLimits, DataCountStopsAt255) {
+    std::vector<uint8_t> payload(1u + 256u * 7u);
+    ivp_data_builder_t b;
+    ASSERT_EQ(ivp_telemetry_data_begin(&b, payload.data(), payload.size()), IVP_OK);
+    for (uint32_t i = 0; i < 255u; ++i) {
+        ASSERT_EQ(ivp_telemetry_data_add_f32(&b, static_cast<uint16_t>(i + 1), 0.0f),
+                  IVP_OK) << "i=" << i;
+    }
+    EXPECT_EQ(payload[0], 255u);
+    EXPECT_EQ(ivp_telemetry_data_add_f32(&b, 256, 0.0f), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(payload[0], 255u);
+}
+
+TEST(BuilderLimits, CommandCountStopsAt255) {
+    std::vector<uint8_t> payload(3u + 256u * 2u);
+    ivp_command_req_builder_t req;
+    ASSERT_EQ(ivp_command_req_begin(&req, payload.data(), payload.size(), 0x10, 0x01), IVP_OK);
+    for (uint32_t i = 0; i < 255u; ++i) {
+        ASSERT_EQ(ivp_command_req_add_u8(&req, 0), IVP_OK) << "i=" << i;
+    }
+    EXPECT_EQ(payload[2], 255u);
+    EXPECT_EQ(ivp_command_req_add_u8(&req, 0), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(payload[2], 255u);
+
+    ivp_command_rsp_builder_t rsp;
+    ASSERT_EQ(ivp_command_rsp_begin(&rsp, payload.data(), payload.size(), 0x01, 0x00), IVP_OK);
+    for (uint32_t i = 0; i < 255u; ++i) {
+        ASSERT_EQ(ivp_command_rsp_add_u8(&rsp, 0), IVP_OK) << "i=" << i;
+    }
+    EXPECT_EQ(payload[2], 255u);
+    EXPECT_EQ(ivp_command_rsp_add_u8(&rsp, 0), IVP_ERR_OVERSIZE);
+    EXPECT_EQ(payload[2], 255u);
+}
+
+/* ========================================================================
+ * DEFINE payload walker: value-type validation (matches the DATA walker)
+ * ======================================================================== */
+TEST(DefinePayload, RejectsUnknownValueType) {
+    uint8_t payload[128];
+    ivp_define_builder_t b;
+    ASSERT_EQ(ivp_telemetry_define_begin(&b, payload, sizeof(payload)), IVP_OK);
+    ASSERT_EQ(ivp_telemetry_define_add_f32(&b, 0x0001, "v_bus", 5), IVP_OK);
+    ASSERT_EQ(ivp_telemetry_define_add_f32(&b, 0x0002, "i_u", 3), IVP_OK);
+    payload[3] = 0x7F;  /* corrupt first entry's type byte (non-enum) */
+
+    ivp_define_iter_t it;
+    ASSERT_EQ(ivp_telemetry_define_iter_init(payload, static_cast<uint16_t>(b.len), &it), IVP_OK);
+    uint16_t id;
+    uint8_t type;
+    const char* key;
+    uint8_t key_len;
+    EXPECT_FALSE(ivp_telemetry_define_iter_next(&it, &id, &type, &key, &key_len));
+}
+
+TEST(DefinePayload, AcceptsAllDefinedValueTypes) {
+    uint8_t payload[128];
+    ivp_define_builder_t b;
+    ASSERT_EQ(ivp_telemetry_define_begin(&b, payload, sizeof(payload)), IVP_OK);
+    ASSERT_EQ(ivp_telemetry_define_add_f32(&b, 1, "f", 1), IVP_OK);
+    ASSERT_EQ(ivp_telemetry_define_add_str(&b, 2, "s", 1), IVP_OK);
+
+    ivp_define_iter_t it;
+    ASSERT_EQ(ivp_telemetry_define_iter_init(payload, static_cast<uint16_t>(b.len), &it), IVP_OK);
+    uint16_t id;
+    uint8_t type;
+    const char* key;
+    uint8_t key_len;
+    ASSERT_TRUE(ivp_telemetry_define_iter_next(&it, &id, &type, &key, &key_len));
+    EXPECT_EQ(type, IVP_VT_F32);
+    ASSERT_TRUE(ivp_telemetry_define_iter_next(&it, &id, &type, &key, &key_len));
+    EXPECT_EQ(type, IVP_VT_STR);
+    EXPECT_FALSE(ivp_telemetry_define_iter_next(&it, &id, &type, &key, &key_len));
+}
+
+/* ========================================================================
+ * StringFragmentReassembler tests (host-side STR_FRAG assembly)
+ * ======================================================================== */
+#include "inverter_protocol/host/str_reassembly.h"
+
+namespace {
+
+ivp_data_item_t MakeStrItem(const char* data, uint8_t len) {
+    ivp_data_item_t item{};
+    item.id = 0x8001;
+    item.type = IVP_VT_STR;
+    item.v.str.data = data;
+    item.v.str.len = len;
+    return item;
+}
+
+ivp_data_item_t MakeFragItem(uint8_t frag, const char* data, uint8_t len) {
+    ivp_data_item_t item{};
+    item.id = 0x8001;
+    item.type = IVP_VT_STR_FRAG;
+    item.v.frag.frag = frag;
+    item.v.frag.data = data;
+    item.v.frag.len = len;
+    return item;
+}
+
+}  // namespace
+
+TEST(StringReassembly, StartEndDeliversCompleteMessage) {
+    ivp::StringFragmentReassembler r;
+    std::string out;
+    EXPECT_FALSE(r.handle("print", MakeFragItem(IVP_SF_START, "abc", 3), 1000, out));
+    EXPECT_FALSE(r.handle("print", MakeFragItem(0, "def", 3), 2000, out));
+    ASSERT_TRUE(r.handle("print", MakeFragItem(IVP_SF_END, "ghi", 3), 3000, out));
+    EXPECT_EQ(out, "abcdefghi");
+    EXPECT_EQ(r.partialCount(), 0u);
+}
+
+TEST(StringReassembly, SingleFrameCompleteFragment) {
+    ivp::StringFragmentReassembler r;
+    std::string out;
+    ASSERT_TRUE(r.handle("print", MakeFragItem(IVP_SF_COMPLETE, "whole", 5), 1000, out));
+    EXPECT_EQ(out, "whole");
+    EXPECT_EQ(r.partialCount(), 0u);
+}
+
+TEST(StringReassembly, NewStartDiscardsPreviousPartial) {
+    ivp::StringFragmentReassembler r;
+    std::string out;
+    EXPECT_FALSE(r.handle("print", MakeFragItem(IVP_SF_START, "old", 3), 1000, out));
+    EXPECT_FALSE(r.handle("print", MakeFragItem(IVP_SF_START, "new", 3), 2000, out));
+    ASSERT_TRUE(r.handle("print", MakeFragItem(IVP_SF_END, "!", 1), 3000, out));
+    EXPECT_EQ(out, "new!");
+}
+
+TEST(StringReassembly, PlainStrSupersedesPartial) {
+    ivp::StringFragmentReassembler r;
+    std::string out;
+    EXPECT_FALSE(r.handle("print", MakeFragItem(IVP_SF_START, "part", 4), 1000, out));
+    ASSERT_TRUE(r.handle("print", MakeStrItem("full", 4), 2000, out));
+    EXPECT_EQ(out, "full");
+    EXPECT_EQ(r.partialCount(), 0u);
+}
+
+TEST(StringReassembly, StalePartialExpires) {
+    ivp::StringFragmentReassembler r;
+    std::string out;
+    EXPECT_FALSE(r.handle("print", MakeFragItem(IVP_SF_START, "abc", 3), 1000000, out));
+    EXPECT_EQ(r.partialCount(), 1u);
+
+    r.expireStale(1000000 + ivp::StringFragmentReassembler::kStaleUs);  /* not yet stale */
+    EXPECT_EQ(r.partialCount(), 1u);
+
+    r.expireStale(1000000 + ivp::StringFragmentReassembler::kStaleUs + 1u);
+    EXPECT_EQ(r.partialCount(), 0u);
+
+    /* After expiry an END delivers only what arrived since. */
+    ASSERT_TRUE(r.handle("print", MakeFragItem(IVP_SF_END, "tail", 4), 4000000, out));
+    EXPECT_EQ(out, "tail");
 }

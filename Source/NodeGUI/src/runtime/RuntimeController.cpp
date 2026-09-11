@@ -36,21 +36,25 @@ constexpr SimWave kSimWaves[] = {
 RuntimeController::RuntimeController(QString port,
                                      bool simulate,
                                      Protocol protocol,
+                                     QString tcpHost,
+                                     int tcpPort,
                                      QObject* parent)
     : QObject(parent)
     , port_(std::move(port))
+    , tcpHost_(std::move(tcpHost))
+    , tcpPort_(tcpPort)
     , simulate_(simulate)
     , protocol_(protocol)
     , startTime_(std::chrono::steady_clock::now()) {
     legacyClient_.onF32 = [this](const std::string& key, float value, float tsec) {
-        Push(F32Item{key, value, tsec});
+        Push(QueuedF32{key, value, tsec});
     };
     legacyClient_.onString = [this](const std::string& key, const std::string& value) {
-        Push(StringItem{key, value});
+        Push(QueuedString{key, value});
     };
-    legacyClient_.onConsole = [this](const std::string& line) { Push(ConsoleItem{line}); };
+    legacyClient_.onConsole = [this](const std::string& line) { Push(QueuedConsole{line}); };
     legacyClient_.onStats = [this](const LegacyTelemetryClient::Stats& s) {
-        Push(StatsItem{s.rxHz,
+        Push(QueuedStats{s.rxHz,
                        s.rxBytesPerSec,
                        s.goodFrames,
                        s.badFrames,
@@ -63,13 +67,13 @@ RuntimeController::RuntimeController(QString port,
     };
 
     ivpClient_.onF32Value([this](uint16_t, const std::string& key, float value, uint32_t) {
-        Push(F32Item{key, value, NowSec()});
+        Push(QueuedF32{key, value, NowSec()});
     });
     ivpClient_.onStringValue([this](uint16_t, const std::string& key, const std::string& value,
-                                    uint32_t) { Push(StringItem{key, value}); });
-    ivpClient_.onConsoleLine([this](const std::string& line) { Push(ConsoleItem{line}); });
+                                    uint32_t) { Push(QueuedString{key, value}); });
+    ivpClient_.onConsoleLine([this](const std::string& line) { Push(QueuedConsole{line}); });
     ivpClient_.onStats([this](const ivp::ClientStats& s) {
-        Push(StatsItem{s.rx_hz,
+        Push(QueuedStats{s.rx_hz,
                        s.rx_bytes_per_sec,
                        s.good_frames,
                        s.bad_frames,
@@ -80,29 +84,110 @@ RuntimeController::RuntimeController(QString port,
                        0,
                        s.last_seq});
     });
+
+    tcpClient_.onF32Value = [this](uint16_t, const std::string& key, float value, uint32_t) {
+        Push(QueuedF32{key, value, NowSec()});
+    };
+    tcpClient_.onStringValue = [this](uint16_t, const std::string& key, const std::string& value,
+                                      uint32_t) { Push(QueuedString{key, value}); };
+    tcpClient_.onConsoleLine = [this](const std::string& line) { Push(QueuedConsole{line}); };
+    tcpClient_.onStats = [this](const ivp::ClientStats& s) {
+        Push(QueuedStats{s.rx_hz,
+                       s.rx_bytes_per_sec,
+                       s.good_frames,
+                       s.bad_frames,
+                       s.reject_crc,
+                       s.reject_hdr,
+                       s.reject_len,
+                       s.reject_decode,
+                       0,
+                       s.last_seq});
+    };
 }
 
 RuntimeController::~RuntimeController() {
     legacyClient_.stop();
     ivpClient_.stop();
+    tcpClient_.Stop();
 }
 
 void RuntimeController::Start() {
-    if (simulate_) {
-        simTimer_ = new QTimer(this);
-        simTimer_->setInterval(10);  // 100 Hz
-        connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
-        simTimer_->start();
-    } else if (protocol_ == Protocol::Legacy) {
-        legacyClient_.start(port_.toStdString());
-    } else {
-        ivpClient_.start(port_.toStdString());
-    }
+    StartActiveLink();
 
     drainTimer_ = new QTimer(this);
     drainTimer_->setInterval(33);  // ~30 Hz GUI updates
     connect(drainTimer_, &QTimer::timeout, this, &RuntimeController::DrainQueue);
     drainTimer_->start();
+}
+
+void RuntimeController::StartActiveLink() {
+    if (linkOverride_) {
+        tcpClient_.Start(overrideHost_, overridePort_);
+        return;
+    }
+    if (simulate_) {
+        if (!simTimer_) {
+            simTimer_ = new QTimer(this);
+            simTimer_->setInterval(10);  // 100 Hz
+            connect(simTimer_, &QTimer::timeout, this, &RuntimeController::TickSimulator);
+        }
+        simTimer_->start();
+        return;
+    }
+    if (UsingTcp()) {
+        tcpClient_.Start(tcpHost_, tcpPort_);
+    } else if (protocol_ == Protocol::Legacy) {
+        legacyClient_.start(port_.toStdString());
+    } else {
+        ivpClient_.start(port_.toStdString());
+    }
+}
+
+void RuntimeController::StopActiveLink() {
+    if (simTimer_) {
+        simTimer_->stop();
+    }
+    legacyClient_.stop();
+    ivpClient_.stop();
+    tcpClient_.Stop();
+}
+
+void RuntimeController::ConnectTcpOverride(const QString& host, int port) {
+    QString normalized = host.trimmed();
+    // A listener may announce a wildcard bind address; connect via loopback.
+    if (normalized == QStringLiteral("0.0.0.0")) {
+        normalized = QStringLiteral("127.0.0.1");
+    } else if (normalized == QStringLiteral("::")) {
+        normalized = QStringLiteral("::1");
+    }
+    if (linkOverride_ && overrideHost_ == normalized && overridePort_ == port) {
+        return;  // already attached to exactly this endpoint
+    }
+    overrideHost_ = normalized;
+    overridePort_ = port;
+    linkOverride_ = true;
+    if (suspended_) {
+        return;
+    }
+    StopActiveLink();
+    tcpClient_.Start(overrideHost_, overridePort_);
+}
+
+void RuntimeController::ClearLinkOverride() {
+    if (!linkOverride_) {
+        return;
+    }
+    linkOverride_ = false;
+    StopActiveLink();
+    overrideHost_.clear();
+    overridePort_ = 0;
+    if (!suspended_) {
+        StartActiveLink();
+    }
+}
+
+bool RuntimeController::IsTcpConnected() const {
+    return tcpClient_.IsConnected();
 }
 
 void RuntimeController::SetPort(const QString& port) {
@@ -111,26 +196,24 @@ void RuntimeController::SetPort(const QString& port) {
         return;
     }
 
-    if (!simulate_) {
-        if (protocol_ == Protocol::Legacy) {
-            legacyClient_.stop();
-        } else {
-            ivpClient_.stop();
-        }
+    // Only the serial link is re-targeted here; a TCP override or the
+    // simulated feed keeps running untouched.
+    const bool restartSerial = !simulate_ && !linkOverride_ && !suspended_;
+    if (restartSerial) {
+        StopActiveLink();
     }
     port_ = normalized;
-    if (!simulate_ && !suspended_) {
-        if (protocol_ == Protocol::Legacy) {
-            legacyClient_.start(port_.toStdString());
-        } else {
-            ivpClient_.start(port_.toStdString());
-        }
+    if (restartSerial) {
+        StartActiveLink();
     }
 }
 
 bool RuntimeController::SendLine(const std::string& line) {
-    if (suspended_ || simulate_) {
+    if (suspended_ || (simulate_ && !linkOverride_)) {
         return false;
+    }
+    if (linkOverride_ || UsingTcp()) {
+        return tcpClient_.SendLine(line);
     }
     return protocol_ == Protocol::Legacy ? legacyClient_.sendLine(line)
                                          : ivpClient_.sendCommandLine(line);
@@ -173,10 +256,12 @@ void RuntimeController::SuspendForFlash() {
     }
     suspended_ = true;
     store_.SetSuspended(true);
-    if (simulate_) {
+    if (simulate_ && !linkOverride_) {
         return;
     }
-    if (protocol_ == Protocol::Legacy) {
+    if (linkOverride_ || UsingTcp()) {
+        tcpClient_.Stop();
+    } else if (protocol_ == Protocol::Legacy) {
         legacyClient_.suspend();
     } else {
         ivpClient_.stop();
@@ -187,41 +272,66 @@ void RuntimeController::ResumeAfterFlash() {
     if (!suspended_) {
         return;
     }
-    if (!simulate_) {
-        if (protocol_ == Protocol::Legacy) {
-            legacyClient_.resume();
-        } else {
-            ivpClient_.start(port_.toStdString());
-        }
-    }
     suspended_ = false;
     store_.SetSuspended(false);
+    if (simulate_ && !linkOverride_) {
+        // The simulated feed keeps running across a flash suspend, so there
+        // is normally nothing to restart. If it is down, a live-link override
+        // was cleared while suspended: start whatever link is current rather
+        // than leaving a dead feed.
+        if (!simTimer_ || !simTimer_->isActive()) {
+            StartActiveLink();
+        }
+        return;
+    }
+    if (linkOverride_ || UsingTcp()) {
+        tcpClient_.Start(linkOverride_ ? overrideHost_ : tcpHost_,
+                         linkOverride_ ? overridePort_ : tcpPort_);
+    } else if (protocol_ == Protocol::Legacy) {
+        legacyClient_.resume();
+    } else {
+        ivpClient_.start(port_.toStdString());
+    }
 }
 
 void RuntimeController::Push(PendingItem item) {
-    std::lock_guard lock(queueMtx_);
-    queue_.push_back(std::move(item));
+    pending_.Push(std::move(item));
+}
+
+void RuntimeController::NoteQueueBacklog(uint64_t coalesced, uint64_t dropped) {
+    if (coalesced == 0 && dropped == 0) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (lastQueueNotice_.time_since_epoch() != std::chrono::steady_clock::duration::zero()
+        && now - lastQueueNotice_ < std::chrono::seconds(5)) {
+        return;
+    }
+    lastQueueNotice_ = now;
+    store_.AddConsoleLine(
+        "runtime: GUI was busy; queue backlog resolved by coalescing "
+        + std::to_string(coalesced) + " and dropping " + std::to_string(dropped)
+        + " telemetry value(s) (latest values always win; console and stats are never dropped)");
 }
 
 void RuntimeController::DrainQueue() {
-    std::vector<PendingItem> items;
-    {
-        std::lock_guard lock(queueMtx_);
-        if (queue_.empty()) {
-            return;
-        }
-        items.swap(queue_);
+    uint64_t coalesced = 0;
+    uint64_t dropped = 0;
+    const std::vector<PendingItem> items = pending_.Drain(coalesced, dropped);
+    if (items.empty()) {
+        NoteQueueBacklog(coalesced, dropped);
+        return;
     }
 
     for (const auto& item : items) {
         std::visit(
             [this](const auto& v) {
                 using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, F32Item>) {
+                if constexpr (std::is_same_v<T, QueuedF32>) {
                     store_.AddF32(v.key, v.value, v.tsec);
-                } else if constexpr (std::is_same_v<T, StringItem>) {
+                } else if constexpr (std::is_same_v<T, QueuedString>) {
                     store_.AddString(v.key, v.value);
-                } else if constexpr (std::is_same_v<T, ConsoleItem>) {
+                } else if constexpr (std::is_same_v<T, QueuedConsole>) {
                     store_.AddConsoleLine(v.text);
                     store_.MarkLastCommandReceived();
                 } else {
@@ -240,6 +350,7 @@ void RuntimeController::DrainQueue() {
             item);
     }
 
+    NoteQueueBacklog(coalesced, dropped);
     emit storeChanged();
 }
 
@@ -255,17 +366,17 @@ void RuntimeController::TickSimulator() {
         const double phase = 2.0 * M_PI * w.freq * t + i * 1.1;
         const float value = static_cast<float>(w.offset + w.amplitude * std::sin(phase))
                             + noise(rng);
-        Push(F32Item{w.name, value, t});
+        Push(QueuedF32{w.name, value, t});
     }
 
     // Occasional console output so the console path is exercised.
     if (simTick_ % 100 == 0) {
-        Push(ConsoleItem{"sim: tick " + std::to_string(simTick_)});
+        Push(QueuedConsole{"sim: tick " + std::to_string(simTick_)});
     }
 
     // Stats every second.
     if (simTick_ % 100 == 0) {
-        Push(StatsItem{100.0f,
+        Push(QueuedStats{100.0f,
                        100.0f * 40.0f,
                        simTick_ / 100 * 100,
                        0,
@@ -281,6 +392,16 @@ void RuntimeController::TickSimulator() {
 float RuntimeController::NowSec() const {
     return std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime_)
         .count();
+}
+
+QString RuntimeController::Port() const {
+    if (linkOverride_) {
+        return QStringLiteral("sim %1:%2").arg(overrideHost_).arg(overridePort_);
+    }
+    if (!UsingTcp()) {
+        return port_;
+    }
+    return QStringLiteral("tcp %1:%2").arg(tcpHost_).arg(tcpPort_);
 }
 
 }  // namespace NodeGUI::runtime

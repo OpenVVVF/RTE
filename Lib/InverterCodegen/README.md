@@ -110,7 +110,7 @@ Example:
     InverterCodegen/generated
 ```
 
-Before generating, the tool runs `NodeAPI::Timing::Validator` on the graph. It fails if nodes are missing domains, connections cross domains, or the graph contains a cycle.
+Before generating, the tool runs `NodeAPI::Timing::Validator` on the graph. It fails if nodes are missing domains, connections cross domains, or the graph contains an algebraic (connection-only) cycle — a cycle broken by a cross-domain bridge is legal unit-delay feedback.
 
 ## Project layout
 

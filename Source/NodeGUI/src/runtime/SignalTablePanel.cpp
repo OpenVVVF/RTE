@@ -22,8 +22,8 @@ SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* paren
     auto* controlsRow = new QHBoxLayout;
     controlsRow->addWidget(new QLabel(QStringLiteral("Plot view (sec)"), this));
     viewSlider_ = new QSlider(Qt::Horizontal, this);
-    viewSlider_->setRange(5, 600);  // 0.5 .. 60.0 s in 0.1 s steps
-    viewSlider_->setValue(50);
+    viewSlider_->setRange(1, 1200);  // 0.05 .. 60.0 s in 0.05 s steps
+    viewSlider_->setValue(100);
     connect(viewSlider_, &QSlider::valueChanged, this, &SignalTablePanel::OnViewSecondsChanged);
     controlsRow->addWidget(viewSlider_, 1);
     filterEdit_ = new QLineEdit(this);
@@ -63,6 +63,18 @@ void SignalTablePanel::SetGraphSignalSets(const std::array<QStringList, 3>& sets
     emit graphSignalsChanged(graphSignals_);
 }
 
+void SignalTablePanel::SetViewSeconds(double seconds) {
+    // Slider is in twentieths of a second.
+    const int pos = qBound(viewSlider_->minimum(),
+                           static_cast<int>(seconds * 20.0 + 0.5),
+                           viewSlider_->maximum());
+    if (viewSlider_->value() != pos) {
+        viewSlider_->setValue(pos);  // fires OnViewSecondsChanged -> viewSecondsChanged
+    } else {
+        emit viewSecondsChanged(seconds);
+    }
+}
+
 void SignalTablePanel::OnStoreChanged() {
     RebuildSignalTable();
 
@@ -81,7 +93,7 @@ void SignalTablePanel::OnFilterChanged(const QString& /*text*/) {
 }
 
 void SignalTablePanel::OnViewSecondsChanged(int value) {
-    emit viewSecondsChanged(value / 10.0);
+    emit viewSecondsChanged(value / 20.0);
 }
 
 void SignalTablePanel::RebuildSignalTable() {

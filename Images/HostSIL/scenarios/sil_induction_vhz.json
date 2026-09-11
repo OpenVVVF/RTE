@@ -1,0 +1,39 @@
+{
+  "comment": "HostSIL induction-machine V/Hz demo: real Gen6FW against the ODE induction plant. Same 4-pole-scale squirrel-cage machine as Images/HostSim/scenarios/induction_vhz.json, but driven by the firmware's own OpenLoopController instead of a graph V/Hz: at 1.6 s the scheduled shell command 'induction start 40 0.98' (Src/Inverter/Command/Commands/OpenLoopCommands.cpp) starts SPWM at 40 Hz and ramps the modulation index 0 -> 0.98 over the firmware's 1 s current-limited ramp. m=0.98 gives a ~23.5 V phase peak at 40 Hz (0.59 V/Hz, matching the HostSim cfg's VoltsPerHz=0.55 + 1.5 V boost endpoint at the same 48 V link). Sync speed is 1200 mech rpm (60*40/2); the induction plant must settle measurably below it (slip). control.start stays false so the supervisor/graph FOC never engages; the healthy end state is '[SIL] final control state: IDLE (faults: no)' plus the OL status reply run=Y.",
+  "motor": {
+    "name": "sil_small_squirrel_cage_48v",
+    "machine": "induction",
+    "rs_ohm": 0.4,
+    "rr_ohm": 0.3,
+    "lm_h": 0.025,
+    "lls_h": 0.002,
+    "llr_h": 0.002,
+    "pole_pairs": 2,
+    "inertia_kg_m2": 5e-4,
+    "friction_nm_per_rad_s": 1e-3,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 4.0,
+    "app_loop_hz": 1000,
+    "trace_csv": "sil_induction_vhz_trace.csv",
+    "trace_decim_us": 500
+  },
+  "throttle_a": { "type": "constant", "value": 0.0 },
+  "control": { "start": false },
+  "commands": {
+    "1.6": "induction start 40 0.98",
+    "3.9": "status"
+  },
+  "firmware_config": {
+    "Motor.Poles": 4.0,
+    "Motor.Type": 3.0,
+    "Motor.Resistance.Avg": 0.4,
+    "Motor.Induction.Lm": 0.025,
+    "Motor.Induction.Rr": 0.3,
+    "Motor.Induction.Lr": 0.027,
+    "Motor.Induction.TauR": 90.0,
+    "Motor.Induction.SigmaLs": 0.003852,
+    "Motor.Induction.LLeak": 0.004
+  }
+}

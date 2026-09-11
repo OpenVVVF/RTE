@@ -13,6 +13,12 @@ struct ProcessSpec {
     std::vector<std::string> arguments;
     std::filesystem::path workingDirectory;
     std::map<std::string, std::string> environment;
+    // POSIX only: while RunProcess is blocked on this child, a SIGINT/SIGTERM/
+    // SIGHUP delivered to this process is forwarded to the child before the
+    // default disposition runs, so the child is terminated instead of
+    // orphaned. Default off; no-op on Windows (a CREATE_NO_WINDOW child cannot
+    // receive Ctrl+C).
+    bool terminateWithParent = false;
 };
 
 struct ProcessResult {

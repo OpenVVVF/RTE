@@ -1,0 +1,50 @@
+{
+  "comment": "HostSIL fault-injection flagship: baseline sil_foc_demo run (same motor/config/FOC graph control) with two injected faults. (1) encoder_loss 1.42-1.57 s: sin/cos outputs pinned at the bias mid (sensor excitation loss) BEFORE control start; the firmware's EncoderADC::diagnose amplitude-collapse check trips EncoderAmplitude/EncoderAmplitudeLow (Warning: latched, control start still allowed, drive keeps running). (2) oc_inject 1.8-1.81 s: +600 A on the U-phase ADC counts while spinning; the software overcurrent check (3 consecutive injected samples > 500 A default) trips PhaseOvercurrent/PhaseOvercurrentSoftware (Critical: supervisor -> FAULT, PWM break + gate driver off, no auto-resume). Watch for the [SIL] fault raised lines and the firmware's own [FAULT] prints on the console mirror.",
+  "motor": {
+    "name": "sil_small_bldc",
+    "rs_ohm": 0.05,
+    "ld_h": 0.0001,
+    "lq_h": 0.0001,
+    "flux_wb": 0.008,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 0.001,
+    "friction_nm_per_rad_s": 0.001,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 2.6,
+    "app_loop_hz": 1000,
+    "trace_csv": "sil_fault_injection_trace.csv",
+    "trace_decim_us": 500
+  },
+  "throttle_a": { "type": "constant", "value": 0.0 },
+  "control": {
+    "start": true,
+    "start_time_s": 1.6,
+    "iq_a": 8.0,
+    "id_a": 0.0
+  },
+  "faults": {
+    "encoder_loss_time_s": 1.42,
+    "encoder_loss_duration_s": 0.15,
+    "oc_inject_time_s": 1.8,
+    "oc_inject_duration_s": 0.01,
+    "oc_inject_phase": 0,
+    "oc_inject_a": 600.0
+  },
+  "firmware_config": {
+    "Motor.Poles": 14.0,
+    "Motor.Encoder.SinCos.Sign": 1.0,
+    "Motor.Encoder.SinCos.OffsetDeg": 0.0,
+    "Motor.Encoder.SinCos.CyclesRev": 1.0,
+    "Motor.Encoder.Type": 1.0,
+    "Motor.Type": 2.0,
+    "Motor.Resistance.Avg": 0.05,
+    "Motor.Ld": 0.0001,
+    "Motor.Lq": 0.0001,
+    "Motor.Lambda": 0.008,
+    "Motor.PMSM.Inductance.Ld": 0.0001,
+    "Motor.PMSM.Inductance.Lq": 0.0001,
+    "Motor.PMSM.FluxLinkage.Wb": 0.008
+  }
+}

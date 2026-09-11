@@ -132,7 +132,10 @@ void InverterClient::threadMain(const std::string& port, int baud) {
         }
 
         bytes_in_window += static_cast<uint64_t>(n);
-        stats_.rx_bytes += static_cast<uint64_t>(n);
+        {
+            std::lock_guard<std::mutex> lk(stats_mtx_);
+            stats_.rx_bytes += static_cast<uint64_t>(n);
+        }
 
         ivp_header_t h;
         const uint8_t* payload = nullptr;
@@ -212,22 +215,21 @@ void InverterClient::handleTelemetryData(const uint8_t* payload, uint16_t payloa
 
         if (item.type == IVP_VT_F32 && cb_f32_) {
             cb_f32_(item.id, key, item.v.f32, time_us);
-        } else if (item.type == IVP_VT_STR && cb_str_) {
-            std::string value(item.v.str.data, item.v.str.len);
-            if (key == "print" && cb_console_) {
-                cb_console_(value);
-            } else {
-                cb_str_(item.id, key, value, time_us);
-            }
-        } else if (item.type == IVP_VT_STR_FRAG && cb_str_) {
-            std::string value(item.v.frag.data, item.v.frag.len);
-            if (key == "print" && cb_console_) {
-                cb_console_(value);
-            } else {
-                cb_str_(item.id, key, value, time_us);
+        } else if (item.type == IVP_VT_STR || item.type == IVP_VT_STR_FRAG) {
+            /* STR_FRAG pieces are reassembled per key; only the complete
+             * message is delivered (as the console line for "print"). */
+            std::string message;
+            if (!str_reasm_.handle(key, item, time_us, message)) continue;
+            if (key == "print") {
+                if (cb_console_) cb_console_(message);
+            } else if (cb_str_) {
+                cb_str_(item.id, key, message, time_us);
             }
         }
     }
+
+    /* Drop fragment sequences the device stopped mid-message. */
+    str_reasm_.expireStale(time_us);
 }
 
 void InverterClient::handleCommandResponse(const uint8_t* payload, uint16_t payload_len) {

@@ -88,6 +88,10 @@ ValidationResult Validator::CheckEntryPoints(const Graph& graph) const {
     for (const auto& connection : graph.GetConnections()) {
         ++inDegree[connection.to.nodeId];
     }
+    // Bridges count here even though CheckCycles excludes them: an entry
+    // point is the externally-triggered root of its domain and must have no
+    // inbound dataflow at all — immediate (connection) or one-step-delayed
+    // (bridge) alike.
     for (const auto& bridge : graph.GetBridges()) {
         ++inDegree[bridge.consumer.nodeId];
     }
@@ -98,7 +102,7 @@ ValidationResult Validator::CheckEntryPoints(const Graph& graph) const {
 
         if (nodeType->isEntryPoint && inDegree[node.id] > 0) {
             result.AddError("entry-point node '" + node.id + "' (type '" + node.type +
-                            "') has incoming connections; entry points must be roots of their timing domain");
+                            "') has incoming connections or bridges; entry points must be roots of their timing domain");
         }
     }
 
@@ -115,13 +119,17 @@ ValidationResult Validator::CheckCycles(const Graph& graph) const {
         inDegree[node.id] = 0;
     }
 
+    // Build the ordering graph from plain connections only. Bridges are the
+    // model's unit-delay primitive for cross-domain dataflow: the producer's
+    // value is stored (under a critical section) during the producer domain's
+    // step and read by the consumer in a later step of its own domain, so a
+    // bridge never creates a within-step (algebraic) dependency. A directed
+    // cycle that passes through a bridge is therefore legal sampled-time
+    // feedback — which is also why codegen's per-domain topological sort
+    // builds its ordering graph from connections only.
     for (const auto& connection : graph.GetConnections()) {
         adjacency[connection.from.nodeId].push_back(connection.to.nodeId);
         ++inDegree[connection.to.nodeId];
-    }
-    for (const auto& bridge : graph.GetBridges()) {
-        adjacency[bridge.producer.nodeId].push_back(bridge.consumer.nodeId);
-        ++inDegree[bridge.consumer.nodeId];
     }
 
     std::queue<std::string> queue;
@@ -150,8 +158,10 @@ ValidationResult Validator::CheckCycles(const Graph& graph) const {
         std::sort(cycleNodes.begin(), cycleNodes.end());
 
         std::ostringstream message;
-        message << "graph contains a directed cycle involving nodes:";
+        message << "graph contains an algebraic cycle of plain connections involving nodes:";
         for (const auto& id : cycleNodes) message << " " << id;
+        message << "; if this is intended feedback, break the loop with a "
+                   "cross-domain bridge (a unit delay)";
         result.AddError(message.str());
     }
 

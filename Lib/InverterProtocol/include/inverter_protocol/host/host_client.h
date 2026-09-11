@@ -1,5 +1,6 @@
 #pragma once
 
+#include "inverter_protocol/host/str_reassembly.h"
 #include "inverter_protocol/host/uart_transport.h"
 
 #include <atomic>
@@ -85,6 +86,9 @@ private:
 
     mutable std::mutex reg_mtx_;
     std::unordered_map<uint16_t, KeyDef> registry_;
+
+    /* STR_FRAG message reassembly (worker thread only). */
+    StringFragmentReassembler str_reasm_;
 
     mutable std::mutex stats_mtx_;
     ClientStats stats_;

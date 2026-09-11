@@ -106,9 +106,9 @@ std::vector<std::string> SplitLines(const std::string& text) {
 
 std::string JoinLines(const std::vector<std::string>& lines) {
     std::string out;
-    for (const auto& line : lines) {
-        out += line;
-        out += '\n';
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (i > 0) out += '\n';
+        out += lines[i];
     }
     return out;
 }
@@ -406,10 +406,35 @@ bool Emitter::Run(const EmitterOptions& options) const {
     std::vector<std::pair<std::filesystem::path, std::vector<Marker>>> fileMarkers;
     bool anyError = false;
 
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(
-             options.outputDir,
-             std::filesystem::directory_options::skip_permission_denied)) {
+    // In a dry run the output tree is never populated; iterating a missing
+    // directory would throw std::filesystem_error. Report it cleanly instead.
+    if (!std::filesystem::exists(options.outputDir)) {
+        logger_.Error("Output directory does not exist: " + options.outputDir.string() +
+                      (options.dryRun ? " (dry run: the base source copy is skipped, so the"
+                                        " output tree must already exist to be scanned)"
+                                      : ""));
+        return false;
+    }
+
+    std::error_code scanEc;
+    std::filesystem::recursive_directory_iterator scanIt(
+        options.outputDir,
+        std::filesystem::directory_options::skip_permission_denied,
+        scanEc);
+    const std::filesystem::recursive_directory_iterator scanEnd;
+    if (scanEc) {
+        logger_.Error("Could not scan output directory " + options.outputDir.string() +
+                      ": " + scanEc.message());
+        return false;
+    }
+    for (; scanIt != scanEnd; scanIt.increment(scanEc)) {
+        if (scanEc) {
+            logger_.Warning("Skipping unreadable entry during marker scan: " +
+                            scanEc.message());
+            scanEc.clear();
+            continue;
+        }
+        const auto& entry = *scanIt;
         if (!entry.is_regular_file()) continue;
         if (!IsSourceFile(entry.path())) continue;
 
@@ -490,6 +515,17 @@ bool Emitter::Run(const EmitterOptions& options) const {
         return false;
     }
 
+    // Warn loudly about the opposite mismatch: a graph domain that the base
+    // image has no marker for. The generated <domain> files are then compiled
+    // but never constructed/init'd/stepped — a silent drop (vsense was this).
+    for (const auto& domain : generatedDomains) {
+        if (markerDomains.count(domain) == 0) {
+            logger_.Warning("Domain '" + domain +
+                            "' has graph content but no RTE_EMIT markers in the "
+                            "base image; its generated code will not run");
+        }
+    }
+
     // The effective set of domains is the union of graph domains and marker-only
     // stub domains.
     std::unordered_set<std::string> allDomains = generatedDomains;
@@ -562,42 +598,57 @@ bool Emitter::Run(const EmitterOptions& options) const {
         const auto fileDir = filePath.parent_path();
         const auto relGeneratedDir = RelativePath(fileDir, generatedDir);
 
-        // Build include lines to add.
+        // Build include lines to add. Sorted so the emitted text does not
+        // depend on unordered_set iteration order.
         std::vector<std::string> includesToAdd;
-        for (const auto& header : requiredHeaders) {
-            // C/C++ include paths use forward slashes on every platform.
-            const std::string includePath =
-                (relGeneratedDir / header).generic_string();
-            if (existingHeaders.count(includePath) == 0 &&
-                existingHeaders.count(header) == 0) {
-                includesToAdd.push_back("#include \"" + includePath + "\"");
-                logger_.Debug("Adding include '" + includePath + "' to " + filePath.string());
+        {
+            std::vector<std::string> sortedHeaders(requiredHeaders.begin(),
+                                                   requiredHeaders.end());
+            std::sort(sortedHeaders.begin(), sortedHeaders.end());
+            for (const auto& header : sortedHeaders) {
+                // C/C++ include paths use forward slashes on every platform.
+                const std::string includePath =
+                    (relGeneratedDir / header).generic_string();
+                if (existingHeaders.count(includePath) == 0 &&
+                    existingHeaders.count(header) == 0) {
+                    includesToAdd.push_back("#include \"" + includePath + "\"");
+                    logger_.Debug("Adding include '" + includePath + "' to " + filePath.string());
+                }
             }
         }
 
         if (!options.dryRun) {
+            /* Preserve the file's line-ending style: SplitLines keeps a
+             * trailing '\r' on every line of a CRLF file, so inserted lines
+             * and replaced marker lines must carry it too. */
+            const bool crlf = text.find("\r\n") != std::string::npos;
+            const std::string eol = crlf ? "\r" : "";
+            const std::string newline = crlf ? "\r\n" : "\n";
+
             // Insert includes.
+            const size_t insertAt = includeInsertLine;  // original coordinates
             size_t linesAdded = 0;
             if (!includesToAdd.empty()) {
                 // Ensure a blank line after #pragma once if needed.
                 if (hasPragmaOnce && includeInsertLine < lines.size() &&
                     !lines[includeInsertLine].empty() &&
                     !lines[includeInsertLine].starts_with("#include")) {
-                    lines.insert(lines.begin() + static_cast<long>(includeInsertLine), "");
+                    lines.insert(lines.begin() + static_cast<long>(includeInsertLine), eol);
                     ++includeInsertLine;
                     ++linesAdded;
                 }
 
                 for (const auto& includeLine : includesToAdd) {
                     lines.insert(lines.begin() + static_cast<long>(includeInsertLine),
-                                 includeLine);
+                                 includeLine + eol);
                     ++includeInsertLine;
                     ++linesAdded;
                 }
             }
 
-            // Replace markers. All markers shift by the number of lines added above,
-            // because includes are inserted before every marker.
+            /* Replace markers.  Each marker shifts only by the number of lines
+             * inserted above it: insertions happen before the original
+             * `insertAt` line, so markers above that point do not move. */
             for (const auto& marker : markers) {
                 const std::string domainTitle = DomainTitle(marker.domain);
                 const std::string stateAccess = options.stateVariable + "." + marker.domain;
@@ -613,30 +664,38 @@ bool Emitter::Run(const EmitterOptions& options) const {
                     snippet = "app::" + domainTitle + "Stop(" + stateAccess + ");";
                 }
 
-                const size_t adjustedLine = marker.lineNumber + linesAdded;
-                if (adjustedLine < lines.size()) {
-                    // Preserve the indentation of the original marker line.
-                    const std::string& originalLine = lines[adjustedLine];
-                    std::string indent;
-                    for (char c : originalLine) {
-                        if (std::isspace(static_cast<unsigned char>(c))) {
-                            indent += c;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    // Multi-line snippets need indentation on continuation lines.
-                    if (marker.section == "state") {
-                        snippet = "namespace app {\n" + indent + "    struct " + domainTitle +
-                                  "State;\n" + indent + "}";
-                    }
-
-                    lines[adjustedLine] = indent + snippet;
-                    logger_.Debug("Replaced marker at line " +
-                                  std::to_string(marker.lineNumber + 1) + " in " +
-                                  filePath.string());
+                const size_t shift =
+                    (linesAdded > 0 && marker.lineNumber >= insertAt) ? linesAdded : 0;
+                const size_t adjustedLine = marker.lineNumber + shift;
+                if (adjustedLine >= lines.size()) {
+                    logger_.Warning("Marker at line " + std::to_string(marker.lineNumber + 1) +
+                                    " in " + filePath.string() +
+                                    " shifted out of range; left unreplaced");
+                    continue;
                 }
+
+                // Preserve the indentation of the original marker line.
+                const std::string& originalLine = lines[adjustedLine];
+                std::string indent;
+                for (char c : originalLine) {
+                    if (std::isspace(static_cast<unsigned char>(c))) {
+                        indent += c;
+                    } else {
+                        break;
+                    }
+                }
+
+                // Multi-line snippets need indentation and the file's line
+                // terminator on continuation lines.
+                if (marker.section == "state") {
+                    snippet = "namespace app {" + newline + indent + "    struct " + domainTitle +
+                              "State;" + newline + indent + "}";
+                }
+
+                lines[adjustedLine] = indent + snippet + eol;
+                logger_.Debug("Replaced marker at line " +
+                              std::to_string(marker.lineNumber + 1) + " in " +
+                              filePath.string());
             }
 
             std::string writeError;

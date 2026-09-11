@@ -1,0 +1,25 @@
+{
+  "motor": {
+    "name": "salient_ipmsm",
+    "machine": "pmsm",
+    "comment": "Interior PMSM with real saliency (Lq = 3x Ld): the plant torque includes the (Ld-Lq)*id*iq reluctance term. Exercised by any FOC graph that holds id != 0 (e.g. MTPA reference generators, see Assets/Examples/foc_mtpa_demo.json and Images/HostSIL/scenarios/sil_foc_salient.json).",
+    "rs_ohm": 0.3,
+    "ld_h": 0.0005,
+    "lq_h": 0.0015,
+    "flux_wb": 0.01,
+    "pole_pairs": 7,
+    "inertia_kg_m2": 5e-5,
+    "friction_nm_per_rad_s": 1e-3,
+    "vdc_v": 48.0
+  },
+  "simulation": {
+    "duration_s": 2.5,
+    "tim_isr_hz": 10000,
+    "adc_isr_hz": 10000,
+    "app_loop_hz": 1000,
+    "telem_hz": 500,
+    "trace_csv": "trace_salient_pmsm.csv"
+  },
+  "throttle_a": { "type": "ramp", "start": 0.0, "end": 0.2, "start_s": 0.1, "end_s": 1.5 },
+  "throttle_b": { "type": "ramp", "start": 0.15, "end": 0.6, "start_s": 0.1, "end_s": 1.2 }
+}

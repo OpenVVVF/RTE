@@ -325,6 +325,163 @@ TEST(Emitter, EmitsAuTypesForPhysicalPorts) {
     std::filesystem::remove_all(tempRoot);
 }
 
+TEST(Emitter, DryRunWithMissingOutputDirFailsCleanly) {
+    /* Regression: with --dry-run the base copy is skipped, so the output
+     * directory may not exist; scanning it used to throw
+     * std::filesystem_error (SIGABRT). The emitter must fail cleanly. */
+    const auto tempRoot = std::filesystem::temp_directory_path() / "rte_emitter_dryrun_test";
+    std::filesystem::remove_all(tempRoot);
+
+    const auto baseSrc = tempRoot / "base";
+    const auto graphPath = tempRoot / "graph.json";
+
+    WriteFile(baseSrc / "main.cpp",
+              "void loop() {\n"
+              "    // RTE_EMIT: app_loop step\n"
+              "}\n");
+    WriteFile(graphPath,
+              "{\n"
+              "  \"name\": \"dry_run\",\n"
+              "  \"nodeTypes\": [],\n"
+              "  \"nodes\": [],\n"
+              "  \"connections\": []\n"
+              "}\n");
+
+    RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
+    RTECodeEmitter::Emitter emitter(logger);
+
+    RTECodeEmitter::EmitterOptions options;
+    options.baseSrc = baseSrc;
+    options.graphPath = graphPath;
+    options.outputDir = tempRoot / "output_does_not_exist";
+    options.dryRun = true;
+    options.verbosity = RTECodeEmitter::LogLevel::Error;
+
+    EXPECT_FALSE(emitter.Run(options));  // clean failure, not a crash
+    EXPECT_FALSE(std::filesystem::exists(options.outputDir));
+
+    std::filesystem::remove_all(tempRoot);
+}
+
+TEST(Emitter, MarkerAboveIncludeBlockIsNotShifted) {
+    /* The old splice logic shifted every marker by the number of inserted
+     * include lines, assuming includes always land above all markers. A
+     * marker ABOVE the include insertion point must not move. */
+    const auto tempRoot = std::filesystem::temp_directory_path() / "rte_marker_shift_test";
+    std::filesystem::remove_all(tempRoot);
+
+    const auto baseSrc = tempRoot / "base";
+    const auto graphPath = tempRoot / "graph.json";
+    const auto outputDir = tempRoot / "out";
+
+    // The state marker sits above the include block.
+    WriteFile(baseSrc / "state.h",
+              "// RTE_EMIT: app_loop state\n"
+              "#pragma once\n"
+              "\n"
+              "#include <stdint.h>\n");
+    WriteFile(baseSrc / "main.cpp",
+              "#include \"state.h\"\n"
+              "void loop() {\n"
+              "    // RTE_EMIT: app_loop step\n"
+              "}\n");
+    WriteFile(graphPath,
+              "{\n"
+              "  \"name\": \"shift_test\",\n"
+              "  \"nodeTypes\": [],\n"
+              "  \"nodes\": [],\n"
+              "  \"connections\": []\n"
+              "}\n");
+
+    RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
+    RTECodeEmitter::Emitter emitter(logger);
+
+    RTECodeEmitter::EmitterOptions options;
+    options.baseSrc = baseSrc;
+    options.graphPath = graphPath;
+    options.outputDir = outputDir;
+    options.verbosity = RTECodeEmitter::LogLevel::Error;
+
+    ASSERT_TRUE(emitter.Run(options));
+
+    const std::string stateText = ReadFile(outputDir / "state.h");
+    // The marker line itself was replaced...
+    EXPECT_NE(stateText.find("namespace app {\n    struct AppLoopState;\n}"),
+              std::string::npos);
+    // ...and the include block below survived intact.
+    EXPECT_NE(stateText.find("#pragma once"), std::string::npos);
+    EXPECT_NE(stateText.find("#include <stdint.h>"), std::string::npos);
+    EXPECT_NE(stateText.find("#include \"generated/domain_app_loop_generated.h\""),
+              std::string::npos);
+
+    const std::string mainText = ReadFile(outputDir / "main.cpp");
+    EXPECT_NE(mainText.find("app::AppLoopStep(appState.app_loop);"), std::string::npos);
+
+    std::filesystem::remove_all(tempRoot);
+}
+
+TEST(Emitter, PreservesCrlfLineEndings) {
+    const auto tempRoot = std::filesystem::temp_directory_path() / "rte_crlf_test";
+    std::filesystem::remove_all(tempRoot);
+
+    const auto baseSrc = tempRoot / "base";
+    const auto graphPath = tempRoot / "graph.json";
+    const auto outputDir = tempRoot / "out";
+
+    WriteFile(baseSrc / "state.h",
+              "#pragma once\r\n"
+              "// RTE_EMIT: app_loop state\r\n"
+              "struct AppState {\r\n"
+              "    app::AppLoopState app_loop;\r\n"
+              "};\r\n");
+    WriteFile(baseSrc / "main.cpp",
+              "#include \"state.h\"\r\n"
+              "AppState appState;\r\n"
+              "void loop() {\r\n"
+              "    // RTE_EMIT: app_loop step\r\n"
+              "}\r\n");
+    WriteFile(graphPath,
+              "{\n"
+              "  \"name\": \"crlf_test\",\n"
+              "  \"nodeTypes\": [],\n"
+              "  \"nodes\": [],\n"
+              "  \"connections\": []\n"
+              "}\n");
+
+    RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
+    RTECodeEmitter::Emitter emitter(logger);
+
+    RTECodeEmitter::EmitterOptions options;
+    options.baseSrc = baseSrc;
+    options.graphPath = graphPath;
+    options.outputDir = outputDir;
+    options.verbosity = RTECodeEmitter::LogLevel::Error;
+
+    ASSERT_TRUE(emitter.Run(options));
+
+    for (const auto& name : {"state.h", "main.cpp"}) {
+        const std::string text = ReadFile(outputDir / name);
+        // Strip all CRLF pairs; no bare '\n' or '\r' may remain.
+        std::string stripped;
+        for (size_t i = 0; i < text.size(); ++i) {
+            if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n') {
+                ++i;
+            } else {
+                stripped += text[i];
+            }
+        }
+        EXPECT_EQ(stripped.find('\n'), std::string::npos) << name;
+        EXPECT_EQ(stripped.find('\r'), std::string::npos) << name;
+    }
+
+    const std::string mainText = ReadFile(outputDir / "main.cpp");
+    EXPECT_NE(mainText.find("    app::AppLoopStep(appState.app_loop);\r\n"), std::string::npos);
+    EXPECT_NE(mainText.find("#include \"generated/domain_app_loop_generated.h\"\r\n"),
+              std::string::npos);
+
+    std::filesystem::remove_all(tempRoot);
+}
+
 TEST(Emitter, LoadsTemplatesFromDirectory) {
     const auto tempRoot = std::filesystem::temp_directory_path() / "rte_templates_test";
     std::filesystem::remove_all(tempRoot);

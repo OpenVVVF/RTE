@@ -2,6 +2,9 @@
 
 #include <QWidget>
 
+#include <array>
+#include <QStringList>
+
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -42,14 +45,26 @@ private slots:
     void OnStoreChanged();
     void OnSavePreset();
     void OnLoadPreset();
+    void OnLoadBuiltinSpwm();
+    void OnLoadBuiltinFoc();
     void OnExportSession();
     void OnClearSession();
 
 private:
+    // Built-in demo layouts; also installed as persisted presets so they can
+    // be tweaked by the user.
+    static std::array<QStringList, 3> BuiltinSpwmLayout();
+    static std::array<QStringList, 3> BuiltinFocLayout();
+    void EnsureBuiltinPresets();
+    void ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout);
+    void ApplySpwmViewWindows();
+    void ApplyFocViewWindows();
+
     void RefreshRecentCombo();
 
     RuntimeController* controller_;
     FramKeysManager* framKeysManager_ = nullptr;
+    bool applied_builtin_layout_ = false;
 
     QLabel* headerLabel_ = nullptr;
     QLabel* exportStatus_ = nullptr;

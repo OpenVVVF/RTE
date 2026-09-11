@@ -9,9 +9,15 @@ plus the small `platform_api` contract the generated code calls.
 
 This repo holds the STM32H723 base firmware image, the node-graph
 libraries, the RTE Studio editor, and the tools that turn a graph into a
-flashable firmware binary. A plant/inverter simulator based on
-[ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
-exercised in closed loop before touching hardware.
+flashable firmware binary. Two host simulators exercise graphs in closed
+loop before touching hardware: **HostSim** (`Images/HostSim/`) builds a
+graph into a host executable — `rte sim --graph G [--scenario S] [--live]`
+does emit, build, and run in one step — against a PMSM plant (discrete ODE
+by default, with an experimental [ngspice](https://ngspice.sourceforge.io/)
+backend), and publishes live telemetry over TCP that RTE Studio attaches
+to. **HostSIL** (`Images/HostSIL/`) runs the unmodified Gen6FW application
+code against the same plant (software-in-the-loop). See
+[docs/simulation.md](docs/simulation.md).
 
 Hardware designs and safety documentation live in
 [OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
@@ -26,7 +32,9 @@ RTE/
 │   ├── Examples/           # Example NodeAPI graphs
 │   └── NodeTemplates/      # Reusable node types for GUI + codegen
 ├── Images/
-│   └── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
+│   ├── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
+│   ├── HostSim/            # Host simulator base image (graphs run on a PMSM plant)
+│   └── HostSIL/            # SIL: unmodified Gen6FW app code vs the HostSim plant
 ├── Lib/
 │   ├── NodeAPI/            # Graph/node serialization and timing validation
 │   ├── InverterCodegen/    # Graph -> C++ code generation engine
@@ -41,7 +49,9 @@ RTE/
 ```
 
 - `Assets/` holds graphs and node-type templates shared by NodeGUI and codegen.
-- `Images/` contains the base firmware image that the emitter copies and modifies.
+- `Images/` contains the base images that the emitter copies and modifies:
+  the Gen6 firmware image, plus the HostSim/HostSIL host simulators
+  (see [docs/simulation.md](docs/simulation.md)).
 - `Lib/` contains reusable CMake libraries used by the host tools, GUI, and device firmware.
 - `Source/` contains end-user executables.
 
@@ -84,7 +94,7 @@ cache, not to a nested directory in this checkout.
 
 ```bash
 cmake --build build --target RTEStudio -j8
-./build/bin/rte-studio Assets/Examples/foc_demo.json
+./build/bin/RTEStudio Assets/Examples/foc_demo.json
 ```
 
 On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
@@ -157,7 +167,7 @@ manifest under the user cache (`~/.cache/rte/projects/...` on Linux,
 
 ## Tools
 
-- `rte-studio` — lightweight editor and owner of live device/telemetry state.
+- `RTEStudio` — lightweight editor and owner of live device/telemetry state.
 - `rte` — portable automation backend and MCP stdio server (`rte mcp`).
 - `InverterCodegen` — generates C++ domain files from a NodeAPI graph JSON.
 - `RTECodeEmitter` — takes a base firmware source tree and a graph, copies the
@@ -264,6 +274,11 @@ KV bit rate (`Can.BitRate`, default 500 kbit/s).
 
 Done recently:
 
+- Host simulators for closed-loop testing before hardware: **HostSim**
+  (`rte sim` emits, builds, and runs a graph against a PMSM plant; ODE
+  default, experimental ngspice backend; live telemetry over TCP for the
+  RTE Studio Runtime tab) and **HostSIL** (unmodified Gen6FW application
+  code vs the plant; see [docs/simulation.md](docs/simulation.md))
 - Calibration suite restored (hierarchical `cal`, results in the `Motor.*`
   KV namespace; flux via LS fit with V_off; flying start)
 - Phase voltage sensing (`hw.phase_voltages`, `vsense` domain, snapshot reads)
@@ -283,14 +298,29 @@ Done recently:
   rate telemetry (`hz_*`)
 - Bench builds default to Release — at `-O0` the CPU cannot service the
   control ISR load (`hz_app_loop` collapses to <100 Hz)
+- DC-microgrid converters, first step: HostSim `dcdc` plant mode runs one
+  3-phase power stage as three independent phase→DC-bus converters
+  (`scenarios/dcdc_3bus.json`) or with all legs paralleled into one shared
+  bus (`dcdc_parallel.json`), via averaged ngspice netlists behind the
+  `IPlant` seam. Still open: switched (non-averaged) netlists, a fast ODE
+  DC-bus plant for `--live` speed, and 2+1 split topologies
+- Multi-converter simulation, first step: concurrent `host_sim` instances
+  exchange CAN frames over a shared simulated bus (localhost TCP bridge,
+  `--can-bridge-listen` / `--can-bridge-connect`), demonstrated by the
+  one-graph two-role `Assets/Examples/can_bus_demo.json`. Still open: coupled
+  multi-instance plants and Windows support for the bridge
 
 Next up, roughly in priority order:
 
 - Current-loop tuning from measured motor parameters: run the R/L
   calibrators, compute PI gains for a target bandwidth, slew-limit the
   current references (the `control.slew` node exists, unwired)
-- ngspice-based plant/inverter simulator for closed-loop graph testing
-  before hardware
+- ngspice plant backend beyond the experimental RL/PMSM/dcdc netlists: switched
+  device models, Gen6-oriented netlist templates
+- Coupled multi-instance plants: several converters acting on one electrical
+  model — a 5-phase motor driven by two 3-phase inverters, or a microgrid
+  AFE -> DC/DC -> output chain; plus a Windows port of the CAN bridge
+- 5-phase (and N-phase) machine model behind the same plant seam
 - Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no

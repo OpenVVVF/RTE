@@ -3413,7 +3413,10 @@
       "domain": "adc_isr",
       "id": "PhaseCurrents1",
       "parameters": {
-        "InvertPolarity": "0.0"
+        "InvertPolarity": "0.0",
+        "PrevBurstUs": "0.0",
+        "PrevIuA": "0.0",
+        "PrevIvA": "0.0"
       },
       "position": {
         "x": 205.4000000000001,

@@ -102,8 +102,14 @@ typedef struct IVP_PACKED {
 #endif
 #undef IVP_PACKED
 
-/* Compile-time size check (usable from C and C++). */
+/* Compile-time size check (usable from C and C++). This is the authoritative
+ * guard for the wire layout; image trees previously carried local copies. */
 #define IVP_HEADER_SIZE 16u
+#if defined(__cplusplus)
+static_assert(sizeof(ivp_header_t) == IVP_HEADER_SIZE, "ivp_header_t must be 16 bytes");
+#else
+_Static_assert(sizeof(ivp_header_t) == IVP_HEADER_SIZE, "ivp_header_t must be 16 bytes");
+#endif
 
 /* Result codes from parser and encoder functions. */
 typedef enum {

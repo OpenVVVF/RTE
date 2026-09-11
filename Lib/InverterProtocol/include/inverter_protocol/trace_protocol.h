@@ -38,6 +38,10 @@ typedef struct {
     uint8_t capture_id;
     uint8_t channel; /* 0..7 fast, 8..31 sparse event/snapshot */
     float scale;
+    /* Channel name. Max 31 chars + NUL: the wire slot is 32 bytes and
+     * ivp_trace_decode_schema forces [31] = 0, so a full 32-byte
+     * unterminated name would lose its last character. Encoders must hold a
+     * NUL within the field (ivp_trace_encode_schema rejects otherwise). */
     char name[IVP_TRACE_SCHEMA_NAME_SIZE];
 } ivp_trace_schema_frame_t;
 
@@ -64,6 +68,8 @@ bool ivp_trace_decode_data(const uint8_t payload[IVP_TRACE_PAYLOAD_SIZE],
                            ivp_trace_data_frame_t* frame);
 bool ivp_trace_encode_schema(const ivp_trace_schema_frame_t* frame,
                              uint8_t payload[IVP_TRACE_PAYLOAD_SIZE]);
+/* Decodes `payload` into `frame`; `frame->name` is always NUL-terminated
+ * (a full 32-byte unterminated wire name is truncated to 31 chars). */
 bool ivp_trace_decode_schema(const uint8_t payload[IVP_TRACE_PAYLOAD_SIZE],
                              ivp_trace_schema_frame_t* frame);
 bool ivp_trace_encode_status(const ivp_trace_status_frame_t* frame,

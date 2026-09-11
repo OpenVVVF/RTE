@@ -15,13 +15,17 @@
 #include <RTELogger/Logger.h>
 #include <nlohmann/json.hpp>
 
+#include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 using json = nlohmann::json;
@@ -31,6 +35,7 @@ namespace {
 
 enum class Format { Text, Json, JsonLines };
 std::vector<json> jsonEvents;
+std::optional<Format> commandFormatOverride;
 
 struct Parsed {
     std::string command;
@@ -48,6 +53,8 @@ void Usage() {
         << "  flash --firmware FILE [--serial PORT | --session FILE] [--manual-boot]\n"
         << "  mcp2221 enter|exit|release\n"
         << "  device status|telemetry|console|command [--session FILE]\n"
+        << "  sim --graph FILE [--scenario FILE] [--base-source DIR] [--name NAME]\n"
+        << "      [--live] [--realtime F] [--no-build] [--output-format text|json|jsonl]\n"
         << "  trace record --interface can0 --output FILE [--seconds N] [--id-base ID]\n"
         << "  trace export --input FILE --output CSV\n"
         << "  mcp [--workspace PATH] [--session FILE]\n";
@@ -593,6 +600,8 @@ int Mcp(const std::vector<std::string>& args) {
     return 0;
 }
 
+int Sim(const std::vector<std::string>& args, Format format);
+
 int Dispatch(const Parsed& parsed) {
     if (parsed.command == "version") {
         Emit(parsed.format, {{"event","version"},{"version","0.1.0"}});
@@ -613,10 +622,414 @@ int Dispatch(const Parsed& parsed) {
     }
     if (parsed.command == "device") return Device(parsed.args, parsed.format);
     if (parsed.command == "mcp2221") return Mcp2221(parsed.args, parsed.format);
+    if (parsed.command == "sim") return Sim(parsed.args, parsed.format);
     if (parsed.command == "trace") return RunTraceCommand(parsed.args);
     if (parsed.command == "mcp") return Mcp(parsed.args);
     Usage();
     return 2;
+}
+
+struct SimOptions {
+    std::optional<fs::path> graph;
+    std::optional<fs::path> scenario;
+    std::optional<fs::path> baseSource;
+    std::string name;
+    bool live = false;
+    bool noBuild = false;
+    bool help = false;
+    double realtime = 0.0;
+    bool realtimeSet = false;
+};
+
+void SimUsage() {
+    std::cerr
+        << "usage: rte sim --graph FILE [--scenario FILE] [--base-source DIR]\n"
+        << "               [--name NAME] [--live] [--realtime F] [--no-build]\n"
+        << "               [--output-format text|json|jsonl]\n";
+}
+
+bool ParseSimOptions(const std::vector<std::string>& args, SimOptions& options,
+                     Format& format, std::string& error) {
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        auto nextPath = [&](const char* name, std::optional<fs::path>& target) {
+            if (i + 1 >= args.size()) { error = std::string("missing value for ") + name; return false; }
+            target = fs::path(args[++i]);
+            return true;
+        };
+        auto nextString = [&](const char* name, std::string& target) {
+            if (i + 1 >= args.size()) { error = std::string("missing value for ") + name; return false; }
+            target = args[++i];
+            return true;
+        };
+        if (arg == "--graph") { if (!nextPath("--graph", options.graph)) return false; }
+        else if (arg == "--scenario") { if (!nextPath("--scenario", options.scenario)) return false; }
+        else if (arg == "--base-source") { if (!nextPath("--base-source", options.baseSource)) return false; }
+        else if (arg == "--name") { if (!nextString("--name", options.name)) return false; }
+        else if (arg == "--realtime") {
+            std::string value;
+            if (!nextString("--realtime", value)) return false;
+            char* end = nullptr;
+            const double parsed = std::strtod(value.c_str(), &end);
+            if (end != value.c_str() + value.size() || !std::isfinite(parsed) || parsed < 0.0) {
+                error = "invalid --realtime value: " + value;
+                return false;
+            }
+            options.realtime = parsed;
+            options.realtimeSet = true;
+        }
+        else if (arg == "--live") options.live = true;
+        else if (arg == "--no-build") options.noBuild = true;
+        else if (arg == "--output-format") {
+            std::string value;
+            if (!nextString("--output-format", value)) return false;
+            if (value == "text") format = Format::Text;
+            else if (value == "json") format = Format::Json;
+            else if (value == "jsonl") format = Format::JsonLines;
+            else { error = "invalid --output-format value: " + value; return false; }
+            commandFormatOverride = format;
+        }
+        else if (arg == "--help" || arg == "-h") options.help = true;
+        else { error = "unknown option: " + arg; return false; }
+    }
+
+    /* Like ParseOptions(): anchor relative paths to the starting cwd so a
+     * foreign working directory cannot reinterpret them. */
+    auto normalize = [](std::optional<fs::path>& p) {
+        if (!p || p->is_absolute()) return;
+        std::error_code ec;
+        fs::path abs = fs::weakly_canonical(fs::absolute(*p, ec), ec);
+        if (ec || abs.empty()) abs = fs::absolute(*p);
+        p = std::move(abs);
+    };
+    normalize(options.graph);
+    normalize(options.scenario);
+    normalize(options.baseSource);
+    return true;
+}
+
+/* Locates the checkout root by walking up from a known repo-local path and
+ * looking for the HostSim image. Returns an empty path when rte runs outside
+ * a source checkout (e.g. installed). */
+fs::path FindRepoRoot(fs::path start) {
+    std::error_code ec;
+    while (!start.empty() && start != start.parent_path()) {
+        if (fs::is_directory(start / "Images" / "HostSim", ec)) return start;
+        start = start.parent_path();
+    }
+    return {};
+}
+
+fs::path FindSimEmitter(const fs::path& exeDir, std::string* ignoredEnv) {
+    std::error_code ec;
+    if (const char* env = std::getenv("RTE_EMITTER"); env && *env) {
+        if (fs::is_regular_file(fs::path(env), ec)) return fs::path(env);
+        if (ignoredEnv) *ignoredEnv = env;
+    }
+    const fs::path sibling = exeDir / RTEAutomation::ExecutableName("RTECodeEmitter");
+    if (fs::is_regular_file(sibling, ec)) return sibling;
+    if (const auto onPath = RTEAutomation::FindExecutableOnPath("RTECodeEmitter")) return *onPath;
+    return {};
+}
+
+/* The sim name composes build directory names that are wiped with
+ * fs::remove_all, so keep it inside a strict charset and refuse any
+ * '.'/'..' path segment (separators are already excluded by the charset,
+ * which reduces the segment check to rejecting exactly "." and ".."). */
+bool IsValidSimName(const std::string& name) {
+    if (name.empty()) return false;
+    for (const char c : name) {
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                     || (c >= '0' && c <= '9') || c == '_' || c == '.'
+                     || c == '-';
+        if (!ok) return false;
+    }
+    return name != "." && name != "..";
+}
+
+/* Plain-text scans mirroring HostSim's lenient scenario parser: first
+ * "key": match, then the value after the colon. */
+std::string ScanJsonString(const std::string& blob, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    const std::size_t pos = blob.find(needle);
+    if (pos == std::string::npos) return {};
+    const std::size_t colon = blob.find(':', pos);
+    const std::size_t q1 = blob.find('"', colon);
+    const std::size_t q2 = q1 == std::string::npos ? q1 : blob.find('"', q1 + 1);
+    if (q1 == std::string::npos || q2 == std::string::npos) return {};
+    return blob.substr(q1 + 1, q2 - q1 - 1);
+}
+
+std::optional<int> ScanJsonInt(const std::string& blob, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    const std::size_t pos = blob.find(needle);
+    if (pos == std::string::npos) return std::nullopt;
+    const std::size_t colon = blob.find(':', pos);
+    if (colon == std::string::npos) return std::nullopt;
+    const char* start = blob.c_str() + colon + 1;
+    char* end = nullptr;
+    const long value = std::strtol(start, &end, 10);
+    if (end == start) return std::nullopt;
+    return static_cast<int>(value);
+}
+
+/* Runs a child process, streaming merged stdout/stderr. Text mode relays
+ * lines to stdout; structured formats keep stdout clean for the result.
+ * On POSIX the child is terminated if rte itself receives SIGINT/SIGTERM/
+ * SIGHUP, so an interrupted run never orphans host_sim/emitter/cmake (no-op
+ * on Windows — a CREATE_NO_WINDOW child cannot receive Ctrl+C, and Ctrl+C
+ * semantics there are left to the console/kill tools). */
+bool RunSimStep(const RTEAutomation::ProcessSpec& spec, Format format,
+                const std::function<void(const std::string&)>& onLine,
+                std::string& error) {
+    RTEAutomation::ProcessSpec guarded = spec;
+    guarded.terminateWithParent = true;
+    const auto result = RTEAutomation::RunProcess(guarded, [&](const std::string& line) {
+        if (onLine) onLine(line);
+        if (format == Format::Text) std::cout << line << '\n';
+        else std::cerr << line << '\n';
+    });
+    if (!result.started) {
+        error = result.error.empty()
+            ? "failed to start " + spec.executable.filename().string() : result.error;
+        return false;
+    }
+    if (result.exitCode != 0) {
+        error = spec.executable.filename().string() + " " + result.error;
+        return false;
+    }
+    return true;
+}
+
+int Sim(const std::vector<std::string>& args, Format format) {
+    SimOptions options;
+    std::string error;
+    if (!ParseSimOptions(args, options, format, error)) {
+        Emit(format, {{"event","error"},{"message",error}});
+        SimUsage();
+        return 2;
+    }
+    if (options.help) { SimUsage(); return 0; }
+    if (!options.graph) {
+        Emit(format, {{"event","error"},{"message","--graph is required"}});
+        SimUsage();
+        return 2;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(*options.graph, ec)) {
+        Emit(format, {{"event","error"},{"message","graph not found: " + options.graph->string()}});
+        return 3;
+    }
+
+    const fs::path exeDir = RTEAutomation::ExecutablePath().parent_path();
+    const fs::path repoRoot = FindRepoRoot(exeDir);
+    if (!options.baseSource) {
+        if (repoRoot.empty()) {
+            Emit(format, {{"event","error"},
+                          {"message","could not locate the repository root; pass --base-source"}});
+            return 2;
+        }
+        options.baseSource = repoRoot / "Images" / "HostSim";
+    }
+    if (!fs::is_directory(*options.baseSource, ec)) {
+        Emit(format, {{"event","error"},
+                      {"message","base source not found: " + options.baseSource->string()}});
+        return 3;
+    }
+
+    /* rte lives in build/bin in a source checkout; the emitted simulator and
+     * its build tree sit next to it under the same build root. With no
+     * checkout in sight (installed binary), use the user cache instead of the
+     * install prefix's parent, which may be a system directory. */
+    fs::path buildRoot;
+    if (!repoRoot.empty())
+        buildRoot = exeDir.filename() == "bin" ? exeDir.parent_path() : repoRoot / "build";
+    else
+        buildRoot = RTEAutomation::DefaultCacheRoot() / "sim";
+
+    const std::string name = options.name.empty()
+        ? options.graph->stem().string() : options.name;
+    if (!IsValidSimName(name)) {
+        Emit(format, {{"event","error"},
+                      {"message","invalid sim name \"" + name
+                         + "\" (allowed: A-Z a-z 0-9 _ . - ; not \".\" or \"..\")"
+                         + (options.name.empty() ? "; pass --name" : "")}});
+        return 2;
+    }
+    const fs::path emittedDir = buildRoot / ("hostsim_" + name + "_emitted");
+    const fs::path simBuildDir(fs::path(emittedDir).string() + "_build");
+    const fs::path runDir = simBuildDir / "run";
+    const fs::path simExe = simBuildDir / RTEAutomation::ExecutableName("host_sim");
+
+    fs::path scenario;
+    if (options.scenario) {
+        scenario = *options.scenario;
+    } else {
+        /* Same rule as Images/HostSim/scripts/run_spwm_live.sh: scenario
+         * named after the graph (minus any trailing _graph), else the
+         * generic motor scenario. */
+        std::string base = name;
+        constexpr std::string_view suffix = "_graph";
+        if (base.size() > suffix.size()
+            && base.compare(base.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            base.resize(base.size() - suffix.size());
+        }
+        const fs::path candidate = *options.baseSource / "scenarios" / (base + ".json");
+        scenario = fs::is_regular_file(candidate, ec)
+            ? candidate : *options.baseSource / "scenarios" / "default_motor.json";
+    }
+    if (!fs::is_regular_file(scenario, ec)) {
+        Emit(format, {{"event","error"},{"message","scenario not found: " + scenario.string()}});
+        return 3;
+    }
+
+    if (!options.noBuild) {
+        std::string ignoredEnv;
+        const fs::path emitter = FindSimEmitter(exeDir, &ignoredEnv);
+        if (emitter.empty()) {
+            std::string message = "RTECodeEmitter not found; build it or set RTE_EMITTER";
+            if (!ignoredEnv.empty())
+                message += " (RTE_EMITTER points to \"" + ignoredEnv
+                         + "\", not an existing file)";
+            Emit(format, {{"event","error"},{"message",message}});
+            return 3;
+        }
+        Emit(format, {{"event","progress"},{"phase","sim-emit"},{"percent",10},
+                      {"message","Emitting simulation sources"},
+                      {"output",emittedDir.string()}});
+        fs::remove_all(emittedDir, ec);
+        if (ec) {
+            Emit(format, {{"event","error"},
+                          {"message","could not clear previous emit directory "
+                             + emittedDir.string() + ": " + ec.message()}});
+            return 4;
+        }
+        RTEAutomation::ProcessSpec emit;
+        emit.executable = emitter;
+        emit.arguments = {"--base-src", options.baseSource->string(),
+                          "--graph", options.graph->string(),
+                          "--output", emittedDir.string(),
+                          "--verbosity", format == Format::Text ? "info" : "warning"};
+        if (!RunSimStep(emit, format, {}, error)) {
+            Emit(format, {{"event","error"},{"message","simulation source generation failed: " + error}});
+            return 4;
+        }
+
+        Emit(format, {{"event","progress"},{"phase","sim-build"},{"percent",40},
+                      {"message","Building host_sim"},
+                      {"build",simBuildDir.string()}});
+        const unsigned jobs = std::max(1u, std::thread::hardware_concurrency());
+        RTEAutomation::ProcessSpec configure;
+        configure.executable = "cmake";
+        configure.arguments = {"-S", emittedDir.string(), "-B", simBuildDir.string()};
+        if (!RunSimStep(configure, format, {}, error)) {
+            Emit(format, {{"event","error"},{"message","simulation configure failed: " + error}});
+            return 4;
+        }
+        RTEAutomation::ProcessSpec build;
+        build.executable = "cmake";
+        build.arguments = {"--build", simBuildDir.string(), "-j", std::to_string(jobs)};
+        if (!RunSimStep(build, format, {}, error)) {
+            Emit(format, {{"event","error"},{"message","simulation build failed: " + error}});
+            return 4;
+        }
+    }
+    if (!fs::is_regular_file(simExe, ec)) {
+        Emit(format, {{"event","error"},
+                      {"message","host_sim not found at " + simExe.string()
+                         + (options.noBuild ? " (--no-build, nothing built)" : "")}});
+        return 4;
+    }
+    Emit(format, {{"event","artifact"},{"kind","sim-binary"},{"path",simExe.string()}});
+
+    /* Batch defaults to as-fast execution; live defaults to wall-clock so the
+     * TCP telemetry stream behaves like hardware (same as run_spwm_live.sh). */
+    const double realtime = options.realtimeSet ? options.realtime
+                                                : (options.live ? 1.0 : 0.0);
+    std::ostringstream realtimeText;
+    realtimeText << realtime;
+
+    /* The endpoint host_sim binds: its built-in default, overridden by the
+     * effective scenario's simulation.listen_host / listen_port. rte passes
+     * it to host_sim as --listen because with bare --live host_sim would
+     * otherwise pin its CLI defaults over the scenario values. */
+    std::string liveHost = "127.0.0.1";
+    int livePort = 14608;
+    std::ifstream scenarioFile(scenario);
+    std::ostringstream scenarioText;
+    scenarioText << scenarioFile.rdbuf();
+    const std::string scenarioBlob = scenarioText.str();
+    if (const std::string host = ScanJsonString(scenarioBlob, "listen_host"); !host.empty())
+        liveHost = host;
+    if (const auto port = ScanJsonInt(scenarioBlob, "listen_port");
+        port && *port > 0 && *port <= 65535)
+        livePort = *port;
+    const std::string liveEndpoint = liveHost + ":" + std::to_string(livePort);
+
+    if (options.live) {
+        Emit(format, {{"event","progress"},{"phase","sim-run"},{"percent",90},
+                      {"message","host_sim running in the foreground; press Ctrl+C to stop; "
+                                 "live telemetry on " + liveEndpoint + " (IVP)"},
+                      {"live",true},{"endpoint",liveEndpoint},{"protocol","ivp"}});
+    } else {
+        Emit(format, {{"event","progress"},{"phase","sim-run"},{"percent",90},
+                      {"message","Running scenario"},{"live",false}});
+    }
+
+    fs::create_directories(runDir, ec);
+    if (ec) {
+        Emit(format, {{"event","error"},
+                      {"message","could not create run directory " + runDir.string()
+                         + ": " + ec.message()}});
+        return 4;
+    }
+
+    std::string traceName;
+    RTEAutomation::ProcessSpec run;
+    run.executable = simExe;
+    run.arguments = {scenario.string(), "--realtime", realtimeText.str()};
+    if (options.live) run.arguments.insert(run.arguments.end(), {"--live", "--listen", liveEndpoint});
+    run.workingDirectory = runDir;
+    run.terminateWithParent = true;
+    const auto result = RTEAutomation::RunProcess(run, [&](const std::string& line) {
+        constexpr std::string_view wrote = "HostSim: wrote ";
+        if (line.compare(0, wrote.size(), wrote) == 0) traceName = line.substr(wrote.size());
+        if (format == Format::Text) std::cout << line << '\n';
+        else std::cerr << line << '\n';
+    });
+    if (!result.started) {
+        Emit(format, {{"event","error"},
+                      {"message",result.error.empty() ? "failed to start host_sim"
+                                                      : result.error}});
+        return 4;
+    }
+    if (result.exitCode != 0) {
+        Emit(format, {{"event","error"},{"message","host_sim " + result.error}});
+        return 4;
+    }
+
+    json trace;
+    if (!traceName.empty()) {
+        fs::path tracePath(traceName);
+        if (tracePath.is_relative()) tracePath = fs::absolute(runDir / tracePath, ec);
+        if (!fs::is_regular_file(tracePath, ec)) {
+            Emit(format, {{"event","error"},
+                          {"message","host_sim did not produce trace " + tracePath.string()}});
+            return 4;
+        }
+        Emit(format, {{"event","artifact"},{"kind","sim-trace"},
+                      {"path",tracePath.string()}});
+        trace = tracePath.string();
+    }
+
+    Emit(format, {{"event","complete"},{"success",true},
+                  {"graph",options.graph->string()},
+                  {"scenario",scenario.string()},
+                  {"sim_binary",simExe.string()},
+                  {"live",options.live},
+                  {"realtime",realtime},
+                  {"trace",trace}});
+    return 0;
 }
 
 }  // namespace
@@ -625,7 +1038,7 @@ int main(int argc, char* argv[]) {
     const auto parsed = ParseTopLevel(argc, argv);
     if (!parsed) { Usage(); return 2; }
     const int exitCode = Dispatch(*parsed);
-    if (parsed->format == Format::Json) {
+    if (commandFormatOverride.value_or(parsed->format) == Format::Json) {
         std::cout << json{{"success", exitCode == 0},
                           {"exit_code", exitCode},
                           {"events", jsonEvents}}.dump(2) << '\n';

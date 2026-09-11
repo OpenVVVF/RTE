@@ -38,7 +38,11 @@ std::string SaveToJson(const Graph& graph);
 Graph LoadFromJson(std::string_view jsonText);
 
 // Populate an existing Graph from JSON. Useful when templates have already been
-// loaded into the graph before the instance graph is parsed.
+// loaded into the graph before the instance graph is parsed (a node type whose
+// id is already known keeps the pre-loaded definition).
+// Throws std::runtime_error naming every JSON item that could not be added
+// (unknown node types, bad wire endpoints/type mismatches, double-wired
+// inputs, invalid bridges).
 void LoadIntoGraph(Graph& graph, std::string_view jsonText);
 
 // Parse a single NodeType from its JSON representation. Throws on invalid input.

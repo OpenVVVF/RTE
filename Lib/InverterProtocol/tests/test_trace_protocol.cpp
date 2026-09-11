@@ -63,3 +63,45 @@ TEST(TraceProtocol, RejectsWrongMagicVersionAndChannel) {
     schema.channel = IVP_TRACE_MAX_CHANNELS;
     EXPECT_FALSE(ivp_trace_encode_schema(&schema, payload));
 }
+
+TEST(TraceProtocol, SchemaNameBoundaryAt31Chars) {
+    /* 31 chars + NUL fills the 32-byte wire slot exactly. */
+    ivp_trace_schema_frame_t schema{};
+    schema.capture_id = 1;
+    schema.channel = 2;
+    schema.scale = 1.0f;
+    const std::string max_name(IVP_TRACE_SCHEMA_NAME_SIZE - 1, 'n');
+    std::strcpy(schema.name, max_name.c_str());
+
+    uint8_t payload[IVP_TRACE_PAYLOAD_SIZE]{};
+    ASSERT_TRUE(ivp_trace_encode_schema(&schema, payload));
+    ivp_trace_schema_frame_t decoded{};
+    ASSERT_TRUE(ivp_trace_decode_schema(payload, &decoded));
+    EXPECT_STREQ(decoded.name, max_name.c_str());
+}
+
+TEST(TraceProtocol, SchemaEncodeRejectsUnterminatedName) {
+    /* A name filling all 32 bytes with no NUL would lose its last character
+     * to the decoder's forced termination; the encoder refuses it. */
+    ivp_trace_schema_frame_t schema{};
+    schema.channel = 0;
+    std::memset(schema.name, 'x', IVP_TRACE_SCHEMA_NAME_SIZE);
+
+    uint8_t payload[IVP_TRACE_PAYLOAD_SIZE]{};
+    EXPECT_FALSE(ivp_trace_encode_schema(&schema, payload));
+}
+
+TEST(TraceProtocol, SchemaDecodeTruncatesFullUnterminatedName) {
+    /* Defense in depth: even a hand-crafted full 32-byte name on the wire
+     * decodes as 31 chars + NUL (documented truncation). */
+    uint8_t payload[IVP_TRACE_PAYLOAD_SIZE]{};
+    payload[0] = IVP_TRACE_MAGIC;
+    payload[1] = IVP_TRACE_VERSION;
+    payload[2] = IVP_TRACE_FRAME_SCHEMA;
+    std::memset(payload + 12, 'y', IVP_TRACE_SCHEMA_NAME_SIZE);
+
+    ivp_trace_schema_frame_t decoded{};
+    ASSERT_TRUE(ivp_trace_decode_schema(payload, &decoded));
+    std::string expected(IVP_TRACE_SCHEMA_NAME_SIZE - 1, 'y');
+    EXPECT_STREQ(decoded.name, expected.c_str());
+}

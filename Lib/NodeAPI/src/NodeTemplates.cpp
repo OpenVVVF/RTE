@@ -22,14 +22,31 @@ std::optional<std::string> ReadFile(const std::filesystem::path& path) {
     return contents;
 }
 
-// Read a code block file if it exists. Returns empty string on missing file.
+// Read a code block file if it exists, normalizing CRLF/CR to LF so template
+// code behaves identically on Windows checkouts. Returns "" on missing file.
 std::string ReadCodeBlock(const std::filesystem::path& dir, const std::string& filename) {
     const auto path = dir / filename;
     if (!std::filesystem::is_regular_file(path)) {
         return "";
     }
     auto text = ReadFile(path);
-    return text ? *text : "";
+    if (!text) {
+        return "";
+    }
+    std::string normalized;
+    normalized.reserve(text->size());
+    for (size_t i = 0; i < text->size(); ++i) {
+        const char c = (*text)[i];
+        if (c == '\r') {
+            normalized += '\n';
+            if (i + 1 < text->size() && (*text)[i + 1] == '\n') {
+                ++i;
+            }
+        } else {
+            normalized += c;
+        }
+    }
+    return normalized;
 }
 
 bool LoadFolderTemplate(Graph& graph,
@@ -80,11 +97,18 @@ bool LoadFolderTemplate(Graph& graph,
         return false;
     }
 
-    // Load optional code block files from the same folder.
-    nodeType.classHeader = ReadCodeBlock(dir, "class_header.h");
-    nodeType.classDefinition = ReadCodeBlock(dir, "class_definition.cpp");
-    nodeType.constructorCode = ReadCodeBlock(dir, "constructor.cpp");
-    nodeType.inlineCode = ReadCodeBlock(dir, "inline.cpp");
+    // Load optional code block files from the same folder. A sibling file
+    // overrides the value embedded in node.json; when the file is missing the
+    // embedded value is kept (the file being absent must not erase it).
+    const auto overrideFromFile = [&dir](const char* filename, std::string& target) {
+        if (std::filesystem::is_regular_file(dir / filename)) {
+            target = ReadCodeBlock(dir, filename);
+        }
+    };
+    overrideFromFile("class_header.h", nodeType.classHeader);
+    overrideFromFile("class_definition.cpp", nodeType.classDefinition);
+    overrideFromFile("constructor.cpp", nodeType.constructorCode);
+    overrideFromFile("inline.cpp", nodeType.inlineCode);
 
     if (!graph.AddNodeType(nodeType)) {
         result.ok = false;
