@@ -6,6 +6,8 @@ int main() {
     std::printf("=== Gen7 I2C driver host verification ===\n");
     hosttest::test_temp_suite();
     hosttest::test_rail_suite();
+    hosttest::test_temp_adv_suite();
+    hosttest::test_rail_adv_suite();
 
     std::printf("=== %d/%d checks passed", hosttest::g_checks.passed,
                 hosttest::g_checks.total);

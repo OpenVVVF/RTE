@@ -90,23 +90,46 @@ void test_generic_present() {
     CHECK_NEAR(t, 55.5, 0.07);
 }
 
-/* EM=1 in config -> 13-bit decode on the wire. */
+/* EM=1 in config -> 13-bit decode on the wire.  EM is a TMP102-class-only
+ * feature: the real TMP1075 has no EM bit and its config PORs to 0x00FF, so
+ * this test must use the generic (TMP102-flavored) model. */
 void test_extended_mode() {
-    std::printf("[temp] extended (13-bit) mode\n");
+    std::printf("[temp] extended (13-bit) mode, generic TMP102 flavor\n");
     MockI2cBus bus;
-    Tmp1075Model dev(true);
+    Tmp1075Model dev(false);
     bus.attach(ADDR, &dev);
     dev.setConfig(0x0010);  /* EM=1 */
     dev.setTempRaw16(0x0C80); /* 25.0 C in 13-bit mode */
 
     OnboardTempSensor sensor;
     CHECK(sensor.init(bus, ADDR, 20));
-    CHECK(sensor.part() == OnboardTempSensor::Part::Tmp1075);
+    CHECK(sensor.part() == OnboardTempSensor::Part::Generic);
     CHECK(sensor.extendedMode());
 
     float t = 0.0f;
     CHECK(sensor.poll(t, 10));
     CHECK_NEAR(t, 25.0, 1e-3);
+}
+
+/* Real TMP1075: config PORs to 0x00FF with every "Not used" low bit reading
+ * 1 (SBOS854F Table 7-5), so an unconditional EM-bit (bit 4) check would
+ * latch a bogus 13-bit decode and report 2x the real temperature.  The
+ * driver must ignore EM whenever the part was ID'd as TMP1075. */
+void test_tmp1075_config_por_is_not_em() {
+    std::printf("[temp] TMP1075 config POR 0x00FF must not engage EM\n");
+    MockI2cBus bus;
+    Tmp1075Model dev(true);
+    bus.attach(ADDR, &dev);
+    CHECK(dev.config() == 0x00FFu);
+    dev.setTempRaw16(0x1900);  /* 25.0 C (12-bit is the only TMP1075 width) */
+
+    OnboardTempSensor sensor;
+    CHECK(sensor.init(bus, ADDR, 20));
+    CHECK(sensor.part() == OnboardTempSensor::Part::Tmp1075);
+    CHECK(!sensor.extendedMode());  /* bit 4 of 0x00FF is 1: must be ignored */
+    float t = 0.0f;
+    CHECK(sensor.poll(t, 10));
+    CHECK_NEAR(t, 25.0, 1e-3);      /* 2x decode would read 50.0 C */
 }
 
 /* NACK at the address: init must fail cleanly, poll must not read. */
@@ -153,6 +176,7 @@ void hosttest::test_temp_suite() {
     test_tmp1075_present();
     test_generic_present();
     test_extended_mode();
+    test_tmp1075_config_por_is_not_em();
     test_absent();
     test_loss_of_device();
 }

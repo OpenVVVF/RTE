@@ -88,7 +88,12 @@ void test_ina228_math() {
         (static_cast<uint32_t>(code) << 4) & 0x00FFFFFFu;
     CHECK_NEAR(RailMonitor::ina228CurrentFromRaw(cur_reg_neg, lsb), -1.0, 2e-4);
 
-    CHECK_NEAR(RailMonitor::ina228PowerFromRaw(393216u << 4, lsb), 24.0, 5e-3);
+    /* POWER is a straight 24-bit register, LSB = 3.2 * Current_LSB (verified
+     * vs Linux kernel ina238.c: read unshifted; a 20-bit-left-aligned decode
+     * under-reports 16x). */
+    CHECK_NEAR(RailMonitor::ina228PowerFromRaw(393216u, lsb), 24.0, 5e-3);
+    /* Bits above bit 19 are real power data, not sign extension: */
+    CHECK_NEAR(RailMonitor::ina228PowerFromRaw(0x600000u, lsb), 384.0, 0.05);
     CHECK_NEAR(RailMonitor::ina228DieTempCFromRaw(5760), 45.0, 1e-3);
 
     /* sign extension */
@@ -112,14 +117,18 @@ void test_ina228_detect_and_poll() {
     CHECK(mon.shuntCalValue() == 1250u);
     CHECK(dev.shuntCal() == 1250u);
 
-    const float lsb = mon.currentLsbA();
-    dev.setMeasurement(12.0f, 0.010f, lsb);  /* 12 V, 10 mV -> 2 A, 24 W */
+    /* The mock derives CURRENT from the held SHUNT_CAL like the silicon, so
+     * the CAL written by init() IS what makes this reading correct. */
+    dev.setMeasurement(12.0f, 0.010f);  /* 12 V, 10 mV -> 2 A, 24 W */
 
     RailMonitor::Sample s{};
     CHECK(mon.poll(0, s, 10));
     CHECK_NEAR(s.bus_v, 12.0, 2e-4);
+    /* cur code = 32000 * 4096 / 1250 = 104857.6 -> 104858 -> 2.0000076 A */
     CHECK_NEAR(s.current_a, 2.0, 1e-4);
+    /* pow code = 12 * 104858 / 3.2 = 393217.5 -> 393218 -> 24.000122 W */
     CHECK_NEAR(s.power_w, 24.0, 2e-3);
+    CHECK(dev.powerRaw24() == 393218u);  /* straight 24-bit, NOT <<4 */
 }
 
 /* ---------- INA3221 pure math + end-to-end ---------- */

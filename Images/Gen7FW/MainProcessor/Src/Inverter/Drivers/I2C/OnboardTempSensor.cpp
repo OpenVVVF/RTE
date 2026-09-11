@@ -69,9 +69,16 @@ bool OnboardTempSensor::init(II2cBus& bus, uint8_t addr7, uint32_t timeout_ms) {
         m_part = Part::Generic;
     }
 
-    /* Latch the EM bit so poll() decodes the right code width. */
+    /* Latch the EM bit so poll() decodes the right code width — TMP102-only
+     * feature.  The TMP1075 has NO extended mode and its config register PORs
+     * to 0x00FF with every low "Not used" bit reading 1, so an unconditional
+     * EM check on bit 4 latches a bogus 13-bit decode and reads 2x the real
+     * temperature (e.g. 50 degC at 25 degC hardware).  Only trust EM when the
+     * part was NOT positively ID'd as TMP1075 (SBOS854F Table 7-5).  A
+     * PCT2075 can't be ID'd at all — see the note there: its Conf is one
+     * byte, whose second byte is undefined. */
     uint16_t cfg = 0;
-    if (readReg(REG_CONFIG, cfg, timeout_ms)) {
+    if (m_part != Part::Tmp1075 && readReg(REG_CONFIG, cfg, timeout_ms)) {
         m_extended = configIsExtended(cfg);
     }
 

@@ -56,6 +56,17 @@ public:
     static constexpr uint8_t REG_INA226_POWER     = 0x03;
     static constexpr uint8_t REG_INA226_CURRENT   = 0x04;
     static constexpr uint8_t REG_INA226_CAL       = 0x05;
+    static constexpr uint8_t REG_INA226_MASK_EN   = 0x06;
+    /* Mask/Enable (0x06) bit 2 = OVF math overflow: shunt/current/power
+     * math overflowed (|current| beyond the calibrated full-scale). */
+    static constexpr uint16_t INA226_OVF          = 0x0004;
+    static constexpr uint8_t REG_INA228_CONFIG    = 0x00;
+    /* INA228 CONFIG bit 4 = ADCRANGE (0: +/-163.84mV, 1: +/-40.96mV). */
+    static constexpr uint16_t INA228_CFG_ADCRANGE = 0x0010;
+    /* INA226/INA3221 CONFIG mode bits [2:0] = 111: continuous shunt+bus. */
+    static constexpr uint16_t INA226_CFG_MODE_CONT = 0x0007;
+    /* INA3221 CONFIG bits 14:12 = CH1..CH3 enable. */
+    static constexpr uint16_t INA3221_CFG_CH_EN    = 0x7000;
     static constexpr uint8_t REG_INA_MFG_ID       = 0xFE; /**< 226 + 3221 */
     static constexpr uint8_t REG_INA_DIE_ID       = 0xFF; /**< 226 + 3221 */
 
