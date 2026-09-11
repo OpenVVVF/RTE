@@ -22,14 +22,31 @@ std::optional<std::string> ReadFile(const std::filesystem::path& path) {
     return contents;
 }
 
-// Read a code block file if it exists. Returns empty string on missing file.
+// Read a code block file if it exists, normalizing CRLF/CR to LF so template
+// code behaves identically on Windows checkouts. Returns "" on missing file.
 std::string ReadCodeBlock(const std::filesystem::path& dir, const std::string& filename) {
     const auto path = dir / filename;
     if (!std::filesystem::is_regular_file(path)) {
         return "";
     }
     auto text = ReadFile(path);
-    return text ? *text : "";
+    if (!text) {
+        return "";
+    }
+    std::string normalized;
+    normalized.reserve(text->size());
+    for (size_t i = 0; i < text->size(); ++i) {
+        const char c = (*text)[i];
+        if (c == '\r') {
+            normalized += '\n';
+            if (i + 1 < text->size() && (*text)[i + 1] == '\n') {
+                ++i;
+            }
+        } else {
+            normalized += c;
+        }
+    }
+    return normalized;
 }
 
 bool LoadFolderTemplate(Graph& graph,
