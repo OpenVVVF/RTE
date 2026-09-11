@@ -51,6 +51,9 @@ enum class FaultSource : uint32_t {
     OvertemperatureMotor = 1u << 25,  /**< Motor temperature above limit    */
     OvertemperatureInverter = 1u << 26, /**< Board temperature above limit  */
     CurrentSensorRef = 1u << 27,  /**< Current-sensor reference out of window */
+    OnboardOvertemperature = 1u << 28, /**< I2C5 onboard temp sensor over limit */
+    RailOvervoltage  = 1u << 29,  /**< I2C4 rail monitor bus overvoltage      */
+    RailUndervoltage = 1u << 30,  /**< I2C4 rail monitor bus undervoltage     */
 };
 
 constexpr FaultSource operator|(FaultSource a, FaultSource b) {
@@ -112,6 +115,9 @@ enum class FaultReason : uint8_t {
     OvertemperatureInv3,
     OvertemperatureMotor,
     SensorRefOutOfRange,
+    OnboardOvertemperature,
+    RailOvervoltage,
+    RailUndervoltage,
     Count
 };
 
@@ -238,6 +244,9 @@ private:
         { FaultSource::OvertemperatureMotor,    "OvertemperatureMotor",    "Temperature", "motor temperature above limit",        FaultSeverity::Critical },
         { FaultSource::OvertemperatureInverter, "OvertemperatureInverter", "Temperature", "board temperature above limit",        FaultSeverity::Critical },
         { FaultSource::CurrentSensorRef, "CurrentSensorRef", "Current Sense", "current-sensor reference out of window",      FaultSeverity::Warning  },
+        { FaultSource::OnboardOvertemperature, "OnboardOvertemperature", "Temperature", "I2C5 onboard temp sensor over limit", FaultSeverity::Warning  },
+        { FaultSource::RailOvervoltage,  "RailOvervoltage",  "Rail Monitor", "I2C4 rail bus overvoltage",                    FaultSeverity::Warning  },
+        { FaultSource::RailUndervoltage, "RailUndervoltage", "Rail Monitor", "I2C4 rail bus undervoltage",                   FaultSeverity::Warning  },
     };
 };
 

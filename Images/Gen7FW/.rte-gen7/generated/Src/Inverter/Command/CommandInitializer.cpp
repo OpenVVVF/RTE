@@ -11,6 +11,7 @@ void registerFocCommands(CommandManager& mgr);
 void registerCanCommands(CommandManager& mgr);
 void registerOpenLoopCommands(CommandManager& mgr);
 void registerTraceCommands(CommandManager& mgr);
+void registerI2cCommands(CommandManager& mgr);
 
 /* TIME_DOMAIN: APPLICATION_COMMAND_REGISTRATION
  *   Registers all shell commands at boot.  Commands execute in main-loop context.
@@ -30,4 +31,5 @@ void initializeCommands() {
     registerCanCommands(mgr);
     registerOpenLoopCommands(mgr);
     registerTraceCommands(mgr);
+    registerI2cCommands(mgr);
 }

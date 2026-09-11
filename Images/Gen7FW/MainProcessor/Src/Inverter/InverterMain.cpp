@@ -24,6 +24,7 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/I2C/I2cSensors.h"
 #include "Inverter/Drivers/CAN/CanBus.h"
 #include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
@@ -164,6 +165,11 @@ static void init()
      * conversions and never blocks. */
     Inverter::appSensors().init();
 
+    /* Gen7 I2C sensors (I2C5 onboard temp, I2C4 rail monitor).  Probes with a
+     * short timeout; missing devices never block boot and are re-probed every
+     * 5 s from the main loop. */
+    Inverter::i2cSensors().init();
+
     /* CAN buses (KV enables; no-op when both disabled). */
     Inverter::canBus().init();
 
@@ -252,6 +258,9 @@ static void loop()
 
     /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
     Inverter::appSensors().update();
+
+    /* I2C sensors: 5 Hz poll, lazy re-probe, Warning-fault evaluation. */
+    Inverter::i2cSensors().update();
 
     /* CAN: drain TX queues, bus-off recovery, session heartbeat watch. */
     Inverter::traceRecorder().update();

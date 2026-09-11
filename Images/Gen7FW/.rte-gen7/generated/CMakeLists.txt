@@ -82,6 +82,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Command/Commands/CanCommands.cpp
     Src/Inverter/Command/Commands/OpenLoopCommands.cpp
     Src/Inverter/Command/Commands/TraceCommands.cpp
+    Src/Inverter/Command/Commands/I2cCommands.cpp
     Src/Inverter/Control/ControlSupervisor.cpp
     Src/Inverter/Control/OpenLoopController.cpp
     Src/Inverter/Control/FocControlManager.cpp
@@ -131,6 +132,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/Drivers/Sensors/ApplicationSensors.cpp
     Src/Inverter/Drivers/Sensors/SpikeRecorder.cpp
     Src/Inverter/Drivers/Sensors/SampleScheduler.cpp
+    Src/Inverter/Drivers/I2C/HalI2cBus.cpp
+    Src/Inverter/Drivers/I2C/OnboardTempSensor.cpp
+    Src/Inverter/Drivers/I2C/RailMonitor.cpp
+    Src/Inverter/Drivers/I2C/I2cSensors.cpp
     Src/Inverter/Drivers/CAN/CanBus.cpp
     Src/Inverter/Drivers/CAN/CanProtocolTransport.cpp
     Src/Inverter/Drivers/CAN/CanSession.cpp
