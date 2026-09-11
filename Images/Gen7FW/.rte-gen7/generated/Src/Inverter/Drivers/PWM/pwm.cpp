@@ -568,4 +568,3 @@ void PWM_PrintSPWMState(void)
                      (double)spwm_modulation_index,
                      (double)du, (double)dv, (double)dw);
 }
-

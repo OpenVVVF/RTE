@@ -654,4 +654,3 @@ extern "C" void HAL_ADC_LevelOutOfWindowCallback(ADC_HandleTypeDef* hadc) {
             Inverter::FaultReason::AdcWatchdogTrip);
     }
 }
-

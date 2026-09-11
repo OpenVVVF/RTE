@@ -24,6 +24,7 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
+#include "Inverter/Drivers/I2C/I2cSensors.h"
 #include "Inverter/Drivers/CAN/CanBus.h"
 #include "Inverter/Drivers/CAN/CanSession.h"
 #include "Inverter/Drivers/CAN/FdcanFault.h"
@@ -40,10 +41,10 @@
 #include "spi.h"
 #include "cy15b102q_driver.h"
 #include "ontime_logger.h"
-#include "../../generated/domain_vsense_generated.h"
 #include "../../generated/domain_adc_isr_generated.h"
-#include "../../generated/domain_tim_isr_generated.h"
 #include "../../generated/domain_app_loop_generated.h"
+#include "../../generated/domain_tim_isr_generated.h"
+#include "../../generated/domain_vsense_generated.h"
 
 /* Global RTE codegen state variable.  Referenced by app::<DomainTitle>Init/Step
  * calls inserted at // RTE_EMIT markers. */
@@ -168,6 +169,11 @@ static void init()
      * conversions and never blocks. */
     Inverter::appSensors().init();
 
+    /* Gen7 I2C sensors (I2C5 onboard temp, I2C4 rail monitor).  Probes with a
+     * short timeout; missing devices never block boot and are re-probed every
+     * 5 s from the main loop. */
+    Inverter::i2cSensors().init();
+
     /* CAN buses (KV enables; no-op when both disabled). */
     Inverter::canBus().init();
 
@@ -257,6 +263,9 @@ static void loop()
     /* Application sensors (temps/throttle): harvest + recompute; never blocks. */
     Inverter::appSensors().update();
 
+    /* I2C sensors: 5 Hz poll, lazy re-probe, Warning-fault evaluation. */
+    Inverter::i2cSensors().update();
+
     /* CAN: drain TX queues, bus-off recovery, session heartbeat watch. */
     Inverter::traceRecorder().update();
     Inverter::canBus().update();
@@ -310,4 +319,3 @@ extern "C" void InverterMain_Run(void)
         InverterMain::loop();
     }
 }
-
