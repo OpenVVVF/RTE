@@ -405,16 +405,66 @@ Exit code is nonzero iff any graph FAILs. Current results:
 | can_bus_demo_role_a | SKIP | — | — | scenario overlay, not a graph; consumed by `can_bus_demo` two-instance run |
 | can_bus_demo_role_b | SKIP | — | — | scenario overlay, not a graph; consumed by `can_bus_demo` two-instance run |
 | current_telemetry | PASS | 5001 | 223.282 | sensor-only graph; legacy `demo_fallback` spins the plant |
-| foc_chain | SKIP | — | — | stale graph: its `Control.Pi` instances omit the current Pi template's `Dt`/`AwGain`/`Feedforward` params, so the generated code does not compile (add them to the two instances to flip this to PASS; verified working once added) |
+| foc_chain | PASS | 5001 | 2.625 | open chain, fixed theta/dq refs (Iq=5 A baked in) |
 | foc_demo_aidan | PASS | 7501 | 17.760 | default_motor baseline + vars `IqVar=8 A` (`IdVar=0`) |
 | foc_demo | PASS | 7501 | 15.480 | default_motor baseline + vars `IqVar=8 A` (`IdVar=0`) |
 | foc_mtpa_demo | PASS | 7501 | 76.325 | default_motor baseline + vars `CMD=8 A` (MTPA splits id/iq) |
+| foc_sensorless_demo | PASS | 15001 | 4.582 | 10 mH 5pp PMSM @10 kHz + vars `IqVar=4 A`, `UseObserver=1` (observer feedback); settled \|obs−meas\| worst 0.121 A, spins ≈25 rad/s elec |
 | induction_vhz | PASS | 17501 | 2.723 | induction plant, `TargetHz=40`, 0.55 V/Hz + 1.5 V boost |
 | ladrc_demo | PASS | 7501 | 17.109 | default_motor baseline + vars `IqVar=8 A` (LADRC current loops) |
 
 (`spwm_demo` is not an `Assets/Examples` graph — it lives in
 `Images/HostSim/graphs/` and is covered by the `hostsim` part of
 `Tools/tests/run_sim_smoke.sh`.)
+
+## Sensorless observer feedback
+
+`Assets/Examples/foc_sensorless_demo.json` is a `foc_demo` variant that closes
+the FOC current loop on the **current observer** instead of raw burst samples —
+the Gen6 `FocControlManager` observer-feedback pattern expressed as graph
+topology (the same `hw.current_observer` predict/correct block the Gen6
+firmware runs, ported into HostSim). Concretely, versus `foc_demo`:
+
+- `ObserverObs` (`hw.current_observer`, `tim_isr`) runs every control step:
+  corrected by the `adc_isr` burst measurements (cross-domain bridges carry
+  `I_A/B/C` plus the burst slope/timestamp) and predicted from the voltage
+  vector that was *actually applied* during the previous period, reconstructed
+  by the graph-local `AppliedVab` node from the terminal-voltage readback
+  (`platform_phase_voltage_u/v/w`). Observe the convention conversion there:
+  the readback is leg-average volts vs DC−, so the node applies the
+  amplitude-preserving Clarke and ×2 to recover the graph's leg-referenced
+  α/β voltage convention (on Gen6 `duty·vdc` is the leg average, hence the
+  phase-neutral fundamental is half of `|vαβ|`).
+- `FeedbackGate` (graph-local `Custom.ObsGate`) is the feedback switch that
+  Gen6 implements inside `FocControlManager::onPwmPeriod()`: when
+  `platform_get_use_observer()` is set it feeds the Clarke/Park chain with the
+  observer currents, otherwise with the raw burst measurement. The
+  `foc_demo` bridges that fed Clarke/Park now feed this gate.
+- `ObserverCtrl` (graph-local `Custom.ObserverControl`) seeds the observer from
+  calibration at graph init (`platform_observer_init_from_calibration()` —
+  HostSim's source is the scenario `motor` block) and drives the platform
+  `use_observer` flag from the `UseObserver` Var (default 1) every step.
+  Scenario `vars` land after domain constructors, so step-time application —
+  not a constructor — is what makes a scenario-seeded value effective from the
+  first step; flag writes are idempotent.
+- A `PhaseCurrentsObs` probe (`Sensors.PhaseCurrents` → telemetry key
+  `cg_pc_iu`) demonstrates the standard template honoring the same flag: with
+  `use_observer` on it outputs the observer currents, off the raw ADC samples.
+  The `InvertPolarity` trim applies to the raw path only — the currents that
+  correct the observer are sign-corrected before they reach it, so observer
+  output already follows the FOC convention (same as the Gen6 control path).
+
+The scenario generator in `Tools/tests/run_all_examples.sh` uses a 10 mH
+5-pole-pair PMSM at 10 kHz tim/adc with `IqVar=4 A`, `UseObserver=1` (the demo
+also runs fine at the usual 5 kHz — 10 kHz just halves the observer's per-step
+prediction staleness, tightening the settled tracking error). At that operating
+point the observer tracks the measured phase currents to < 0.13 A worst-case
+after settle (~0.05 A RMS) with iq regulated to 4.00 A and the motor spinning
+at ≈ 25 rad/s electrical. Seeding `"UseObserver": 0.0` instead falls back to
+raw-measurement feedback and the run matches `foc_demo` under the same
+scenario bit-for-bit (the observer keeps running but nothing consumes it).
+The suite asserts all of this for the graph row: gate steadily on, worst
+settled `|obs−meas|` < 0.15 A, and the motor spinning.
 
 ## Graph-level CAN / two-inverter pattern
 
