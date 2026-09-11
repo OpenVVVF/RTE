@@ -82,7 +82,10 @@ float RailMonitor::ina228CurrentFromRaw(uint32_t raw24, float current_lsb_a) {
 }
 
 float RailMonitor::ina228PowerFromRaw(uint32_t raw24, float current_lsb_a) {
-    const uint32_t code = (raw24 & 0x00FFFFFFu) >> 4;
+    /* POWER is a full 24-bit register (bits 23:0) on the INA228 — unlike
+     * VBUS/CURRENT, which hold 20-bit data in bits 23:4.  Do not right-shift;
+     * a 20-bit decode would under-report power 16x.  (SLYS021 §7.6.1.9.) */
+    const uint32_t code = raw24 & 0x00FFFFFFu;
     return static_cast<float>(code) * 3.2f * current_lsb_a;
 }
 
@@ -160,33 +163,81 @@ bool RailMonitor::init(II2cBus& bus, uint8_t addr7, const Config& cfg,
     if (legacy_ok && mfg == TI_MFG_ID) {
         m_last_mfg = mfg;
         m_last_dev = dev;
-        if (dev == INA226_DIE_ID) {
+        /* Die-ID registers are DID[15:4] + RID[3:0] (revision): US-fab INA226
+         * revs report 0x2261, and treating the nibble as part of the ID
+         * rejects legitimate parts.  Mask the RID nibble (SBOS547 Table 7-1
+         * note 3 / Table 7-15; INA3221 ID register has the same layout). */
+        if ((dev & 0xFFF0u) == INA226_DIE_ID) {
             m_part = Part::INA226;
             m_current_lsb = ina226CurrentLsb(cfg.max_expected_a);
             m_cal = ina226CalValue(m_current_lsb, cfg.shunt_ohm);
             /* Continuous shunt+bus, 1.1 ms conversions (POR default).  The
-             * CAL write is what makes the current/power registers valid. */
-            return writeReg16(REG_INA226_CAL, m_cal, timeout_ms);
+             * CAL write is what makes the current/power registers valid.
+             * RMW the MODE bits too: a warm boot could leave a stale
+             * triggered/shutdown mode behind (POR CONFIG = 0x4127). */
+            uint16_t config = 0;
+            if (!writeReg16(REG_INA226_CAL, m_cal, timeout_ms)) {
+                return false;
+            }
+            if (!readReg16(REG_INA226_CONFIG, config, timeout_ms)) {
+                return false;
+            }
+            if ((config & INA226_CFG_MODE_CONT) != INA226_CFG_MODE_CONT) {
+                config = static_cast<uint16_t>((config & ~INA226_CFG_MODE_CONT) |
+                                               INA226_CFG_MODE_CONT);
+                return writeReg16(REG_INA226_CONFIG, config, timeout_ms);
+            }
+            return true;
         }
-        if (dev == INA3221_DIE_ID) {
+        if ((dev & 0xFFF0u) == INA3221_DIE_ID) {
             m_part = Part::INA3221;
-            return true;  /* no calibration register on this part */
+            /* RMW: enable all three channels (kernel programs CH_EN; disabled
+             * channels hold stale data that must never read back as valid)
+             * and force continuous shunt+bus mode after warm boots. */
+            uint16_t config = 0;
+            if (!readReg16(REG_INA226_CONFIG, config, timeout_ms)) {
+                return false;
+            }
+            const uint16_t want = static_cast<uint16_t>(
+                (config | INA3221_CFG_CH_EN | INA226_CFG_MODE_CONT));
+            if (want != config) {
+                return writeReg16(REG_INA226_CONFIG, want, timeout_ms);
+            }
+            return true;
         }
         return false;  /* known TI family but unsupported die */
     }
 
     mfg = 0; dev = 0;
-    if (readReg16(REG_INA228_MFG_ID, mfg, timeout_ms) &&
-        readReg16(REG_INA228_DEV_ID, dev, timeout_ms) &&
-        mfg == TI_MFG_ID && (dev & 0xFFF0u) == INA228_DEV_ID_HI) {
+    const bool got228 = readReg16(REG_INA228_MFG_ID, mfg, timeout_ms) &&
+                        readReg16(REG_INA228_DEV_ID, dev, timeout_ms);
+    if (got228) {
+        /* Record the raw IDs regardless of match so a rejected probe stays
+         * diagnosable via lastMfgId()/lastDevId() (same contract as the
+         * legacy-ID branch above). */
         m_last_mfg = mfg;
         m_last_dev = dev;
+    }
+    if (got228 && mfg == TI_MFG_ID && (dev & 0xFFF0u) == INA228_DEV_ID_HI) {
         m_part = Part::INA228;
         m_current_lsb = ina228CurrentLsb(cfg.max_expected_a);
         m_cal = ina228ShuntCalValue(m_current_lsb, cfg.shunt_ohm);
         /* POR defaults keep ADCRANGE=0 (+/-163.84 mV shunt swing) and
-         * continuous conversion of bus/shunt/temp; only CAL is needed. */
-        return m_cal != 0 && writeReg16(REG_INA228_SHUNT_CAL, m_cal, timeout_ms);
+         * continuous conversion of bus/shunt/temp, but a warm boot could
+         * leave ADCRANGE=1 behind (4x finer shunt LSB -> currents would
+         * read 4x high under the ADCRANGE=0 math).  RMW CONFIG to force
+         * ADCRANGE=0; everything else is left at the running config. */
+        uint16_t config228 = 0;
+        if (m_cal == 0 ||
+            !writeReg16(REG_INA228_SHUNT_CAL, m_cal, timeout_ms) ||
+            !readReg16(REG_INA228_CONFIG, config228, timeout_ms)) {
+            return false;
+        }
+        if ((config228 & INA228_CFG_ADCRANGE) != 0u) {
+            config228 = static_cast<uint16_t>(config228 & ~INA228_CFG_ADCRANGE);
+            return writeReg16(REG_INA228_CONFIG, config228, timeout_ms);
+        }
+        return true;
     }
     return false;
 }
@@ -211,6 +262,19 @@ bool RailMonitor::poll(uint8_t channel, Sample& out,
                 return false;
             }
             current = static_cast<int16_t>(cur_raw);
+            /* A raw current at the rails means the chip's internal
+             * shunt*CAL math may have overflowed (the count wraps to the
+             * opposite sign when |current| exceeds the calibrated
+             * full-scale).  Confirm via the Mask/Enable math-overflow flag
+             * before trusting a near-full-scale sample; the OVF read only
+             * costs one transaction at the rails. */
+            if (current >= 32760 || current <= -32768) {
+                uint16_t mask_en = 0;
+                if (readReg16(REG_INA226_MASK_EN, mask_en, timeout_ms) &&
+                    (mask_en & INA226_OVF) != 0u) {
+                    return false;  /* math overflow: sample is a wrapped rail */
+                }
+            }
             out.bus_v     = ina226BusVFromRaw(bus);
             out.current_a = ina226CurrentFromRaw(current, m_current_lsb);
             out.power_w   = ina226PowerFromRaw(power, m_current_lsb);

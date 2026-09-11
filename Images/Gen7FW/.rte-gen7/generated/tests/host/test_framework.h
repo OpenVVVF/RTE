@@ -50,5 +50,7 @@ inline void reportNear(double actual, double expect, double tol,
 
 void test_temp_suite();
 void test_rail_suite();
+void test_temp_adv_suite();
+void test_rail_adv_suite();
 
 } // namespace hosttest

@@ -31,6 +31,8 @@ SOURCES=(
     "${SCRIPT_DIR}/test_main.cpp"
     "${SCRIPT_DIR}/test_temp.cpp"
     "${SCRIPT_DIR}/test_rail.cpp"
+    "${SCRIPT_DIR}/test_temp_adversarial.cpp"
+    "${SCRIPT_DIR}/test_rail_adversarial.cpp"
     "${FW_ROOT}/Src/Inverter/Drivers/I2C/OnboardTempSensor.cpp"
     "${FW_ROOT}/Src/Inverter/Drivers/I2C/RailMonitor.cpp"
 )
