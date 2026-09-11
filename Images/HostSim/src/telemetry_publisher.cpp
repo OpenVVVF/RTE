@@ -105,7 +105,9 @@ bool WriteAll(Socket fd, const uint8_t* data, int n) {
 struct TelemetryPublisher::Client {
     Socket fd = kInvalid;
     std::string rx;
-    bool needs_define = true;
+    /* Store define_seq_ value this client was last fully DEFINE'd against;
+     * 0 never matches once any key exists, so new clients always define. */
+    uint32_t define_seq_seen = 0;
 };
 
 TelemetryPublisher::TelemetryPublisher() = default;
@@ -189,8 +191,7 @@ void TelemetryPublisher::EnsureBuiltinIds() {
         auto& s = signals_[k];
         if (s.id == 0) {
             s.id = next_id_++;
-            s.defined = false;
-            define_dirty_ = true;
+            define_seq_.fetch_add(1, std::memory_order_relaxed);
         }
     }
 }
@@ -201,8 +202,7 @@ void TelemetryPublisher::LogF32(const char* key, float value) {
     auto& s = signals_[key];
     if (s.id == 0) {
         s.id = next_id_++;
-        s.defined = false;
-        define_dirty_ = true;
+        define_seq_.fetch_add(1, std::memory_order_relaxed);
     }
     s.value = value;
 }
@@ -237,9 +237,7 @@ bool TelemetryPublisher::AcceptPending() {
     SetNonBlocking(cfd);
     Client c;
     c.fd = cfd;
-    c.needs_define = true;
     clients_.push_back(std::move(c));
-    define_dirty_ = true;
     std::printf("HostSim live: client connected (%zu total)\n", clients_.size());
     return true;
 }
@@ -262,16 +260,16 @@ bool TelemetryPublisher::SendFramed(Client& c, const uint8_t* packet, size_t len
 
 bool TelemetryPublisher::SendDefine(Client& c, uint32_t time_us) {
     // Snapshot the key set so the frames below can be built without holding
-    // the lock across socket writes.
+    // the lock across socket writes. Keys registered mid-send bump
+    // define_seq_ and are caught on the next cycle's comparison.
     std::vector<std::pair<uint16_t, std::string>> entries;
+    const uint32_t seq_at_snapshot = define_seq_.load(std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lock(mu_);
         entries.reserve(signals_.size());
         for (auto& kv : signals_) {
             entries.emplace_back(kv.second.id, kv.first);
-            kv.second.defined = true;
         }
-        define_dirty_ = false;
     }
 
     // A full signal set does not fit in one 240-byte DEFINE payload, so page
@@ -306,65 +304,60 @@ bool TelemetryPublisher::SendDefine(Client& c, uint32_t time_us) {
         if (!SendFramed(c, packet, packet_len)) return false;
     }
 
-    c.needs_define = false;
+    c.define_seq_seen = seq_at_snapshot;
     return true;
 }
 
-bool TelemetryPublisher::SendData(Client& c, uint32_t time_us) {
-    uint8_t payload[IVP_DATA_PAYLOAD_MAX];
-    ivp_data_builder_t b;
-    if (ivp_telemetry_data_begin(&b, payload, sizeof(payload)) != IVP_OK) return false;
-
+bool TelemetryPublisher::SendDataFiltered(Client& c, uint32_t time_us,
+                                          const char* include_prefix,
+                                          const char* exclude_prefix) {
+    // Snapshot the matching signals so socket writes happen without mu_ held
+    // and large key sets can be paged across multiple DATA frames below.
+    const std::string inc = include_prefix ? include_prefix : "";
+    const std::string exc = exclude_prefix ? exclude_prefix : "";
+    std::vector<std::pair<uint16_t, float>> items;
     {
         std::lock_guard<std::mutex> lock(mu_);
+        items.reserve(signals_.size());
         for (const auto& kv : signals_) {
-            const auto& sig = kv.second;
-            if (ivp_telemetry_data_add_f32(&b, sig.id, sig.value) != IVP_OK) break;
+            if (include_prefix && kv.first.compare(0, inc.size(), inc) != 0) continue;
+            if (exclude_prefix && kv.first.compare(0, exc.size(), exc) == 0) continue;
+            items.emplace_back(kv.second.id, kv.second.value);
         }
     }
 
-    uint8_t packet[IVP_HEADER_SIZE + IVP_DATA_PAYLOAD_MAX + 2];
-    size_t packet_len = 0;
-    if (ivp_packet_encode(IVP_MSG_TELEMETRY_DATA, seq_++, time_us, payload,
-                          static_cast<uint16_t>(b.len), packet, sizeof(packet),
-                          &packet_len) != IVP_OK) {
-        return false;
-    }
-    return SendFramed(c, packet, packet_len);
-}
+    // Nothing selected: send no DATA frame at all (an empty frame still costs
+    // bandwidth every cycle).
+    if (items.empty()) return true;
 
-bool TelemetryPublisher::SendDataExcludePrefix(Client& c, uint32_t time_us,
-                                               const char* exclude_prefix) {
-    if (!exclude_prefix) {
-        return SendData(c, time_us);
-    }
-    const std::string exclude(exclude_prefix);
-    uint8_t payload[IVP_DATA_PAYLOAD_MAX];
-    ivp_data_builder_t b;
-    if (ivp_telemetry_data_begin(&b, payload, sizeof(payload)) != IVP_OK) return false;
+    // One 600-byte DATA payload holds ~85 f32 items. Page like SendDefine
+    // does: a key set larger than the cap must still reach the client every
+    // cycle, not silently drop its tail forever.
+    std::size_t index = 0;
+    while (index < items.size()) {
+        uint8_t payload[IVP_DATA_PAYLOAD_MAX];
+        ivp_data_builder_t b;
+        if (ivp_telemetry_data_begin(&b, payload, sizeof(payload)) != IVP_OK) return false;
 
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        for (const auto& kv : signals_) {
-            if (kv.first.compare(0, exclude.size(), exclude) == 0) {
-                continue;
-            }
-            if (ivp_telemetry_data_add_f32(&b, kv.second.id, kv.second.value) != IVP_OK) {
+        const std::size_t frame_start = index;
+        for (; index < items.size(); ++index) {
+            if (ivp_telemetry_data_add_f32(&b, items[index].first, items[index].second) !=
+                IVP_OK) {
                 break;
             }
         }
-    }
+        if (index == frame_start) return false;  // one item too large to ever fit
 
-    if (b.len == 0) return true;
-
-    uint8_t packet[IVP_HEADER_SIZE + IVP_DATA_PAYLOAD_MAX + 2];
-    size_t packet_len = 0;
-    if (ivp_packet_encode(IVP_MSG_TELEMETRY_DATA, seq_++, time_us, payload,
-                          static_cast<uint16_t>(b.len), packet, sizeof(packet),
-                          &packet_len) != IVP_OK) {
-        return false;
+        uint8_t packet[IVP_HEADER_SIZE + IVP_DATA_PAYLOAD_MAX + 2];
+        size_t packet_len = 0;
+        if (ivp_packet_encode(IVP_MSG_TELEMETRY_DATA, seq_++, time_us, payload,
+                              static_cast<uint16_t>(b.len), packet, sizeof(packet),
+                              &packet_len) != IVP_OK) {
+            return false;
+        }
+        if (!SendFramed(c, packet, packet_len)) return false;
     }
-    return SendFramed(c, packet, packet_len);
+    return true;
 }
 
 void TelemetryPublisher::PublishPlantCycle(uint32_t time_us, const char* exclude_prefix) {
@@ -372,13 +365,14 @@ void TelemetryPublisher::PublishPlantCycle(uint32_t time_us, const char* exclude
     }
     if (clients_.empty()) return;
 
+    const uint32_t define_seq = define_seq_.load(std::memory_order_relaxed);
     for (size_t i = 0; i < clients_.size();) {
         Client& c = clients_[i];
         bool ok = true;
-        if (c.needs_define || define_dirty_) {
+        if (c.define_seq_seen != define_seq) {
             ok = SendDefine(c, time_us);
         }
-        if (ok) ok = SendDataExcludePrefix(c, time_us, exclude_prefix);
+        if (ok) ok = SendDataFiltered(c, time_us, nullptr, exclude_prefix);
         if (!ok) {
             DropClient(i);
             continue;
@@ -387,50 +381,20 @@ void TelemetryPublisher::PublishPlantCycle(uint32_t time_us, const char* exclude
     }
 }
 
-bool TelemetryPublisher::SendDataPrefix(Client& c, uint32_t time_us,
-                                        const char* key_prefix) {
-    if (!key_prefix) return false;
-    const std::string prefix(key_prefix);
-    uint8_t payload[IVP_DATA_PAYLOAD_MAX];
-    ivp_data_builder_t b;
-    if (ivp_telemetry_data_begin(&b, payload, sizeof(payload)) != IVP_OK) return false;
-
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        for (const auto& kv : signals_) {
-            if (kv.first.compare(0, prefix.size(), prefix) != 0) {
-                continue;
-            }
-            if (ivp_telemetry_data_add_f32(&b, kv.second.id, kv.second.value) != IVP_OK) {
-                break;
-            }
-        }
-    }
-
-    if (b.len == 0) return true;
-
-    uint8_t packet[IVP_HEADER_SIZE + IVP_DATA_PAYLOAD_MAX + 2];
-    size_t packet_len = 0;
-    if (ivp_packet_encode(IVP_MSG_TELEMETRY_DATA, seq_++, time_us, payload,
-                          static_cast<uint16_t>(b.len), packet, sizeof(packet),
-                          &packet_len) != IVP_OK) {
-        return false;
-    }
-    return SendFramed(c, packet, packet_len);
-}
-
 void TelemetryPublisher::PublishPrefixCycle(uint32_t time_us, const char* key_prefix) {
     while (AcceptPending()) {
     }
     if (clients_.empty()) return;
+    if (!key_prefix) return;
 
+    const uint32_t define_seq = define_seq_.load(std::memory_order_relaxed);
     for (size_t i = 0; i < clients_.size();) {
         Client& c = clients_[i];
         bool ok = true;
-        if (c.needs_define || define_dirty_) {
+        if (c.define_seq_seen != define_seq) {
             ok = SendDefine(c, time_us);
         }
-        if (ok) ok = SendDataPrefix(c, time_us, key_prefix);
+        if (ok) ok = SendDataFiltered(c, time_us, key_prefix, nullptr);
         if (!ok) {
             DropClient(i);
             continue;
@@ -444,13 +408,14 @@ void TelemetryPublisher::PublishCycle(uint32_t time_us) {
     }
     if (clients_.empty()) return;
 
+    const uint32_t define_seq = define_seq_.load(std::memory_order_relaxed);
     for (size_t i = 0; i < clients_.size();) {
         Client& c = clients_[i];
         bool ok = true;
-        if (c.needs_define || define_dirty_) {
+        if (c.define_seq_seen != define_seq) {
             ok = SendDefine(c, time_us);
         }
-        if (ok) ok = SendData(c, time_us);
+        if (ok) ok = SendDataFiltered(c, time_us, nullptr, nullptr);
         if (!ok) {
             DropClient(i);
             continue;

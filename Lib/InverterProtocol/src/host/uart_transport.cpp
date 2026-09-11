@@ -134,11 +134,16 @@ int SerialPort::read(uint8_t* buf, int cap) {
     if (!isOpen() || !buf || cap <= 0) return 0;
 #ifdef _WIN32
     DWORD got = 0;
-    if (!ReadFile(impl_->h, buf, static_cast<DWORD>(cap), &got, nullptr)) return 0;
+    if (!ReadFile(impl_->h, buf, static_cast<DWORD>(cap), &got, nullptr)) return -1;
     return static_cast<int>(got);
 #else
-    int n = static_cast<int>(::read(impl_->fd, buf, static_cast<size_t>(cap)));
-    return n > 0 ? n : 0;
+    const int n = static_cast<int>(::read(impl_->fd, buf, static_cast<size_t>(cap)));
+    if (n < 0) {
+        /* No-data conditions of a non-blocking-ish fd are not errors. */
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return 0;
+        return -1;
+    }
+    return n;
 #endif
 }
 
@@ -219,12 +224,25 @@ int UartTransport::receivePacket(uint8_t* out, size_t cap) {
 
     uint8_t raw[RX_RAW_CAP];
     int n = port_.read(raw, static_cast<int>(RX_RAW_CAP));
-    if (n <= 0) return 0;
+    if (n < 0) return -1;
+    if (n == 0) return 0;
 
     if (rx_len_ + static_cast<size_t>(n) > sizeof(rx_buf_)) {
-        // No delimiter within a whole buffer: garbage stream, resync.
+        // No delimiter within a whole buffer: garbage stream, resync. The new
+        // chunk can still hold the end of the garbage plus the start of a
+        // valid frame, so keep whatever follows its first 0x00 delimiter.
         rx_len_ = 0;
-        return -1;
+        for (int i = 0; i < n; ++i) {
+            if (raw[i] != 0x00) continue;
+            const size_t tail = static_cast<size_t>(n - i - 1);
+            if (tail > 0) {
+                std::memcpy(rx_buf_, raw + i + 1, tail);
+                rx_len_ = tail;
+            }
+            break;
+        }
+        if (rx_len_ == 0) return -1;
+        return extractFrame(out, cap);
     }
     std::memcpy(rx_buf_ + rx_len_, raw, static_cast<size_t>(n));
     rx_len_ += static_cast<size_t>(n);

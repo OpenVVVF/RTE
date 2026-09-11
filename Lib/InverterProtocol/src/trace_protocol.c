@@ -96,6 +96,10 @@ bool ivp_trace_decode_data(const uint8_t payload[IVP_TRACE_PAYLOAD_SIZE], ivp_tr
 bool ivp_trace_encode_schema(const ivp_trace_schema_frame_t* frame, uint8_t payload[IVP_TRACE_PAYLOAD_SIZE]) {
     if (frame == NULL || frame->channel >= IVP_TRACE_MAX_CHANNELS ||
         !begin_encode(IVP_TRACE_FRAME_SCHEMA, payload)) return false;
+    /* The name field is 32 bytes on the wire and the decoder forces a NUL
+     * terminator, so names longer than 31 chars would lose their last byte.
+     * Refuse them at encode time instead of silently truncating. */
+    if (memchr(frame->name, '\0', IVP_TRACE_SCHEMA_NAME_SIZE) == NULL) return false;
     payload[3] = frame->capture_id;
     payload[4] = frame->channel;
     put_f32(payload + 8, frame->scale);

@@ -19,7 +19,8 @@ public:
     void close();
     bool isOpen() const;
 
-    /* Read up to `cap` bytes. Returns bytes read (>=0). */
+    /* Read up to `cap` bytes. Returns bytes read (>=0), or -1 on a real I/O
+     * error (EAGAIN/EINTR style "no data" still returns 0). */
     int read(uint8_t* buf, int cap);
 
     /* Write exactly `n` bytes. Returns true on full success. */
@@ -37,7 +38,8 @@ private:
  *
  * Encapsulates COBS framing with 0x00 delimiters around ivp_packet_encode
  * output. The receive side accumulates raw bytes and emits complete,
- * CRC-verified packets.
+ * COBS-decoded packets; header/CRC validation is the caller's job
+ * (ivp_packet_parse), not this layer's.
  */
 class UartTransport {
 public:
@@ -60,8 +62,9 @@ public:
 
     /* Try to receive one complete packet into `out`.
      * Returns packet length on success, 0 if no complete packet is available,
-     * or -1 on a framing/CRC error (caller should resync). Bytes past the
-     * first complete frame stay buffered for the next call. */
+     * or -1 on a transport/framing error (caller should resync); the CRC is
+     * checked later by ivp_packet_parse. Bytes past the first complete frame
+     * stay buffered for the next call. */
     int receivePacket(uint8_t* out, size_t cap);
 
     /* Send a text command line followed by \n. Used by the text shell. */

@@ -14,6 +14,13 @@ extern "C" {
  *
  * All builders write into caller-provided buffers and return IVP_OK on
  * success. They intentionally avoid dynamic allocation.
+ *
+ * Error contract:
+ *  - IVP_ERR_BUF_TOO_SMALL  the payload buffer is full.
+ *  - IVP_ERR_OVERSIZE       the item is structurally too large ever to fit:
+ *                           keys longer than IVP_KEY_MAX_LEN, strings longer
+ *                           than IVP_STR_MAX_LEN, or more than 255 items in a
+ *                           single payload (callers must page instead).
  * ======================================================================== */
 
 /* ---------- Telemetry DEFINE payload ---------- */

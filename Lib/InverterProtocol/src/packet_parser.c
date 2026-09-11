@@ -54,6 +54,10 @@ bool ivp_telemetry_define_iter_next(ivp_define_iter_t* it,
     *type = *it->pos++;
     *key_len = *it->pos++;
 
+    /* Reject types outside ivp_value_type_t, matching the DATA walker. */
+    if (*type != IVP_VT_F32 && *type != IVP_VT_STR && *type != IVP_VT_STR_FRAG)
+        return false;
+
     if ((size_t)(end - it->pos) < *key_len) return false;
     *key = (const char*)it->pos;
     it->pos += *key_len;

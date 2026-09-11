@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -73,16 +74,18 @@ private:
     void DropClient(size_t index);
     bool SendFramed(Client& c, const uint8_t* packet, size_t len);
     bool SendDefine(Client& c, uint32_t time_us);
-    bool SendData(Client& c, uint32_t time_us);
-    bool SendDataPrefix(Client& c, uint32_t time_us, const char* key_prefix);
-    bool SendDataExcludePrefix(Client& c, uint32_t time_us, const char* exclude_prefix);
+    /* Snapshot the matching signals, then send them to the client as one or
+     * more DATA frames (paged at the payload cap). include_prefix selects
+     * only matching keys, exclude_prefix drops matching keys; both null means
+     * everything. Empty selections send nothing and succeed. */
+    bool SendDataFiltered(Client& c, uint32_t time_us,
+                          const char* include_prefix, const char* exclude_prefix);
     void HandleLine(const std::string& line);
     void EnsureBuiltinIds();
 
     struct Signal {
         uint16_t id = 0;
         float value = 0.0f;
-        bool defined = false;
     };
 
     std::string host_ = "127.0.0.1";
@@ -93,7 +96,10 @@ private:
     mutable std::mutex mu_;
     std::unordered_map<std::string, Signal> signals_;
     uint16_t next_id_ = 1;
-    bool define_dirty_ = true;
+    /* Bumped (under mu_) whenever a new key registers. Each client tracks the
+     * sequence it was last DEFINE'd against, so a mid-session registration is
+     * announced to every connected client, not just the first to publish. */
+    std::atomic<uint32_t> define_seq_{0};
     uint32_t seq_ = 0;
 
     bool throttle_a_override_ = false;

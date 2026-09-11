@@ -25,10 +25,13 @@ ivp_result_t ivp_telemetry_define_begin(ivp_define_builder_t* b, uint8_t* buf, s
 static ivp_result_t ivp_define_add_common(ivp_define_builder_t* b, uint16_t id,
                                           uint8_t type, const char* key, uint8_t key_len) {
     if (!b) return IVP_ERR_MALFORMED;
-    if (key_len > IVP_KEY_MAX_LEN) key_len = IVP_KEY_MAX_LEN;
+    /* Reject rather than truncate: two distinct keys longer than
+     * IVP_KEY_MAX_LEN would alias to the same wire key. */
+    if (key_len > IVP_KEY_MAX_LEN) return IVP_ERR_OVERSIZE;
 
     const size_t need = 2u + 1u + 1u + key_len;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     ivp_write_u16le(w, id); w += 2;
@@ -74,6 +77,7 @@ ivp_result_t ivp_telemetry_data_add_f32(ivp_data_builder_t* b, uint16_t id, floa
     if (!b) return IVP_ERR_MALFORMED;
     const size_t need = 2u + 1u + 4u;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     ivp_write_u16le(w, id); w += 2;
@@ -89,10 +93,13 @@ static ivp_result_t ivp_data_add_str_common(ivp_data_builder_t* b, uint16_t id,
                                             uint8_t type, uint8_t frag_flags,
                                             const char* value, uint8_t len) {
     if (!b) return IVP_ERR_MALFORMED;
-    if (len > IVP_STR_MAX_LEN) len = IVP_STR_MAX_LEN;
+    /* Reject rather than truncate: an unterminated tail would silently
+     * corrupt the logged string. */
+    if (len > IVP_STR_MAX_LEN) return IVP_ERR_OVERSIZE;
 
     const size_t need = 2u + 1u + (type == IVP_VT_STR_FRAG ? 1u : 0u) + 1u + len;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     ivp_write_u16le(w, id); w += 2;
@@ -144,6 +151,7 @@ static ivp_result_t ivp_command_req_add_arg(ivp_command_req_builder_t* b,
     if (!b) return IVP_ERR_MALFORMED;
     const size_t need = 1u + len;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     *w++ = type;
@@ -178,10 +186,11 @@ ivp_result_t ivp_command_req_add_f32(ivp_command_req_builder_t* b, float v) {
 ivp_result_t ivp_command_req_add_str(ivp_command_req_builder_t* b,
                                      const char* s, uint8_t len) {
     if (!b) return IVP_ERR_MALFORMED;
-    if (len > IVP_STR_MAX_LEN) len = IVP_STR_MAX_LEN;
+    if (len > IVP_STR_MAX_LEN) return IVP_ERR_OVERSIZE;
 
     const size_t need = 1u + 1u + len;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     *w++ = IVP_ARG_STR;
@@ -216,6 +225,7 @@ static ivp_result_t ivp_command_rsp_add_result(ivp_command_rsp_builder_t* b,
     if (!b) return IVP_ERR_MALFORMED;
     const size_t need = 1u + len;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     *w++ = type;
@@ -250,10 +260,11 @@ ivp_result_t ivp_command_rsp_add_f32(ivp_command_rsp_builder_t* b, float v) {
 ivp_result_t ivp_command_rsp_add_str(ivp_command_rsp_builder_t* b,
                                      const char* s, uint8_t len) {
     if (!b) return IVP_ERR_MALFORMED;
-    if (len > IVP_STR_MAX_LEN) len = IVP_STR_MAX_LEN;
+    if (len > IVP_STR_MAX_LEN) return IVP_ERR_OVERSIZE;
 
     const size_t need = 1u + 1u + len;
     if (!check_space(b->len, b->cap, need)) return IVP_ERR_BUF_TOO_SMALL;
+    if (b->count == 0xFFu) return IVP_ERR_OVERSIZE;
 
     uint8_t* w = b->buf + b->len;
     *w++ = IVP_ARG_STR;
@@ -272,21 +283,21 @@ ivp_result_t ivp_packet_encode(uint8_t msg_type, uint32_t seq, uint32_t time_us,
                                const uint8_t* payload, uint16_t payload_len,
                                uint8_t* out, size_t out_cap, size_t* out_len) {
     if (!out) return IVP_ERR_MALFORMED;
+    if (payload_len > 0 && !payload) return IVP_ERR_MALFORMED;
 
     const size_t need = ivp_packet_size(payload_len);
     if (out_cap < need) return IVP_ERR_BUF_TOO_SMALL;
 
-    ivp_header_t h;
-    h.magic = IVP_MAGIC;
-    h.version = IVP_VERSION;
-    h.msg_type = msg_type;
-    h.payload_len = payload_len;
-    h.seq = seq;
-    h.time_us = time_us;
-
+    /* Serialize the header field-by-field with the LE helpers: a struct
+     * memcpy would bake in the host byte order. The static_assert in
+     * protocol.h pins the wire size. */
     uint8_t* w = out;
-    memcpy(w, &h, IVP_HEADER_SIZE);
-    w += IVP_HEADER_SIZE;
+    ivp_write_u32le(w, IVP_MAGIC); w += 4;
+    *w++ = IVP_VERSION;
+    *w++ = msg_type;
+    ivp_write_u16le(w, payload_len); w += 2;
+    ivp_write_u32le(w, seq); w += 4;
+    ivp_write_u32le(w, time_us); w += 4;
 
     if (payload_len) {
         memcpy(w, payload, payload_len);
