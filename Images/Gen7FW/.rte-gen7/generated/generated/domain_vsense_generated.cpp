@@ -2,6 +2,7 @@
 
 #include "domain_vsense_generated.h"
 #include "platform_api.h"
+#include <math.h>
 
 namespace app {
 

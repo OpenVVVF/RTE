@@ -26,6 +26,7 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/dma.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/fdcan.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/spi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/tim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/usart.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Src/stm32h7xx_it.c

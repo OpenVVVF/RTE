@@ -73,6 +73,9 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::OvertemperatureInv3:  return "inverter sensor 3 over limit";
         case FaultReason::OvertemperatureMotor: return "motor over temperature limit";
         case FaultReason::SensorRefOutOfRange:  return "reference out of window";
+        case FaultReason::OnboardOvertemperature: return "onboard temp over limit (I2C5)";
+        case FaultReason::RailOvervoltage:      return "rail bus overvoltage (I2C4)";
+        case FaultReason::RailUndervoltage:     return "rail bus undervoltage (I2C4)";
         case FaultReason::Count:                break;
     }
     return "unknown";

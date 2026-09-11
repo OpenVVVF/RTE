@@ -22,6 +22,7 @@
 #include "dma.h"
 #include "fdcan.h"
 #include "spi.h"
+#include "i2c.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -111,6 +112,12 @@ int main(void)
   MX_FDCAN2_Init();
   MX_SPI4_Init();
   MX_SPI2_Init();
+  /* Hand-maintained (see Src/i2c.c header): the .ioc already describes I2C4
+   * (PD12/PF15, VOLTAGE_MONITOR_I2C_*) and I2C5 (PF0/PF1,
+   * ONBOARD_TEMP_SENSE_I2C_*).  A CubeMX regeneration must NOT emit its own
+   * MX_I2C4_Init/MX_I2C5_Init (or duplicate i2c.c) alongside these calls. */
+  MX_I2C4_Init();
+  MX_I2C5_Init();
   /* USER CODE BEGIN 2 */
   InverterMain_Run();
   /* USER CODE END 2 */
