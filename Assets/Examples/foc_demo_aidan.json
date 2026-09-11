@@ -1671,7 +1671,10 @@
       "domain": "adc_isr",
       "id": "Currents",
       "parameters": {
-        "InvertPolarity": "1.0"
+        "InvertPolarity": "1.0",
+        "PrevBurstUs": "0.0",
+        "PrevIuA": "0.0",
+        "PrevIvA": "0.0"
       },
       "position": {
         "x": 150.0,

@@ -256,7 +256,10 @@
         "OffsetU": "0.0",
         "OffsetV": "0.0",
         "offset_w_12bit": "0.0",
-        "scale_w_a_per_lsb": "0.001"
+        "scale_w_a_per_lsb": "0.001",
+        "PrevBurstUs": "0.0",
+        "PrevIuA": "0.0",
+        "PrevIvA": "0.0"
       }
     },
     {

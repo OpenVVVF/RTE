@@ -4515,7 +4515,7 @@
       "displayName": "Phase Currents (ISR)",
       "domain": "adc_isr",
       "id": "Custom.PhaseCurrentsBurst",
-      "inlineCode": "/* Micro-burst phase-current sampling:\n *   ADC1 injected: [U_sig, V_sig, U_sig, V_sig] (ranks 1..4)\n *   ADC2 injected: [U_ref, V_ref, U_ref, V_ref] (ranks 1..4)\n * Average the two points per phase for a cleaner sample. */\nfloat iu0 = 0.0f, iv0 = 0.0f, iu1 = 0.0f, iv1 = 0.0f;\nuint32_t burst_time_us = 0;\nif (platform_adc_get_burst_sample(&iu0, &iv0, &iu1, &iv1, &burst_time_us)) {\n    const float iu_avg = 0.5f * (iu0 + iu1);\n    const float iv_avg = 0.5f * (iv0 + iv1);\n\n    /* W is computed from the two measured phases (three-wire balanced load). */\n    const float iw_avg = -(iu_avg + iv_avg);\n\n    /* The phase-current sensors on this hardware are wired with inverted\n     * polarity relative to the FOC convention.  Negate all three so\n     * downstream transforms see the correct sign. */\n    I_A = rte::Amperes(-iu_avg);\n    I_B = rte::Amperes(-iv_avg);\n    I_C = rte::Amperes(-iw_avg);\n}\n",
+      "inlineCode": "/* Micro-burst phase-current sampling:\n *   ADC1 injected: [U_sig, V_sig, U_sig, V_sig] (ranks 1..4)\n *   ADC2 injected: [U_ref, V_ref, U_ref, V_ref] (ranks 1..4)\n * Average the two points per phase for a cleaner sample.\n *\n * Diudt/Divdt are finite-difference slopes across successive bursts (A/s),\n * polarity-corrected to the FOC convention exactly like I_A/I_B below;\n * BurstTimeUs is the burst timestamp [us] from the ADC latch, forwarded to\n * the observer's correct() as t_us.  Slopes read 0 until two bursts have\n * been seen.  The observer's correction math uses only the current levels\n * — the slopes are stored for the RLS estimator. */\nfloat iu0 = 0.0f, iv0 = 0.0f, iu1 = 0.0f, iv1 = 0.0f;\nuint32_t burst_time_us = 0;\nif (platform_adc_get_burst_sample(&iu0, &iv0, &iu1, &iv1, &burst_time_us)) {\n    const float iu_avg = 0.5f * (iu0 + iu1);\n    const float iv_avg = 0.5f * (iv0 + iv1);\n\n    /* W is computed from the two measured phases (three-wire balanced load). */\n    const float iw_avg = -(iu_avg + iv_avg);\n\n    /* The phase-current sensors on this hardware are wired with inverted\n     * polarity relative to the FOC convention.  Negate all three so\n     * downstream transforms see the correct sign. */\n    I_A = rte::Amperes(-iu_avg);\n    I_B = rte::Amperes(-iv_avg);\n    I_C = rte::Amperes(-iw_avg);\n\n    const float prev_us = PrevBurstUs;\n    const uint32_t dt_us = burst_time_us - static_cast<uint32_t>(prev_us);  /* wraps correctly */\n    if (prev_us > 0.0f && dt_us > 0u) {\n        const float dt_rcp = 1.0e6f / static_cast<float>(dt_us);\n        Diudt = (-iu_avg - PrevIuA) * dt_rcp;\n        Divdt = (-iv_avg - PrevIvA) * dt_rcp;\n    } else {\n        Diudt = 0.0f;\n        Divdt = 0.0f;\n    }\n    PrevIuA = -iu_avg;\n    PrevIvA = -iv_avg;\n    PrevBurstUs = static_cast<float>(burst_time_us);\n    BurstTimeUs = static_cast<float>(burst_time_us);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
@@ -4597,6 +4597,24 @@
           "dtype": "f32",
           "frame": "scalar",
           "quantity": "current"
+        },
+        "PrevBurstUs": {
+          "description": "Persistent slope-estimator state: timestamp in microseconds of the previous burst. Leave at 0.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "PrevIuA": {
+          "description": "Persistent slope-estimator state: previous burst-averaged phase-U current in amperes (FOC sign). Leave at 0.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "PrevIvA": {
+          "description": "Persistent slope-estimator state: previous burst-averaged phase-V current in amperes (FOC sign). Leave at 0.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
         }
       }
     },
@@ -4964,7 +4982,10 @@
       "id": "Currents",
       "parameters": {
         "OffsetU": "0.0",
-        "OffsetV": "0.0"
+        "OffsetV": "0.0",
+        "PrevBurstUs": "0.0",
+        "PrevIuA": "0.0",
+        "PrevIvA": "0.0"
       },
       "position": {
         "x": -172.14506172839504,
@@ -6022,7 +6043,10 @@
       "domain": "tim_isr",
       "id": "PhaseCurrentsObs",
       "parameters": {
-        "InvertPolarity": "0.0"
+        "InvertPolarity": "0.0",
+        "PrevBurstUs": "0.0",
+        "PrevIuA": "0.0",
+        "PrevIvA": "0.0"
       },
       "position": {
         "x": 560.0,
