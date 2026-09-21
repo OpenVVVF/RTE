@@ -81,7 +81,18 @@ bool ControlSupervisor::start() {
     PWM_Start();
 
     if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
+        /* Diagnostics: why is MOE blocked?  Report the live pin states and
+         * the break-source mux so a pin-vs-comparator break is decidable
+         * from the log alone. */
         Telemetry::printf("[SUP] ERROR: TIM1 MOE not active after PWM start");
+        Telemetry::printf("[SUP] diag: PE15(break pin)=%d PC11(/flt)=%d PC12(/rdy)=%d",
+                          (int)(GPIOE->IDR & GPIO_PIN_15) ? 1 : 0,
+                          (int)(GPIOC->IDR & GPIO_PIN_11) ? 1 : 0,
+                          (int)(GPIOC->IDR & GPIO_PIN_12) ? 1 : 0);
+        Telemetry::printf("[SUP] diag: TIM1_AF1=0x%08lX TIM1_BDTR=0x%08lX TIM1_SR=0x%08lX",
+                          (unsigned long)TIM1->AF1,
+                          (unsigned long)TIM1->BDTR,
+                          (unsigned long)TIM1->SR);
         GateDriver_DisableOutputs();
         m_state = State::Fault;
         return false;
