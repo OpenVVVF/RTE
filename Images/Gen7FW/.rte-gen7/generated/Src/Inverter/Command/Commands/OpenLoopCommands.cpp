@@ -171,12 +171,15 @@ public:
             return;
         }
 
-        /* Safe start: assert reset, then release and wait for ready. */
+        /* Safe start: only reset the driver if it is not already healthy —
+         * a reset release provokes a spurious /FLT latch on this hardware. */
         PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
-        GateDriver_DisableOutputs();
-        HAL_Delay(10);
-        GateDriver_EnableOutputs();
-        HAL_Delay(10);
+        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
+            GateDriver_DisableOutputs();
+            HAL_Delay(10);
+            GateDriver_EnableOutputs();
+            HAL_Delay(10);
+        }
 
         if (!GateDriver_IsReady() || GateDriver_IsFault()) {
             Telemetry::printf("[SHELL] ERROR: gate driver not ready or fault latched");
@@ -319,6 +322,93 @@ static SwFreqCommand   sSwFreqCmd;
 static StatusCommand   sStatusCmd;
 static RampCurrentLimitCommand sRampCurrentLimitCmd;
 static VectorScanCommand sVectorScanCmd;
+
+/**
+ * @brief Fire a single half-bridge for a fixed time (gate-driver bringup aid).
+ *
+ * gatefire <phase 0..2> <duty_pct 0..100> <ms>
+ *
+ * Parks the other two phases at 50 % (gate off) and runs only the requested
+ * phase channel for <ms>.  Duty > 50 % pulses the high-side switch, < 50 %
+ * the low-side.  Prints the phase currents and gate-driver /RDY+/FLT state
+ * afterwards so a scope can be correlated one switch at a time.
+ */
+class GateFireCommand : public CommandInterface {
+public:
+    GateFireCommand()
+      : CommandInterface("gatefire",
+            "Fire one half-bridge: gatefire <phase 0-2> <duty_pct 0-100> <ms>",
+            {ArgSpec{"phase", "", 0.0f, 2.0f, 0.0f, true, ArgSpec::FLOAT},
+             ArgSpec{"duty_pct", "%", 0.0f, 100.0f, 50.0f, true, ArgSpec::FLOAT},
+             ArgSpec{"ms", "ms", 1.0f, 5000.0f, 10.0f, true, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const uint8_t phase = static_cast<uint8_t>(args[0].f_val + 0.5f);
+        const float duty = args[1].f_val;
+        const uint32_t ms = static_cast<uint32_t>(args[2].f_val + 0.5f);
+
+        if (focControlManager().isRunning()) {
+            focControlManager().stop();
+            Telemetry::printf("[SHELL] stopped FOC first");
+        }
+        if (openLoopController().isRunning()) {
+            openLoopController().stop();
+            Telemetry::printf("[SHELL] stopped open-loop first");
+        }
+
+        if (FaultManager::instance().isSeverityActive(Inverter::FaultSeverity::Critical) ||
+            FaultManager::instance().isSeverityActive(Inverter::FaultSeverity::High)) {
+            Telemetry::printf("[SHELL] active Critical/High faults, cannot fire");
+            FaultManager::instance().printSummary();
+            return;
+        }
+
+        float du = 50.0f, dv = 50.0f, dw = 50.0f;
+        float* duties[3] = {&du, &dv, &dw};
+        *duties[phase] = duty;
+        PWM_SetThreePhaseDuty(du, dv, dw);
+
+        /* Safe start: only reset the driver if it is not already healthy —
+         * a reset release provokes a spurious /FLT latch on this hardware. */
+        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
+            GateDriver_DisableOutputs();
+            HAL_Delay(10);
+            GateDriver_EnableOutputs();
+            HAL_Delay(10);
+        }
+
+        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
+            Telemetry::printf("[GF] ERROR: gate driver not ready or fault latched");
+            GateDriver_DisableOutputs();
+            return;
+        }
+
+        PWM_ClearFault();
+        PWM_StartPhase(phase);
+        HAL_Delay(ms);
+
+        float iu = 0.0f, iv = 0.0f, iw = 0.0f;
+        (void)phaseCurrentADC().sample(iu, iv, iw);
+        const float vdc = dcLinkVoltageSensor().voltage();
+
+        PWM_StopPhase(phase);
+        PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+        GateDriver_DisableOutputs();
+
+        Telemetry::printf("[GF] phase=%u duty=%.1f%% t=%lu ms | iu=%+.2f iv=%+.2f iw=%+.2f | vdc=%.1f | ready=%s fault=%s",
+                          static_cast<unsigned>(phase),
+                          static_cast<double>(duty),
+                          static_cast<unsigned long>(ms),
+                          static_cast<double>(iu),
+                          static_cast<double>(iv),
+                          static_cast<double>(iw),
+                          static_cast<double>(vdc),
+                          GateDriver_IsReady() ? "Y" : "N",
+                          GateDriver_IsFault() ? "Y" : "N");
+    }
+};
+static GateFireCommand sGateFireCmd;
+
 /* Induction command object is larger than the others; keep it out of DTCM. */
 static InductionCommand sInductionCmd __attribute__((section(".dma_buffers")));
 
@@ -333,5 +423,6 @@ void registerOpenLoopCommands(CommandManager& mgr) {
     mgr.registerCommand(&sStatusCmd);
     mgr.registerCommand(&sRampCurrentLimitCmd);
     mgr.registerCommand(&sVectorScanCmd);
+    mgr.registerCommand(&sGateFireCmd);
     mgr.registerCommand(&sInductionCmd);
 }

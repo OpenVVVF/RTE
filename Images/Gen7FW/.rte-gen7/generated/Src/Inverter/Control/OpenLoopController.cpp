@@ -295,19 +295,26 @@ bool OpenLoopController::start(float freq_hz, float modulation_index) {
 
     PoleEstimator::instance().setElectricalFrequency(m_freq_hz);
 
-    /* Begin a non-blocking startup sequence.  The actual gate-driver ready wait
-     * and voltage ramp are stepped from update() so telemetry keeps running. */
-    m_starting = true;
-    m_running = false;
-    m_startup_state = StartupState::RESET_ASSERT;
-    m_startup_start_ms = HAL_GetTick();
-
-    /* Park at 50 % (zero vector) and assert gate-driver reset before we do
-     * anything. */
+    /* Park at 50 % (zero vector). */
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
     PWM_ClearFault();
-    GateDriver_DisableOutputs();
-    m_startup_wait_until_ms = HAL_GetTick() + 10U;
+
+    if (GateDriver_IsReady() && !GateDriver_IsFault()) {
+        /* Driver already healthy: skip the RESET pulse.  On this hardware a
+         * reset release provokes a spurious /FLT latch ~10-100 ms later
+         * (observed on two different NCD57100 modules, no switching needed),
+         * which then blocks every start.  Only reset a driver that is not
+         * already ready/unfaulted. */
+        m_startup_state = StartupState::RESET_RELEASE;
+        m_startup_wait_until_ms = HAL_GetTick() + 100U;
+    } else {
+        GateDriver_DisableOutputs();
+        m_startup_state = StartupState::RESET_ASSERT;
+        m_startup_wait_until_ms = HAL_GetTick() + 10U;
+    }
+    m_startup_start_ms = HAL_GetTick();
+    m_starting = true;
+    m_running = false;
 
     Telemetry::printf("[OL] startup sequence started");
     return true;

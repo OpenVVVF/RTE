@@ -144,10 +144,13 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GATE_DRIVER_FAULT_Pin GATE_DRIVER_READY_Pin */
+  /*Configure GPIO pins : GATE_DRIVER_FAULT_Pin GATE_DRIVER_READY_Pin
+    NCD57100 /FLT and /RDY are open-drain; the only other pull on the net is
+    the weak TIM1_BKIN internal pull-up on PE15.  Enable the input pull-ups
+    here so the lines are held solidly high when the driver is not driving. */
   GPIO_InitStruct.Pin = GATE_DRIVER_FAULT_Pin|GATE_DRIVER_READY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : SPI2_CS_Pin GATE_DRIVER_RESET_Pin */
