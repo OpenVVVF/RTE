@@ -219,7 +219,14 @@ void MX_ADC3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC3_Init 2 */
-
+  /* ADC3 pre-channel selection (PCSEL): the ApplicationSensors driver
+   * programs its regular scan ranks (board temp 1 = PF8/CH7, motor temp =
+   * PF4/CH9) with raw LL register writes, which do NOT set these bits.
+   * With a channel's PCSEL bit clear it is never connected to the sampling
+   * mux and conversions return floating-node garbage.  Same constraint as
+   * the ADC1 block above: PCSEL can only be written while no conversions
+   * are ongoing. */
+  ADC3->PCSEL_RES0 |= ADC_PCSEL_PCSEL_7 | ADC_PCSEL_PCSEL_9;
   /* USER CODE END ADC3_Init 2 */
 
 }

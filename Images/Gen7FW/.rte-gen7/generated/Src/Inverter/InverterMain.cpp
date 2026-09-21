@@ -41,10 +41,10 @@
 #include "spi.h"
 #include "cy15b102q_driver.h"
 #include "ontime_logger.h"
-#include "../../generated/domain_adc_isr_generated.h"
-#include "../../generated/domain_app_loop_generated.h"
-#include "../../generated/domain_tim_isr_generated.h"
 #include "../../generated/domain_vsense_generated.h"
+#include "../../generated/domain_adc_isr_generated.h"
+#include "../../generated/domain_tim_isr_generated.h"
+#include "../../generated/domain_app_loop_generated.h"
 
 /* Global RTE codegen state variable.  Referenced by app::<DomainTitle>Init/Step
  * calls inserted at // RTE_EMIT markers. */
@@ -319,3 +319,4 @@ extern "C" void InverterMain_Run(void)
         InverterMain::loop();
     }
 }
+

@@ -166,7 +166,9 @@ private:
 
     static constexpr uint32_t STARTUP_TIMEOUT_MS = 500U;
     static constexpr uint32_t RESET_ASSERT_MS = 10U;
-    static constexpr uint32_t RESET_RELEASE_MS = 10U;
+    /* NCD57100 charge pump / isolated DC-DC needs ~tens of ms after reset
+     * release before /FLT clears; sampling earlier falsely aborts startup. */
+    static constexpr uint32_t RESET_RELEASE_MS = 100U;
     static constexpr float DEFAULT_KP = 0.03f;
     static constexpr float DEFAULT_KI = 10.0f;
     static constexpr float DEFAULT_SOFT_VOLTAGE_LIMIT_V = 0.0f;

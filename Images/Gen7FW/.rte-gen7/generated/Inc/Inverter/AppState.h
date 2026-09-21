@@ -1,8 +1,8 @@
 #pragma once
-#include "../../generated/domain_adc_isr_generated.h"
-#include "../../generated/domain_app_loop_generated.h"
-#include "../../generated/domain_tim_isr_generated.h"
 #include "../../generated/domain_vsense_generated.h"
+#include "../../generated/domain_adc_isr_generated.h"
+#include "../../generated/domain_tim_isr_generated.h"
+#include "../../generated/domain_app_loop_generated.h"
 
 /* ============================================================================
  * RTE codegen top-level state container.
@@ -53,3 +53,4 @@ struct AppState {
  * markers.  Individual domain structs are owned by the generated code.
  */
 extern AppState appState;
+

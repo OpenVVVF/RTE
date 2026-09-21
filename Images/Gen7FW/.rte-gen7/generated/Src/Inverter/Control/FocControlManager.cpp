@@ -276,7 +276,11 @@ void FocControlManager::stepStartup(uint32_t now_ms) {
                                   static_cast<double>(PWM_GetFrequency()),
                                   static_cast<double>(1.0f / m_dt_s),
                                   static_cast<double>(m_dt_s * 1000.0f));
-            } else if (fault || (now_ms - m_startup_start_ms) > STARTUP_TIMEOUT_MS) {
+            } else if ((now_ms - m_startup_start_ms) > STARTUP_TIMEOUT_MS) {
+                /* Abort only on timeout.  /FLT can be asserted briefly while
+                 * the driver's charge pump starts; a single early sample is
+                 * not a latched fault.  Starting is still impossible while
+                 * fault is present (requires ready && !fault above). */
                 Telemetry::printf("[FOC] ERROR: gate driver not ready or fault latched");
                 GateDriver_DisableOutputs();
                 FaultManager::instance().raise(FaultSource::GateDriverUvlo,

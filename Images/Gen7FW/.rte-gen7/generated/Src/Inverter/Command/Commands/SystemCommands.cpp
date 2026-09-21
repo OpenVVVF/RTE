@@ -50,7 +50,7 @@ public:
         /* Clear any latched MAX22530 interrupt/filter and pending EXTI1. */
         MAX22530& adc = dcLinkVoltageSensor().adc();
         (void)adc.clearInterruptStatus();
-        (void)adc.clearFilter(0);
+        (void)adc.clearFilter(3);
         __HAL_GPIO_EXTI_CLEAR_IT(VSENSE_ISO_ADC_INTERRUPT_Pin);
         HAL_NVIC_ClearPendingIRQ(EXTI1_IRQn);
 

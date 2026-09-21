@@ -7,9 +7,9 @@ namespace Inverter {
 /**
  * @brief High-voltage DC-link voltage sensor using the isolated ADC.
  *
- * Reads channel 1 of the MAX22530, applies a fixed divider scale, and
- * subtracts a zero-calibration offset.  The scaled voltage is published
- * to telemetry.
+ * Reads AIN4 (channel index 3, VSENSE_DC_LINK_B) of the MAX22530, applies a
+ * fixed divider scale, and subtracts a zero-calibration offset.  The scaled
+ * voltage is published to telemetry.
  */
 class DcLinkVoltageSensor {
 public:

@@ -86,14 +86,17 @@ void DcLinkCurrentSensor::update() {
     m_raw_ref = appSensors().dcLinkRefCounts();
 
     /* Reference plausibility: a healthy transducer reference sits inside a
-     * known voltage window (KV Hw.DclCur.RefMinV/MaxV, defaults 2.0/3.0 V —
-     * this transducer's ref is ~2.5 V).  Checked on every sample, forever:
-     * out of window means the sensor is unpowered/unpopulated/failed, the
-     * output goes NAN, and a sustained violation latches a fault. */
+     * known voltage window (KV Hw.DclCur.RefMinV/MaxV, defaults 1.4/1.9 V
+     * at the ADC pin).  The transducer's 2.5 V nominal ref passes through
+     * the same 2/3 divider as the signal path (5VADCFilter sheet, same as
+     * the phase-current sensors), so ~1.65 V here is healthy.  Checked on
+     * every sample, forever: out of window means the sensor is
+     * unpowered/unpopulated/failed, the output goes NAN, and a sustained
+     * violation latches a fault. */
     constexpr float COUNTS_TO_V = 3.3f / 65535.0f;
     const float ref_v = static_cast<float>(m_raw_ref) * COUNTS_TO_V;
-    const float win_lo = kvOr("Hw.DclCur.RefMinV", 2.0f);
-    const float win_hi = kvOr("Hw.DclCur.RefMaxV", 3.0f);
+    const float win_lo = kvOr("Hw.DclCur.RefMinV", 1.4f);
+    const float win_hi = kvOr("Hw.DclCur.RefMaxV", 1.9f);
     const bool plausible = (ref_v >= win_lo) && (ref_v <= win_hi);
     if (!plausible) {
         if (m_implausible_since_ms == 0) {

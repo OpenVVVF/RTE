@@ -152,11 +152,11 @@ public:
 
 class MaxCfgFilterClearCommand : public CommandInterface {
 public:
-    MaxCfgFilterClearCommand() : CommandInterface("maxcfg_filterclear", "Clear MAX22530 channel 1 filter") {}
+    MaxCfgFilterClearCommand() : CommandInterface("maxcfg_filterclear", "Clear MAX22530 channel 4 (DC link) filter") {}
 
     void execute(const ArgValue*, CommandContext&) override {
         MAX22530& adc = dcLinkVoltageSensor().adc();
-        if (adc.clearFilter(0)) {
+        if (adc.clearFilter(3)) {
             Telemetry::printf("[SHELL] MAX channel 1 filter cleared");
         } else {
             Telemetry::printf("[SHELL] MAX filter clear failed");
@@ -166,26 +166,26 @@ public:
 
 class MaxCfgRawCommand : public CommandInterface {
 public:
-    MaxCfgRawCommand() : CommandInterface("maxcfg_raw", "Read raw MAX22530 channel 1") {}
+    MaxCfgRawCommand() : CommandInterface("maxcfg_raw", "Read raw MAX22530 channel 4 (DC link)") {}
 
     void execute(const ArgValue*, CommandContext&) override {
         MAX22530& adc = dcLinkVoltageSensor().adc();
-        const uint16_t counts = adc.readRawCounts(0);
-        const float v = adc.readRawVoltage(0);
-        Telemetry::printf("[SHELL] MAX raw ch1 = 0x%03X (%lu counts), %.3f V",
+        const uint16_t counts = adc.readRawCounts(3);
+        const float v = adc.readRawVoltage(3);
+        Telemetry::printf("[SHELL] MAX raw ch4 = 0x%03X (%lu counts), %.3f V",
                           counts, static_cast<unsigned long>(counts), static_cast<double>(v));
     }
 };
 
 class MaxCfgFilteredCommand : public CommandInterface {
 public:
-    MaxCfgFilteredCommand() : CommandInterface("maxcfg_filtered", "Read filtered MAX22530 channel 1") {}
+    MaxCfgFilteredCommand() : CommandInterface("maxcfg_filtered", "Read filtered MAX22530 channel 4 (DC link)") {}
 
     void execute(const ArgValue*, CommandContext&) override {
         MAX22530& adc = dcLinkVoltageSensor().adc();
-        const uint16_t counts = adc.readFilteredCounts(0);
-        const float v = adc.readFilteredVoltage(0);
-        Telemetry::printf("[SHELL] MAX filtered ch1 = 0x%03X (%lu counts), %.3f V",
+        const uint16_t counts = adc.readFilteredCounts(3);
+        const float v = adc.readFilteredVoltage(3);
+        Telemetry::printf("[SHELL] MAX filtered ch4 = 0x%03X (%lu counts), %.3f V",
                           counts, static_cast<unsigned long>(counts), static_cast<double>(v));
     }
 };

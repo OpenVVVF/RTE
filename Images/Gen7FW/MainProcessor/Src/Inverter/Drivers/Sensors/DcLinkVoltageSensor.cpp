@@ -72,8 +72,9 @@ bool DcLinkVoltageSensor::applyComparatorThresholds() {
     const bool enable_ov = (raw_ov > 0.0f && raw_ov < VREF);
     const bool enable_uv = (raw_uv > 0.0f && raw_uv < VREF);
 
-    /* Digital-status mode with filtered input; use channel 1 (index 0). */
-    return m_adc.setComparatorThreshold(0, raw_ov, raw_uv, true, true,
+    /* Digital-status mode with filtered input.  On the Gen7 control board
+     * AIN4 (channel index 3) is VSENSE_DC_LINK_B. */
+    return m_adc.setComparatorThreshold(3, raw_ov, raw_uv, true, true,
                                         enable_ov, enable_uv);
 }
 
@@ -93,8 +94,8 @@ void DcLinkVoltageSensor::update() {
     }
 
     if (m_has_sample) {
-        /* voltage(0) returns the latest converted voltage at the MAX22530 input. */
-        const float raw_v = m_adc.voltage(0);
+        /* voltage(3) reads AIN4 = VSENSE_DC_LINK_B (see ADC2.kicad_sch). */
+        const float raw_v = m_adc.voltage(3);
         m_voltage = (raw_v - m_zero_offset_v) * m_scale;
     }
 
@@ -109,7 +110,7 @@ bool DcLinkVoltageSensor::zeroCalibrate() {
         return false;
     }
 
-    m_zero_offset_v = m_adc.voltage(0);
+    m_zero_offset_v = m_adc.voltage(3);
     return true;
 }
 

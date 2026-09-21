@@ -319,7 +319,9 @@ void OpenLoopController::stepStartup(uint32_t now_ms) {
             if ((int32_t)(now_ms - m_startup_wait_until_ms) >= 0) {
                 HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin,
                                   GPIO_PIN_SET);
-                m_startup_wait_until_ms = now_ms + 10U;
+                /* NCD57100 charge pump needs ~tens of ms after reset release
+                 * before /FLT clears; 10 ms samples the fault pin too early. */
+                m_startup_wait_until_ms = now_ms + 100U;
                 m_startup_state = StartupState::RESET_RELEASE;
             }
             break;
@@ -340,7 +342,10 @@ void OpenLoopController::stepStartup(uint32_t now_ms) {
                 m_startup_state = StartupState::STARTED;
                 m_running = true;
                 m_starting = false;
-            } else if (fault || (now_ms - m_startup_start_ms) > 500U) {
+            } else if ((now_ms - m_startup_start_ms) > 500U) {
+                /* Timeout-only abort: /FLT can be asserted briefly while the
+                 * charge pump starts.  Starting still requires ready && !fault
+                 * above, so a genuinely faulted driver can never start. */
                 uint32_t bdtr = TIM1->BDTR;
                 uint32_t sr   = TIM1->SR;
                 Telemetry::printf(
