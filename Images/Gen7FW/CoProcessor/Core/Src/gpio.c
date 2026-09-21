@@ -58,7 +58,10 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, RESET_MAIN_MCU_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
+  /* Gate-driver RESET: open-drain, released (high).  This net is shared with
+   * the main MCU (PD5) and the supervisor NIRQ; a push-pull low here held
+   * the NCD57100 in permanent reset (gates dead, /RDY+/FLT floating high). */
+  HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : GATE_DRIVE_PWR1_FEEDBACK_Pin GATE_DRIVE_PWR2_FEEDBACK_Pin GATE_DRIVE_READY_Pin USER_DIN_2_Pin */
   GPIO_InitStruct.Pin = GATE_DRIVE_PWR1_FEEDBACK_Pin|GATE_DRIVE_PWR2_FEEDBACK_Pin|GATE_DRIVE_READY_Pin|USER_DIN_2_Pin;
@@ -87,7 +90,7 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : GATE_DRIVER_RESET_Pin */
   GPIO_InitStruct.Pin = GATE_DRIVER_RESET_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GATE_DRIVER_RESET_GPIO_Port, &GPIO_InitStruct);
