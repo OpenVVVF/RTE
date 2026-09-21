@@ -70,9 +70,10 @@ void MX_GPIO_Init(void)
    * wired to the gate-driver RESET net and fires ~10-100 ms after every
    * reset release (factory thresholds on the gate-drive rails), which
    * yanked the driver back into reset and looked exactly like a driver
-   * fault.  Drive SLEEP high before anything powers up so the
-   * supervisor stays asleep and can never assert NIRQ. */
-  HAL_GPIO_WritePin(POWERMON_SLEEP_GPIO_Port, POWERMON_SLEEP_Pin, GPIO_PIN_SET);
+   * fault.  SLEEP is ACTIVE LOW (TPS389006 datasheet), so drive it
+   * low before anything powers up; the chip then sleeps and NIRQ
+   * (open-drain, shared with the gate RESET net) stays released. */
+  HAL_GPIO_WritePin(POWERMON_SLEEP_GPIO_Port, POWERMON_SLEEP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, CANBUS_POWER_ENABLE_Pin|GATE_DRIVER_POWER_ENABLE_Pin, GPIO_PIN_RESET);

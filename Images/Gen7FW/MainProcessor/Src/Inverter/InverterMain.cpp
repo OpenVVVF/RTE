@@ -142,6 +142,11 @@ static void init()
      * the gate-driver/isolated rails have settled with PWM running. */
     Inverter::dcLinkCurrentSensor().init();
 
+    /* Gate driver: MX_GPIO_Init asserts RESET (safe start) and never releases
+     * it; this powers the driver and releases reset.  Without it the NCD57100
+     * sits in reset forever (RESET net 0 V at the connector, no switching). */
+    GateDriver_Init();
+
     /* Open-loop controller (used by shell commands for scalar induction control
      * and vector scan). */
     Inverter::openLoopController().init();
