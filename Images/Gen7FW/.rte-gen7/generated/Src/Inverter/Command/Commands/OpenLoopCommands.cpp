@@ -110,6 +110,10 @@ public:
         Telemetry::printf("[SHELL] ready=%s gd_fault=%s",
                           GateDriver_IsReady() ? "Y" : "N",
                           GateDriver_IsFault() ? "Y" : "N");
+        Telemetry::printf("[SHELL] pins: RESET(PD5 odr)=%d POWER(PC10 odr)=%d SLEEP(PD6 odr)=%d",
+                          (GPIOD->ODR & GPIO_PIN_5) ? 1 : 0,
+                          (GPIOC->ODR & GPIO_PIN_10) ? 1 : 0,
+                          (GPIOD->ODR & GPIO_PIN_6) ? 1 : 0);
         FaultManager::instance().printSummary();
     }
 };

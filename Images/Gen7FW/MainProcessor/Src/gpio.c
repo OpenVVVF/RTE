@@ -162,7 +162,11 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SPI2_CS_Pin GATE_DRIVER_RESET_Pin */
+  /*Configure GPIO pins : SPI2_CS_Pin GATE_DRIVER_RESET_Pin
+   * RESET must be an output held LOW through power-up (NCD57100
+   * power-up sequencing); GateDriver_Init() releases it after the
+   * rails settle.  The net is shared with the coproc (open-drain,
+   * released) and the supervisor NIRQ (asleep via POWERMON_SLEEP). */
   GPIO_InitStruct.Pin = SPI2_CS_Pin|GATE_DRIVER_RESET_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;

@@ -195,12 +195,12 @@ bool OpenLoopController::init() {
     /* Park all phases at 50 % (zero voltage vector). */
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
 
-    /* Gate-driver reset is active low: keep the power stage disabled from
-     * the very beginning so there is never a brief switching burst at boot.
-     * The gate-driver power rail was already enabled in InverterMain::init()
-     * before the current-sensor offset was captured, and it stays in reset
-     * here. */
-    HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
+    /* Gate-driver RESET is owned by GateDriver_Init() (boot sequence):
+     * assert -> power -> release.  Do NOT touch it here — /RDY is not yet
+     * high at this point in boot, so any "is it healthy?" check misfires
+     * and re-kneeling the driver leaves it in reset forever (RESET net 0 V,
+     * no switching).  Outputs are parked at 50 % with MOE off, so there is
+     * no switching burst either way. */
 
     /* Make sure the gate-driver power rail is explicitly enabled.  This is
      * redundant with InverterMain::init() but preserves the old init sequence
