@@ -20,7 +20,23 @@ DC bus at 0 V.
 - Open-loop start/stop runs without latching /FLT (skip-reset patch).
 - `gatefire <phase 0-2> <duty 0-100> <ms>` per-half-bridge pulse tool.
 
-### The one open blocker: switching starts -> /FLT asserts
+### RESOLVED 2026-09-21 ~03:00: control board + firmware verified end-to-end
+Root causes found (all fixed, committed through 86a6c4a):
+1. Coproc held gate RESET push-pull LOW forever -> driver never woke.
+2. Main firmware never called GateDriver_Init() -> never powered/released.
+3. OpenLoopController::init re-asserted RESET after release (fixed).
+4. Any reset pulse to a healthy driver latches /FLT ~10-100ms later
+   (workaround: skip reset when healthy, all paths).
+5. TPS389006 supervisor NIRQ is wired to the gate RESET net (schematic);
+   kept asleep via POWERMON_SLEEP=PD6 driven LOW (SLEEP is ACTIVE LOW,
+   internal 100k pulldown).
+Verified: 'control start' STARTED/RUNNING/STOPPED clean with the gate
+module UNPLUGGED; PWM confirmed at connector during gatefire windows
+(gatefire 0 90 50; note CHx/CHxN swap: schematic PHASE_U_HIGH=PE8 carries
+TIM1_CH1N, so duty>50% on phase 0 shows on the U_LOW pin).
+status now prints RESET(PD5)/POWER(PC10)/SLEEP(PD6) ODR states.
+
+### The one open blocker: BOTH gate driver modules dead
 `control start` fails: "TIM1 MOE not active after PWM start".
 Diag (ControlSupervisor): PE15=0 AND PC11=0 at failure (net genuinely low,
 not a read/marginal issue), PC12(/RDY)=1, TIM1_AF1=0x01 (pin-sourced break,
@@ -66,3 +82,15 @@ the connector's PH_x_HIGH/LOW pins per schematic).
 - Open question: why a RESET pulse to a powered NCD57100 faults it
   (worked around by skip-reset-when-healthy; possibly related to the
   supervisor interaction or module reset circuitry).
+
+
+## Update 2026-09-21 ~03:30 - module-side blocker confirmed
+Both NCD57100 modules: rails good (+15/-9/3.353V), desat ~1.5V vs emitter
+(normal at 3V bus), RESET released, /RDY=3V, receive valid PWM at the
+connector in a clean /FLT window - gates never switch, /FLT re-latches at
+idle. Desat zeners lifted/reinstalled - not the cause. Control board
+exonerated (clean run with module unplugged; gd_fault=N with module
+unplugged = board does not clamp /FLT).
+NEXT: bench spare module - all 6 PWM inputs grounded, bench supply, RESET
+released, watch /RDY+/FLT and one gate. If dead: loupe EVERY reworked part
+on both modules (a wrong-part batch already slipped in once - desat zeners).
