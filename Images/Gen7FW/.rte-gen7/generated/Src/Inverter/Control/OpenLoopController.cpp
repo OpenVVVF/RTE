@@ -299,19 +299,12 @@ bool OpenLoopController::start(float freq_hz, float modulation_index) {
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
     PWM_ClearFault();
 
-    if (GateDriver_IsReady() && !GateDriver_IsFault()) {
-        /* Driver already healthy: skip the RESET pulse.  On this hardware a
-         * reset release provokes a spurious /FLT latch ~10-100 ms later
-         * (observed on two different NCD57100 modules, no switching needed),
-         * which then blocks every start.  Only reset a driver that is not
-         * already ready/unfaulted. */
-        m_startup_state = StartupState::RESET_RELEASE;
-        m_startup_wait_until_ms = HAL_GetTick() + 100U;
-    } else {
-        GateDriver_DisableOutputs();
-        m_startup_state = StartupState::RESET_ASSERT;
-        m_startup_wait_until_ms = HAL_GetTick() + 10U;
-    }
+    /* Always run the reset assert/release cycle: the pulse clears any
+     * latched /FLT and guarantees a known driver state.  1 ms keeps the
+     * /RST low pulse under the NCx5710y 8-10 ms DSCHK-invocation window. */
+    GateDriver_DisableOutputs();
+    m_startup_state = StartupState::RESET_ASSERT;
+    m_startup_wait_until_ms = HAL_GetTick() + 1U;
     m_startup_start_ms = HAL_GetTick();
     m_starting = true;
     m_running = false;

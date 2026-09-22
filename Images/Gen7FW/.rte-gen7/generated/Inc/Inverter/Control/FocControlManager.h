@@ -165,7 +165,10 @@ private:
     void requestSafeStopFromIsr();
 
     static constexpr uint32_t STARTUP_TIMEOUT_MS = 500U;
-    static constexpr uint32_t RESET_ASSERT_MS = 10U;
+    /* Keep the /RST low pulse well under the NCx5710y 8-10 ms DSCHK
+     * invocation window (a pulse in that window runs the desat diagnostic
+     * instead of a plain fault reset). */
+    static constexpr uint32_t RESET_ASSERT_MS = 1U;
     /* NCD57100 charge pump / isolated DC-DC needs ~tens of ms after reset
      * release before /FLT clears; sampling earlier falsely aborts startup. */
     static constexpr uint32_t RESET_RELEASE_MS = 100U;

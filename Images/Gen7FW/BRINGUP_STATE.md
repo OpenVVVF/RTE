@@ -94,3 +94,33 @@ unplugged = board does not clamp /FLT).
 NEXT: bench spare module - all 6 PWM inputs grounded, bench supply, RESET
 released, watch /RDY+/FLT and one gate. If dead: loupe EVERY reworked part
 on both modules (a wrong-part batch already slipped in once - desat zeners).
+
+## RESOLVED 2026-09-21 ~16:00 - root cause: hand-installed R5 1k pull-up on DESAT
+ROOT CAUSE: R5 (1k, +15V_B -> DESAT node) exists in GateDriver.kicad_sch but
+is EXCLUDED from GateDriver.csv/BOM, so fab modules shipped with R5 pads
+empty. During desat-network rework ("zeners" = BAT54WS Schottkys) the empty
+R5 footprint was populated with 1k on both modules / all channels (the
+schematic shows "R5 1k"). Effect: DESAT pin rides at ~15V through every
+power-up/UVLO recovery -> desat fault latches at boot -> /FLT low at idle,
+outputs inhibited, no switching, on every chip of both modules. The
+tell-tale "desat ~1.5V vs emitter at idle" was the 1k losing against the
+desat diode into the 0V collector.
+FALLACIOUS PATHS explored before this (do not re-investigate): dead chips
+(swapped U-high - no change), DSCHK/reset-pulse-width theory (datasheet
+table ambiguous), FLT-line drag (lifted all six pin 13s - the chip was the
+puller), TI supervisor (NIRQ drives the RESET net, not FLT), cross-coupled
+IN+/IN- wiring (INTENTIONAL shoot-through interlock, Gen6-proven: U-high
+IN+=PH_U_H, IN-=PH_U_L; verified complementary w/ deadtime at J6 pins 5/6).
+The 12 original NCV57100s are presumed healthy (victims, not causes).
+FIX: remove the 1k from every affected channel (verify: power off, ~1k
+DESAT TP->+15V rail = culprit present; open = clean), reconnect /FLT pins,
+boot -> /FLT high at idle, `control start` switches all phases, 3/3/3.
+POST-INCIDENT follow-ups: delete R5 from SingleChannelDriver.kicad_sch (or
+document why it exists) so it is never hand-installed again; reinstall any
+still-lifted BAT54s; retest after the desat network is restored; original
+chips can go back in service if desired (U-high currently has a fresh
+NCV57100).
+STILL OPEN from before: encoder stuck-at-rail, temp sense 2/3 connector
+crimps, CHx/CHxN firmware swap (schematic PHASE_U_HIGH=PE8 carries
+TIM1_CH1N), flaky USB-bridge serial (host->MCU RX drops / RX_DROPPED
+counter in coproc STATUS; worked around by typing shell commands locally).

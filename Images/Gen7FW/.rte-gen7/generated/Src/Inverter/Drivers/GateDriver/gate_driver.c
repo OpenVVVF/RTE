@@ -19,9 +19,11 @@
 
 void GateDriver_Init(void)
 {
-    /* Assert reset (active low) before powering to ensure safe start */
+    /* Assert reset (active low) before powering to ensure safe start.  Keep
+     * the pulse at 1 ms: the NCx5710y datasheet's 8-10 ms /RST low window
+     * invokes the DSCHK diagnostic rather than a plain fault reset. */
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
-    HAL_Delay(10);
+    HAL_Delay(1);
 
     /* Enable gate driver power */
     HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port, GATE_DRIVER_POWER_ENABLE_Pin, GPIO_PIN_SET);
@@ -40,8 +42,10 @@ void GateDriver_Init(void)
 
 void GateDriver_ResetPulse(void)
 {
+    /* 1 ms low pulse: clears latched faults while staying under the 8-10 ms
+     * DSCHK-invocation window of the NCx5710y. */
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
-    HAL_Delay(10);
+    HAL_Delay(1);
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_SET);
     HAL_Delay(10);
 }

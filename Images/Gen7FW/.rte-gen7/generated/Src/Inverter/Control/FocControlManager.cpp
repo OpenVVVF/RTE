@@ -221,17 +221,12 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
     PWM_ClearFault();
 
-    if (GateDriver_IsReady() && !GateDriver_IsFault()) {
-        // Driver already healthy: skip the RESET pulse.  On this hardware a
-        // reset release provokes a spurious /FLT latch ~10-100 ms later (seen
-        // on two different NCD57100 modules, no switching needed).
-        m_startup_state = StartupState::RESET_RELEASE;
-        m_startup_wait_until_ms = HAL_GetTick() + RESET_RELEASE_MS;
-    } else {
-        GateDriver_DisableOutputs();
-        m_startup_state = StartupState::RESET_ASSERT;
-        m_startup_wait_until_ms = HAL_GetTick() + RESET_ASSERT_MS;
-    }
+    /* Always run the reset assert/release cycle: the pulse clears any
+     * latched /FLT and guarantees a known driver state.  RESET_ASSERT_MS
+     * stays under the NCx5710y 8-10 ms DSCHK-invocation window. */
+    GateDriver_DisableOutputs();
+    m_startup_state = StartupState::RESET_ASSERT;
+    m_startup_wait_until_ms = HAL_GetTick() + RESET_ASSERT_MS;
     m_startup_start_ms = HAL_GetTick();
 
     Telemetry::printf("[FOC] startup sequence started (iq=%.2f A id=%.2f A)",

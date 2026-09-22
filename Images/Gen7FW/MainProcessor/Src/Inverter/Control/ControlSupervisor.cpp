@@ -27,25 +27,20 @@ bool ControlSupervisor::init() {
 }
 
 bool ControlSupervisor::gateDriverStartup() {
-    /* Only reset-pulse a driver that is not already healthy: on this hardware
-     * a reset release provokes a spurious /FLT latch ~10-100 ms later (seen
-     * on two NCD57100 modules with the supervisor asleep, no switching).
-     * A healthy, powered, released driver must be left alone. */
-    const bool healthy = GateDriver_IsReady() && !GateDriver_IsFault();
-    if (!healthy) {
-        HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
-        HAL_Delay(10);
-    }
+    /* Normal NCD57100 startup sequencing: assert /RST (clears any latched
+     * fault), make sure the power rail is on, then release /RST and let the
+     * driver come ready.  Keep the /RST low pulse short: the NCx5710y
+     * datasheet's 8-10 ms window on /RST invokes the DSCHK diagnostic
+     * instead of a plain fault reset. */
+    HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
+    HAL_Delay(1);
 
     HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
                       GATE_DRIVER_POWER_ENABLE_Pin, GPIO_PIN_SET);
     HAL_Delay(50);
 
-    if (!healthy) {
-        /* Release reset and wait for the driver to signal ready. */
-        HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_SET);
-        HAL_Delay(50);
-    }
+    HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_SET);
+    HAL_Delay(50);
 
     if (GateDriver_IsFault()) {
         Telemetry::printf("[SUP] ERROR: gate driver fault latched");
