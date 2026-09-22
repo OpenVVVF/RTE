@@ -288,6 +288,14 @@ bool AutoCalibrationCoordinator::startSlice(State first, State last, bool save_r
 }
 
 void AutoCalibrationCoordinator::finish() {
+    /* Defensive: no stage may leave the native FOC running once the
+     * coordinator is done (the inductance/flux stages run it internally).
+     * An orphaned FOC keeps commanding PWM alongside whatever runs next. */
+    if (focControlManager().isRunning()) {
+        Telemetry::printf("[CAL] AUTO: stopping orphaned FOC");
+        focControlManager().stop();
+    }
+
     if (!m_save_results) {
         Telemetry::printf("[CAL] AUTO: --no-save: results kept in RAM only");
         encoderADC().learnBounds(false);

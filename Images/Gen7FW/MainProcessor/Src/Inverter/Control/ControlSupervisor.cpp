@@ -2,6 +2,7 @@
 
 #include "Inverter/AppState.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
@@ -66,6 +67,14 @@ bool ControlSupervisor::start() {
         FaultManager::instance().isSeverityActive(FaultSeverity::High)) {
         Telemetry::printf("[SUP] ERROR: active Critical/High faults");
         FaultManager::instance().printSummary();
+        return false;
+    }
+
+    /* The native FOC and the generated graph control both write PWM duties;
+     * running both at once corrupts both loops.  foc start refuses while the
+     * graph control runs (FocCommands), so refuse the reverse here too. */
+    if (focControlManager().isRunning()) {
+        Telemetry::printf("[SUP] ERROR: native FOC is running; stop it first (foc stop)");
         return false;
     }
 
