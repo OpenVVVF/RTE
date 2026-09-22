@@ -248,6 +248,16 @@ Older images report `count_verified: false`. The manual equivalent is `help`
 in Studio's Runtime console or `tool rte_device_commands` in its RTE command
 dialog.
 
+Current Gen7 main firmware uses `fault` as its canonical fault command. Use `fault
+status`, `fault sources`, `fault clear [all|warning|high|critical|source]`, or
+`fault test <source>` from Studio's Runtime console or the generic device
+command tools. `fault clear` defaults to all faults and resets the related
+hardware latches and generated controller fault state as well as the software
+mask. Gate-related resets are refused while control or PWM is active, and a
+live condition that persists is reported again. `fault reset`,
+`clear fault`, and legacy `clearfault` are aliases that invoke the same clear
+routine.
+
 ### Firmware changes and MCP compatibility
 
 The MCP tool names and schemas are host code; they do not regenerate from a

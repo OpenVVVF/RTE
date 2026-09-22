@@ -664,17 +664,17 @@ void MAX22530::raiseFaultsFromInterruptStatus(uint16_t status) {
                                        FaultReason::Max22530FieldLoss);
     }
 
-    /* Channel 1 (index 0) is used for DC-link Vbus in this design.
+    /* Channel 4 (index 3) is used for DC-link Vbus on Gen7.
      * Ignore comparator bits in a frame that itself had an SPI error; the
      * status word may be corrupted.  Also mask by the interrupt-enable mask so
      * a disabled comparator direction cannot raise a latched fault. */
     if (!spi_fault) {
         const uint16_t comp_status = status & m_int_enable;
-        if (comp_status & INT_CO_POS_1) {
+        if (comp_status & INT_CO_POS_4) {
             FaultManager::instance().raise(FaultSource::Max22530Ov,
                                            FaultReason::Max22530Overvoltage);
         }
-        if (comp_status & INT_CO_NEG_1) {
+        if (comp_status & INT_CO_NEG_4) {
             FaultManager::instance().raise(FaultSource::Max22530Uv,
                                            FaultReason::Max22530Undervoltage);
         }

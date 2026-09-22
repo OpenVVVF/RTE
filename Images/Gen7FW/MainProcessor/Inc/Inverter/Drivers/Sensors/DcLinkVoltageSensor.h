@@ -57,7 +57,7 @@ public:
     /**
      * @brief Set the scaled overvoltage threshold [V].
      *
-     * The MAX22530 channel-1 comparator is configured in digital-status mode
+     * The MAX22530 channel-4 comparator is configured in digital-status mode
      * (out-of-window) using the filtered ADC result.  A fault is raised when
      * vdc_v exceeds this value.
      */

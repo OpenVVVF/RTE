@@ -154,7 +154,7 @@ public:
      */
     void clear(FaultSource src);
 
-    /** @brief Clear all latched faults. */
+    /** @brief Clear all latched software faults and their pending log entries. */
     void clearAll();
 
     /**
@@ -172,6 +172,9 @@ public:
 
     /** @brief Emit all active faults to telemetry as "print" messages. */
     void printSummary();
+
+    /** @brief Publish the current fault mask and active names as telemetry. */
+    void publishStatus();
 
     /**
      * @brief Log any newly-raised faults to telemetry.

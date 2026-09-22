@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Gate-driver /FLT-after-reset repro loop.
 
-Repeatedly pulses the NCD57100 RESET (via the `clearfault` shell command,
+Repeatedly pulses the NCD57100 RESET (via the `fault clear` shell command,
 which also re-enables gate-driver power) and then samples /RDY and /FLT
-~250 ms later via `status` -- long after the ~10 ms window where clearfault
-itself reads the pins. On the affected module /FLT latches low 10-100 ms
+~250 ms later via `status` -- after the reset command itself reads the pins.
+On the affected module /FLT latches low 10-100 ms
 after every reset release with no switching, so this loop shows
 gd_fault=Y on every iteration without any PWM ever running.
 
@@ -65,9 +65,9 @@ def main():
     t_prev = 0.0
     try:
         for i in range(1, ITERATIONS + 1):
-            # Marker: the RESET pulse happens inside clearfault, right after this.
+            # Marker: the RESET pulse happens inside fault clear, right after this.
             print(f"=== iter {i}: reset pulse now ===", flush=True)
-            exchange("clearfault", 1.2)
+            exchange("fault clear", 1.2)
 
             for t in SAMPLE_TIMES:
                 time.sleep(max(0.0, t - t_prev))

@@ -36,7 +36,7 @@
   - Raise `FaultSource::PhaseOvercurrent` with reason `PhaseOvercurrentSoftware` when the magnitude on **any** phase exceeds the threshold.
   - Add telemetry keys `ph_oc_threshold_a`, `ph_oc_max_a`.
 - Add shell commands in `Src/Inverter/Command/Commands/SensorCommands.cpp` to set the threshold with a hard upper bound (e.g. 500 A) to prevent accidental disable.
-- Acceptance: `fault_test PhaseOvercurrent` still works; a real overcurrent trips `FaultManager::executeSafetyActions()`.
+- Acceptance: `fault test PhaseOvercurrent` still works; a real overcurrent trips `FaultManager::executeSafetyActions()`.
 
 ### 3.3 Centralized safety monitor
 
@@ -261,7 +261,7 @@ Recommended order, one PR/commit at a time:
 ## 8. Acceptance criteria
 
 - `motorcal` still succeeds three times in a row without rebooting.
-- `fault_test PhaseOvercurrent` triggers the safety shutdown (PWM break, gate-driver reset, power off).
+- `fault test PhaseOvercurrent` triggers the safety shutdown (PWM break, gate-driver reset, power off).
 - Halting the debugger for >100 ms causes a watchdog reset.
 - Telemetry reports zero drops during normal operation.
 - `clang-tidy` runs with no `bugprone-*` or `clang-analyzer-*` findings.

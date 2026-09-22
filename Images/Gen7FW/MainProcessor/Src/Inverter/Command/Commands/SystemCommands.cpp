@@ -1,6 +1,5 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
-#include "Inverter/Control/FaultManager.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/SpikeRecorder.h"
@@ -8,67 +7,13 @@
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Telemetry.h"
 
-#include "main.h"
-#include "pwm.h"
-#include "gate_driver.h"
-
-using Inverter::FaultManager;
 using Inverter::PhaseCurrentADC;
 using Inverter::EncoderADC;
 using Inverter::DcLinkVoltageSensor;
-using Inverter::MAX22530;
 using Inverter::phaseCurrentADC;
 using Inverter::encoderADC;
 using Inverter::dcLinkVoltageSensor;
 using Inverter::supplyMonitorPrintStatus;
-
-class ClearFaultCommand : public CommandInterface {
-public:
-    ClearFaultCommand() : CommandInterface("clearfault", "Clear latched faults without starting switching") {}
-
-    void execute(const ArgValue*, CommandContext&) override {
-        /* Re-enable gate-driver power so the board can be started again. */
-        GateDriver_EnablePower(true);
-        HAL_Delay(50);
-
-        /* Remember whether the gate-driver outputs were enabled before the clear
-         * so we can restore that state afterwards. */
-        const bool outputs_were_enabled =
-            (HAL_GPIO_ReadPin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin) == GPIO_PIN_SET);
-
-        /* Assert reset to clear the NCD57100 DESAT fault latch, then release it
-         * so /RDY and /FLT can be read. */
-        GateDriver_DisableOutputs();
-        HAL_Delay(10);
-        GateDriver_EnableOutputs();
-        HAL_Delay(10);
-
-        /* Clear the timer break flag, but do NOT re-enable MOE here. */
-        PWM_ClearBreakFlag();
-        FaultManager::instance().clearAll();
-
-        /* Clear any latched MAX22530 interrupt/filter and pending EXTI1. */
-        MAX22530& adc = dcLinkVoltageSensor().adc();
-        (void)adc.clearInterruptStatus();
-        (void)adc.clearFilter(3);
-        __HAL_GPIO_EXTI_CLEAR_IT(VSENSE_ISO_ADC_INTERRUPT_Pin);
-        HAL_NVIC_ClearPendingIRQ(EXTI1_IRQn);
-
-        /* Restore the previous gate-driver output state. */
-        if (!outputs_were_enabled) {
-            GateDriver_DisableOutputs();
-        }
-
-        bool ready = GateDriver_IsReady();
-        bool fault = GateDriver_IsFault();
-        uint32_t bdtr = TIM1->BDTR;
-        Telemetry::printf("[SHELL] clearfault done | ready=%s fault=%s MOE=%lu outputs=%s",
-                          ready ? "Y" : "N",
-                          fault ? "Y" : "N",
-                          (bdtr >> 15) & 1UL,
-                          outputs_were_enabled ? "Y" : "N");
-    }
-};
 
 class RawCommand : public CommandInterface {
 public:
@@ -208,7 +153,6 @@ public:
     }
 };
 
-static ClearFaultCommand   sClearFaultCmd;
 static RawCommand          sRawCmd;
 static VZeroCommand        sVZeroCmd;
 static SupplyStatusCommand sSupplyStatusCmd;
@@ -221,7 +165,6 @@ static EncBoundsCommand    sEncBoundsCmd;
 #include "Inverter/Command/CommandManager.h"
 
 void registerSystemCommands(CommandManager& mgr) {
-    mgr.registerCommand(&sClearFaultCmd);
     mgr.registerCommand(&sRawCmd);
     mgr.registerCommand(&sVZeroCmd);
     mgr.registerCommand(&sSupplyStatusCmd);

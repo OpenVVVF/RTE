@@ -227,6 +227,14 @@ Codex, ChatGPT desktop, and Kimi Code.
   An incomplete response is reported as an error with the partial list. As
   with other agent-sent inverter commands, Studio must allow external command
   writes for this call.
+- On current Gen7 main firmware, use `fault` as the canonical command for fault
+  operations: `fault status`, `fault sources`, `fault clear [all|warning|high|critical|source]`,
+  and `fault test <source>`. A bare `fault clear` resets all software fault
+  latches, related gate/PWM and MAX22530 hardware latches, and the generated
+  controller fault state. It refuses the gate reset while control or PWM is
+  active. `fault reset`, `clear fault`, and legacy `clearfault` are aliases for
+  the same clear routine. A persistent live condition is reported again after
+  the clear.
 - Use `rte_device_command` to send any inverter text command and get a console
   cursor, or `rte_device_command_response` to send and collect subsequent
   lines. The protocol does not associate each console line with a request;

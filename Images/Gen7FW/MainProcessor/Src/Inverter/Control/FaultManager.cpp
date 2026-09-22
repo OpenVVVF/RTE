@@ -7,6 +7,7 @@
 #include "tim.h"
 
 #include <cctype>
+#include <cstdio>
 
 namespace Inverter {
 
@@ -148,6 +149,24 @@ void FaultManager::clear(FaultSource src) {
 
     const uint32_t primask = irqSave();
     m_active &= ~bits;
+    m_pending_log &= ~bits;
+    uint32_t cleared = bits;
+    while (cleared != 0U) {
+        const int idx = __builtin_ctz(cleared);
+        m_reason[idx] = FaultReason::Unspecified;
+        cleared &= cleared - 1U;
+    }
+    bool criticalRemains = false;
+    for (size_t i = 0; i < metaCount(); ++i) {
+        if (s_meta[i].severity == FaultSeverity::Critical &&
+            (m_active & static_cast<uint32_t>(s_meta[i].source)) != 0U) {
+            criticalRemains = true;
+            break;
+        }
+    }
+    if (!criticalRemains) {
+        m_safety_executed = false;
+    }
     irqRestore(primask);
 }
 
@@ -188,6 +207,32 @@ uint32_t FaultManager::activeFlags() const {
     const uint32_t flags = m_active;
     irqRestore(primask);
     return flags;
+}
+
+void FaultManager::publishStatus() {
+    const uint32_t flags = activeFlags();
+
+    char fault_flags[16];
+    std::snprintf(fault_flags, sizeof(fault_flags), "0x%08lX",
+                  static_cast<unsigned long>(flags));
+    Telemetry::log("fault_flags_hex", fault_flags);
+
+    char fault_names[512] = {};
+    size_t used = 0;
+    for (size_t i = 0; i < metaCount(); ++i) {
+        const FaultMeta& meta = s_meta[i];
+        if ((flags & static_cast<uint32_t>(meta.source)) == 0U) {
+            continue;
+        }
+        const int written = std::snprintf(fault_names + used,
+                                          sizeof(fault_names) - used,
+                                          "%s%s", used ? "," : "", meta.name);
+        if (written < 0 || static_cast<size_t>(written) >= sizeof(fault_names) - used) {
+            break;
+        }
+        used += static_cast<size_t>(written);
+    }
+    Telemetry::log("fault_active_names", used ? fault_names : "none");
 }
 
 void FaultManager::printSummary() {

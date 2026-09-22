@@ -150,6 +150,22 @@ void ControlSupervisor::requestStopFromIsr() {
     m_stop_requested = true;
 }
 
+bool ControlSupervisor::resetFaultState() {
+    if (m_state != State::Fault) {
+        return true;
+    }
+    if (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::High)) {
+        return false;
+    }
+
+    m_stop_requested = false;
+    m_state = State::Idle;
+    Telemetry::log("control_state", stateName());
+    Telemetry::printf("[SUP] fault state reset -> IDLE");
+    return true;
+}
+
 void ControlSupervisor::enterFaultState() {
     if (m_state == State::Running || m_state == State::Starting) {
         Inverter::encoderADC().useSynchronizedTrigger(false);

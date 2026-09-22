@@ -606,7 +606,8 @@ void PhaseCurrentADC::diagnose() {
         m_ref_implausible_since_ms = HAL_GetTick();
         return;
     }
-    if (!m_ref_fault_raised &&
+    if ((!m_ref_fault_raised ||
+         !FaultManager::instance().isActive(FaultSource::CurrentSensorRef)) &&
         (HAL_GetTick() - m_ref_implausible_since_ms) >= 500U) {
         m_ref_fault_raised = true;
         FaultManager::instance().raise(FaultSource::CurrentSensorRef,
@@ -654,4 +655,3 @@ extern "C" void HAL_ADC_LevelOutOfWindowCallback(ADC_HandleTypeDef* hadc) {
             Inverter::FaultReason::AdcWatchdogTrip);
     }
 }
-
