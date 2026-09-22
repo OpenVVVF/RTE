@@ -215,17 +215,17 @@ float platform_get_dc_link_power(void) {
  * can block for the SPI timeout). */
 float platform_phase_voltage_u(void) {
     /* MAX22530 AIN3 (index 2) = VSENSE_PH_U_B. */
-    return Inverter::dcLinkVoltageSensor().adc().voltage(2);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(2) * Inverter::VSENSE_DIVIDER_RATIO;
 }
 
 float platform_phase_voltage_v(void) {
     /* MAX22530 AIN2 (index 1) = VSENSE_PH_V_B. */
-    return Inverter::dcLinkVoltageSensor().adc().voltage(1);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(1) * Inverter::VSENSE_DIVIDER_RATIO;
 }
 
 float platform_phase_voltage_w(void) {
     /* MAX22530 AIN1 (index 0) = VSENSE_PH_W_B. */
-    return Inverter::dcLinkVoltageSensor().adc().voltage(0);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(0) * Inverter::VSENSE_DIVIDER_RATIO;
 }
 
 /* --------------------------------------------------------------------------
