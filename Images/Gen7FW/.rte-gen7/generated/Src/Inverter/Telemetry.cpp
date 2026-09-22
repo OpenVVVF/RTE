@@ -87,6 +87,8 @@ struct RingQueue {
 
     inline bool empty() const { return head == tail; }
     inline bool full()  const { return (uint16_t)(tail + 1) % CAP == head; }
+    inline uint16_t size() const { return (uint16_t)(tail + CAP - head) % CAP; }
+    inline uint16_t free_slots() const { return CAP - 1 - size(); }
 
     inline bool push(const T& v) {
         if (full()) return false;
@@ -105,6 +107,12 @@ struct RingQueue {
     inline const T* front() const {
         if (empty()) return nullptr;
         return &buf[head];
+    }
+
+    inline const T* at(uint16_t offset) const {
+        const uint16_t index = (uint16_t)(head + offset) % CAP;
+        if (offset >= size()) return nullptr;
+        return &buf[index];
     }
 
     inline void reset() { head = tail = 0; }
@@ -369,31 +377,30 @@ static void enqueue_all_definitions() {
 // ============================================================
 // Payload builders
 // ============================================================
-static size_t build_define_payload(uint8_t* payload, size_t cap) {
+static size_t build_define_payload(uint8_t* payload, size_t cap, uint8_t& count) {
     if (cap < 1) return 0;
 
     uint8_t* w = payload;
     *w++ = 0;
-    uint8_t n_defs = 0;
+    count = 0;
 
-    while (!g_define_q.empty()) {
-        DefineItem d{};
-        if (!g_define_q.pop(d)) break;
+    while (const DefineItem* d = g_define_q.at(count)) {
+        if (count == UINT8_MAX) break;
 
-        const size_t need = 2 + 1 + 1 + d.key_len;
+        const size_t need = 2 + 1 + 1 + d->key_len;
         if ((size_t)(w - payload) + need > cap) break;
 
-        put_u16(w, d.id);
-        *w++ = d.type;
-        *w++ = d.key_len;
-        if (d.key_len) {
-            std::memcpy(w, d.key, d.key_len);
-            w += d.key_len;
+        put_u16(w, d->id);
+        *w++ = d->type;
+        *w++ = d->key_len;
+        if (d->key_len) {
+            std::memcpy(w, d->key, d->key_len);
+            w += d->key_len;
         }
-        ++n_defs;
+        ++count;
     }
 
-    payload[0] = n_defs;
+    payload[0] = count;
     return (size_t)(w - payload);
 }
 
@@ -534,12 +541,15 @@ static bool flush_defines_now(uint32_t now_us) {
     bool wrote = false;
     while (!g_define_q.empty()) {
         uint8_t payload[DEFINE_PAYLOAD_MAX];
-        const size_t len = build_define_payload(payload, sizeof(payload));
-        if (len == 0) break;
+        uint8_t count = 0;
+        const size_t len = build_define_payload(payload, sizeof(payload), count);
+        if (count == 0 || len <= 1) break;
 
         if (!send_frame(MSG_DEFINE, payload, len, now_us)) {
             break;
         }
+        DefineItem sent{};
+        for (uint8_t i = 0; i < count; ++i) (void)g_define_q.pop(sent);
         wrote = true;
     }
     return wrote;
@@ -600,6 +610,7 @@ static bool log_core0(const char* key, const char* value) {
     size_t offset = 0;
     bool ok = true;
     const size_t n = (total_len + STR_MAXLEN - 1) / STR_MAXLEN;
+    if (n > g_log_q.free_slots()) return false;
     for (size_t i = 0; i < n; ++i) {
         const size_t chunk_len = std::min<size_t>(STR_MAXLEN, total_len - offset);
         uint8_t frag = 0;
@@ -776,6 +787,10 @@ bool updateSensors() {
     drain_log_queue_to_cache();
 
     wrote |= flush_defines_now(now);
+
+    // Never transmit values for a newly allocated ID before its DEFINE has
+    // reached the UART TX ring. A full ring can delay definitions by a frame.
+    if (!g_define_q.empty()) return wrote;
 
     {
         uint8_t payload[DATA_PAYLOAD_MAX];

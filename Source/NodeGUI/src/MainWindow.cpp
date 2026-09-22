@@ -26,6 +26,7 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFrame>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -899,6 +900,73 @@ void MainWindow::SetupMenu() {
                      QKeySequence(Qt::Key_F5));
     connect(generateFlashAction_, &QAction::triggered, this, [this] {
         StartBuildCommand(BuildCommand::GenerateAndFlash);
+    });
+
+    buildMenu->addSeparator();
+    auto* commandAction = buildMenu->addAction(QStringLiteral("Run RTE Command…"));
+    commandAction->setToolTip(QStringLiteral(
+        "Run any RTE CLI command in Studio, including device diagnostics and trace tools"));
+    connect(commandAction, &QAction::triggered, this, [this] {
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("RTE Command"));
+        dialog.resize(800, 500);
+        auto* layout = new QVBoxLayout(&dialog);
+        layout->addWidget(new QLabel(QStringLiteral(
+            "Enter arguments after rte (for example: device signals --filter foc). "
+            "The command runs without a shell."), &dialog));
+        auto* input = new QLineEdit(&dialog);
+        input->setPlaceholderText(QStringLiteral("device control-status"));
+        layout->addWidget(input);
+        auto* output = new QPlainTextEdit(&dialog);
+        output->setReadOnly(true);
+        layout->addWidget(output, 1);
+        auto* buttons = new QHBoxLayout;
+        auto* run = new QPushButton(QStringLiteral("Run"), &dialog);
+        auto* stop = new QPushButton(QStringLiteral("Stop"), &dialog);
+        auto* close = new QPushButton(QStringLiteral("Close"), &dialog);
+        buttons->addWidget(run);
+        buttons->addWidget(stop);
+        buttons->addStretch();
+        buttons->addWidget(close);
+        layout->addLayout(buttons);
+        QProcess process(&dialog);
+        process.setWorkingDirectory(QString::fromStdString(ProjectRoot().string()));
+        process.setProcessChannelMode(QProcess::MergedChannels);
+        auto appendOutput = [&] {
+            output->appendPlainText(QString::fromLocal8Bit(process.readAll()));
+        };
+        connect(&process, &QProcess::readyRead, &dialog, appendOutput);
+        connect(&process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                &dialog, [&](int code, QProcess::ExitStatus status) {
+            appendOutput();
+            output->appendPlainText(QStringLiteral("[exit %1%2]").arg(code)
+                .arg(status == QProcess::CrashExit ? QStringLiteral(", crashed") : QString()));
+            run->setEnabled(true);
+        });
+        connect(&process, &QProcess::errorOccurred, &dialog, [&](QProcess::ProcessError) {
+            output->appendPlainText(process.errorString());
+            run->setEnabled(true);
+        });
+        connect(run, &QPushButton::clicked, &dialog, [&] {
+            if (process.state() != QProcess::NotRunning) return;
+            QStringList args = QProcess::splitCommand(input->text());
+            if (args.isEmpty()) return;
+            if (args.front() == QStringLiteral("rte")) args.removeFirst();
+            if (args.isEmpty()) return;
+            output->appendPlainText(QStringLiteral("> rte %1").arg(input->text()));
+            run->setEnabled(false);
+            process.start(RteCliPath(), args);
+        });
+        connect(input, &QLineEdit::returnPressed, run, &QPushButton::click);
+        connect(stop, &QPushButton::clicked, &dialog, [&] {
+            if (process.state() != QProcess::NotRunning) process.kill();
+        });
+        connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+        dialog.exec();
+        if (process.state() != QProcess::NotRunning) {
+            process.kill();
+            process.waitForFinished(2000);
+        }
     });
 
     // HostSim graph-mode simulation: emit + build + run --live via `rte sim`,

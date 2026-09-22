@@ -123,13 +123,14 @@ void CommandManager::processLine(const char* line) {
 }
 
 void CommandManager::printHelp() const {
-    Telemetry::printf("[SHELL] === Command Reference ===");
+    Telemetry::printf("[SHELL] === Command Reference (%u commands) ===",
+                      static_cast<unsigned>(count_));
 
     for (size_t i = 0; i < count_; i++) {
         CommandInterface* cmd = commands_[i];
 
         int argc = cmd->getArgCount();
-        char sigBuffer[64] = "";
+        char sigBuffer[320] = "";
         char* p = sigBuffer;
         size_t remaining = sizeof(sigBuffer);
 

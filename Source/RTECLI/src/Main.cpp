@@ -21,12 +21,14 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -60,7 +62,8 @@ void Usage() {
         << "  flash --firmware FILE [--target main|coproc] [--serial PORT] [--control-port PORT]\n"
         << "        [--session FILE] [--programmer FILE] [--attempts N] [--manual-boot]\n"
         << "  mcp2221 enter|exit|release\n"
-        << "  device status|telemetry|console|command|mode [--session FILE]\n"
+        << "  device status|telemetry|signal|history|histories|signals|snapshot|build-info|control-status|console|command|mode|ports [--session FILE]\n"
+        << "  tool MCP_TOOL [--arguments JSON] [--workspace DIR] [--session FILE]\n"
         << "  device mode [--serial PORT] [--control-port PORT] [--probe-bootloader]\n"
         << "  sim --graph FILE [--scenario FILE] [--base-source DIR] [--name NAME]\n"
         << "      [--live] [--realtime F] [--no-build] [--output-format text|json|jsonl]\n"
@@ -581,9 +584,19 @@ int Device(const std::vector<std::string>& args, Format format) {
     const std::string operation = args.front();
     if (operation == "mode") return DeviceMode(
         std::vector<std::string>(args.begin() + 1, args.end()), format);
+    if (operation == "ports") {
+        const auto ports = RTEAutomation::DiscoverGen7BridgePorts();
+        EmitDeviceResult(format, operation, {{"bridge", ports.bridge}, {"control", ports.control}});
+        return 0;
+    }
     fs::path sessionPath;
     std::uint64_t since = 0;
     std::size_t lines = 100;
+    std::size_t limit = 1000;
+    double window = 5.0;
+    std::vector<std::string> signals;
+    std::string filter;
+    std::string bundle = "foc";
     std::string command;
     for (std::size_t i = 1; i < args.size(); ++i) {
         if (args[i] == "--session" && i + 1 < args.size()) sessionPath = args[++i];
@@ -593,7 +606,16 @@ int Device(const std::vector<std::string>& args, Format format) {
         } else if (args[i] == "--lines" && i + 1 < args.size()) {
             try { lines = static_cast<std::size_t>(std::stoull(args[++i])); }
             catch (...) { Emit(format, {{"event","error"},{"message","invalid --lines value"}}); return 2; }
-        } else if (args[i] == "--command" && i + 1 < args.size()) command = args[++i];
+        } else if (args[i] == "--limit" && i + 1 < args.size()) {
+            try { limit = static_cast<std::size_t>(std::stoull(args[++i])); }
+            catch (...) { Emit(format, {{"event","error"},{"message","invalid --limit value"}}); return 2; }
+        } else if (args[i] == "--window-s" && i + 1 < args.size()) {
+            try { window = std::stod(args[++i]); }
+            catch (...) { Emit(format, {{"event","error"},{"message","invalid --window-s value"}}); return 2; }
+        } else if (args[i] == "--signal" && i + 1 < args.size()) signals.push_back(args[++i]);
+        else if (args[i] == "--filter" && i + 1 < args.size()) filter = args[++i];
+        else if (args[i] == "--bundle" && i + 1 < args.size()) bundle = args[++i];
+        else if (args[i] == "--command" && i + 1 < args.size()) command = args[++i];
         else if (operation == "command") {
             if (!command.empty()) command += ' ';
             command += args[i];
@@ -612,6 +634,34 @@ int Device(const std::vector<std::string>& args, Format format) {
     json params = json::object();
     if (operation == "status") method = "device.status";
     else if (operation == "telemetry") method = "device.telemetry";
+    else if (operation == "build-info") method = "device.build_info";
+    else if (operation == "control-status") method = "device.control_status";
+    else if (operation == "snapshot") {
+        method = "device.snapshot";
+        params = {{"bundle", bundle}, {"signals", signals}};
+    }
+    else if (operation == "signals") {
+        method = "device.catalog";
+        params = {{"filter", filter}, {"signal", signals.empty() ? "" : signals.front()}};
+    } else if (operation == "signal" || operation == "history"
+               || operation == "string-history") {
+        if (signals.size() != 1) {
+            Emit(format, {{"event", "error"}, {"message", "exactly one --signal is required"}});
+            return 2;
+        }
+        method = operation == "string-history" ? "device.string_history"
+               : operation == "history" ? "device.history" : "device.telemetry";
+        params = {{"signal", signals.front()}, {"limit", limit}};
+    } else if (operation == "histories") {
+        if (signals.empty() || signals.size() > 8 || !std::isfinite(window)
+            || window < 0.05 || window > 30.0) {
+            Emit(format, {{"event", "error"},
+                          {"message", "use 1 to 8 --signal names and --window-s 0.05..30"}});
+            return 2;
+        }
+        method = "device.histories";
+        params = {{"signals", signals}, {"limit", limit}, {"window_s", window}};
+    }
     else if (operation == "console") {
         method = "device.console";
         params = {{"since", since}, {"lines", lines}};
@@ -630,6 +680,20 @@ int Device(const std::vector<std::string>& args, Format format) {
     if (!result) {
         Emit(format, {{"event","error"},{"message",error}});
         return 5;
+    }
+    if (operation == "signal") {
+        const auto& name = signals.front();
+        const auto& numbers = result->at("signals");
+        const auto& strings = result->at("strings");
+        if (numbers.contains(name)) EmitDeviceResult(format, operation,
+            {{"signal", name}, {"kind", "number"}, {"value", numbers.at(name)}});
+        else if (strings.contains(name)) EmitDeviceResult(format, operation,
+            {{"signal", name}, {"kind", "string"}, {"value", strings.at(name)}});
+        else {
+            Emit(format, {{"event", "error"}, {"message", "unknown signal: " + name}});
+            return 5;
+        }
+        return 0;
     }
     EmitDeviceResult(format, operation, *result);
     return 0;
@@ -660,8 +724,12 @@ json ToolDefinition(const std::string& name, const std::string& description,
         || name == "rte_device_mode"
         || name == "rte_device_signal" || name == "rte_device_history"
         || name == "rte_device_string_history"
-        || name == "rte_device_console";
+        || name == "rte_device_console" || name == "rte_build_info"
+        || name == "rte_signal_info" || name == "rte_control_status"
+        || name == "rte_device_histories" || name == "rte_device_trends"
+        || name == "rte_device_snapshot" || name == "rte_device_commands";
     const bool destructive = name == "rte_flash" || name == "rte_device_command"
+        || name == "rte_spike_capture"
         || name == "rte_device_command_response" || name == "rte_mcp2221";
     return {{"name", name}, {"description", description},
             {"inputSchema", std::move(schema)},
@@ -707,6 +775,14 @@ json McpTools() {
             {{"serial", {{"type", "string"}}}, {"control_port", {{"type", "string"}}},
              {"probe_bootloader", {{"type", "boolean"}}}, {"programmer", path}}),
         ToolDefinition("rte_device_telemetry", "Read all latest numeric and string telemetry plus receive statistics.", {}),
+        ToolDefinition("rte_build_info", "Read the graph identity and node/signal manifest announced by the running firmware.", {}),
+        ToolDefinition("rte_signal_info", "List observed and firmware-declared signals, their source nodes, units, and freshness.",
+            {{"filter", {{"type", "string"}}}, {"signal", {{"type", "string"}}}}),
+        ToolDefinition("rte_control_status", "Read controller state, latched fault names, and actual PWM/gate status.", {}),
+        ToolDefinition("rte_device_snapshot", "Read a named FOC bundle or up to 32 selected signals from one store snapshot, with freshness and missing keys.",
+            {{"bundle", {{"type", "string"}, {"enum", json::array({"foc"})}}},
+             {"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"minItems", 1}, {"maxItems", 32}}}}),
         ToolDefinition("rte_device_signal", "Read the latest value of one numeric or string telemetry signal.",
             {{"signal", {{"type", "string"}}}}, {"signal"}),
         ToolDefinition("rte_device_history", "Read recent time and value samples for one numeric telemetry signal.",
@@ -715,9 +791,22 @@ json McpTools() {
         ToolDefinition("rte_device_string_history", "Read recent string telemetry events for one signal.",
             {{"signal", {{"type", "string"}}},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}, {"signal"}),
+        ToolDefinition("rte_device_histories", "Read up to eight numeric histories from one consistent store snapshot; samples retain individual timestamps.",
+            {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"minItems", 1}, {"maxItems", 8}}},
+             {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 4000}}}}, {"signals"}),
+        ToolDefinition("rte_device_trends", "Show live motor-signal trends as compact sparklines with range, RMS, and latest values. Defaults to available FOC signals.",
+            {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"minItems", 1}, {"maxItems", 8}}},
+             {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}}}),
+        ToolDefinition("rte_spike_capture", "Dump and re-arm the firmware's frozen 64-sample, 5 kHz current-spike capture. Returns parsed samples and current/angle trend charts; sends the spikes inverter command.",
+            {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}}}),
         ToolDefinition("rte_device_console", "Read device console lines from RTE Studio.",
             {{"since", {{"type", "integer"}, {"minimum", 0}}},
              {"lines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}),
+        ToolDefinition("rte_device_commands", "Discover every command registered by the connected firmware by sending help; returns names, usage, descriptions, and argument ranges. Requires external command writes enabled in Studio.",
+            {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}}}),
         ToolDefinition("rte_device_command",
             "Send any inverter command through RTE Studio. Returns a console cursor for reading its reply. Requires external writes enabled in Studio.",
             {{"command", {{"type", "string"}}}}, {"command"}),
@@ -855,13 +944,29 @@ json ValidateToolArguments(const std::string& name, const json& arguments) {
             const std::string type = property.value("type", "");
             if ((type == "string" && !it.value().is_string())
                 || (type == "boolean" && !it.value().is_boolean())
-                || (type == "integer" && !it.value().is_number_integer()))
+                || (type == "integer" && !it.value().is_number_integer())
+                || (type == "number" && !it.value().is_number())
+                || (type == "array" && !it.value().is_array()))
                 return McpText("invalid type for argument: " + it.key(), true);
             if (type == "integer") {
                 const auto number = it.value().get<std::int64_t>();
                 if ((property.contains("minimum") && number < property["minimum"].get<std::int64_t>())
                     || (property.contains("maximum") && number > property["maximum"].get<std::int64_t>()))
                     return McpText("argument out of range: " + it.key(), true);
+            }
+            if (type == "number") {
+                const double number = it.value().get<double>();
+                if ((property.contains("minimum") && number < property["minimum"].get<double>())
+                    || (property.contains("maximum") && number > property["maximum"].get<double>()))
+                    return McpText("argument out of range: " + it.key(), true);
+            }
+            if (type == "array") {
+                if ((property.contains("minItems") && it.value().size() < property["minItems"].get<std::size_t>())
+                    || (property.contains("maxItems") && it.value().size() > property["maxItems"].get<std::size_t>()))
+                    return McpText("array size out of range: " + it.key(), true);
+                if (property.contains("items") && property["items"].value("type", "") == "string")
+                    for (const auto& item : it.value())
+                        if (!item.is_string()) return McpText("array items must be strings: " + it.key(), true);
             }
             if (property.contains("enum") && std::find(property["enum"].begin(), property["enum"].end(), it.value()) == property["enum"].end())
                 return McpText("invalid value for argument: " + it.key(), true);
@@ -874,7 +979,10 @@ json ValidateToolArguments(const std::string& name, const json& arguments) {
 bool IsFrequentMcpRead(const std::string& name) {
     return name == "rte_device_status" || name == "rte_device_telemetry"
         || name == "rte_device_signal" || name == "rte_device_history"
-        || name == "rte_device_string_history" || name == "rte_device_console";
+        || name == "rte_device_string_history" || name == "rte_device_console"
+        || name == "rte_device_histories" || name == "rte_device_trends"
+        || name == "rte_signal_info" || name == "rte_control_status"
+        || name == "rte_device_snapshot";
 }
 
 void RecordMcpActivity(const fs::path& sessionPath, const std::string& name,
@@ -890,8 +998,88 @@ void RecordMcpActivity(const fs::path& sessionPath, const std::string& name,
         {{"action", name}, {"detail", detail}, {"state", state}}, &error);
 }
 
+json McpTrends(const json& histories) {
+    constexpr std::size_t width = 48;
+    constexpr std::array<const char*, 8> levels = {
+        "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"};
+    const double end = histories.value("window_end_s", 0.0);
+    const double window = histories.value("window_s", 5.0);
+    std::ostringstream chart;
+    chart << "Recent " << window << " s; each row auto-scaled; left is older, right is newer.\n";
+    json metrics = json::object();
+    for (auto it = histories.at("series").begin(); it != histories.at("series").end(); ++it) {
+        const std::string name = it.key();
+        const json& samples = it.value();
+        if (samples.empty()) {
+            chart << name << "  [no samples in window]\n";
+            continue;
+        }
+        std::array<double, width> bucketSum{};
+        std::array<double, width> bucketMin{};
+        std::array<double, width> bucketMax{};
+        std::array<std::size_t, width> bucketCount{};
+        double low = std::numeric_limits<double>::infinity();
+        double high = -std::numeric_limits<double>::infinity();
+        double sum = 0.0, squareSum = 0.0;
+        double first = 0.0, last = 0.0;
+        std::size_t count = 0;
+        for (const auto& sample : samples) {
+            const double t = sample.at("time_s").get<double>();
+            const double value = sample.at("value").get<double>();
+            if (!std::isfinite(t) || !std::isfinite(value)) continue;
+            if (count++ == 0) first = value;
+            last = value;
+            low = std::min(low, value);
+            high = std::max(high, value);
+            sum += value;
+            squareSum += value * value;
+            const auto bin = static_cast<std::size_t>(std::clamp(
+                (t - (end - window)) / window * static_cast<double>(width),
+                0.0, static_cast<double>(width - 1)));
+            bucketSum[bin] += value;
+            if (bucketCount[bin]++ == 0) bucketMin[bin] = bucketMax[bin] = value;
+            else {
+                bucketMin[bin] = std::min(bucketMin[bin], value);
+                bucketMax[bin] = std::max(bucketMax[bin], value);
+            }
+        }
+        if (count == 0) continue;
+        std::string spark, spread;
+        const double span = high - low;
+        double maxSpread = 0.0;
+        for (std::size_t i = 0; i < width; ++i)
+            if (bucketCount[i]) maxSpread = std::max(maxSpread, bucketMax[i] - bucketMin[i]);
+        for (std::size_t i = 0; i < width; ++i) {
+            if (!bucketCount[i]) { spark += "·"; spread += " "; continue; }
+            const double mean = bucketSum[i] / bucketCount[i];
+            const auto level = static_cast<std::size_t>(std::clamp(
+                span > 0.0 ? (mean - low) / span * 7.0 : 3.0, 0.0, 7.0));
+            spark += levels[level];
+            const auto spreadLevel = static_cast<std::size_t>(std::clamp(
+                maxSpread > 0.0 ? (bucketMax[i] - bucketMin[i]) / maxSpread * 7.0 : 0.0,
+                0.0, 7.0));
+            spread += levels[spreadLevel];
+        }
+        chart << name << "  " << spark << "  last=" << last
+              << "  min=" << low << "  max=" << high << "  rms="
+              << std::sqrt(squareSum / count) << "  Δ=" << (last - first) << '\n';
+        if (maxSpread > 0.0) chart << "  intra-bin range " << spread << '\n';
+        metrics[name] = {{"samples", count}, {"first", first}, {"last", last},
+                         {"min", low}, {"max", high}, {"mean", sum / count},
+                         {"rms", std::sqrt(squareSum / count)}, {"delta", last - first},
+                         {"sparkline", spark}, {"range_sparkline", spread}};
+    }
+    const json report = {{"window_s", window}, {"window_end_s", end},
+                         {"metrics", metrics}, {"chart", chart.str()},
+                         {"missing", histories.value("missing", json::array())}};
+    json response = McpText(chart.str());
+    response["structuredContent"] = report;
+    return response;
+}
+
 json CallMcpTool(const std::string& name, const json& arguments,
-                 const fs::path& workspace, const fs::path& sessionPath) {
+                 const fs::path& workspace, const fs::path& sessionPath,
+                 const std::string& commandSource = "mcp") {
     if (const json invalid = ValidateToolArguments(name, arguments); !invalid.is_null()) return invalid;
     if (name == "rte_project_info") return McpJson(ProjectInfo(workspace));
     if (name == "rte_bridge_ports") {
@@ -911,12 +1099,54 @@ json CallMcpTool(const std::string& name, const json& arguments,
                                      arguments.value("control_port", ""), sessionPath,
                                      arguments.value("probe_bootloader", false),
                                      arguments.value("programmer", "")));
-    if (name.rfind("rte_device_", 0) != 0)
+    if (name.rfind("rte_device_", 0) != 0 && name != "rte_build_info"
+        && name != "rte_signal_info" && name != "rte_control_status"
+        && name != "rte_spike_capture")
         return RunCliTool(name, arguments, workspace, sessionPath);
     std::string method;
     json params = json::object();
     if (name == "rte_device_status") method = "device.status";
     else if (name == "rte_device_telemetry" || name == "rte_device_signal") method = "device.telemetry";
+    else if (name == "rte_build_info") method = "device.build_info";
+    else if (name == "rte_signal_info") {
+        method = "device.catalog";
+        params = {{"filter", arguments.value("filter", "")},
+                  {"signal", arguments.value("signal", "")}};
+    } else if (name == "rte_control_status") method = "device.control_status";
+    else if (name == "rte_device_snapshot") {
+        method = "device.snapshot";
+        params = {{"bundle", arguments.value("bundle", "foc")},
+                  {"signals", arguments.value("signals", json::array())}};
+    }
+    else if (name == "rte_device_histories" || name == "rte_device_trends") {
+        method = "device.histories";
+        std::vector<std::string> signals;
+        if (arguments.contains("signals")) signals = arguments["signals"].get<std::vector<std::string>>();
+        if (signals.empty() && name == "rte_device_trends") {
+            std::string discoverError;
+            const auto session = RTEAutomation::DiscoverSession(sessionPath, &discoverError);
+            if (!session) return McpText(discoverError, true);
+            const auto telemetry = RTEAutomation::RequestSession(*session, "device.telemetry",
+                json::object(), &discoverError);
+            if (!telemetry) return McpText(discoverError, true);
+            const auto& available = telemetry->at("signals");
+            const std::array<std::vector<std::string>, 2> focGroups = {{
+                {"cg_id_a", "cg_iq_a", "cg_vd_v", "cg_vq_v", "cg_theta_rad", "cg_vdc_v", "cg_iu_a", "cg_iv_a"},
+                {"foc_id", "foc_iq", "foc_vd", "foc_vq", "foc_elec_angle", "foc_vdc", "foc_iu", "foc_iv"}}};
+            for (const auto& group : focGroups) {
+                for (const auto& key : group)
+                    if (available.contains(key)) signals.push_back(key);
+                if (!signals.empty()) break;
+            }
+            if (signals.empty()) {
+                for (auto it = available.begin(); it != available.end() && signals.size() < 8; ++it)
+                    signals.push_back(it.key());
+            }
+        }
+        if (signals.empty()) return McpText("no numeric telemetry signals are available", true);
+        params = {{"signals", signals}, {"window_s", arguments.value("window_s", 5.0)},
+                  {"limit", arguments.value("limit", 4000)}};
+    }
     else if (name == "rte_device_history") {
         method = "device.history";
         params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 1000)}};
@@ -930,22 +1160,210 @@ json CallMcpTool(const std::string& name, const json& arguments,
                   {"lines", arguments.value("lines", std::size_t{100})}};
     } else if (name == "rte_device_command" || name == "rte_device_command_response") {
         method = "device.command";
-        params = {{"command", arguments["command"]}, {"source", "mcp"}};
+        params = {{"command", arguments["command"]}, {"source", commandSource}};
+    } else if (name == "rte_spike_capture") {
+        method = "device.command";
+        params = {{"command", "spikes"}, {"source", commandSource}};
+    } else if (name == "rte_device_commands") {
+        method = "device.command";
+        params = {{"command", "help"}, {"source", commandSource}};
     } else return McpText("unknown tool: " + name, true);
     std::string error;
     const auto session = RTEAutomation::DiscoverSession(sessionPath, &error);
     if (!session) return McpText(error, true);
     const auto result = RTEAutomation::RequestSession(*session, method, params, &error);
     if (!result) return McpText(error, true);
+    if (name == "rte_device_trends") return McpTrends(*result);
+    if (name == "rte_device_commands") {
+        std::uint64_t cursor = result->value("console_since", std::uint64_t{0});
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::milliseconds(arguments.value("timeout_ms", 5000));
+        json commands = json::array();
+        bool started = false, footerSeen = false;
+        std::optional<unsigned> expectedCount;
+        auto trim = [](const std::string& value) {
+            const auto first = value.find_first_not_of(' ');
+            if (first == std::string::npos) return std::string{};
+            const auto last = value.find_last_not_of(' ');
+            return value.substr(first, last - first + 1);
+        };
+        while (std::chrono::steady_clock::now() < deadline && !footerSeen) {
+            const auto console = RTEAutomation::RequestSession(*session, "device.console",
+                {{"since", cursor}, {"lines", 1000}}, &error);
+            if (!console) return McpText(error, true);
+            for (const auto& line : console->value("lines", json::array())) {
+                cursor = std::max(cursor, line.value("seq", std::uint64_t{0}));
+                const std::string text = line.value("text", "");
+                if (text.rfind("[SHELL] ", 0) != 0) continue;
+                const std::string body = text.substr(8);
+                if (body.rfind("=== Command Reference", 0) == 0) {
+                    started = true;
+                    commands = json::array();
+                    expectedCount.reset();
+                    unsigned count = 0;
+                    if (std::sscanf(body.c_str(),
+                        "=== Command Reference (%u commands) ===", &count) == 1)
+                        expectedCount = count;
+                    continue;
+                }
+                if (!started) continue;
+                if (body.rfind("================", 0) == 0) {
+                    footerSeen = true;
+                    break;
+                }
+                if (body.rfind("        ", 0) == 0) {
+                    if (commands.empty()) continue;
+                    const std::string detail = trim(body);
+                    const auto colon = detail.find(':');
+                    if (colon == std::string::npos) continue;
+                    const std::string argName = detail.substr(0, colon);
+                    const std::string range = trim(detail.substr(colon + 1));
+                    for (auto& arg : commands.back()["arguments"]) {
+                        if (arg.value("name", "") != argName) continue;
+                        arg["range"] = range;
+                        arg["type"] = range == "string" ? "string"
+                            : range.find('.') != std::string::npos ? "float" : "int";
+                        break;
+                    }
+                    continue;
+                }
+                const auto separator = body.find(" - ");
+                if (separator == std::string::npos) continue;
+                const std::string signature = trim(body.substr(0, separator));
+                const auto nameEnd = signature.find(' ');
+                const std::string commandName = signature.substr(0, nameEnd);
+                const std::string usage = nameEnd == std::string::npos
+                    ? "" : trim(signature.substr(nameEnd));
+                json args = json::array();
+                for (std::size_t pos = 0; pos < usage.size();) {
+                    const char open = usage[pos];
+                    if (open != '<' && open != '[') { ++pos; continue; }
+                    const char close = open == '<' ? '>' : ']';
+                    const auto end = usage.find(close, pos + 1);
+                    if (end == std::string::npos) break;
+                    args.push_back({{"name", usage.substr(pos + 1, end - pos - 1)},
+                                    {"required", open == '<'}});
+                    pos = end + 1;
+                }
+                commands.push_back({{"name", commandName}, {"usage", usage},
+                    {"description", trim(body.substr(separator + 3))},
+                    {"arguments", std::move(args)}});
+            }
+            if (!footerSeen) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        bool rangesComplete = true;
+        for (const auto& command : commands)
+            for (const auto& arg : command["arguments"])
+                if (!arg.contains("range")) rangesComplete = false;
+        const bool countVerified = expectedCount && commands.size() == *expectedCount;
+        const bool complete = footerSeen && rangesComplete
+            && (!expectedCount || countVerified);
+        json report = {{"source", "connected firmware help"}, {"complete", complete},
+                       {"count", commands.size()}, {"expected_count", expectedCount
+                            ? json(*expectedCount) : json(nullptr)},
+                       {"count_verified", countVerified},
+                       {"argument_ranges_complete", rangesComplete},
+                       {"commands", commands}};
+        if (!complete) {
+            json response = McpText(started ? "firmware command list was incomplete"
+                : "firmware did not answer help", true);
+            response["structuredContent"] = std::move(report);
+            return response;
+        }
+        std::ostringstream summary;
+        summary << commands.size() << " commands from connected firmware:\n";
+        for (const auto& command : commands)
+            summary << command.value("name", "") << ' '
+                    << command.value("usage", "") << " — "
+                    << command.value("description", "") << '\n';
+        json response = McpText(summary.str());
+        response["structuredContent"] = std::move(report);
+        return response;
+    }
+    if (name == "rte_spike_capture") {
+        std::uint64_t cursor = result->value("console_since", std::uint64_t{0});
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::milliseconds(arguments.value("timeout_ms", 5000));
+        json samples = json::array();
+        std::string header;
+        bool complete = false, noCapture = false;
+        while (std::chrono::steady_clock::now() < deadline && !complete && !noCapture) {
+            const auto console = RTEAutomation::RequestSession(*session, "device.console",
+                {{"since", cursor}, {"lines", 1000}}, &error);
+            if (!console) return McpText(error, true);
+            for (const auto& line : console->value("lines", json::array())) {
+                cursor = std::max(cursor, line.value("seq", std::uint64_t{0}));
+                const std::string text = line.value("text", "");
+                if (text.find("[SHELL] spikes: no capture") != std::string::npos) {
+                    noCapture = true;
+                    header = text;
+                } else if (text.find("[SHELL] spikes: capture") != std::string::npos) {
+                    header = text;
+                } else if (text.find("[SHELL] spk") != std::string::npos) {
+                    char marker = ' ';
+                    unsigned index = 0, encSin = 0, encCos = 0;
+                    unsigned long tick = 0;
+                    float iu = 0, iv = 0, angle = 0, deltaAngle = 0;
+                    float du = 0, dv = 0, dw = 0;
+                    if (std::sscanf(text.c_str(),
+                        "[SHELL] spk%c%u t=%lu iu=%f iv=%f ang=%f dang=%f du=%f dv=%f dw=%f sin=%u cos=%u",
+                        &marker, &index, &tick, &iu, &iv, &angle, &deltaAngle,
+                        &du, &dv, &dw, &encSin, &encCos) == 12) {
+                        samples.push_back({{"index", index}, {"trigger", marker == '*'},
+                            {"time_s", static_cast<double>(index) / 5000.0},
+                            {"tick_ms", tick}, {"iu_a", iu}, {"iv_a", iv},
+                            {"angle_deg", angle}, {"delta_angle_deg", deltaAngle},
+                            {"duty_u_pct", du}, {"duty_v_pct", dv}, {"duty_w_pct", dw},
+                            {"encoder_sin_raw", encSin}, {"encoder_cos_raw", encCos}});
+                        if (index == 63) complete = true;
+                    }
+                }
+            }
+            if (!complete && !noCapture) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        if (noCapture) return McpJson({{"captured", false}, {"message", header}});
+        json series = json::object();
+        for (const char* key : {"iu_a", "iv_a", "angle_deg"}) {
+            series[key] = json::array();
+            for (const auto& sample : samples)
+                if (sample.contains(key)) series[key].push_back({
+                    {"time_s", sample["time_s"]}, {"value", sample[key]}});
+        }
+        const json trend = McpTrends({{"series", series}, {"window_end_s", 63.0 / 5000.0},
+                                     {"window_s", 64.0 / 5000.0}, {"missing", json::array()}});
+        json report = {{"captured", !samples.empty()}, {"complete", complete},
+                       {"sample_rate_hz", 5000}, {"header", header},
+                       {"samples", samples}, {"trends", trend["structuredContent"]}};
+        json response = McpText(header + "\n" + trend["content"][0]["text"].get<std::string>());
+        response["structuredContent"] = std::move(report);
+        return response;
+    }
     if (name == "rte_device_signal") {
         const std::string signal = arguments["signal"];
+        const json ages = result->value("age_s", json::object());
+        const json age = ages.contains(signal) ? ages.at(signal) : json(nullptr);
+        const json frameAge = result->value("frame_age_s", json(nullptr));
+        const bool fresh = age.is_number() && frameAge.is_number()
+            && age.get<double>() <= 2.0 && frameAge.get<double>() <= 2.0;
         if (result->at("signals").contains(signal))
             return McpJson({{"signal", signal}, {"kind", "number"},
-                            {"value", result->at("signals").at(signal)}});
+                            {"value", result->at("signals").at(signal)},
+                            {"age_s", age}, {"fresh", fresh}});
         if (result->at("strings").contains(signal))
             return McpJson({{"signal", signal}, {"kind", "string"},
-                            {"value", result->at("strings").at(signal)}});
-        return McpText("unknown telemetry signal: " + signal, true);
+                            {"value", result->at("strings").at(signal)},
+                            {"age_s", age}, {"fresh", fresh}});
+        const auto catalog = RTEAutomation::RequestSession(*session, "device.catalog",
+            {{"signal", signal}}, &error);
+        const std::string state = catalog && !catalog->value("signals", json::array()).empty()
+            ? catalog->at("signals")[0].value("state", "unknown")
+            : catalog ? catalog->value("state", "unknown") : "unknown";
+        json response = McpText("telemetry signal unavailable: " + signal + " (" + state + ")", true);
+        response["structuredContent"] = {{"code", state == "not_in_build"
+            ? "not_in_build" : state == "configured_not_streaming"
+            ? "configured_not_streaming" : "unknown_signal"},
+            {"signal", signal}, {"state", state}};
+        return response;
     }
     if (name != "rte_device_command_response") return McpJson(*result);
     const auto since = result->value("console_since", std::uint64_t{0});
@@ -973,6 +1391,53 @@ json CallMcpTool(const std::string& name, const json& arguments,
                         {"console_since", since}, {"observed_lines", observed},
                         {"response_observed", responseObserved},
                         {"correlation", "lines received after command; unrelated output may be included"}});
+}
+
+int Tool(const std::vector<std::string>& args, Format format) {
+    if (args.empty()) {
+        std::cerr << "rte tool: MCP tool name is required\n";
+        return 2;
+    }
+    const std::string name = args.front();
+    json arguments = json::object();
+    fs::path workspace = fs::current_path();
+    fs::path sessionPath;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        if (i + 1 >= args.size()) {
+            std::cerr << "rte tool: missing value for " << args[i] << '\n';
+            return 2;
+        }
+        if (args[i] == "--arguments") {
+            try { arguments = json::parse(args[++i]); }
+            catch (const std::exception& error) {
+                std::cerr << "rte tool: invalid JSON arguments: " << error.what() << '\n';
+                return 2;
+            }
+        } else if (args[i] == "--workspace") workspace = args[++i];
+        else if (args[i] == "--session") sessionPath = args[++i];
+        else {
+            std::cerr << "rte tool: unknown option: " << args[i] << '\n';
+            return 2;
+        }
+    }
+    std::error_code workspaceError;
+    workspace = fs::weakly_canonical(workspace, workspaceError);
+    if (workspaceError || !fs::is_directory(workspace)) {
+        std::cerr << "rte tool: workspace is not a directory\n";
+        return 2;
+    }
+    json response;
+    try { response = CallMcpTool(name, arguments, workspace, sessionPath, "cli"); }
+    catch (const std::exception& error) { response = McpText(error.what(), true); }
+    const bool failed = response.value("isError", false);
+    if (format == Format::Text) {
+        for (const auto& block : response.value("content", json::array()))
+            if (block.value("type", "") == "text")
+                std::cout << block.value("text", "") << '\n';
+    } else {
+        Emit(format, {{"event", "tool"}, {"name", name}, {"response", response}});
+    }
+    return failed ? 5 : 0;
 }
 
 int Mcp(const std::vector<std::string>& args) {
@@ -1129,6 +1594,7 @@ int Dispatch(const Parsed& parsed) {
         return Flash(options, parsed.format);
     }
     if (parsed.command == "device") return Device(parsed.args, parsed.format);
+    if (parsed.command == "tool") return Tool(parsed.args, parsed.format);
     if (parsed.command == "mcp2221") return Mcp2221(parsed.args, parsed.format);
     if (parsed.command == "sim") return Sim(parsed.args, parsed.format);
     if (parsed.command == "trace") return RunTraceCommand(parsed.args);

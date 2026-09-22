@@ -14,6 +14,10 @@
 #include "../../../generated/domain_app_loop_generated.h"
 #include "../../../generated/domain_adc_isr_generated.h"
 
+#if __has_include("rte_build_info.h")
+#include "rte_build_info.h"
+#endif
+
 #include <cmath>
 #include <cstring>
 #include <strings.h>
@@ -437,12 +441,29 @@ public:
 };
 
 static ControlCommand sControlCmd;
+class BuildInfoCommand : public CommandInterface {
+public:
+    BuildInfoCommand() : CommandInterface("build_info", "Show flashed graph identity and refresh its signal manifest") {}
+    void execute(const ArgValue*, CommandContext&) override {
+#if defined(RTE_BUILD_MANIFEST)
+        Telemetry::printf("[SHELL] graph=%s hash=%s nodes=%u",
+                          RTE_GRAPH_NAME, RTE_GRAPH_HASH,
+                          static_cast<unsigned>(RTE_BUILD_NODE_COUNT));
+        if (!Telemetry::log("fw_manifest", RTE_BUILD_MANIFEST))
+            Telemetry::printf("[SHELL] manifest queue busy; retry build_info");
+#else
+        Telemetry::printf("[SHELL] no RTE graph manifest in this firmware image");
+#endif
+    }
+};
+static BuildInfoCommand sBuildInfoCmd;
 static ConfigCommand sConfigCmd;
 static VarCommand sVarCmd;
 static TempCommand sTempCmd;
 
 void registerControlCommands(CommandManager& mgr) {
     mgr.registerCommand(&sControlCmd);
+    mgr.registerCommand(&sBuildInfoCmd);
     mgr.registerCommand(&sConfigCmd);
     mgr.registerCommand(&sVarCmd);
     mgr.registerCommand(&sTempCmd);

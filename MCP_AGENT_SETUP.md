@@ -64,7 +64,9 @@ try:
         assert "error" not in answer, answer
         if method == "tools/list":
             names = {tool["name"] for tool in answer["result"]["tools"]}
-            assert {"rte_device_mode", "rte_device_telemetry",
+            assert {"rte_device_mode", "rte_device_telemetry", "rte_device_trends",
+                    "rte_device_snapshot", "rte_build_info", "rte_signal_info",
+                    "rte_control_status", "rte_device_commands", "rte_spike_capture",
                     "rte_device_command_response", "rte_flash"} <= names, names
             print(f"RTE MCP ready: {len(names)} tools")
 finally:
@@ -141,10 +143,35 @@ Codex, ChatGPT desktop, and Kimi Code.
   `app_responding` and `bootloader_responding` confirm replies; an
   `app_unresponsive_or_silent` result does **not** prove a hung MCU. The
   optional `probe_bootloader` argument makes a connect only programmer probe.
-- For live data, run `RTEStudio` connected to the inverter first. Then use
+- For live data, run `RTEStudio` connected to the inverter first. Use
   `rte_device_status`, `rte_device_telemetry` for all latest numeric and
-  string values, `rte_device_signal` for one value, and the two history
-  tools for samples over time. Use `rte_device_console` for received lines.
+  string values (flat and grouped by source node), `rte_device_signal` for
+  one value, `rte_device_snapshot` for a FOC bundle or custom signal list,
+  and the history tools for samples over time. `rte_device_histories` reads
+  up to eight signals from one Studio store snapshot; each sample retains
+  its own timestamp. `rte_device_trends` renders those histories as compact
+  48-bin sparklines with min, max, mean, RMS, and change. Use
+  `rte_device_console` for received lines.
+- `rte_build_info` returns the running firmware's graph hash, effective node
+  list, and declared graph telemetry signals. `rte_signal_info` joins that
+  catalog with observed signal freshness and units. `rte_control_status`
+  reads state, latched fault names, PWM MOE, and gate status. These fields
+  require a newly generated and flashed Gen7 main image; older images return
+  unavailable metadata while ordinary telemetry still works.
+- `rte_spike_capture` sends `spikes` to dump the firmware's existing frozen
+  64-sample, 5 kHz current/encoder capture and re-arm it. It returns parsed
+  samples and a current/angle trend chart. It reports no capture if the
+  current threshold has not fired. Set that threshold with the ordinary
+  inverter command `spikes <amps>` if needed.
+- Call `rte_device_commands` to discover the commands actually registered in
+  the connected firmware. It sends `help`, waits for the closing reference
+  line, and returns command names, usage, descriptions, and argument ranges.
+  Newly built Gen7 firmware also announces the registered command count so
+  the tool can verify that no command entry was lost; older images report
+  `count_verified: false`.
+  An incomplete response is reported as an error with the partial list. As
+  with other agent-sent inverter commands, Studio must allow external command
+  writes for this call.
 - Use `rte_device_command` to send any inverter text command and get a console
   cursor, or `rte_device_command_response` to send and collect subsequent
   lines. The protocol does not associate each console line with a request;
@@ -164,6 +191,48 @@ Codex, ChatGPT desktop, and Kimi Code.
   **not correctly implemented** and is **not advised** for control tuning,
   firmware validation, or hardware decisions.
 
+## Manual use in RTE Studio
+
+Every MCP action has a manual route in Studio. The Runtime tab's live plots,
+signal table, and console show signal trends, current values, and received
+inverter replies. The **FOC** plot preset follows either `cg_` or native
+`foc_` signals. **Inspect Firmware & Signals…** shows the manifest, fault
+and controller status, and signal ages. Send inverter text through the
+Runtime console; the exact command and response appear there.
+
+For host actions, use **Build → Run RTE Command…**. Enter arguments after
+`rte`; Studio runs its adjacent `rte` binary without a shell and shows output
+and exit status. Examples:
+
+```text
+device mode
+device build-info
+device signals --filter foc
+device control-status
+device snapshot --bundle foc
+device histories --signal cg_id_a --signal cg_iq_a --window-s 5
+device ports
+tool rte_device_trends --arguments '{"signals":["cg_id_a","cg_iq_a"],"window_s":5}'
+tool rte_device_commands
+tool rte_spike_capture
+flash --firmware /absolute/path/to/main.elf
+trace record --interface can0 --output /tmp/capture.rte --seconds 10
+```
+
+The same command runner accepts `validate`, `generate`, `build`, `flash`,
+`trace`, `sim`, and legacy `mcp2221` commands. Studio also has its normal
+graph editor, Build menu, and Firmware Update screen for those common jobs.
+`tool NAME --arguments JSON` invokes any MCP tool manually through the same
+implementation and returns its text output; use `--format json` before `tool`
+to see the full structured response. Manual inverter commands from `tool`
+are labeled `[CLI]` in the Runtime console.
+`rte_device_command_response` corresponds to sending a command in the
+Runtime console and watching its subsequent lines; neither route can prove
+that a particular line belongs to that command.
+For the high-rate spike capture, send `spikes` in the Runtime console; use
+`spikes <amps>` to change its trigger threshold.
+Send `help` in that console to see the same live command reference returned by
+`rte_device_commands`.
+
 The full CLI and hardware details are in
-[docs/automation-backend.md](docs/automation-backend.md). This guide describes
-local MCP setup; it does not require changing either firmware image.
+[docs/automation-backend.md](docs/automation-backend.md).

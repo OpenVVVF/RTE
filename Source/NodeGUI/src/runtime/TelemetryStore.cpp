@@ -7,6 +7,7 @@ namespace NodeGUI::runtime {
 
 void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     std::lock_guard lock(mtx_);
+    lastSignalUpdate_[key] = std::chrono::steady_clock::now();
     auto& hist = snap_.hist[key];
     hist.t.push_back(tsec);
     hist.y.push_back(value);
@@ -26,6 +27,7 @@ void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
 
 void TelemetryStore::AddString(const std::string& key, const std::string& value) {
     std::lock_guard lock(mtx_);
+    lastSignalUpdate_[key] = std::chrono::steady_clock::now();
     snap_.latestStr[key] = value;
     auto& samples = sessionStringSignals_[key];
     samples.push_back(SessionStringSample{SessionElapsedSeconds(), value});
@@ -127,6 +129,8 @@ void TelemetryStore::ClearSession() {
     snap_ = TelemetrySnapshot{};
     snap_.suspended = suspended;
     sessionFloatSignals_.clear();
+    lastSignalUpdate_.clear();
+    lastFrameAt_ = {};
     sessionStringSignals_.clear();
     sessionConsole_.clear();
     sessionCommands_.clear();
@@ -153,6 +157,9 @@ void TelemetryStore::SetStats(float rxHz,
                               uint64_t rejectUnknownId,
                               uint32_t lastSeq) {
     std::lock_guard lock(mtx_);
+    if (goodFrames != snap_.goodFrames && goodFrames != 0) {
+        lastFrameAt_ = std::chrono::steady_clock::now();
+    }
     snap_.rxHz = rxHz;
     snap_.rxBytesPerSec = rxBytesPerSec;
     snap_.goodFrames = goodFrames;
@@ -184,12 +191,16 @@ TelemetryStore::StatsLine TelemetryStore::GetStatsLine() const {
     line.rejectUnknownId = snap_.rejectUnknownId;
     line.lastSeq = snap_.lastSeq;
     line.suspended = snap_.suspended;
+    if (lastFrameAt_.time_since_epoch().count() != 0)
+        line.frameAgeSeconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - lastFrameAt_).count();
     return line;
 }
 
 TelemetryStore::DeviceView TelemetryStore::GetDeviceView() const {
     std::lock_guard lock(mtx_);
     DeviceView view;
+    const auto now = std::chrono::steady_clock::now();
     view.stats.rxHz = snap_.rxHz;
     view.stats.rxBytesPerSec = snap_.rxBytesPerSec;
     view.stats.goodFrames = snap_.goodFrames;
@@ -201,9 +212,24 @@ TelemetryStore::DeviceView TelemetryStore::GetDeviceView() const {
     view.stats.rejectUnknownId = snap_.rejectUnknownId;
     view.stats.lastSeq = snap_.lastSeq;
     view.stats.suspended = snap_.suspended;
+    if (lastFrameAt_.time_since_epoch().count() != 0)
+        view.stats.frameAgeSeconds = std::chrono::duration<double>(now - lastFrameAt_).count();
     view.latest = snap_.latest;
     view.latestStr = snap_.latestStr;
+    for (const auto& [key, time] : lastSignalUpdate_)
+        view.ageSeconds[key] = std::chrono::duration<double>(now - time).count();
     return view;
+}
+
+std::unordered_map<std::string, SignalHistory> TelemetryStore::CopyHistories(
+    const std::vector<std::string>& keys) const {
+    std::lock_guard lock(mtx_);
+    std::unordered_map<std::string, SignalHistory> result;
+    for (const auto& key : keys) {
+        const auto it = snap_.hist.find(key);
+        if (it != snap_.hist.end()) result.emplace(key, it->second);
+    }
+    return result;
 }
 
 TelemetrySnapshot TelemetryStore::Snapshot() const {

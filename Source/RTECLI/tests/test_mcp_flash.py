@@ -97,6 +97,29 @@ def main():
                     value = {"signals": {"phase_current_a": 1.25, "dc_bus_v": 48.0},
                              "strings": {"state": "idle"}, "rx_hz": 200.0,
                              "good_frames": self.server.good_frames}
+                elif method == "device.build_info":
+                    value = {"verified": True, "graph": "foc_demo", "graph_hash": "deadbeef",
+                             "nodes": [{"id": "foc", "type": "Control.FOC"}]}
+                elif method == "device.catalog":
+                    requested = message["params"].get("signal", "")
+                    value = {"build_verified": True,
+                             "signals": ([{"name": "phase_current_a", "state": "live",
+                                           "unit": "A", "source_node": "current_sensor"}]
+                                         if requested in ("", "phase_current_a") else []),
+                             "state": "not_in_build" if requested == "missing_signal" else "live"}
+                elif method == "device.control_status":
+                    value = {"fresh": True, "state": "idle", "fault_names": "none",
+                             "pwm_moe": 0, "gate_ready": 1}
+                elif method == "device.snapshot":
+                    value = {"bundle": "foc", "values": {"phase_current_a": {
+                        "value": 1.25, "kind": "number", "fresh": True, "age_s": 0.1}},
+                        "missing": [], "frame_age_s": 0.1}
+                elif method == "device.histories":
+                    value = {"series": {key: [{"time_s": 0.0, "value": 0.0},
+                                               {"time_s": 0.5, "value": 1.25},
+                                               {"time_s": 1.0, "value": 0.5}]
+                                        for key in message["params"]["signals"]},
+                             "missing": [], "window_end_s": 1.0, "window_s": 1.0}
                 elif method == "device.status":
                     value = {"connected": True, "device_port": str(bridge),
                              "transport": self.server.transport, "suspended": False}
@@ -111,7 +134,26 @@ def main():
                              "console_since": 4}
                 elif method == "device.console":
                     lines = [{"seq": 5, "text": "[MCP] sent"}]
-                    if self.server.commands and self.server.commands[-1] != "silent":
+                    if self.server.commands and self.server.commands[-1] == "help":
+                        lines += [
+                            {"seq": 6, "text": "[SHELL] === Command Reference "
+                                               + ("(3 commands)" if self.server.incomplete_help
+                                                  else "(2 commands)") + " ==="},
+                            {"seq": 7, "text": "[SHELL] help                        - List commands"},
+                            {"seq": 8, "text": "[SHELL] freq     <hz>            - Set frequency"},
+                            {"seq": 9, "text": "[SHELL]         hz:0.0-100.0 Hz"},
+                            {"seq": 10, "text": "[SHELL] ========================="},
+                        ]
+                    elif self.server.commands and self.server.commands[-1] == "spikes":
+                        lines.append({"seq": 6, "text":
+                                      "[SHELL] spikes: capture #1 (* = trigger), 64 samples @ 5 kHz"})
+                        for index in range(64):
+                            marker = "*" if index == 47 else " "
+                            lines.append({"seq": index + 7, "text":
+                                f"[SHELL] spk{marker}{index:02d} t=100 iu={index / 10:.1f} "
+                                f"iv={index / 20:.1f} ang={index:.1f} dang=+1.00 "
+                                "du=10.0 dv=20.0 dw=30.0 sin=123 cos=456"})
+                    elif self.server.commands and self.server.commands[-1] != "silent":
                         lines.append({"seq": 6, "text": "OK: " + self.server.commands[-1]})
                     value = {"lines": lines if self.server.commands else [],
                              "latest_seq": lines[-1]["seq"]}
@@ -129,6 +171,7 @@ def main():
         session_server.activities = []
         session_server.good_frames = 100
         session_server.transport = "serial"
+        session_server.incomplete_help = False
         session_worker = threading.Thread(target=session_server.serve_forever, daemon=True)
         session_worker.start()
         descriptor = root / "session.json"
@@ -150,7 +193,11 @@ def main():
                 assert isinstance(tool["inputSchema"]["properties"], dict), tool["name"]
             for name in ("rte_flash", "rte_device_telemetry", "rte_device_signal",
                          "rte_device_history", "rte_device_string_history",
-                         "rte_device_command_response", "rte_device_mode"):
+                         "rte_device_command_response", "rte_device_mode",
+                         "rte_build_info", "rte_signal_info", "rte_control_status",
+                         "rte_device_histories", "rte_device_trends",
+                         "rte_device_snapshot", "rte_spike_capture",
+                         "rte_device_commands"):
                 assert name in names, name
             resources = request(server, 11, "resources/list")["resources"]
             assert any(item["uri"] == "rte://workspace/Assets/Examples/foc_demo.json"
@@ -194,12 +241,40 @@ def main():
             signal = request(server, 7, "tools/call", {"name": "rte_device_signal",
                              "arguments": {"signal": "state"}})
             assert '"idle"' in signal["content"][0]["text"], signal
+            missing_signal = request(server, 28, "tools/call", {"name": "rte_device_signal",
+                                     "arguments": {"signal": "missing_signal"}})
+            assert missing_signal["isError"], missing_signal
+            assert missing_signal["structuredContent"]["code"] == "not_in_build"
             history = request(server, 8, "tools/call", {"name": "rte_device_history",
                               "arguments": {"signal": "phase_current_a", "limit": 10}})
             assert '"time_s": 0.1' in history["content"][0]["text"], history
             strings = request(server, 10, "tools/call", {"name": "rte_device_string_history",
                               "arguments": {"signal": "state", "limit": 10}})
             assert '"idle"' in strings["content"][0]["text"], strings
+            build_info = request(server, 20, "tools/call", {"name": "rte_build_info",
+                                 "arguments": {}})
+            assert build_info["structuredContent"]["graph"] == "foc_demo", build_info
+            catalog = request(server, 21, "tools/call", {"name": "rte_signal_info",
+                              "arguments": {"signal": "phase_current_a"}})
+            assert catalog["structuredContent"]["signals"][0]["unit"] == "A", catalog
+            control_status = request(server, 22, "tools/call", {"name": "rte_control_status",
+                                     "arguments": {}})
+            assert control_status["structuredContent"]["gate_ready"] == 1, control_status
+            snapshot = request(server, 26, "tools/call", {"name": "rte_device_snapshot",
+                               "arguments": {"signals": ["phase_current_a"]}})
+            assert snapshot["structuredContent"]["values"]["phase_current_a"]["fresh"]
+            histories = request(server, 23, "tools/call", {"name": "rte_device_histories",
+                                "arguments": {"signals": ["phase_current_a"],
+                                              "window_s": 1.0}})
+            assert len(histories["structuredContent"]["series"]["phase_current_a"]) == 3
+            trends = request(server, 24, "tools/call", {"name": "rte_device_trends",
+                             "arguments": {"signals": ["phase_current_a"],
+                                           "window_s": 1.0}})
+            assert trends["structuredContent"]["metrics"]["phase_current_a"]["rms"] > 0
+            assert "phase_current_a" in trends["content"][0]["text"], trends
+            bad_trends = request(server, 25, "tools/call", {"name": "rte_device_trends",
+                                 "arguments": {"signals": [17]}})
+            assert bad_trends["isError"], bad_trends
             reply = request(server, 9, "tools/call", {"name": "rte_device_command_response",
                             "arguments": {"command": "get currents", "timeout_ms": 100}})
             assert "OK: get currents" in reply["content"][0]["text"], reply
@@ -224,6 +299,26 @@ def main():
                 capture_output=True, text=True, env=env, check=True, timeout=5)
             assert '"sent": true' in cli_command.stdout, cli_command.stdout
             assert session_server.command_sources == ["mcp", "mcp", "cli"]
+            for args, expected in (
+                (["build-info"], "foc_demo"),
+                (["signals", "--filter", "phase"], "current_sensor"),
+                (["control-status"], "gate_ready"),
+                (["snapshot", "--signal", "phase_current_a"], "phase_current_a"),
+                (["signal", "--signal", "phase_current_a"], "1.25"),
+                (["histories", "--signal", "phase_current_a", "--window-s", "1"],
+                 "window_end_s"),
+            ):
+                cli_read = subprocess.run(
+                    [str(executable), "--format", "json", "device", *args,
+                     "--session", str(descriptor)],
+                    capture_output=True, text=True, env=env, check=True, timeout=5)
+                assert expected in cli_read.stdout, cli_read.stdout
+            manual_tool = subprocess.run(
+                [str(executable), "--format", "json", "tool", "rte_device_trends",
+                 "--arguments", '{"signals":["phase_current_a"],"window_s":1}',
+                 "--session", str(descriptor)],
+                capture_output=True, text=True, env=env, check=True, timeout=5)
+            assert "phase_current_a" in manual_tool.stdout, manual_tool.stdout
             mode = request(server, 15, "tools/call", {"name": "rte_device_mode",
                            "arguments": {}})["structuredContent"]
             assert mode["state"] == "app_responding", mode
@@ -279,6 +374,25 @@ def main():
             assert report["operation"] == "mode", cli.stdout
             assert report["result"]["state"] == "app_responding", cli.stdout
             assert report["result"]["observation_source"] == "passive UART frame sample"
+            spike = request(server, 27, "tools/call", {"name": "rte_spike_capture",
+                            "arguments": {"timeout_ms": 1000}})
+            assert spike["structuredContent"]["complete"], spike
+            assert len(spike["structuredContent"]["samples"]) == 64, spike
+            assert spike["structuredContent"]["samples"][47]["trigger"], spike
+            assert "iu_a" in spike["content"][0]["text"], spike
+            commands = request(server, 29, "tools/call", {"name": "rte_device_commands",
+                               "arguments": {"timeout_ms": 1000}})
+            catalog = commands["structuredContent"]
+            assert catalog["complete"] and catalog["count"] == 2, catalog
+            assert catalog["count_verified"] and catalog["argument_ranges_complete"], catalog
+            assert catalog["commands"][1]["arguments"][0] == {
+                "name": "hz", "required": True, "range": "0.0-100.0 Hz", "type": "float"}, catalog
+            assert session_server.commands[-1] == "help"
+            session_server.incomplete_help = True
+            incomplete = request(server, 30, "tools/call", {"name": "rte_device_commands",
+                                 "arguments": {"timeout_ms": 1000}})
+            assert incomplete["isError"] and not incomplete["structuredContent"]["complete"]
+            assert incomplete["structuredContent"]["expected_count"] == 3
         finally:
             server.stdin.close()
             server.wait(timeout=5)

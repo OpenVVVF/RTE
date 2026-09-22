@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <unordered_map>
+#include <unordered_set>
 
 using json = nlohmann::json;
 
@@ -55,6 +57,22 @@ json ConsoleJson(std::vector<ConsoleLine> lines, std::uint64_t latestSeq,
     return {{"lines", std::move(out)},
             {"latest_seq", latestSeq},
             {"session_epoch", sessionEpoch}};
+}
+
+bool Fresh(const TelemetryStore::DeviceView& view, const std::string& key,
+           double maximumAge = 2.0) {
+    const auto it = view.ageSeconds.find(key);
+    return view.stats.frameAgeSeconds >= 0.0
+        && view.stats.frameAgeSeconds <= maximumAge
+        && it != view.ageSeconds.end() && it->second <= maximumAge;
+}
+
+json FirmwareManifest(const TelemetryStore::DeviceView& view) {
+    const auto it = view.latestStr.find("fw_manifest");
+    if (it == view.latestStr.end() || !Fresh(view, "fw_manifest", 15.0)) return nullptr;
+    const json manifest = json::parse(it->second, nullptr, false);
+    return manifest.is_object() && manifest.value("schema", 0) == 1
+        ? manifest : json(nullptr);
 }
 
 }  // namespace
@@ -163,13 +181,41 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
         json result;
         if (method == "device.status") {
             const auto stats = store_.GetStatsLine();
+            const bool responding = !stats.suspended && stats.frameAgeSeconds >= 0.0
+                && stats.frameAgeSeconds <= 2.0;
             result = {{"app", "RTE Studio"}, {"device_port", devicePort_},
-                      {"connected", !devicePort_.empty() && !stats.suspended},
+                      {"connected", responding}, {"responding", responding},
+                      {"configured", !devicePort_.empty()},
                       {"transport", transportProvider_ ? transportProvider_() : "unknown"},
                       {"suspended", stats.suspended}, {"rx_hz", stats.rxHz},
+                      {"frame_age_s", stats.frameAgeSeconds < 0.0
+                          ? json(nullptr) : json(stats.frameAgeSeconds)},
                       {"external_writes_enabled", externalDeviceWritesEnabled_}};
         } else if (method == "device.telemetry") {
             const auto view = store_.GetDeviceView();
+            const json manifest = FirmwareManifest(view);
+            std::unordered_map<std::string, std::string> owners;
+            if (manifest.is_object() && manifest.contains("signals")
+                && manifest["signals"].is_array()) {
+                for (const auto& declared : manifest["signals"]) {
+                    if (!declared.is_object() || !declared.contains("name")
+                        || !declared["name"].is_string()) continue;
+                    owners[declared["name"].get<std::string>()] = declared.value(
+                        "source_node", declared.value("logger_node", "graph"));
+                }
+            }
+            json groups = json::object();
+            auto owner = [&](const std::string& key) -> std::string {
+                const auto it = owners.find(key);
+                if (it != owners.end()) return it->second;
+                if (key.rfind("fw_", 0) == 0) return "firmware_build";
+                if (key.rfind("fault_", 0) == 0 || key.rfind("control_", 0) == 0
+                    || key.rfind("gate_", 0) == 0 || key == "pwm_moe")
+                    return "firmware_control";
+                return "observed_only";
+            };
+            for (const auto& [key, value] : view.latest) groups[owner(key)][key] = value;
+            for (const auto& [key, value] : view.latestStr) groups[owner(key)][key] = value;
             result = {{"rx_hz", view.stats.rxHz}, {"suspended", view.stats.suspended},
                       {"rx_bytes_per_sec", view.stats.rxBytesPerSec},
                       {"good_frames", view.stats.goodFrames}, {"bad_frames", view.stats.badFrames},
@@ -178,7 +224,140 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                       {"reject_payload", view.stats.rejectPayloadParse},
                       {"reject_unknown_id", view.stats.rejectUnknownId},
                       {"last_sequence", view.stats.lastSeq},
-                      {"signals", view.latest}, {"strings", view.latestStr}};
+                      {"frame_age_s", view.stats.frameAgeSeconds < 0.0
+                          ? json(nullptr) : json(view.stats.frameAgeSeconds)},
+                      {"age_s", view.ageSeconds},
+                      {"signals", view.latest}, {"strings", view.latestStr},
+                      {"groups", std::move(groups)},
+                      {"reject_unknown_id_meaning",
+                       "data ID has no received DEFINE; persistent growth suggests dropped definitions or transport loss"}};
+        } else if (method == "device.build_info") {
+            const auto view = store_.GetDeviceView();
+            const json manifest = FirmwareManifest(view);
+            result = {{"available", !manifest.is_null()}, {"manifest", manifest},
+                      {"source", "running firmware telemetry"},
+                      {"reason", manifest.is_null()
+                          ? "no fresh firmware manifest; image may predate build identity or link is down"
+                          : ""}};
+        } else if (method == "device.catalog") {
+            const auto view = store_.GetDeviceView();
+            const json manifest = FirmwareManifest(view);
+            const std::string filter = params.value("filter", "");
+            const std::string requested = params.value("signal", "");
+            json entries = json::array();
+            std::unordered_set<std::string> listed;
+            if (manifest.is_object() && manifest.contains("signals")
+                && manifest["signals"].is_array()) {
+                for (const auto& declared : manifest["signals"]) {
+                    if (!declared.is_object() || !declared.contains("name")
+                        || !declared["name"].is_string()) continue;
+                    const std::string name = declared["name"];
+                    listed.insert(name);
+                    if ((!filter.empty() && name.find(filter) == std::string::npos)
+                        || (!requested.empty() && name != requested)) continue;
+                    json entry = declared;
+                    const auto age = view.ageSeconds.find(name);
+                    entry["age_s"] = age == view.ageSeconds.end() ? json(nullptr) : json(age->second);
+                    entry["state"] = Fresh(view, name) ? "live"
+                        : age != view.ageSeconds.end() ? "stale" : "configured_not_streaming";
+                    entries.push_back(std::move(entry));
+                }
+            }
+            auto addObserved = [&](const std::string& name, const char* kind) {
+                if (listed.count(name) || (!filter.empty() && name.find(filter) == std::string::npos)
+                    || (!requested.empty() && name != requested)) return;
+                entries.push_back({{"name", name}, {"kind", kind},
+                    {"state", Fresh(view, name) ? "live" : "stale"},
+                    {"age_s", view.ageSeconds.at(name)}, {"source", "observed_only"}});
+            };
+            for (const auto& [name, value] : view.latest) addObserved(name, "number");
+            for (const auto& [name, value] : view.latestStr) addObserved(name, "string");
+            result = {{"build_verified", !manifest.is_null()}, {"signals", std::move(entries)}};
+            if (!requested.empty() && result["signals"].empty())
+                result["state"] = manifest.is_null() ? "unknown" : "not_in_build";
+        } else if (method == "device.control_status") {
+            const auto view = store_.GetDeviceView();
+            auto stringValue = [&](const std::string& key) -> json {
+                const auto it = view.latestStr.find(key);
+                return it == view.latestStr.end() ? json(nullptr) : json(it->second);
+            };
+            auto numberValue = [&](const std::string& key) -> json {
+                const auto it = view.latest.find(key);
+                return it == view.latest.end() ? json(nullptr) : json(it->second);
+            };
+            result = {{"fresh", Fresh(view, "control_state") && Fresh(view, "fault_flags_hex")},
+                      {"state", stringValue("control_state")},
+                      {"fault_flags_hex", stringValue("fault_flags_hex")},
+                      {"fault_names", stringValue("fault_active_names")},
+                      {"pwm_moe", numberValue("pwm_moe")},
+                      {"gate_ready", numberValue("gate_ready")},
+                      {"gate_fault", numberValue("gate_fault")},
+                      {"age_s", view.ageSeconds}};
+        } else if (method == "device.snapshot") {
+            const auto view = store_.GetDeviceView();
+            const std::string bundle = params.value("bundle", "foc");
+            std::vector<std::string> keys;
+            if (params.contains("signals") && params["signals"].is_array())
+                keys = params["signals"].get<std::vector<std::string>>();
+            if (keys.empty() && bundle == "foc") {
+                if (view.latest.count("cg_id_a"))
+                    keys = {"cg_id_a", "cg_iq_a", "cg_vd_v", "cg_vq_v", "cg_theta_rad",
+                            "cg_vdc_v", "cg_iu_a", "cg_iv_a", "cg_iw_a"};
+                else
+                    keys = {"foc_id_cmd", "foc_id", "foc_iq_cmd", "foc_iq", "foc_vd",
+                            "foc_vq", "foc_elec_angle", "foc_speed", "foc_vdc",
+                            "foc_iu", "foc_iv", "foc_iw"};
+                keys.insert(keys.end(), {"control_state", "fault_flags_hex",
+                    "fault_active_names", "pwm_moe", "gate_ready", "gate_fault"});
+            }
+            if (keys.empty() || keys.size() > 32)
+                return json{{"ok", false}, {"error", "snapshot requires 1 to 32 signal names or bundle=foc"}}.dump();
+            json values = json::object(), missing = json::array();
+            for (const auto& key : keys) {
+                const auto number = view.latest.find(key);
+                const auto string = view.latestStr.find(key);
+                if (number != view.latest.end()) values[key] = {
+                    {"value", number->second}, {"kind", "number"},
+                    {"fresh", Fresh(view, key)}, {"age_s", view.ageSeconds.at(key)}};
+                else if (string != view.latestStr.end()) values[key] = {
+                    {"value", string->second}, {"kind", "string"},
+                    {"fresh", Fresh(view, key)}, {"age_s", view.ageSeconds.at(key)}};
+                else missing.push_back(key);
+            }
+            result = {{"bundle", bundle}, {"values", std::move(values)},
+                      {"missing", std::move(missing)},
+                      {"frame_age_s", view.stats.frameAgeSeconds < 0.0
+                          ? json(nullptr) : json(view.stats.frameAgeSeconds)}};
+        } else if (method == "device.histories") {
+            if (!params.contains("signals") || !params["signals"].is_array()
+                || params["signals"].empty() || params["signals"].size() > 8)
+                return json{{"ok", false}, {"error", "signals must contain 1 to 8 names"}}.dump();
+            const auto keys = params["signals"].get<std::vector<std::string>>();
+            const std::size_t limit = std::clamp(params.value("limit", std::size_t{2000}),
+                                                  std::size_t{1}, std::size_t{4000});
+            const double window = std::clamp(params.value("window_s", 5.0), 0.05, 30.0);
+            const auto histories = store_.CopyHistories(keys);
+            double endTime = 0.0;
+            for (const auto& [key, history] : histories)
+                if (!history.t.empty()) endTime = std::max(endTime, double(history.t.back()));
+            json series = json::object();
+            json missing = json::array();
+            for (const auto& key : keys) {
+                const auto it = histories.find(key);
+                if (it == histories.end()) { missing.push_back(key); continue; }
+                const auto& history = it->second;
+                json samples = json::array();
+                const std::size_t first = history.t.size() > limit
+                    ? history.t.size() - limit : 0;
+                for (std::size_t i = first; i < history.t.size() && i < history.y.size(); ++i)
+                    if (history.t[i] >= endTime - window)
+                        samples.push_back({{"time_s", history.t[i]}, {"value", history.y[i]}});
+                series[key] = std::move(samples);
+            }
+            result = {{"series", std::move(series)}, {"missing", std::move(missing)},
+                      {"window_end_s", endTime}, {"window_s", window},
+                      {"time_basis", "host seconds since runtime start"},
+                      {"sample_alignment", "individual timestamps; do not assume exact simultaneity"}};
         } else if (method == "device.history") {
             const std::string signal = params.value("signal", "");
             const std::size_t limit = std::clamp(params.value("limit", std::size_t{1000}),

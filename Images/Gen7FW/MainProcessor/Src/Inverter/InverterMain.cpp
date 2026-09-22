@@ -37,10 +37,17 @@
 #include "Inverter/platform_api.h"
 #include "Inverter/RteParams.h"
 
+#if __has_include("rte_build_info.h")
+#include "rte_build_info.h"
+#endif
+
 #include "main.h"
+#include "tim.h"
 #include "spi.h"
 #include "cy15b102q_driver.h"
 #include "ontime_logger.h"
+
+#include <cstdio>
 
 /* Global RTE codegen state variable.  Referenced by app::<DomainTitle>Init/Step
  * calls inserted at // RTE_EMIT markers. */
@@ -120,6 +127,11 @@ static void init()
     Telemetry::init();
     Telemetry::set_period_us(10000);  /* 100 Hz data frames */
 
+    /* Arm command RX before the sensor power-up delay. Commands received
+     * during initialization remain queued until the application loop polls
+     * the shell, after all hardware setup has completed. */
+    Inverter::commandShell().init();
+
     /* Supply rail monitoring (PVD/AVD/VOSRDY). */
     (void)Inverter::supplyMonitorInit();
 
@@ -150,9 +162,6 @@ static void init()
     /* Open-loop controller (used by shell commands for scalar induction control
      * and vector scan). */
     Inverter::openLoopController().init();
-
-    /* UART command shell for start/stop/freq/mod. */
-    Inverter::commandShell().init();
 
     /* Enable the peripheral power rail that supplies the isolated ADC (VDDPL).
      * CurrentSensorTest_Init() also turns this on, but make sure it is high
@@ -227,12 +236,48 @@ static void loop()
         Telemetry::log("hz_vsense", static_cast<float>(Inverter::LoopStats::vsense));
         Telemetry::log("hz_tim_isr", static_cast<float>(Inverter::LoopStats::tim_isr));
         Telemetry::log("hz_adc_isr", static_cast<float>(Inverter::LoopStats::adc_isr));
+        // Telemetry::log("shell_uart_errors", static_cast<float>(Inverter::commandShell().uartErrorCount()));
+        // Telemetry::log("shell_rx_dropped", static_cast<float>(Inverter::commandShell().rxDroppedCount()));
+        // Telemetry::log("shell_rx_rearm_failures", static_cast<float>(Inverter::commandShell().rxRearmFailureCount()));
+        Telemetry::log("control_state", Inverter::ControlSupervisor::instance().stateName());
+        char fault_flags[16];
+        const uint32_t active_faults = Inverter::FaultManager::instance().activeFlags();
+        std::snprintf(fault_flags, sizeof(fault_flags), "0x%08lX",
+                      static_cast<unsigned long>(active_faults));
+        Telemetry::log("fault_flags_hex", fault_flags);
+        char fault_names[512] = {};
+        size_t fault_names_used = 0;
+        for (size_t i = 0; i < Inverter::FaultManager::metaCount(); ++i) {
+            const auto& meta = Inverter::FaultManager::metaTable()[i];
+            if ((active_faults & static_cast<uint32_t>(meta.source)) == 0U) continue;
+            const int written = std::snprintf(fault_names + fault_names_used,
+                sizeof(fault_names) - fault_names_used, "%s%s",
+                fault_names_used ? "," : "", meta.name);
+            if (written < 0 || static_cast<size_t>(written) >= sizeof(fault_names) - fault_names_used)
+                break;
+            fault_names_used += static_cast<size_t>(written);
+        }
+        Telemetry::log("fault_active_names", fault_names_used ? fault_names : "none");
+        Telemetry::log("pwm_moe", (TIM1->BDTR & TIM_BDTR_MOE) != 0U ? 1.0f : 0.0f);
+        Telemetry::log("gate_ready", GateDriver_IsReady() ? 1.0f : 0.0f);
+        Telemetry::log("gate_fault", GateDriver_IsFault() ? 1.0f : 0.0f);
         Inverter::LoopStats::app_loop = 0;
         Inverter::LoopStats::vsense = 0;
         Inverter::LoopStats::tim_isr = 0;
         Inverter::LoopStats::adc_isr = 0;
         s_last_hz_ms = now_ms;
     }
+
+#if defined(RTE_BUILD_MANIFEST)
+    static uint32_t s_last_manifest_ms = 0;
+    if (s_last_manifest_ms == 0 || (now_ms - s_last_manifest_ms) >= 10000U) {
+        if (Telemetry::log("fw_manifest", RTE_BUILD_MANIFEST)) {
+            Telemetry::log("fw_graph", RTE_GRAPH_NAME);
+            Telemetry::log("fw_graph_hash", RTE_GRAPH_HASH);
+            s_last_manifest_ms = now_ms;
+        }
+    }
+#endif
 
     /* Set the domain time step for generated code that needs it. */
     platform_set_current_domain_dt(0.01f);

@@ -55,6 +55,7 @@ private:
     // be tweaked by the user.
     static std::array<QStringList, 3> BuiltinSpwmLayout();
     static std::array<QStringList, 3> BuiltinFocLayout();
+    static std::array<QStringList, 3> BuiltinNativeFocLayout();
     void EnsureBuiltinPresets();
     void ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout);
     void ApplySpwmViewWindows();

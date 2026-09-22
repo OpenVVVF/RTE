@@ -282,8 +282,10 @@ int UartTransport::extractFrame(uint8_t* out, size_t cap) {
 }
 
 bool UartTransport::sendLine(const std::string& line) {
-    std::string out = line;
-    if (out.empty()) return false;
+    if (line.empty()) return false;
+    // Terminate any partial shell line left by startup noise or an interrupted
+    // transmission. The firmware ignores an empty line.
+    std::string out = "\n" + line;
     if (out.back() != '\n' && out.back() != '\r') out.push_back('\n');
     if (!port_.write(reinterpret_cast<const uint8_t*>(out.data()), static_cast<int>(out.size())))
         return false;

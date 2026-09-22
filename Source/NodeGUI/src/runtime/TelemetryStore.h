@@ -34,6 +34,8 @@ struct TelemetryStats {
     uint64_t rejectUnknownId = 0;
     uint32_t lastSeq = 0;
     bool suspended = false;
+    // Negative until the first valid telemetry frame is observed.
+    double frameAgeSeconds = -1.0;
 };
 
 struct SessionSignalHistory {
@@ -168,6 +170,7 @@ public:
         TelemetryStats stats;
         std::unordered_map<std::string, float> latest;
         std::unordered_map<std::string, std::string> latestStr;
+        std::unordered_map<std::string, double> ageSeconds;
     };
     DeviceView GetDeviceView() const;
 
@@ -180,6 +183,10 @@ public:
     bool CopyHistory(const std::string& key,
                      std::deque<float>& t,
                      std::deque<float>& y) const;
+
+    // Copies several histories under one lock so their window is consistent.
+    std::unordered_map<std::string, SignalHistory> CopyHistories(
+        const std::vector<std::string>& keys) const;
 
     // Same as CopyHistory but fills reusable vectors (avoids the allocation
     // churn of deque copies in the ~30 Hz plot refresh path).
@@ -238,6 +245,8 @@ private:
     mutable std::mutex mtx_;
     TelemetrySnapshot snap_;
     std::unordered_map<std::string, SessionSignalStore> sessionFloatSignals_;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastSignalUpdate_;
+    std::chrono::steady_clock::time_point lastFrameAt_{};
     std::unordered_map<std::string, std::vector<SessionStringSample>>
         sessionStringSignals_;
     std::vector<SessionConsoleLine> sessionConsole_;

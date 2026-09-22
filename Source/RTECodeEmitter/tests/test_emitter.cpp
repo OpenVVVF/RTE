@@ -102,10 +102,12 @@ TEST(Emitter, EndToEndGeneratesAndInserts) {
     ASSERT_TRUE(emitter.Run(options));
 
     const auto generatedHeader = outputDir / "generated" / "domain_app_loop_generated.h";
+    const auto buildInfo = outputDir / "generated" / "rte_build_info.h";
     const auto modifiedMain = outputDir / "main.cpp";
     const auto modifiedState = outputDir / "state.h";
 
     EXPECT_TRUE(std::filesystem::exists(generatedHeader));
+    EXPECT_TRUE(std::filesystem::exists(buildInfo));
     EXPECT_TRUE(std::filesystem::exists(modifiedMain));
     EXPECT_TRUE(std::filesystem::exists(modifiedState));
 
@@ -117,6 +119,12 @@ TEST(Emitter, EndToEndGeneratesAndInserts) {
     const std::string stateText = ReadFile(modifiedState);
     EXPECT_NE(stateText.find("namespace app"), std::string::npos);
     EXPECT_NE(stateText.find("struct AppLoopState;"), std::string::npos);
+
+    const std::string buildInfoText = ReadFile(buildInfo);
+    EXPECT_NE(buildInfoText.find("#define RTE_GRAPH_NAME \"test\""), std::string::npos);
+    EXPECT_NE(buildInfoText.find("#define RTE_GRAPH_HASH \""), std::string::npos);
+    EXPECT_NE(buildInfoText.find("#define RTE_BUILD_NODE_COUNT 1"), std::string::npos);
+    EXPECT_NE(buildInfoText.find("\\\"id\\\":\\\"constant\\\""), std::string::npos);
 
     std::filesystem::remove_all(tempRoot);
 }

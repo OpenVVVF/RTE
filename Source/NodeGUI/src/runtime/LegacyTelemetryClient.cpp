@@ -129,8 +129,10 @@ bool LegacyTelemetryClient::isSuspended() const {
 }
 
 bool LegacyTelemetryClient::sendLine(const std::string& line) {
-    std::string out = line;
-    if (out.empty()) return false;
+    if (line.empty()) return false;
+    // An empty line resets a partial command left in the MCU shell receive
+    // buffer. This also makes the first real byte survive a one-byte loss.
+    std::string out = "\n" + line;
     if (out.back() != '\n' && out.back() != '\r') out.push_back('\n');
     std::lock_guard<std::mutex> lk(serial_mtx_);
     if (!serial_.write((const uint8_t*)out.data(), (int)out.size())) return false;

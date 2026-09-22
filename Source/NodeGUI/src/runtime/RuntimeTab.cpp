@@ -9,6 +9,7 @@
 
 #include <QComboBox>
 #include <QDateTime>
+#include <QDialog>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -17,9 +18,12 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
+
+#include <nlohmann/json.hpp>
 
 namespace NodeGUI::runtime {
 
@@ -61,6 +65,17 @@ std::array<QStringList, 3> RuntimeTab::BuiltinFocLayout() {
         QStringList{QStringLiteral("cg_iu_a"),
                     QStringLiteral("cg_iv_a"),
                     QStringLiteral("cg_iw_a")},
+    }};
+}
+
+std::array<QStringList, 3> RuntimeTab::BuiltinNativeFocLayout() {
+    return {{
+        QStringList{QStringLiteral("foc_id_cmd"), QStringLiteral("foc_id"),
+                    QStringLiteral("foc_iq_cmd"), QStringLiteral("foc_iq")},
+        QStringList{QStringLiteral("foc_vd"), QStringLiteral("foc_vq"),
+                    QStringLiteral("foc_vdc")},
+        QStringList{QStringLiteral("foc_iu"), QStringLiteral("foc_iv"),
+                    QStringLiteral("foc_iw")},
     }};
 }
 
@@ -108,7 +123,7 @@ void RuntimeTab::ApplyLayoutIfEmpty(const std::array<QStringList, 3>& layout) {
         return;
     }
     signalTablePanel_->SetGraphSignalSets(layout);
-    if (layout == BuiltinFocLayout()) {
+    if (layout == BuiltinFocLayout() || layout == BuiltinNativeFocLayout()) {
         ApplyFocViewWindows();
         presetStatus_->setText(QStringLiteral("applied FOC plot layout"));
     } else {
@@ -166,6 +181,45 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
             this,
             &RuntimeTab::OnExportSession);
     headerRow->addWidget(exportButton);
+    auto* inspectButton = new QPushButton(QStringLiteral("Inspect Firmware & Signals…"), this);
+    inspectButton->setToolTip(QStringLiteral(
+        "Show the running firmware's graph manifest, control state, fault flags, and signal freshness"));
+    connect(inspectButton, &QPushButton::clicked, this, [this] {
+        const auto view = controller_->Store().GetDeviceView();
+        nlohmann::json report = {
+            {"frame_age_s", view.stats.frameAgeSeconds < 0.0
+                ? nlohmann::json(nullptr) : nlohmann::json(view.stats.frameAgeSeconds)},
+            {"control_state", view.latestStr.count("control_state")
+                ? nlohmann::json(view.latestStr.at("control_state")) : nlohmann::json(nullptr)},
+            {"fault_flags_hex", view.latestStr.count("fault_flags_hex")
+                ? nlohmann::json(view.latestStr.at("fault_flags_hex")) : nlohmann::json(nullptr)},
+            {"fault_active_names", view.latestStr.count("fault_active_names")
+                ? nlohmann::json(view.latestStr.at("fault_active_names")) : nlohmann::json(nullptr)},
+            {"pwm_moe", view.latest.count("pwm_moe")
+                ? nlohmann::json(view.latest.at("pwm_moe")) : nlohmann::json(nullptr)},
+            {"signal_age_s", view.ageSeconds},
+        };
+        if (const auto it = view.latestStr.find("fw_manifest"); it != view.latestStr.end()) {
+            const auto manifest = nlohmann::json::parse(it->second, nullptr, false);
+            report["firmware_manifest"] = manifest.is_discarded()
+                ? nlohmann::json("incomplete or invalid manifest") : manifest;
+        } else {
+            report["firmware_manifest"] = "not announced by this image";
+        }
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Firmware and Signal Diagnostics"));
+        dialog.resize(850, 650);
+        auto* dialogLayout = new QVBoxLayout(&dialog);
+        auto* text = new QPlainTextEdit(&dialog);
+        text->setReadOnly(true);
+        text->setPlainText(QString::fromStdString(report.dump(2)));
+        dialogLayout->addWidget(text);
+        auto* close = new QPushButton(QStringLiteral("Close"), &dialog);
+        connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+        dialogLayout->addWidget(close);
+        dialog.exec();
+    });
+    headerRow->addWidget(inspectButton);
     layout->addLayout(headerRow);
 
     // Graph-layout presets.
@@ -224,6 +278,9 @@ void RuntimeTab::OnStoreChanged() {
         float probe = 0.0f;
         if (controller_->Store().LatestValue("cg_id_a", probe)) {
             ApplyLayoutIfEmpty(BuiltinFocLayout());
+            applied_builtin_layout_ = true;
+        } else if (controller_->Store().LatestValue("foc_id", probe)) {
+            ApplyLayoutIfEmpty(BuiltinNativeFocLayout());
             applied_builtin_layout_ = true;
         } else if (controller_->Store().LatestValue("duty_u", probe)) {
             ApplyLayoutIfEmpty(BuiltinSpwmLayout());
@@ -295,7 +352,10 @@ void RuntimeTab::OnLoadBuiltinSpwm() {
 }
 
 void RuntimeTab::OnLoadBuiltinFoc() {
-    signalTablePanel_->SetGraphSignalSets(BuiltinFocLayout());
+    float nativeProbe = 0.0f;
+    signalTablePanel_->SetGraphSignalSets(
+        controller_->Store().LatestValue("foc_id", nativeProbe)
+            ? BuiltinNativeFocLayout() : BuiltinFocLayout());
     ApplyFocViewWindows();
     recentCombo_->setCurrentText(QStringLiteral("FOC"));
     presetStatus_->setText(QStringLiteral("loaded FOC layout"));

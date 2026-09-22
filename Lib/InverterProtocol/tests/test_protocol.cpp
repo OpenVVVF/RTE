@@ -394,6 +394,21 @@ void WriteAll(int fd, const std::vector<uint8_t>& data) {
 
 }  // namespace
 
+TEST(UartTransport, CommandLineStartsWithResyncDelimiter) {
+    Pty pty;
+    ASSERT_TRUE(OpenPty(pty));
+
+    ivp::UartTransport transport;
+    ASSERT_TRUE(transport.open(pty.slaveName));
+    ASSERT_TRUE(transport.sendLine("control start"));
+
+    char bytes[64] = {};
+    const ssize_t received = ::read(pty.master, bytes, sizeof(bytes));
+    ASSERT_GT(received, 0);
+    EXPECT_EQ(std::string(bytes, static_cast<std::size_t>(received)),
+              "\ncontrol start\n");
+}
+
 // Regression test: one read() chunk at 100 Hz typically holds several frames.
 // Bytes past the first delimiter must stay buffered, not dropped.
 TEST(UartTransport, MultipleFramesInOneReadChunk) {
