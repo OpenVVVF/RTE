@@ -137,6 +137,8 @@ def main():
             names = {tool["name"] for tool in request(server, 2, "tools/list")["tools"]}
             definitions = {tool["name"]: tool for tool in request(server, 17, "tools/list")["tools"]}
             assert "not correctly implemented" in definitions["rte_sim"]["description"]
+            for tool in definitions.values():
+                assert isinstance(tool["inputSchema"]["properties"], dict), tool["name"]
             for name in ("rte_flash", "rte_device_telemetry", "rte_device_signal",
                          "rte_device_history", "rte_device_string_history",
                          "rte_device_command_response", "rte_device_mode"):

@@ -647,6 +647,9 @@ json McpJson(const json& value) {
 
 json ToolDefinition(const std::string& name, const std::string& description,
                     json properties, std::vector<std::string> required = {}) {
+    // An empty braced initializer would construct a null JSON value, which
+    // violates the MCP tool schema ("properties" must be an object).
+    if (properties.is_null()) properties = json::object();
     json schema = {{"type", "object"}, {"properties", std::move(properties)},
                    {"additionalProperties", false}};
     if (!required.empty()) schema["required"] = std::move(required);
