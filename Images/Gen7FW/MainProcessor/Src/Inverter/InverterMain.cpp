@@ -240,6 +240,7 @@ static void loop()
         // Telemetry::log("shell_rx_dropped", static_cast<float>(Inverter::commandShell().rxDroppedCount()));
         // Telemetry::log("shell_rx_rearm_failures", static_cast<float>(Inverter::commandShell().rxRearmFailureCount()));
         Telemetry::log("control_state", Inverter::ControlSupervisor::instance().stateName());
+        Telemetry::log("foc_running", Inverter::focControlManager().isRunning() ? 1.0f : 0.0f);
         char fault_flags[16];
         const uint32_t active_faults = Inverter::FaultManager::instance().activeFlags();
         std::snprintf(fault_flags, sizeof(fault_flags), "0x%08lX",

@@ -213,6 +213,25 @@ use `rte_device_histories` to inspect individual values and timestamps. Means,
 RMS values, and regression use received samples without interpolation, so
 gaps can bias them; `quality: limited` flags poor window coverage or large
 gaps.
+Studio treats a signal as stopped reporting after two seconds without a new
+sample. `rte_device_telemetry`, `rte_device_signal`, and snapshots return
+`null` for its current value and keep the old measurement separately as a
+last-known value. The state is `stopped_reporting` if frames still arrive,
+`link_silent` if the entire link has gone quiet, or `suspended` while Studio
+pauses the connection. This reports absence of data, not a measured zero or
+a diagnosis of the ISR. History windows advance with elapsed time even when
+no samples arrive, and trend results report the stopped state rather than
+describing old values as current behavior.
+New Gen7 main firmware publishes `control_state` immediately on generated
+control start, stop, and fault transitions. Studio uses the running image's
+manifest to mark `tim_isr` signals `control_stopped` as soon as it receives
+that transition. Native FOC publishes `foc_running` on transitions and marks
+its telemetry `foc_stopped`. The two-second timeout remains the fallback for
+older firmware, other signal sources, or a lost lifecycle message. Immediate
+status requires rebuilding and reflashing the main MCU image; the coprocessor
+firmware is unchanged.
+Firmware build identity fields are republished every ten seconds and retain
+their current value for up to 15 seconds while the link stays active.
 `rte_device_signal` includes signal age and freshness; when a name is absent,
 it returns a structured `not_in_build`, `configured_not_streaming`, or
 `unknown_signal` code when the catalog can determine the reason.

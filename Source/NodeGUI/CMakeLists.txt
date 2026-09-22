@@ -129,6 +129,21 @@ target_link_libraries(RTEStudio
 
 add_dependencies(RTEStudio rte)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(RTEStudio_session_tests
+        tests/test_local_session_stale.cpp
+        src/runtime/LocalSessionServer.cpp
+        src/runtime/TelemetryStore.cpp
+    )
+    target_include_directories(RTEStudio_session_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(RTEStudio_session_tests PRIVATE
+        RTEAutomation Qt6::Core Qt6::Network GTest::gtest_main project_warnings)
+    add_test(NAME RTEStudio_session_stale
+        COMMAND ${CMAKE_COMMAND} -E env
+            XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/test_cache
+            $<TARGET_FILE:RTEStudio_session_tests>)
+endif()
+
 # One-cycle developer compatibility for scripts that still build the old
 # target name. The installed executable is only rte-studio.
 add_custom_target(NodeGUI DEPENDS RTEStudio)

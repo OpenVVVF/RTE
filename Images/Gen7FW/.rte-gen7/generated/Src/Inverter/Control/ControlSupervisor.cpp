@@ -22,6 +22,7 @@ ControlSupervisor& ControlSupervisor::instance() {
 bool ControlSupervisor::init() {
     app::TimIsrInit(appState.tim_isr);
     m_state = State::Idle;
+    Telemetry::log("control_state", stateName());
     Telemetry::printf("[SUP] initialized");
     return true;
 }
@@ -72,6 +73,7 @@ bool ControlSupervisor::start() {
 
     if (!gateDriverStartup()) {
         m_state = State::Fault;
+        Telemetry::log("control_state", stateName());
         return false;
     }
 
@@ -98,6 +100,7 @@ bool ControlSupervisor::start() {
                           (unsigned long)TIM1->SR);
         GateDriver_DisableOutputs();
         m_state = State::Fault;
+        Telemetry::log("control_state", stateName());
         return false;
     }
 
@@ -109,6 +112,7 @@ bool ControlSupervisor::start() {
     Inverter::encoderADC().useSynchronizedTrigger(true);
 
     m_state = State::Running;
+    Telemetry::log("control_state", stateName());
     m_started_ms = HAL_GetTick();
     Telemetry::printf("[SUP] STARTED f_sw=%.0f Hz f_u=%.0f Hz",
                       static_cast<double>(PWM_GetFrequency()),
@@ -138,6 +142,7 @@ void ControlSupervisor::stop() {
     PWM_Stop();
     GateDriver_DisableOutputs();
     m_state = State::Idle;
+    Telemetry::log("control_state", stateName());
     Telemetry::printf("[SUP] STOPPED");
 }
 
@@ -153,6 +158,7 @@ void ControlSupervisor::enterFaultState() {
         GateDriver_DisableOutputs();
     }
     m_state = State::Fault;
+    Telemetry::log("control_state", stateName());
 }
 
 void ControlSupervisor::service() {

@@ -30,6 +30,10 @@ change and test when its contract changes:
 - FOC signal names: Studio's FOC plot and snapshot preset, plus the MCP trend
   tool's default FOC selection. Explicit signal lists continue to use runtime
   names.
+- Generated control lifecycle: `ControlSupervisor` publishes `control_state`
+  at transitions; Studio uses the manifest's `tim_isr` domain to mark its
+  signals stopped immediately. Legacy FOC publishes `foc_running` at
+  transitions; keep these publishers and Studio's reporting mapping aligned.
 - `spikes` command or capture text: the main recorder and the MCP
   `rte_spike_capture` parser, including its assumed sample count and rate.
 - Bridge control commands, USB port identity, bootloader entry, or flash
@@ -38,7 +42,7 @@ change and test when its contract changes:
 For those changes, update the matching host code, `MCP_AGENT_SETUP.md` and
 `docs/automation-backend.md` as needed, and the relevant integration tests.
 Build the host tools and run
-`ctest --test-dir build --output-on-failure -R 'RTECLI_mcp_flash_integration|RteCli'`.
+`ctest --test-dir build --output-on-failure -R 'RTECLI_mcp_flash_integration|RteCli|RTEStudio_session_stale'`.
 Check `rte_device_commands`, `rte_signal_info`, `rte_build_info`, and the
 affected specialized tool against a connected device when hardware is
 available. The simulated-port tests do not prove compatibility with a newly

@@ -48,13 +48,14 @@ cd /absolute/path/to/RTE
 git submodule update --init --recursive
 cmake -S . -B build -G Ninja
 cmake --build build --parallel 4
-ctest --test-dir build --output-on-failure -R 'RTECLI_mcp_flash_integration|RteCli'
+ctest --test-dir build --output-on-failure -R 'RTECLI_mcp_flash_integration|RteCli|RTEStudio_session_stale'
 ```
 
 The full build compiles the current `rte` MCP/CLI server, `RTEStudio`, the
 automation and protocol libraries, and the other host targets. The tests
 exercise MCP discovery, telemetry, commands, main UART bridge flashing, and
-coprocessor DFU flashing using simulated ports; they do not touch hardware.
+coprocessor DFU flashing using simulated ports, plus Studio's stopped-signal
+reporting through a local session; they do not touch hardware.
 If the build or tests fail, fix that before configuring a client. If the
 client was already configured, restart it after rebuilding so it launches
 the new binary. Restart RTE Studio too so its Runtime console shows MCP
@@ -178,9 +179,24 @@ Codex, ChatGPT desktop, and Kimi Code.
   `rte_device_status`, `rte_device_telemetry` for all latest numeric and
   string values (flat and grouped by source node), `rte_device_signal` for
   one value, `rte_device_snapshot` for a FOC bundle or custom signal list,
-  and the history tools for samples over time. `rte_device_histories` reads
+  and the history tools for samples over time. After two seconds without a
+  new report, a signal's current `value` becomes `null`; its `state` is
+  `stopped_reporting` when the link is still active, or `link_silent` when
+  telemetry frames have stopped. The old measurement remains in `last_value`
+  or `last_known_values`, never as a fabricated zero. A stopped report does
+  not by itself prove why the ISR stopped. With a matching Gen7 main image,
+  `control stop` or a control fault publishes `control_state` at the transition;
+  signals declared in the firmware manifest's `tim_isr` domain immediately
+  become `control_stopped`. Legacy `foc stop` similarly publishes
+  `foc_running=0`, marking native FOC signals `foc_stopped`. These require a
+  **main MCU reflash** to work immediately; older images use the two-second
+  fallback. Firmware build identity fields
+  (`fw_manifest`, `fw_graph`, `fw_graph_hash`) are normally republished every
+  ten seconds and use a 15-second signal timeout while the link remains live.
+  `rte_device_histories` reads
   up to eight signals from one Studio store snapshot; each sample retains
-  its own timestamp. `rte_device_trends` analyzes the live numeric time
+  its own timestamp, and its window continues advancing after reports stop.
+  `rte_device_trends` analyzes the live numeric time
   series, not the graph JSON: 48-bin sparklines plus slope and fit, early/late
   mean and RMS change, standard deviation, steps, isolated spikes, approximate
   resolved oscillation frequency, sample rate, and sampling gaps. Its text

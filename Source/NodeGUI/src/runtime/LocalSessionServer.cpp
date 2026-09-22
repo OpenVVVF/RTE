@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -20,6 +22,14 @@ using json = nlohmann::json;
 
 namespace NodeGUI::runtime {
 namespace {
+
+constexpr double kReportingTimeoutSeconds = 2.0;
+constexpr double kFirmwareMetadataTimeoutSeconds = 15.0;
+
+double SignalTimeout(const std::string& key) {
+    return key == "fw_manifest" || key == "fw_graph" || key == "fw_graph_hash"
+        ? kFirmwareMetadataTimeoutSeconds : kReportingTimeoutSeconds;
+}
 
 std::string MakeToken() {
     std::string result;
@@ -60,19 +70,76 @@ json ConsoleJson(std::vector<ConsoleLine> lines, std::uint64_t latestSeq,
 }
 
 bool Fresh(const TelemetryStore::DeviceView& view, const std::string& key,
-           double maximumAge = 2.0) {
+           double maximumAge = -1.0) {
+    if (maximumAge < 0.0) maximumAge = SignalTimeout(key);
     const auto it = view.ageSeconds.find(key);
-    return view.stats.frameAgeSeconds >= 0.0
-        && view.stats.frameAgeSeconds <= maximumAge
+    return !view.stats.suspended && view.stats.frameAgeSeconds >= 0.0
+        && view.stats.frameAgeSeconds <= kReportingTimeoutSeconds
         && it != view.ageSeconds.end() && it->second <= maximumAge;
 }
 
 json FirmwareManifest(const TelemetryStore::DeviceView& view) {
     const auto it = view.latestStr.find("fw_manifest");
-    if (it == view.latestStr.end() || !Fresh(view, "fw_manifest", 15.0)) return nullptr;
+    if (it == view.latestStr.end() || !Fresh(view, "fw_manifest")) return nullptr;
     const json manifest = json::parse(it->second, nullptr, false);
     return manifest.is_object() && manifest.value("schema", 0) == 1
         ? manifest : json(nullptr);
+}
+
+struct ReportingContext {
+    std::unordered_set<std::string> timIsrSignals;
+    std::string controlState;
+    bool focStateKnown = false;
+    bool focRunning = false;
+};
+
+ReportingContext MakeReportingContext(const TelemetryStore::DeviceView& view,
+                                      const json& manifest) {
+    ReportingContext context;
+    if (Fresh(view, "control_state"))
+        context.controlState = view.latestStr.at("control_state");
+    if (Fresh(view, "foc_running")) {
+        context.focStateKnown = true;
+        context.focRunning = view.latest.at("foc_running") > 0.5f;
+    }
+    if (manifest.is_object() && manifest.contains("signals")
+        && manifest["signals"].is_array()) {
+        for (const auto& signal : manifest["signals"])
+            if (signal.is_object() && signal.value("domain", "") == "tim_isr"
+                && signal.contains("name") && signal["name"].is_string())
+                context.timIsrSignals.insert(signal["name"].get<std::string>());
+    }
+    return context;
+}
+
+bool IsLegacyFocSignal(const std::string& key) {
+    return (key.rfind("foc_", 0) == 0 && key != "foc_running")
+        || key.rfind("obs_", 0) == 0 || key.rfind("est_", 0) == 0
+        || key == "sample_gap_ticks";
+}
+
+const char* ReportingState(const TelemetryStore::DeviceView& view,
+                           const ReportingContext& context, const std::string& key) {
+    if (view.stats.suspended) return "suspended";
+    if (view.stats.frameAgeSeconds < 0.0
+        || view.stats.frameAgeSeconds > kReportingTimeoutSeconds)
+        return "link_silent";
+    if (context.timIsrSignals.count(key) && !context.controlState.empty()
+        && context.controlState != "RUNNING") return "control_stopped";
+    if (context.focStateKnown && !context.focRunning && IsLegacyFocSignal(key))
+        return "foc_stopped";
+    const auto age = view.ageSeconds.find(key);
+    return age != view.ageSeconds.end() && age->second <= SignalTimeout(key)
+        ? "live" : "stopped_reporting";
+}
+
+json SignalStatus(const TelemetryStore::DeviceView& view,
+                  const ReportingContext& context, const std::string& key) {
+    const auto age = view.ageSeconds.find(key);
+    const char* state = ReportingState(view, context, key);
+    return {{"state", state}, {"fresh", std::string_view(state) == "live"},
+            {"timeout_s", SignalTimeout(key)},
+            {"age_s", age == view.ageSeconds.end() ? json(nullptr) : json(age->second)}};
 }
 
 }  // namespace
@@ -182,7 +249,7 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
         if (method == "device.status") {
             const auto stats = store_.GetStatsLine();
             const bool responding = !stats.suspended && stats.frameAgeSeconds >= 0.0
-                && stats.frameAgeSeconds <= 2.0;
+                && stats.frameAgeSeconds <= kReportingTimeoutSeconds;
             result = {{"app", "RTE Studio"}, {"device_port", devicePort_},
                       {"connected", responding}, {"responding", responding},
                       {"configured", !devicePort_.empty()},
@@ -194,6 +261,7 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
         } else if (method == "device.telemetry") {
             const auto view = store_.GetDeviceView();
             const json manifest = FirmwareManifest(view);
+            const auto reporting = MakeReportingContext(view, manifest);
             std::unordered_map<std::string, std::string> owners;
             if (manifest.is_object() && manifest.contains("signals")
                 && manifest["signals"].is_array()) {
@@ -204,7 +272,9 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                         "source_node", declared.value("logger_node", "graph"));
                 }
             }
-            json groups = json::object();
+            json groups = json::object(), numericValues = json::object();
+            json strings = json::object(), lastKnown = json::object();
+            json signalStatus = json::object(), stopped = json::array();
             auto owner = [&](const std::string& key) -> std::string {
                 const auto it = owners.find(key);
                 if (it != owners.end()) return it->second;
@@ -214,8 +284,20 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                     return "firmware_control";
                 return "observed_only";
             };
-            for (const auto& [key, value] : view.latest) groups[owner(key)][key] = value;
-            for (const auto& [key, value] : view.latestStr) groups[owner(key)][key] = value;
+            for (const auto& [key, value] : view.latest) {
+                signalStatus[key] = SignalStatus(view, reporting, key);
+                const bool fresh = signalStatus[key]["fresh"];
+                numericValues[key] = fresh ? json(value) : json(nullptr);
+                if (!fresh) { lastKnown[key] = value; stopped.push_back(key); }
+                groups[owner(key)][key] = numericValues[key];
+            }
+            for (const auto& [key, value] : view.latestStr) {
+                signalStatus[key] = SignalStatus(view, reporting, key);
+                const bool fresh = signalStatus[key]["fresh"];
+                strings[key] = fresh ? json(value) : json(nullptr);
+                if (!fresh) { lastKnown[key] = value; stopped.push_back(key); }
+                groups[owner(key)][key] = strings[key];
+            }
             result = {{"rx_hz", view.stats.rxHz}, {"suspended", view.stats.suspended},
                       {"rx_bytes_per_sec", view.stats.rxBytesPerSec},
                       {"good_frames", view.stats.goodFrames}, {"bad_frames", view.stats.badFrames},
@@ -227,7 +309,13 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                       {"frame_age_s", view.stats.frameAgeSeconds < 0.0
                           ? json(nullptr) : json(view.stats.frameAgeSeconds)},
                       {"age_s", view.ageSeconds},
-                      {"signals", view.latest}, {"strings", view.latestStr},
+                      {"signals", std::move(numericValues)}, {"strings", std::move(strings)},
+                      {"signal_status", std::move(signalStatus)},
+                      {"stopped_signals", std::move(stopped)},
+                      {"last_known_values", std::move(lastKnown)},
+                      {"reporting_timeout_s", kReportingTimeoutSeconds},
+                      {"firmware_metadata_timeout_s", kFirmwareMetadataTimeoutSeconds},
+                      {"value_meaning", "null means no current report; inspect signal_status and last_known_values. A stopped report is not a measured zero."},
                       {"groups", std::move(groups)},
                       {"reject_unknown_id_meaning",
                        "data ID has no received DEFINE; persistent growth suggests dropped definitions or transport loss"}};
@@ -242,6 +330,7 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
         } else if (method == "device.catalog") {
             const auto view = store_.GetDeviceView();
             const json manifest = FirmwareManifest(view);
+            const auto reporting = MakeReportingContext(view, manifest);
             const std::string filter = params.value("filter", "");
             const std::string requested = params.value("signal", "");
             json entries = json::array();
@@ -258,8 +347,8 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                     json entry = declared;
                     const auto age = view.ageSeconds.find(name);
                     entry["age_s"] = age == view.ageSeconds.end() ? json(nullptr) : json(age->second);
-                    entry["state"] = Fresh(view, name) ? "live"
-                        : age != view.ageSeconds.end() ? "stale" : "configured_not_streaming";
+                    entry["state"] = age == view.ageSeconds.end()
+                        ? "configured_not_streaming" : ReportingState(view, reporting, name);
                     entries.push_back(std::move(entry));
                 }
             }
@@ -267,7 +356,7 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                 if (listed.count(name) || (!filter.empty() && name.find(filter) == std::string::npos)
                     || (!requested.empty() && name != requested)) return;
                 entries.push_back({{"name", name}, {"kind", kind},
-                    {"state", Fresh(view, name) ? "live" : "stale"},
+                    {"state", ReportingState(view, reporting, name)},
                     {"age_s", view.ageSeconds.at(name)}, {"source", "observed_only"}});
             };
             for (const auto& [name, value] : view.latest) addObserved(name, "number");
@@ -277,15 +366,19 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                 result["state"] = manifest.is_null() ? "unknown" : "not_in_build";
         } else if (method == "device.control_status") {
             const auto view = store_.GetDeviceView();
+            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
             auto stringValue = [&](const std::string& key) -> json {
                 const auto it = view.latestStr.find(key);
-                return it == view.latestStr.end() ? json(nullptr) : json(it->second);
+                return it == view.latestStr.end() || !Fresh(view, key)
+                    ? json(nullptr) : json(it->second);
             };
             auto numberValue = [&](const std::string& key) -> json {
                 const auto it = view.latest.find(key);
-                return it == view.latest.end() ? json(nullptr) : json(it->second);
+                return it == view.latest.end() || !Fresh(view, key)
+                    ? json(nullptr) : json(it->second);
             };
             result = {{"fresh", Fresh(view, "control_state") && Fresh(view, "fault_flags_hex")},
+                      {"reporting_state", ReportingState(view, reporting, "control_state")},
                       {"state", stringValue("control_state")},
                       {"fault_flags_hex", stringValue("fault_flags_hex")},
                       {"fault_names", stringValue("fault_active_names")},
@@ -295,6 +388,7 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                       {"age_s", view.ageSeconds}};
         } else if (method == "device.snapshot") {
             const auto view = store_.GetDeviceView();
+            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
             const std::string bundle = params.value("bundle", "foc");
             std::vector<std::string> keys;
             if (params.contains("signals") && params["signals"].is_array())
@@ -316,12 +410,18 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             for (const auto& key : keys) {
                 const auto number = view.latest.find(key);
                 const auto string = view.latestStr.find(key);
+                const json status = SignalStatus(view, reporting, key);
+                const bool fresh = status["fresh"].get<bool>();
                 if (number != view.latest.end()) values[key] = {
-                    {"value", number->second}, {"kind", "number"},
-                    {"fresh", Fresh(view, key)}, {"age_s", view.ageSeconds.at(key)}};
+                    {"value", fresh ? json(number->second) : json(nullptr)},
+                    {"last_value", number->second}, {"kind", "number"},
+                    {"state", status["state"]}, {"fresh", fresh},
+                    {"age_s", view.ageSeconds.at(key)}};
                 else if (string != view.latestStr.end()) values[key] = {
-                    {"value", string->second}, {"kind", "string"},
-                    {"fresh", Fresh(view, key)}, {"age_s", view.ageSeconds.at(key)}};
+                    {"value", fresh ? json(string->second) : json(nullptr)},
+                    {"last_value", string->second}, {"kind", "string"},
+                    {"state", status["state"]}, {"fresh", fresh},
+                    {"age_s", view.ageSeconds.at(key)}};
                 else missing.push_back(key);
             }
             result = {{"bundle", bundle}, {"values", std::move(values)},
@@ -336,25 +436,38 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             const std::size_t limit = std::clamp(params.value("limit", std::size_t{2000}),
                                                   std::size_t{1}, std::size_t{4000});
             const double window = std::clamp(params.value("window_s", 5.0), 0.05, 30.0);
+            const auto view = store_.GetDeviceView();
+            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
             const auto histories = store_.CopyHistories(keys);
             double endTime = 0.0;
-            for (const auto& [key, history] : histories)
-                if (!history.t.empty()) endTime = std::max(endTime, double(history.t.back()));
-            json series = json::object();
+            double freshestAge = std::numeric_limits<double>::infinity();
+            for (const auto& [key, history] : histories) {
+                if (history.t.empty()) continue;
+                const auto age = view.ageSeconds.find(key);
+                if (age != view.ageSeconds.end() && age->second < freshestAge) {
+                    freshestAge = age->second;
+                    endTime = double(history.t.back()) + age->second;
+                } else if (freshestAge == std::numeric_limits<double>::infinity()) {
+                    endTime = std::max(endTime, double(history.t.back()));
+                }
+            }
+            json series = json::object(), status = json::object();
             json missing = json::array();
             for (const auto& key : keys) {
                 const auto it = histories.find(key);
                 if (it == histories.end()) { missing.push_back(key); continue; }
+                status[key] = SignalStatus(view, reporting, key);
                 const auto& history = it->second;
                 json samples = json::array();
                 const std::size_t first = history.t.size() > limit
                     ? history.t.size() - limit : 0;
                 for (std::size_t i = first; i < history.t.size() && i < history.y.size(); ++i)
-                    if (history.t[i] >= endTime - window)
+                    if (history.t[i] >= endTime - window && history.t[i] <= endTime)
                         samples.push_back({{"time_s", history.t[i]}, {"value", history.y[i]}});
                 series[key] = std::move(samples);
             }
             result = {{"series", std::move(series)}, {"missing", std::move(missing)},
+                      {"signal_status", std::move(status)},
                       {"window_end_s", endTime}, {"window_s", window},
                       {"time_basis", "host seconds since runtime start"},
                       {"sample_alignment", "individual timestamps; do not assume exact simultaneity"}};
@@ -370,7 +483,10 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             const std::size_t first = times.size() > limit ? times.size() - limit : 0;
             for (std::size_t i = first; i < times.size() && i < values.size(); ++i)
                 samples.push_back({{"time_s", times[i]}, {"value", values[i]}});
-            result = {{"signal", signal}, {"samples", std::move(samples)}};
+            const auto view = store_.GetDeviceView();
+            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
+            result = {{"signal", signal}, {"samples", std::move(samples)},
+                      {"status", SignalStatus(view, reporting, signal)}};
         } else if (method == "device.string_history") {
             const std::string signal = params.value("signal", "");
             const std::size_t limit = std::clamp(params.value("limit", std::size_t{1000}),
@@ -382,7 +498,10 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             json samples = json::array();
             for (const auto& sample : history)
                 samples.push_back({{"time_s", sample.tsec}, {"value", sample.value}});
-            result = {{"signal", signal}, {"samples", std::move(samples)}};
+            const auto view = store_.GetDeviceView();
+            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
+            result = {{"signal", signal}, {"samples", std::move(samples)},
+                      {"status", SignalStatus(view, reporting, signal)}};
         } else if (method == "device.console") {
             const std::uint64_t since = params.value("since", std::uint64_t{0});
             const auto lines = std::clamp(params.value("lines", std::size_t{100}),

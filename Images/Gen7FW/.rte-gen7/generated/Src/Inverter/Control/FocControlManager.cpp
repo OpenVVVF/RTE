@@ -276,6 +276,7 @@ void FocControlManager::stepStartup(uint32_t now_ms) {
                 m_startup_state = StartupState::STARTED;
                 m_running = true;
                 m_starting = false;
+                Telemetry::log("foc_running", 1.0f);
                 Telemetry::printf("[FOC] STARTED f_sw=%.0f Hz f_u=%.0f Hz dt=%.4f ms",
                                   static_cast<double>(PWM_GetFrequency()),
                                   static_cast<double>(1.0f / m_dt_s),
@@ -315,6 +316,7 @@ void FocControlManager::stop() {
     m_running = false;
     m_starting = false;
     m_startup_state = StartupState::IDLE;
+    Telemetry::log("foc_running", 0.0f);
 
     Telemetry::printf("[FOC] STOPPED");
 }

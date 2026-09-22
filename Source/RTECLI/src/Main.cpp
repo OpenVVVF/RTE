@@ -685,10 +685,15 @@ int Device(const std::vector<std::string>& args, Format format) {
         const auto& name = signals.front();
         const auto& numbers = result->at("signals");
         const auto& strings = result->at("strings");
+        const auto status = result->value("signal_status", json::object());
+        const auto state = status.value(name, json::object());
+        const auto lastKnown = result->value("last_known_values", json::object());
         if (numbers.contains(name)) EmitDeviceResult(format, operation,
-            {{"signal", name}, {"kind", "number"}, {"value", numbers.at(name)}});
+            {{"signal", name}, {"kind", "number"}, {"value", numbers.at(name)},
+             {"last_value", lastKnown.value(name, numbers.at(name))}, {"status", state}});
         else if (strings.contains(name)) EmitDeviceResult(format, operation,
-            {{"signal", name}, {"kind", "string"}, {"value", strings.at(name)}});
+            {{"signal", name}, {"kind", "string"}, {"value", strings.at(name)},
+             {"last_value", lastKnown.value(name, strings.at(name))}, {"status", state}});
         else {
             Emit(format, {{"event", "error"}, {"message", "unknown signal: " + name}});
             return 5;
@@ -774,7 +779,7 @@ json McpTools() {
         ToolDefinition("rte_device_mode", "Diagnose Gen7 main MCU app/bootloader responsiveness without changing firmware. Silent app state is inconclusive.",
             {{"serial", {{"type", "string"}}}, {"control_port", {{"type", "string"}}},
              {"probe_bootloader", {{"type", "boolean"}}}, {"programmer", path}}),
-        ToolDefinition("rte_device_telemetry", "Read all latest numeric and string telemetry plus receive statistics.", {}),
+        ToolDefinition("rte_device_telemetry", "Read current telemetry and per-signal reporting state. Stopped signals have null current values and separate last-known values.", {}),
         ToolDefinition("rte_build_info", "Read the graph identity and node/signal manifest announced by the running firmware.", {}),
         ToolDefinition("rte_signal_info", "List observed and firmware-declared signals, their source nodes, units, and freshness.",
             {{"filter", {{"type", "string"}}}, {"signal", {{"type", "string"}}}}),
@@ -783,7 +788,7 @@ json McpTools() {
             {{"bundle", {{"type", "string"}, {"enum", json::array({"foc"})}}},
              {"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 32}}}}),
-        ToolDefinition("rte_device_signal", "Read the latest value of one numeric or string telemetry signal.",
+        ToolDefinition("rte_device_signal", "Read one telemetry signal. When reporting stops, value is null and last_value retains the old measurement.",
             {{"signal", {{"type", "string"}}}}, {"signal"}),
         ToolDefinition("rte_device_history", "Read recent time and value samples for one numeric telemetry signal.",
             {{"signal", {{"type", "string"}}},
@@ -791,12 +796,12 @@ json McpTools() {
         ToolDefinition("rte_device_string_history", "Read recent string telemetry events for one signal.",
             {{"signal", {{"type", "string"}}},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}, {"signal"}),
-        ToolDefinition("rte_device_histories", "Read up to eight numeric histories from one consistent store snapshot; samples retain individual timestamps.",
+        ToolDefinition("rte_device_histories", "Read up to eight numeric histories with individual timestamps and reporting state. The live window advances even after samples stop.",
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 4000}}}}, {"signals"}),
-        ToolDefinition("rte_device_trends", "Analyze live telemetry time series: sparklines, slopes, early/late change, variability, isolated spikes, and resolved oscillation. Defaults to available FOC signals.",
+        ToolDefinition("rte_device_trends", "Analyze live telemetry time series and show stopped-reporting states: sparklines, slopes, changes, spikes, and resolved oscillation. Defaults to available FOC signals.",
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}}}),
@@ -1018,11 +1023,18 @@ json McpTrends(const json& histories) {
     chart << "Recent " << window << " s; rows are auto-scaled, left older and right newer. "
           << "Analysis uses recorded sample times.\n";
     json metrics = json::object();
+    const json signalStatus = histories.value("signal_status", json::object());
     for (auto it = histories.at("series").begin(); it != histories.at("series").end(); ++it) {
         const std::string name = it.key();
         const json& samples = it.value();
+        const json status = signalStatus.value(name, json::object());
+        const std::string reportingState = status.value("state", "unknown");
+        const bool stopped = reportingState != "unknown" && reportingState != "live";
         if (samples.empty()) {
-            chart << name << "  [no samples in window]\n";
+            chart << name << "  [no samples in window; " << reportingState << "]\n";
+            metrics[name] = {{"samples", 0}, {"quality", "limited"},
+                             {"pattern", stopped ? reportingState : "no_recent_samples"},
+                             {"reporting_state", reportingState}};
             continue;
         }
         struct Point { double t, y; };
@@ -1055,7 +1067,8 @@ json McpTrends(const json& histories) {
             chart << name << "  [no finite numeric samples in window]\n";
             metrics[name] = {{"samples", 0}, {"invalid_samples", invalidSamples},
                              {"timestamp_resets", timestampResets},
-                             {"quality", "limited"}, {"pattern", "no_finite_samples"}};
+                             {"quality", "limited"}, {"pattern", "no_finite_samples"},
+                             {"reporting_state", reportingState}};
             continue;
         }
 
@@ -1248,7 +1261,8 @@ json McpTrends(const json& histories) {
                 pattern = "steady_mean";
             else pattern = "variable";
         }
-        const bool limited = !enoughData || invalidSamples > 0 || timestampResets > 0
+        if (stopped) pattern = reportingState;
+        const bool limited = stopped || !enoughData || invalidSamples > 0 || timestampResets > 0
             || duration < 0.5 * window
             || occupiedBins < 2 * width / 3
             || maxGap > 0.1 * window || gaps > count / 10
@@ -1265,9 +1279,11 @@ json McpTrends(const json& histories) {
         if (gaps) interpretation << "; sampling gaps=" << gaps;
         if (invalidSamples) interpretation << "; invalid samples=" << invalidSamples;
         if (timestampResets) interpretation << "; timestamp resets=" << timestampResets;
+        if (stopped) interpretation << "; last measured values only";
         if (limited) interpretation << "; limited window coverage or samples";
 
-        chart << name << "  " << spark << "  last=" << last
+        chart << name << "  " << spark
+              << (stopped ? "  last_measured=" : "  last=") << last
               << "  min=" << low << "  max=" << high << "  rms="
               << std::sqrt(squareSum / count) << "  Δ=" << (last - first) << '\n'
               << "  " << interpretation.str() << '\n';
@@ -1275,6 +1291,8 @@ json McpTrends(const json& histories) {
         metrics[name] = {{"samples", count}, {"invalid_samples", invalidSamples},
                          {"timestamp_resets", timestampResets},
                          {"first", first}, {"last", last},
+                         {"last_measured", last},
+                         {"current_value", stopped ? json(nullptr) : json(last)},
                          {"min", low}, {"max", high}, {"mean", mean},
                          {"rms", std::sqrt(squareSum / count)}, {"delta", last - first},
                          {"stddev", stddev}, {"slope_per_s", slope},
@@ -1287,6 +1305,7 @@ json McpTrends(const json& histories) {
                          {"duration_s", duration}, {"age_at_window_end_s", age},
                          {"coverage_fraction", window > 0.0 ? duration / window : 0.0},
                          {"quality", limited ? "limited" : "adequate"},
+                         {"reporting_state", reportingState},
                          {"median_sample_interval_s", medianDt},
                          {"sample_rate_hz", medianDt > 0.0 ? 1.0 / medianDt : 0.0},
                          {"sampling_gaps", gaps}, {"max_sample_gap_s", maxGap},
@@ -1305,7 +1324,8 @@ json McpTrends(const json& histories) {
     const json report = {{"window_s", window}, {"window_end_s", end},
                          {"metrics", metrics}, {"chart", chart.str()},
                          {"missing", histories.value("missing", json::array())},
-                         {"note", "Mean, RMS, and regression use received samples without interpolation; sampling gaps can bias them. Pattern labels describe sampled telemetry only; absence of detected oscillation does not rule out faster motor or PWM behavior."}};
+                         {"signal_status", signalStatus},
+                         {"note", "Stopped signals have null current_value; last_measured and historical metrics are old samples, not a measured zero. Mean, RMS, and regression use received samples without interpolation; sampling gaps can bias them. Pattern labels describe sampled telemetry only; absence of detected oscillation does not rule out faster motor or PWM behavior."}};
     json response = McpText(chart.str());
     response["structuredContent"] = report;
     return response;
@@ -1574,19 +1594,25 @@ json CallMcpTool(const std::string& name, const json& arguments,
     }
     if (name == "rte_device_signal") {
         const std::string signal = arguments["signal"];
-        const json ages = result->value("age_s", json::object());
-        const json age = ages.contains(signal) ? ages.at(signal) : json(nullptr);
-        const json frameAge = result->value("frame_age_s", json(nullptr));
-        const bool fresh = age.is_number() && frameAge.is_number()
-            && age.get<double>() <= 2.0 && frameAge.get<double>() <= 2.0;
+        const json statuses = result->value("signal_status", json::object());
+        const json status = statuses.value(signal, json::object());
+        const json age = status.value("age_s", json(nullptr));
+        const bool fresh = status.value("fresh", false);
+        const json lastKnown = result->value("last_known_values", json::object());
         if (result->at("signals").contains(signal))
             return McpJson({{"signal", signal}, {"kind", "number"},
                             {"value", result->at("signals").at(signal)},
-                            {"age_s", age}, {"fresh", fresh}});
+                            {"last_value", lastKnown.value(signal,
+                                result->at("signals").at(signal))},
+                            {"age_s", age}, {"fresh", fresh},
+                            {"state", status.value("state", "unknown")}});
         if (result->at("strings").contains(signal))
             return McpJson({{"signal", signal}, {"kind", "string"},
                             {"value", result->at("strings").at(signal)},
-                            {"age_s", age}, {"fresh", fresh}});
+                            {"last_value", lastKnown.value(signal,
+                                result->at("strings").at(signal))},
+                            {"age_s", age}, {"fresh", fresh},
+                            {"state", status.value("state", "unknown")}});
         const auto catalog = RTEAutomation::RequestSession(*session, "device.catalog",
             {{"signal", signal}}, &error);
         const std::string state = catalog && !catalog->value("signals", json::array()).empty()

@@ -96,9 +96,21 @@ def main():
                 method = message["method"]
                 if method == "device.telemetry":
                     self.server.good_frames += 10
-                    value = {"signals": {"phase_current_a": 1.25, "dc_bus_v": 48.0},
+                    value = {"signals": {"phase_current_a": 1.25, "dc_bus_v": 48.0,
+                                         "stopped_current_a": None},
                              "strings": {"state": "idle"}, "rx_hz": 200.0,
-                             "good_frames": self.server.good_frames}
+                             "good_frames": self.server.good_frames,
+                             "signal_status": {
+                                 "phase_current_a": {"state": "live", "fresh": True,
+                                                     "age_s": 0.1},
+                                 "dc_bus_v": {"state": "live", "fresh": True,
+                                              "age_s": 0.1},
+                                 "state": {"state": "live", "fresh": True,
+                                           "age_s": 0.1},
+                                 "stopped_current_a": {"state": "stopped_reporting",
+                                                       "fresh": False, "age_s": 3.0}},
+                             "stopped_signals": ["stopped_current_a"],
+                             "last_known_values": {"stopped_current_a": 4.5}}
                 elif method == "device.build_info":
                     value = {"verified": True, "graph": "foc_demo", "graph_hash": "deadbeef",
                              "nodes": [{"id": "foc", "type": "Control.FOC"}]}
@@ -149,6 +161,11 @@ def main():
                             return [{"time_s": 5.0, "value": None}]
                         if key == "analysis_single":
                             return [{"time_s": 5.0, "value": 3.0}]
+                        if key == "analysis_stopped":
+                            return []
+                        if key == "analysis_stopped_recent":
+                            return [{"time_s": i / 80, "value": i / 80}
+                                    for i in range(401)]
                         if key == "analysis_reset":
                             return ([{"time_s": i / 80, "value": 100}
                                      for i in range(401)]
@@ -163,7 +180,12 @@ def main():
                                         for key in message["params"]["signals"]},
                              "missing": [], "window_end_s": 5.0 if analyzed_series else 1.0,
                              "window_s":
-                             message["params"].get("window_s", 1.0)}
+                             message["params"].get("window_s", 1.0),
+                             "signal_status": {key: {"state": "stopped_reporting",
+                                                     "fresh": False, "age_s": 3.0}
+                                               for key in message["params"]["signals"]
+                                               if key in ("analysis_stopped",
+                                                          "analysis_stopped_recent")}}
                 elif method == "device.status":
                     value = {"connected": True, "device_port": str(bridge),
                              "transport": self.server.transport, "suspended": False}
@@ -282,9 +304,23 @@ def main():
             telemetry = request(server, 6, "tools/call", {"name": "rte_device_telemetry",
                                 "arguments": {}})
             assert '"phase_current_a": 1.25' in telemetry["content"][0]["text"], telemetry
+            assert telemetry["structuredContent"]["signals"]["stopped_current_a"] is None
+            assert telemetry["structuredContent"]["last_known_values"]["stopped_current_a"] == 4.5
             signal = request(server, 7, "tools/call", {"name": "rte_device_signal",
                              "arguments": {"signal": "state"}})
             assert '"idle"' in signal["content"][0]["text"], signal
+            stopped_signal = request(server, 32, "tools/call", {
+                "name": "rte_device_signal", "arguments": {"signal": "stopped_current_a"}})
+            assert stopped_signal["structuredContent"]["value"] is None
+            assert stopped_signal["structuredContent"]["last_value"] == 4.5
+            assert stopped_signal["structuredContent"]["state"] == "stopped_reporting"
+            stopped_cli = subprocess.run(
+                [str(executable), "--format", "json", "device", "signal",
+                 "--session", str(descriptor), "--signal", "stopped_current_a"],
+                capture_output=True, text=True, env=env, check=True, timeout=5)
+            stopped_cli_value = json.loads(stopped_cli.stdout)["events"][0]["result"]
+            assert stopped_cli_value["value"] is None, stopped_cli_value
+            assert stopped_cli_value["status"]["state"] == "stopped_reporting"
             missing_signal = request(server, 28, "tools/call", {"name": "rte_device_signal",
                                      "arguments": {"signal": "missing_signal"}})
             assert missing_signal["isError"], missing_signal
@@ -362,6 +398,19 @@ def main():
             assert invalid_metrics["analysis_reset"]["samples"] == 81
             assert invalid_metrics["analysis_reset"]["timestamp_resets"] == 1
             assert invalid_metrics["analysis_reset"]["mean"] == 2
+            stopped_trend = request(server, 33, "tools/call", {
+                "name": "rte_device_trends", "arguments": {"signals": ["analysis_stopped"],
+                                                         "window_s": 5.0}})
+            stopped_metric = stopped_trend["structuredContent"]["metrics"]["analysis_stopped"]
+            assert stopped_metric["pattern"] == "stopped_reporting", stopped_metric
+            assert stopped_metric["samples"] == 0, stopped_metric
+            stopped_recent = request(server, 34, "tools/call", {
+                "name": "rte_device_trends",
+                "arguments": {"signals": ["analysis_stopped_recent"], "window_s": 5.0}})
+            recent_metric = stopped_recent["structuredContent"]["metrics"]["analysis_stopped_recent"]
+            assert recent_metric["pattern"] == "stopped_reporting", recent_metric
+            assert recent_metric["current_value"] is None, recent_metric
+            assert recent_metric["last_measured"] == 5.0, recent_metric
             bad_trends = request(server, 25, "tools/call", {"name": "rte_device_trends",
                                  "arguments": {"signals": [17]}})
             assert bad_trends["isError"], bad_trends
