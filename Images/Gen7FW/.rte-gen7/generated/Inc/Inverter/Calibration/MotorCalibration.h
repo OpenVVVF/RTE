@@ -18,6 +18,11 @@ enum class PhaseSwap : uint8_t {
     SwapUV = 1, /**< Swap U and V (wired VUW). */
     SwapVW = 2, /**< Swap V and W (wired UWV). */
     SwapUW = 3, /**< Swap U and W (wired WVU). */
+    /** Gen7: current transducers sit on the V and W motor wires and feed the
+     * ADC "U"/"V" channels respectively (U wire unsensed; verified by
+     * open-loop rotation direction).  Remap CURRENT feedback only:
+     * iu = -(iu_raw+iv_raw), iv = iu_raw, iw = iv_raw.  PWM duties untouched. */
+    CurrentSwapUW = 4,
 };
 
 /**

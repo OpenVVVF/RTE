@@ -199,7 +199,7 @@ bool loadMotorCalibration() {
      * KV store whenever it has been configured. */
     float phase_swap = 0.0f;
     if (RteParamStore::get(KEY_PHASE_SWAP, &phase_swap)) {
-        if (phase_swap >= 0.0f && phase_swap <= 3.0f) {
+        if (phase_swap >= 0.0f && phase_swap <= 4.0f) {
             mc.phase_swap = static_cast<PhaseSwap>(static_cast<uint8_t>(phase_swap));
         }
     }

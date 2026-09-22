@@ -6,9 +6,11 @@
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
+#include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/platform_api.h"
 
 #include "main.h"
 
@@ -27,6 +29,20 @@ using Inverter::FaultManager;
 using Inverter::focControlManager;
 using Inverter::openLoopController;
 using Inverter::phaseCurrentADC;
+
+/* Enable gate-driver outputs with the proven OpenLoopController::start
+ * timing: a 1 ms RESET assert clears any latched /FLT (stays under the
+ * NCx5710y 8-10 ms DSCHK window), then 100 ms for the charge pump before
+ * /RDY+/FLT are meaningful.  Must run unconditionally: after a stop, RESET
+ * is asserted while /RDY can still read high, so a conditional "is it
+ * healthy?" enable silently leaves the outputs off. */
+static bool gateDriverEnableForPulseTest() {
+    GateDriver_DisableOutputs();
+    HAL_Delay(1);
+    GateDriver_EnableOutputs();
+    HAL_Delay(100);
+    return GateDriver_IsReady() && !GateDriver_IsFault();
+}
 
 class StartCommand : public CommandInterface {
 public:
@@ -175,17 +191,8 @@ public:
             return;
         }
 
-        /* Safe start: only reset the driver if it is not already healthy —
-         * a reset release provokes a spurious /FLT latch on this hardware. */
         PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
-        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
-            GateDriver_DisableOutputs();
-            HAL_Delay(10);
-            GateDriver_EnableOutputs();
-            HAL_Delay(10);
-        }
-
-        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
+        if (!gateDriverEnableForPulseTest()) {
             Telemetry::printf("[SHELL] ERROR: gate driver not ready or fault latched");
             GateDriver_DisableOutputs();
             return;
@@ -372,16 +379,7 @@ public:
         *duties[phase] = duty;
         PWM_SetThreePhaseDuty(du, dv, dw);
 
-        /* Safe start: only reset the driver if it is not already healthy —
-         * a reset release provokes a spurious /FLT latch on this hardware. */
-        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
-            GateDriver_DisableOutputs();
-            HAL_Delay(10);
-            GateDriver_EnableOutputs();
-            HAL_Delay(10);
-        }
-
-        if (!GateDriver_IsReady() || GateDriver_IsFault()) {
+        if (!gateDriverEnableForPulseTest()) {
             Telemetry::printf("[GF] ERROR: gate driver not ready or fault latched");
             GateDriver_DisableOutputs();
             return;
@@ -391,27 +389,163 @@ public:
         PWM_StartPhase(phase);
         HAL_Delay(ms);
 
+        /* Sample mid-pulse (gate driver still enabled, phase still firing) so
+         * the DC-link shunt arbitrates whether phase currents are real. */
         float iu = 0.0f, iv = 0.0f, iw = 0.0f;
         (void)phaseCurrentADC().sample(iu, iv, iw);
         const float vdc = dcLinkVoltageSensor().voltage();
+        float dcl_i = Inverter::dcLinkCurrentSensor().current();
+        const float enc_deg = encoderADC().extrapolatedAngleDeg();
 
         PWM_StopPhase(phase);
         PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
         GateDriver_DisableOutputs();
 
-        Telemetry::printf("[GF] phase=%u duty=%.1f%% t=%lu ms | iu=%+.2f iv=%+.2f iw=%+.2f | vdc=%.1f | ready=%s fault=%s",
+        Telemetry::printf("[GF] phase=%u duty=%.1f%% t=%lu ms | iu=%+.2f iv=%+.2f iw=%+.2f | dcl_i=%+.2f enc=%.1f | vdc=%.1f | ready=%s fault=%s",
                           static_cast<unsigned>(phase),
                           static_cast<double>(duty),
                           static_cast<unsigned long>(ms),
                           static_cast<double>(iu),
                           static_cast<double>(iv),
                           static_cast<double>(iw),
+                          static_cast<double>(dcl_i),
+                          static_cast<double>(enc_deg),
                           static_cast<double>(vdc),
                           GateDriver_IsReady() ? "Y" : "N",
                           GateDriver_IsFault() ? "Y" : "N");
     }
 };
 static GateFireCommand sGateFireCmd;
+
+/*
+ * phasemap [settle_ms]
+ *
+ * Phase-drive -> voltage-sense map check.  REQUIRES the motor disconnected
+ * (phase outputs floating): each half-bridge then drives its own output pin
+ * and the MAX22530 phase-voltage channels read it back.
+ *
+ * Static levels only - no PWM averaging/aliasing: each phase in turn is
+ * driven at 100% duty (high-side conducts continuously -> output at DC+)
+ * then 0% duty (low-side conducts continuously -> output at GND).  All
+ * other phases are parked at 0% duty (outputs solidly at GND).
+ *
+ * A healthy, correctly-mapped phase shows a full-span positive swing on its
+ * OWN sense channel while the parked channels stay near GND.
+ */
+class PhaseMapCommand : public CommandInterface {
+public:
+    PhaseMapCommand()
+      : CommandInterface("phasemap",
+            "Verify phase drive->sense map (motor disconnected!): phasemap [settle_ms]",
+            {ArgSpec{"settle_ms", "ms", 20.0f, 2000.0f, 250.0f, false, ArgSpec::FLOAT}}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const uint32_t settle_ms =
+            static_cast<uint32_t>((args[0].present ? args[0].f_val : 250.0f) + 0.5f);
+
+        if (focControlManager().isRunning()) {
+            focControlManager().stop();
+            Telemetry::printf("[SHELL] stopped FOC first");
+        }
+        if (openLoopController().isRunning()) {
+            openLoopController().stop();
+            Telemetry::printf("[SHELL] stopped open-loop first");
+        }
+
+        if (FaultManager::instance().isSeverityActive(Inverter::FaultSeverity::Critical) ||
+            FaultManager::instance().isSeverityActive(Inverter::FaultSeverity::High)) {
+            Telemetry::printf("[PM] active Critical/High faults, cannot run");
+            FaultManager::instance().printSummary();
+            return;
+        }
+
+        const float vdc = dcLinkVoltageSensor().voltage();
+        if (vdc < 5.0f) {
+            Telemetry::printf("[PM] ERROR: vdc=%.1f V too low for a meaningful test",
+                              static_cast<double>(vdc));
+            return;
+        }
+
+        PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+        if (!gateDriverEnableForPulseTest()) {
+            Telemetry::printf("[PM] ERROR: gate driver not ready or fault latched");
+            GateDriver_DisableOutputs();
+            return;
+        }
+
+        PWM_ClearFault();
+        PWM_Start();
+
+        /* Phase-sense channels share the DC-link divider ratio, so a full
+         * GND->DC+ swing should produce ~1.0x the DC-link channel's raw
+         * input volts on the responding sense channel. */
+        const float expected_swing = 1.0f * Inverter::dcLinkVoltageSensor().adc().voltage(3);
+        const char names[3] = {'U', 'V', 'W'};
+        bool all_ok = true;
+
+        Telemetry::printf("[PM] vdc=%.1f V, expected sense swing ~%+.3f raw V",
+                          static_cast<double>(vdc), static_cast<double>(expected_swing));
+
+        for (uint8_t p = 0; p < 3; ++p) {
+            float du = 0.0f, dv = 0.0f, dw = 0.0f;  /* parked: solid GND */
+            float* duties[3] = {&du, &dv, &dw};
+            float vhi[3], vlo[3], swing[3];
+
+            *duties[p] = 100.0f;  /* high-side on -> DC+ */
+            PWM_SetThreePhaseDuty(du, dv, dw);
+            HAL_Delay(settle_ms);
+            vhi[0] = platform_phase_voltage_u();
+            vhi[1] = platform_phase_voltage_v();
+            vhi[2] = platform_phase_voltage_w();
+
+            *duties[p] = 0.0f;    /* low-side on -> GND */
+            PWM_SetThreePhaseDuty(du, dv, dw);
+            HAL_Delay(settle_ms);
+            vlo[0] = platform_phase_voltage_u();
+            vlo[1] = platform_phase_voltage_v();
+            vlo[2] = platform_phase_voltage_w();
+
+            int best = 0;
+            for (int c = 0; c < 3; ++c) {
+                swing[c] = vhi[c] - vlo[c];
+                if (swing[c] > swing[best]) best = c;
+            }
+
+            const bool own_ok = swing[p] > 0.5f * expected_swing;
+            bool cross_ok = true;
+            for (int c = 0; c < 3; ++c) {
+                if (c != p && std::fabs(swing[c]) > 0.35f * swing[p]) cross_ok = false;
+            }
+            const bool map_ok = (best == p);
+            const bool pass = own_ok && cross_ok && map_ok;
+            all_ok = all_ok && pass;
+
+            Telemetry::printf("[PM] drive %c @100%%(=DC+): U=%.3f V=%.3f W=%.3f | @0%%(=GND): U=%.3f V=%.3f W=%.3f",
+                              names[p],
+                              static_cast<double>(vhi[0]), static_cast<double>(vhi[1]),
+                              static_cast<double>(vhi[2]),
+                              static_cast<double>(vlo[0]), static_cast<double>(vlo[1]),
+                              static_cast<double>(vlo[2]));
+            Telemetry::printf("[PM] drive %c: swing U=%+.3f V=%+.3f W=%+.3f responder=%c -> %s%s",
+                              names[p],
+                              static_cast<double>(swing[0]), static_cast<double>(swing[1]),
+                              static_cast<double>(swing[2]), names[best],
+                              pass ? "PASS" : (map_ok ? "FAIL (weak/dead drive or sense)"
+                                                      : "FAIL (MAPPING: drive and sense disagree)"),
+                              cross_ok ? "" : " +cross-talk");
+        }
+
+        PWM_Stop();
+        PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+        GateDriver_DisableOutputs();
+
+        Telemetry::printf("[PM] overall: %s | ready=%s fault=%s",
+                          all_ok ? "PASS" : "FAIL",
+                          GateDriver_IsReady() ? "Y" : "N",
+                          GateDriver_IsFault() ? "Y" : "N");
+    }
+};
+static PhaseMapCommand sPhaseMapCmd;
 
 /* Induction command object is larger than the others; keep it out of DTCM. */
 static InductionCommand sInductionCmd __attribute__((section(".dma_buffers")));
@@ -428,5 +562,6 @@ void registerOpenLoopCommands(CommandManager& mgr) {
     mgr.registerCommand(&sRampCurrentLimitCmd);
     mgr.registerCommand(&sVectorScanCmd);
     mgr.registerCommand(&sGateFireCmd);
+    mgr.registerCommand(&sPhaseMapCmd);
     mgr.registerCommand(&sInductionCmd);
 }

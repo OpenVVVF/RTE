@@ -201,7 +201,7 @@ private:
                 }
             } else if (strcasecmp(key, "Motor.PhaseSwap") == 0) {
                 Inverter::MotorCalibration& mc = Inverter::motorCalibration();
-                if (value >= 0.0f && value <= 3.0f) {
+                if (value >= 0.0f && value <= 4.0f) {
                     mc.phase_swap = static_cast<Inverter::PhaseSwap>(static_cast<uint8_t>(value));
                 }
             }

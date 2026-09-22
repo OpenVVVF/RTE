@@ -136,8 +136,13 @@ void PWM_SetDutyCycle(uint8_t phase, float duty_percent)
     if (duty_percent < 0.0f) duty_percent = 0.0f;
     if (duty_percent > 100.0f) duty_percent = 100.0f;
 
+    /* Gen7 hardware: TIM1_CHx drives the PH_x_LOW net of the cross-coupled
+     * gate-driver interlock, so the CHx active fraction is the LOW-SIDE
+     * conduction fraction (verified by phasemap: duty 0% -> output at DC+,
+     * duty 100% -> output at GND).  duty_percent is defined as the HIGH-SIDE
+     * fraction (phase output = duty x Vdc), so invert the compare value. */
     uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
-    uint32_t pulse = (uint32_t)((duty_percent * (float)arr) / 100.0f);
+    uint32_t pulse = arr - (uint32_t)((duty_percent * (float)arr) / 100.0f);
 
     uint32_t channel = PWM_PhaseToChannel(phase);
     __HAL_TIM_SET_COMPARE(&htim1, channel, pulse);
@@ -170,6 +175,10 @@ void PWM_SetThreePhaseDuty(float duty_u, float duty_v, float duty_w)
             duty_w = tmp;
             break;
         }
+        case PhaseSwap::CurrentSwapUW:
+            /* Current-sensor-only remap (sensors on V/W wires); the voltage
+             * mapping is correct and must NOT be swapped. */
+            break;
         default:
             break;
     }
@@ -306,23 +315,28 @@ void PWM_GetCurrentDuties(float* duty_u, float* duty_v, float* duty_w)
         *duty_w = 0.0f;
         return;
     }
-    *duty_u = 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_1) / (float)arr;
-    *duty_v = 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_2) / (float)arr;
-    *duty_w = 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_3) / (float)arr;
+    /* CCRx holds the low-side compare value (see PWM_SetDutyCycle), so the
+     * high-side duty is the complement. */
+    *duty_u = 100.0f - 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_1) / (float)arr;
+    *duty_v = 100.0f - 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_2) / (float)arr;
+    *duty_w = 100.0f - 100.0f * (float)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_3) / (float)arr;
 }
 
 bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
                              uint32_t arr, uint32_t min_gap_ticks,
                              uint32_t* out_ccr4, uint32_t* out_gap_ticks)
 {
-    /* Clamp duties to [0, 100] and convert to CCR ticks. */
+    /* Clamp duties to [0, 100] and convert to CCR ticks.  Gen7: CHx drives
+     * the PH_x_LOW net, so PWM_SetDutyCycle inverts the compare value
+     * (duty = high-side fraction); mirror that here or the "quiet" point
+     * lands on a switching edge. */
     if (duty_u < 0.0f) duty_u = 0.0f; else if (duty_u > 100.0f) duty_u = 100.0f;
     if (duty_v < 0.0f) duty_v = 0.0f; else if (duty_v > 100.0f) duty_v = 100.0f;
     if (duty_w < 0.0f) duty_w = 0.0f; else if (duty_w > 100.0f) duty_w = 100.0f;
 
-    const uint32_t ccr_u = (uint32_t)((duty_u * (float)arr) / 100.0f);
-    const uint32_t ccr_v = (uint32_t)((duty_v * (float)arr) / 100.0f);
-    const uint32_t ccr_w = (uint32_t)((duty_w * (float)arr) / 100.0f);
+    const uint32_t ccr_u = arr - (uint32_t)((duty_u * (float)arr) / 100.0f);
+    const uint32_t ccr_v = arr - (uint32_t)((duty_v * (float)arr) / 100.0f);
+    const uint32_t ccr_w = arr - (uint32_t)((duty_w * (float)arr) / 100.0f);
 
     /* For center-aligned PWM mode 1 with low-side current shunts:
      *   - All bottom switches are ON (all phases low) when CNT > max(CCRx)
@@ -568,4 +582,3 @@ void PWM_PrintSPWMState(void)
                      (double)spwm_modulation_index,
                      (double)du, (double)dv, (double)dw);
 }
-

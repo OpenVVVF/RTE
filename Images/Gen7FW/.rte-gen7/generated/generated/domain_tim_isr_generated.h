@@ -260,25 +260,6 @@ struct TimIsrState {
 
     ParkState Park;
 
-    struct LogIdState {
-        const char* Key;
-    };
-
-    LogIdState LogId;
-
-    struct LogIqState {
-        const char* Key;
-    };
-
-    LogIqState LogIq;
-
-    struct FocFeedforwardState {
-        rte::Voltage V_D;
-        rte::Voltage V_Q;
-    };
-
-    FocFeedforwardState FocFeedforward;
-
     struct PiDState {
         rte::Voltage Output;
         rte::Dimensionless AwGain;
@@ -302,6 +283,18 @@ struct TimIsrState {
     };
 
     PiQState PiQ;
+
+    struct LogIdState {
+        const char* Key;
+    };
+
+    LogIdState LogId;
+
+    struct LogIqState {
+        const char* Key;
+    };
+
+    LogIqState LogIq;
 
     struct LogVdState {
         const char* Key;

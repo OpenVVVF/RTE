@@ -51,6 +51,16 @@ static void applyPhaseSwap(float iu_phys_a, float iv_phys_a,
             iu_log_a = iu_phys_a;
             iv_log_a = -(iu_phys_a + iv_phys_a);
             break;
+        case PhaseSwap::CurrentSwapUW:
+            /* Gen7 sensor harness: the transducer on the physical V wire feeds
+             * the ADC "U" channel (iu_phys) and the transducer on the W wire
+             * feeds the ADC "V" channel (iv_phys); the U wire is unsensed.
+             * Verified by open-loop rotation: without this, the measured
+             * current vector rotates BACKWARD vs the applied voltage vector
+             * (mirrored Clarke) and FOC goes unstable. */
+            iu_log_a = -(iu_phys_a + iv_phys_a);
+            iv_log_a = iu_phys_a;
+            break;
         case PhaseSwap::SwapUW:
             iu_log_a = -(iu_phys_a + iv_phys_a);
             iv_log_a = iv_phys_a;
@@ -654,4 +664,3 @@ extern "C" void HAL_ADC_LevelOutOfWindowCallback(ADC_HandleTypeDef* hadc) {
             Inverter::FaultReason::AdcWatchdogTrip);
     }
 }
-
