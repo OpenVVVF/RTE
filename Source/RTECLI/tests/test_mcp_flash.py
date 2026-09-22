@@ -3,6 +3,8 @@
 
 import json
 import binascii
+import math
+import random
 import os
 import pathlib
 import pty
@@ -115,11 +117,53 @@ def main():
                         "value": 1.25, "kind": "number", "fresh": True, "age_s": 0.1}},
                         "missing": [], "frame_age_s": 0.1}
                 elif method == "device.histories":
-                    value = {"series": {key: [{"time_s": 0.0, "value": 0.0},
-                                               {"time_s": 0.5, "value": 1.25},
-                                               {"time_s": 1.0, "value": 0.5}]
+                    def history_for(key):
+                        if key == "analysis_ramp":
+                            return [{"time_s": i / 80, "value": 1 + 2 * i / 80}
+                                    for i in range(401)]
+                        if key == "analysis_osc":
+                            return [{"time_s": i / 80,
+                                     "value": 3 * math.sin(4 * math.pi * i / 80)}
+                                    for i in range(401)]
+                        if key == "analysis_spike":
+                            return [{"time_s": i / 80, "value": 20 if i == 200 else 0}
+                                    for i in range(401)]
+                        if key == "analysis_step":
+                            return [{"time_s": i / 80, "value": 0 if i < 200 else 10}
+                                    for i in range(401)]
+                        if key == "analysis_constant":
+                            return [{"time_s": i / 80, "value": 7}
+                                    for i in range(401)]
+                        if key == "analysis_noise":
+                            rng = random.Random(42)
+                            return [{"time_s": i / 80, "value": rng.gauss(0, 1)}
+                                    for i in range(401)]
+                        if key == "analysis_irregular":
+                            times = [i / 100 for i in range(101)] + [4, 4.3, 4.6, 5]
+                            return [{"time_s": t, "value": 1 + 2 * t} for t in times]
+                        if key == "analysis_invalid":
+                            return ([{"time_s": 0.0, "value": None}]
+                                    + [{"time_s": i / 80, "value": 1 + 2 * i / 80}
+                                       for i in range(401)])
+                        if key == "analysis_all_invalid":
+                            return [{"time_s": 5.0, "value": None}]
+                        if key == "analysis_single":
+                            return [{"time_s": 5.0, "value": 3.0}]
+                        if key == "analysis_reset":
+                            return ([{"time_s": i / 80, "value": 100}
+                                     for i in range(401)]
+                                    + [{"time_s": i / 80, "value": 2}
+                                       for i in range(81)])
+                        return [{"time_s": 0.0, "value": 0.0},
+                                {"time_s": 0.5, "value": 1.25},
+                                {"time_s": 1.0, "value": 0.5}]
+                    analyzed_series = any(key.startswith("analysis_")
+                                          for key in message["params"]["signals"])
+                    value = {"series": {key: history_for(key)
                                         for key in message["params"]["signals"]},
-                             "missing": [], "window_end_s": 1.0, "window_s": 1.0}
+                             "missing": [], "window_end_s": 5.0 if analyzed_series else 1.0,
+                             "window_s":
+                             message["params"].get("window_s", 1.0)}
                 elif method == "device.status":
                     value = {"connected": True, "device_port": str(bridge),
                              "transport": self.server.transport, "suspended": False}
@@ -272,6 +316,52 @@ def main():
                                            "window_s": 1.0}})
             assert trends["structuredContent"]["metrics"]["phase_current_a"]["rms"] > 0
             assert "phase_current_a" in trends["content"][0]["text"], trends
+            analyzed = request(server, 29, "tools/call", {"name": "rte_device_trends",
+                               "arguments": {"signals": ["analysis_ramp", "analysis_osc",
+                                                         "analysis_spike"], "window_s": 5.0}})
+            metrics = analyzed["structuredContent"]["metrics"]
+            assert metrics["analysis_ramp"]["pattern"] == "rising", metrics
+            assert abs(metrics["analysis_ramp"]["slope_per_s"] - 2.0) < 0.01, metrics
+            assert metrics["analysis_osc"]["pattern"] == "oscillating", metrics
+            assert 1.5 < metrics["analysis_osc"]["oscillation_hz"] < 2.5, metrics
+            assert metrics["analysis_spike"]["isolated_spikes"] == 1, metrics
+            assert "early→late mean" in analyzed["content"][0]["text"], analyzed
+            edge_cases = request(server, 30, "tools/call", {"name": "rte_device_trends",
+                                 "arguments": {"signals": ["analysis_constant", "analysis_step",
+                                                           "analysis_noise", "analysis_irregular"],
+                                               "window_s": 5.0}})
+            edge = edge_cases["structuredContent"]["metrics"]
+            assert abs(metrics["analysis_ramp"]["mean"] - 6.0) < 1e-9, metrics
+            expected_rms = math.sqrt(sum((1 + 2 * i / 80) ** 2 for i in range(401)) / 401)
+            assert abs(metrics["analysis_ramp"]["rms"] - expected_rms) < 1e-9, metrics
+            assert metrics["analysis_ramp"]["trend_r2"] > 0.999999, metrics
+            assert edge["analysis_constant"]["stddev"] == 0, edge
+            assert edge["analysis_constant"]["oscillation_hz"] is None, edge
+            assert edge["analysis_step"]["isolated_spikes"] == 0, edge
+            assert edge["analysis_step"]["oscillation_hz"] is None, edge
+            assert edge["analysis_step"]["pattern"] == "step_up", edge
+            assert 2.45 < edge["analysis_step"]["step_time_s"] < 2.55, edge
+            assert edge["analysis_noise"]["oscillation_hz"] is None, edge
+            assert edge["analysis_irregular"]["late_samples"] == 4, edge
+            assert edge["analysis_irregular"]["quality"] == "limited", edge
+            assert edge["analysis_irregular"]["max_sample_gap_s"] > 2.0, edge
+            invalid = request(server, 31, "tools/call", {"name": "rte_device_trends",
+                              "arguments": {"signals": ["analysis_invalid",
+                                                        "analysis_all_invalid",
+                                                        "analysis_single",
+                                                        "analysis_reset"],
+                                            "window_s": 5.0}})
+            invalid_metrics = invalid["structuredContent"]["metrics"]
+            assert invalid_metrics["analysis_invalid"]["samples"] == 401, invalid_metrics
+            assert invalid_metrics["analysis_invalid"]["invalid_samples"] == 1
+            assert invalid_metrics["analysis_invalid"]["quality"] == "limited"
+            assert invalid_metrics["analysis_all_invalid"]["pattern"] == "no_finite_samples"
+            assert invalid_metrics["analysis_single"]["pattern"] == "insufficient_samples"
+            assert invalid_metrics["analysis_single"]["slope_per_s"] == 0
+            assert invalid_metrics["analysis_single"]["rms"] == 3
+            assert invalid_metrics["analysis_reset"]["samples"] == 81
+            assert invalid_metrics["analysis_reset"]["timestamp_resets"] == 1
+            assert invalid_metrics["analysis_reset"]["mean"] == 2
             bad_trends = request(server, 25, "tools/call", {"name": "rte_device_trends",
                                  "arguments": {"signals": [17]}})
             assert bad_trends["isError"], bad_trends

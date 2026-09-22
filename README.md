@@ -184,6 +184,8 @@ See [Automation backend](docs/automation-backend.md) for component boundaries,
 the cache layout, CLI examples, MCP setup, and the external-write security gate.
 For an AI agent setting up the MCP server, use
 [MCP_AGENT_SETUP.md](MCP_AGENT_SETUP.md); it starts by rebuilding the current code.
+Agents changing firmware should also follow [AGENTS.md](AGENTS.md) so MCP and
+RTE Studio remain compatible with the flashed image.
 
 ## Calibration
 

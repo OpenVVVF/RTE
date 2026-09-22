@@ -5,6 +5,37 @@ desktop, or Kimi Code. Work from this repository's root. **Build the current
 source before configuring a client or starting the server.** Do not use an
 older `rte` binary found on `PATH`.
 
+If changing firmware as well as using the MCP, read `AGENTS.md`. It lists the
+firmware interfaces that require matching MCP, Studio, or protocol changes.
+The tool list alone cannot guarantee compatibility with a newly changed image.
+
+## Updating an existing RTE MCP installation
+
+Use this path if an earlier RTE MCP already works on this machine:
+
+1. Find the existing `rte` MCP entry in the client configuration and note its
+   `command` and `--workspace` paths. Keep the entry; update it in place so
+   the client does not start two RTE servers.
+2. Bring the repository checkout up to date. For a clean checkout tracking
+   its intended branch, run `git pull --ff-only`. If there are local changes
+   or the branch has diverged, preserve and integrate them before building.
+3. Run the full build and test commands in section 1 below. Both `rte` and
+   `RTEStudio` must come from the updated source: the MCP and Studio session
+   endpoint evolve together. If the MCP entry points to an installed copy,
+   run the install command in section 3 again after the build.
+4. Point the existing entry to the current binary's absolute path and this
+   checkout's absolute `--workspace` path, using section 3 as the reference.
+   Remove an obsolete RTE MCP entry that still launches another binary.
+5. Stop and restart RTE Studio, then restart the MCP client so it starts the
+   rebuilt server. Run the section 2 tool-list check. With Studio connected,
+   check `rte_device_status`, `rte_signal_info`, and
+   `rte_device_commands` against the running firmware. If the old tool list
+   persists, check the configured executable path and restart the client.
+
+Updating the host MCP does not flash either MCU. Firmware-dependent features
+need firmware images containing their matching contracts; see `AGENTS.md` for
+the interfaces to check before a main or coprocessor reflash.
+
 ## 1. Prepare and build
 
 RTE needs CMake 3.24+, a C++20 compiler, Ninja, and Qt 6 with Core, Gui,
@@ -149,8 +180,16 @@ Codex, ChatGPT desktop, and Kimi Code.
   one value, `rte_device_snapshot` for a FOC bundle or custom signal list,
   and the history tools for samples over time. `rte_device_histories` reads
   up to eight signals from one Studio store snapshot; each sample retains
-  its own timestamp. `rte_device_trends` renders those histories as compact
-  48-bin sparklines with min, max, mean, RMS, and change. Use
+  its own timestamp. `rte_device_trends` analyzes the live numeric time
+  series, not the graph JSON: 48-bin sparklines plus slope and fit, early/late
+  mean and RMS change, standard deviation, steps, isolated spikes, approximate
+  resolved oscillation frequency, sample rate, and sampling gaps. Its text
+  names the observed pattern; structured metrics retain the evidence. Call
+  it before and after a motor adjustment with the same signals and window
+  to compare behavior. Use `rte_device_histories` for the underlying samples
+  when a pattern needs closer inspection. A `limited` quality flag means the
+  observed samples or window coverage do not support a strong conclusion;
+  mean and RMS are sample based and do not interpolate gaps. Use
   `rte_device_console` for received lines.
 - `rte_build_info` returns the running firmware's graph hash, effective node
   list, and declared graph telemetry signals. `rte_signal_info` joins that

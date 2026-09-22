@@ -199,9 +199,20 @@ does not encode physical ranges. Old images can still send ordinary telemetry,
 but cannot prove which graph is running. `rte_device_snapshot` reads a named
 FOC bundle or custom list; `rte_device_histories` reads up to eight numeric
 signals under one store lock with their individual timestamps. The histories
-are not synchronized MCU samples. `rte_device_trends` summarizes them as
-sparklines and min/max/mean/RMS/change metrics, with an intra-bin range row
-when samples vary inside a time bin.
+are not synchronized MCU samples. `rte_device_trends` analyzes these logged
+time series rather than the graph JSON. It returns sparklines; min/max/mean,
+RMS and standard deviation; a time-based slope and linear-fit strength;
+early-to-late mean and RMS shifts; step detection; isolated spike count;
+sampling gaps; and an approximate oscillation frequency when a repeated
+shape is resolved. The text result describes the pattern, while
+`structuredContent.metrics` contains
+the math. Compare successive calls with the same signals and window to see
+how a motor adjustment changed behavior. Its 48-bin chart is auto-scaled per
+signal, and periodic behavior faster than the sampled telemetry can alias;
+use `rte_device_histories` to inspect individual values and timestamps. Means,
+RMS values, and regression use received samples without interpolation, so
+gaps can bias them; `quality: limited` flags poor window coverage or large
+gaps.
 `rte_device_signal` includes signal age and freshness; when a name is absent,
 it returns a structured `not_in_build`, `configured_not_streaming`, or
 `unknown_signal` code when the catalog can determine the reason.
@@ -217,6 +228,25 @@ firmware, the announced command count before marking the catalog complete.
 Older images report `count_verified: false`. The manual equivalent is `help`
 in Studio's Runtime console or `tool rte_device_commands` in its RTE command
 dialog.
+
+### Firmware changes and MCP compatibility
+
+The MCP tool names and schemas are host code; they do not regenerate from a
+firmware image. Generic command sending accepts new firmware command text,
+and `rte_device_commands` discovers registered commands at runtime while the
+firmware's `help` output keeps its current format. Telemetry and signal
+history tools accept new names from received frames; a generated Gen7 image
+also supplies the signal manifest. Agents should query the connected image
+again after a reflash rather than rely on a catalog from an earlier image.
+
+Some convenience behavior is tied to specific firmware contracts: FOC plot,
+snapshot, and default trend names; controller and fault status keys; the
+`spikes` command and its text capture format; the `help` parser; telemetry
+framing and IDs; and coprocessor bridge commands and flash settings. An image
+change to any of these needs a matching host update and verification. The
+root `AGENTS.md` gives the change checklist for coding agents. The existing
+MCP integration test uses simulated ports and responses, so passing it does
+not establish compatibility with a newly flashed image.
 
 In Studio, the Runtime plots and signal table show the same live data and
 trends; the **FOC** preset recognizes both generated `cg_` and native `foc_`

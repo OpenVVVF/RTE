@@ -796,7 +796,7 @@ json McpTools() {
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 4000}}}}, {"signals"}),
-        ToolDefinition("rte_device_trends", "Show live motor-signal trends as compact sparklines with range, RMS, and latest values. Defaults to available FOC signals.",
+        ToolDefinition("rte_device_trends", "Analyze live telemetry time series: sparklines, slopes, early/late change, variability, isolated spikes, and resolved oscillation. Defaults to available FOC signals.",
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}}}),
@@ -998,6 +998,16 @@ void RecordMcpActivity(const fs::path& sessionPath, const std::string& name,
         {{"action", name}, {"detail", detail}, {"state", state}}, &error);
 }
 
+double Median(std::vector<double> values) {
+    if (values.empty()) return 0.0;
+    const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
+    std::nth_element(values.begin(), middle, values.end());
+    const double upper = *middle;
+    if (values.size() % 2) return upper;
+    const double lower = *std::max_element(values.begin(), middle);
+    return (lower + upper) * 0.5;
+}
+
 json McpTrends(const json& histories) {
     constexpr std::size_t width = 48;
     constexpr std::array<const char*, 8> levels = {
@@ -1005,7 +1015,8 @@ json McpTrends(const json& histories) {
     const double end = histories.value("window_end_s", 0.0);
     const double window = histories.value("window_s", 5.0);
     std::ostringstream chart;
-    chart << "Recent " << window << " s; each row auto-scaled; left is older, right is newer.\n";
+    chart << "Recent " << window << " s; rows are auto-scaled, left older and right newer. "
+          << "Analysis uses recorded sample times.\n";
     json metrics = json::object();
     for (auto it = histories.at("series").begin(); it != histories.at("series").end(); ++it) {
         const std::string name = it.key();
@@ -1014,7 +1025,42 @@ json McpTrends(const json& histories) {
             chart << name << "  [no samples in window]\n";
             continue;
         }
+        struct Point { double t, y; };
+        std::vector<Point> points;
+        points.reserve(samples.size());
+        std::size_t invalidSamples = 0;
+        std::size_t timestampResets = 0;
+        for (const auto& sample : samples) {
+            if (!sample.is_object() || !sample.contains("time_s")
+                || !sample.contains("value") || !sample["time_s"].is_number()
+                || !sample["value"].is_number()) {
+                ++invalidSamples;
+                continue;
+            }
+            const double t = sample.at("time_s").get<double>();
+            const double value = sample.at("value").get<double>();
+            if (!std::isfinite(t) || !std::isfinite(value)) {
+                ++invalidSamples;
+                continue;
+            }
+            // If a source clock restarts, analyze only its newest monotonic
+            // segment rather than mixing samples across the discontinuity.
+            if (!points.empty() && t < points.back().t) {
+                points.clear();
+                ++timestampResets;
+            }
+            points.push_back({t, value});
+        }
+        if (points.empty()) {
+            chart << name << "  [no finite numeric samples in window]\n";
+            metrics[name] = {{"samples", 0}, {"invalid_samples", invalidSamples},
+                             {"timestamp_resets", timestampResets},
+                             {"quality", "limited"}, {"pattern", "no_finite_samples"}};
+            continue;
+        }
+
         std::array<double, width> bucketSum{};
+        std::array<double, width> bucketTimeSum{};
         std::array<double, width> bucketMin{};
         std::array<double, width> bucketMax{};
         std::array<std::size_t, width> bucketCount{};
@@ -1023,10 +1069,9 @@ json McpTrends(const json& histories) {
         double sum = 0.0, squareSum = 0.0;
         double first = 0.0, last = 0.0;
         std::size_t count = 0;
-        for (const auto& sample : samples) {
-            const double t = sample.at("time_s").get<double>();
-            const double value = sample.at("value").get<double>();
-            if (!std::isfinite(t) || !std::isfinite(value)) continue;
+        for (const auto& point : points) {
+            const double t = point.t;
+            const double value = point.y;
             if (count++ == 0) first = value;
             last = value;
             low = std::min(low, value);
@@ -1037,13 +1082,91 @@ json McpTrends(const json& histories) {
                 (t - (end - window)) / window * static_cast<double>(width),
                 0.0, static_cast<double>(width - 1)));
             bucketSum[bin] += value;
+            bucketTimeSum[bin] += t;
             if (bucketCount[bin]++ == 0) bucketMin[bin] = bucketMax[bin] = value;
             else {
                 bucketMin[bin] = std::min(bucketMin[bin], value);
                 bucketMax[bin] = std::max(bucketMax[bin], value);
             }
         }
-        if (count == 0) continue;
+        const double mean = sum / count;
+        double varianceSum = 0.0, timeSum = 0.0, timeSquareSum = 0.0;
+        double timeValueSum = 0.0;
+        std::vector<double> intervals, jumps;
+        intervals.reserve(count > 0 ? count - 1 : 0);
+        jumps.reserve(count > 0 ? count - 1 : 0);
+        for (std::size_t i = 0; i < count; ++i) {
+            const double x = points[i].t - points.front().t;
+            const double dy = points[i].y - mean;
+            varianceSum += dy * dy;
+            timeSum += x;
+            timeSquareSum += x * x;
+            timeValueSum += x * dy;
+            if (i) {
+                const double dt = points[i].t - points[i - 1].t;
+                if (dt > 0.0) intervals.push_back(dt);
+                jumps.push_back(std::abs(points[i].y - points[i - 1].y));
+            }
+        }
+        const double duration = points.back().t - points.front().t;
+        const double stddev = std::sqrt(varianceSum / count);
+        const double timeVariance = timeSquareSum - timeSum * timeSum / count;
+        const double slope = timeVariance > 0.0 ? timeValueSum / timeVariance : 0.0;
+        const double trendR2 = varianceSum > 0.0 && timeVariance > 0.0
+            ? std::clamp(slope * slope * timeVariance / varianceSum, 0.0, 1.0) : 0.0;
+        const double residualStd = std::sqrt(std::max(
+            0.0, varianceSum * (1.0 - trendR2)) / count);
+        double earlySum = 0.0, lateSum = 0.0, earlySquares = 0.0, lateSquares = 0.0;
+        std::size_t earlyCount = 0, lateCount = 0;
+        const double earlyEnd = points.front().t + 0.25 * duration;
+        const double lateStart = points.back().t - 0.25 * duration;
+        for (const auto& point : points) {
+            if (point.t <= earlyEnd) {
+                earlySum += point.y;
+                earlySquares += point.y * point.y;
+                ++earlyCount;
+            }
+            if (point.t >= lateStart) {
+                lateSum += point.y;
+                lateSquares += point.y * point.y;
+                ++lateCount;
+            }
+        }
+        const double earlyMean = earlySum / earlyCount;
+        const double lateMean = lateSum / lateCount;
+        const double earlyRms = std::sqrt(earlySquares / earlyCount);
+        const double lateRms = std::sqrt(lateSquares / lateCount);
+        const double earlyStd = std::sqrt(std::max(0.0,
+            earlySquares / earlyCount - earlyMean * earlyMean));
+        const double lateStd = std::sqrt(std::max(0.0,
+            lateSquares / lateCount - lateMean * lateMean));
+        const double medianDt = Median(intervals);
+        const double medianJump = Median(jumps);
+        const double age = std::max(0.0, end - points.back().t);
+        std::size_t gaps = 0, isolatedSpikes = 0;
+        double maxGap = 0.0, largestLocalJump = 0.0, stepTime = 0.0;
+        for (std::size_t i = 1; i < count; ++i) {
+            const double dt = points[i].t - points[i - 1].t;
+            maxGap = std::max(maxGap, dt);
+            if (medianDt > 0.0 && dt > 3.0 * medianDt) ++gaps;
+            if (dt <= 0.0 || (medianDt > 0.0 && dt > 3.0 * medianDt)) continue;
+            const double jump = std::abs(points[i].y - points[i - 1].y);
+            if (jump > largestLocalJump) {
+                largestLocalJump = jump;
+                stepTime = 0.5 * (points[i].t + points[i - 1].t);
+            }
+        }
+        const double spikeThreshold = std::max(6.0 * medianJump, 0.2 * (high - low));
+        for (std::size_t i = 1; i + 1 < count && spikeThreshold > 0.0; ++i) {
+            if (medianDt > 0.0 && (points[i].t - points[i - 1].t > 3.0 * medianDt
+                || points[i + 1].t - points[i].t > 3.0 * medianDt)) continue;
+            const double left = points[i].y - points[i - 1].y;
+            const double right = points[i].y - points[i + 1].y;
+            if (left * right > 0.0 && std::abs(left) > spikeThreshold
+                && std::abs(right) > spikeThreshold
+                && std::abs(points[i - 1].y - points[i + 1].y) < spikeThreshold)
+                ++isolatedSpikes;
+        }
         std::string spark, spread;
         const double span = high - low;
         double maxSpread = 0.0;
@@ -1051,27 +1174,138 @@ json McpTrends(const json& histories) {
             if (bucketCount[i]) maxSpread = std::max(maxSpread, bucketMax[i] - bucketMin[i]);
         for (std::size_t i = 0; i < width; ++i) {
             if (!bucketCount[i]) { spark += "·"; spread += " "; continue; }
-            const double mean = bucketSum[i] / bucketCount[i];
+            const double bucketMean = bucketSum[i] / bucketCount[i];
             const auto level = static_cast<std::size_t>(std::clamp(
-                span > 0.0 ? (mean - low) / span * 7.0 : 3.0, 0.0, 7.0));
+                span > 0.0 ? (bucketMean - low) / span * 7.0 : 3.0, 0.0, 7.0));
             spark += levels[level];
             const auto spreadLevel = static_cast<std::size_t>(std::clamp(
                 maxSpread > 0.0 ? (bucketMax[i] - bucketMin[i]) / maxSpread * 7.0 : 0.0,
                 0.0, 7.0));
             spread += levels[spreadLevel];
         }
+        // Autocorrelation of detrended bin means identifies a repeated shape
+        // only when at least three cycles fit in the observed window. This is
+        // descriptive, not a vibration diagnosis; telemetry can alias faster
+        // motor or PWM frequencies.
+        std::array<double, width> residual{};
+        std::array<bool, width> occupied{};
+        std::size_t occupiedBins = 0;
+        for (std::size_t i = 0; i < width; ++i) {
+            if (!bucketCount[i]) continue;
+            const double binTime = bucketTimeSum[i] / bucketCount[i];
+            residual[i] = bucketSum[i] / bucketCount[i]
+                - (mean + slope * (binTime - points.front().t - timeSum / count));
+            occupied[i] = true;
+            ++occupiedBins;
+        }
+        bool passedNegativeLobe = false;
+        double oscillationHz = 0.0, bestCorrelation = 0.0;
+        std::size_t detectedLag = 0;
+        for (std::size_t lag = 2;
+             lag <= width / 3 && occupiedBins >= 2 * width / 3
+                 && residualStd > 0.05 * stddev
+                 && residualStd > 1e-9 * std::max(std::abs(mean), span);
+             ++lag) {
+            double x = 0.0, y = 0.0, xx = 0.0, yy = 0.0, xy = 0.0;
+            std::size_t pairs = 0;
+            for (std::size_t i = 0; i + lag < width; ++i) {
+                if (!occupied[i] || !occupied[i + lag]) continue;
+                x += residual[i];
+                y += residual[i + lag];
+                xx += residual[i] * residual[i];
+                yy += residual[i + lag] * residual[i + lag];
+                xy += residual[i] * residual[i + lag];
+                ++pairs;
+            }
+            if (pairs < width / 3) continue;
+            const double varianceX = xx - x * x / pairs;
+            const double varianceY = yy - y * y / pairs;
+            if (varianceX <= 0.0 || varianceY <= 0.0) continue;
+            const double correlation = (xy - x * y / pairs)
+                / std::sqrt(varianceX * varianceY);
+            if (correlation < -0.2) passedNegativeLobe = true;
+            if (passedNegativeLobe && oscillationHz == 0.0 && correlation > 0.7
+                && medianDt > 0.0
+                && (width / (lag * window)) < 0.45 / medianDt) {
+                bestCorrelation = correlation;
+                oscillationHz = width / (lag * window);
+                detectedLag = lag;
+            }
+        }
+        const bool enoughData = count >= 8 && duration > 0.0;
+        const bool step = enoughData && span > 0.0
+            && largestLocalJump >= 0.6 * span
+            && std::abs(lateMean - earlyMean) >= 0.6 * span
+            && earlyStd <= 0.15 * span && lateStd <= 0.15 * span;
+        std::string pattern = "insufficient_samples";
+        if (enoughData) {
+            if (oscillationHz > 0.0) pattern = "oscillating";
+            else if (step) pattern = lateMean > earlyMean ? "step_up" : "step_down";
+            else if (isolatedSpikes) pattern = "isolated_spikes";
+            else if (trendR2 >= 0.65 && std::abs(slope * duration) >= 0.35 * span)
+                pattern = slope > 0.0 ? "rising" : "falling";
+            else if (std::abs(lateMean - earlyMean) <= 0.25 * stddev)
+                pattern = "steady_mean";
+            else pattern = "variable";
+        }
+        const bool limited = !enoughData || invalidSamples > 0 || timestampResets > 0
+            || duration < 0.5 * window
+            || occupiedBins < 2 * width / 3
+            || maxGap > 0.1 * window || gaps > count / 10
+            || age > std::max(0.1 * window, 3.0 * medianDt);
+        const double maxAnalyzedHz = medianDt > 0.0
+            ? std::min(width / (2.0 * window), 0.45 / medianDt) : 0.0;
+        std::ostringstream interpretation;
+        interpretation << pattern << "; slope=" << slope << "/s (R²=" << trendR2
+                       << "); early→late mean=" << earlyMean << "→" << lateMean;
+        if (oscillationHz > 0.0)
+            interpretation << "; repeated pattern ≈" << oscillationHz << " Hz";
+        if (step) interpretation << "; step near t=" << stepTime << " s";
+        if (isolatedSpikes) interpretation << "; isolated spikes=" << isolatedSpikes;
+        if (gaps) interpretation << "; sampling gaps=" << gaps;
+        if (invalidSamples) interpretation << "; invalid samples=" << invalidSamples;
+        if (timestampResets) interpretation << "; timestamp resets=" << timestampResets;
+        if (limited) interpretation << "; limited window coverage or samples";
+
         chart << name << "  " << spark << "  last=" << last
               << "  min=" << low << "  max=" << high << "  rms="
-              << std::sqrt(squareSum / count) << "  Δ=" << (last - first) << '\n';
+              << std::sqrt(squareSum / count) << "  Δ=" << (last - first) << '\n'
+              << "  " << interpretation.str() << '\n';
         if (maxSpread > 0.0) chart << "  intra-bin range " << spread << '\n';
-        metrics[name] = {{"samples", count}, {"first", first}, {"last", last},
-                         {"min", low}, {"max", high}, {"mean", sum / count},
+        metrics[name] = {{"samples", count}, {"invalid_samples", invalidSamples},
+                         {"timestamp_resets", timestampResets},
+                         {"first", first}, {"last", last},
+                         {"min", low}, {"max", high}, {"mean", mean},
                          {"rms", std::sqrt(squareSum / count)}, {"delta", last - first},
+                         {"stddev", stddev}, {"slope_per_s", slope},
+                         {"trend_r2", trendR2}, {"early_mean", earlyMean},
+                         {"late_mean", lateMean}, {"mean_shift", lateMean - earlyMean},
+                         {"early_rms", earlyRms}, {"late_rms", lateRms},
+                         {"early_stddev", earlyStd}, {"late_stddev", lateStd},
+                         {"early_samples", earlyCount}, {"late_samples", lateCount},
+                         {"rms_shift", lateRms - earlyRms},
+                         {"duration_s", duration}, {"age_at_window_end_s", age},
+                         {"coverage_fraction", window > 0.0 ? duration / window : 0.0},
+                         {"quality", limited ? "limited" : "adequate"},
+                         {"median_sample_interval_s", medianDt},
+                         {"sample_rate_hz", medianDt > 0.0 ? 1.0 / medianDt : 0.0},
+                         {"sampling_gaps", gaps}, {"max_sample_gap_s", maxGap},
+                         {"occupied_bins", occupiedBins},
+                         {"isolated_spikes", isolatedSpikes},
+                         {"step_time_s", step ? json(stepTime) : json(nullptr)},
+                         {"oscillation_hz", oscillationHz > 0.0 ? json(oscillationHz) : json(nullptr)},
+                         {"oscillation_lag_bins", detectedLag},
+                         {"oscillation_search_band_hz", maxAnalyzedHz > 3.0 / window
+                             ? json{{"min", 3.0 / window}, {"max", maxAnalyzedHz}}
+                             : json(nullptr)},
+                         {"oscillation_correlation", bestCorrelation},
+                         {"pattern", pattern}, {"interpretation", interpretation.str()},
                          {"sparkline", spark}, {"range_sparkline", spread}};
     }
     const json report = {{"window_s", window}, {"window_end_s", end},
                          {"metrics", metrics}, {"chart", chart.str()},
-                         {"missing", histories.value("missing", json::array())}};
+                         {"missing", histories.value("missing", json::array())},
+                         {"note", "Mean, RMS, and regression use received samples without interpolation; sampling gaps can bias them. Pattern labels describe sampled telemetry only; absence of detected oscillation does not rule out faster motor or PWM behavior."}};
     json response = McpText(chart.str());
     response["structuredContent"] = report;
     return response;
