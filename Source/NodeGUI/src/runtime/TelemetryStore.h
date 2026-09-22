@@ -187,6 +187,10 @@ public:
                          std::vector<float>& t,
                          std::vector<float>& y) const;
 
+    // Copies the newest string telemetry events for one key from the session.
+    bool CopyStringHistory(const std::string& key, std::size_t limit,
+                           std::vector<SessionStringSample>& samples) const;
+
     // Latest float value of one signal. Returns false if unknown.
     bool LatestValue(const std::string& key, float& value) const;
 

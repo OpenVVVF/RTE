@@ -13,9 +13,15 @@
 #include <NodeAPI/Serialization.h>
 #include <NodeAPI/Timing.h>
 #include <RTELogger/Logger.h>
+#include <inverter_protocol/host/uart_transport.h>
+#include <inverter_protocol/packet_parser.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -50,11 +56,14 @@ void Usage() {
         << "  generate --graph FILE --base-source DIR --output DIR [--templates DIR]\n"
         << "  build --graph FILE --base-source DIR [--source-output DIR] [--build-dir DIR]\n"
         << "        [--build-type TYPE] [--toolchain MODE] [--generator NAME] [--clean]\n"
-        << "  flash --firmware FILE [--serial PORT | --session FILE] [--manual-boot]\n"
+        << "  flash --firmware FILE [--target main|coproc] [--serial PORT] [--control-port PORT]\n"
+        << "        [--session FILE] [--programmer FILE] [--attempts N] [--manual-boot]\n"
         << "  mcp2221 enter|exit|release\n"
-        << "  device status|telemetry|console|command [--session FILE]\n"
+        << "  device status|telemetry|console|command|mode [--session FILE]\n"
+        << "  device mode [--serial PORT] [--control-port PORT] [--probe-bootloader]\n"
         << "  sim --graph FILE [--scenario FILE] [--base-source DIR] [--name NAME]\n"
         << "      [--live] [--realtime F] [--no-build] [--output-format text|json|jsonl]\n"
+        << "      WARNING: simulation is not correctly implemented; use is not advised\n"
         << "  trace record --interface can0 --output FILE [--seconds N] [--id-base ID]\n"
         << "  trace export --input FILE --output CSV\n"
         << "  mcp [--workspace PATH] [--session FILE]\n";
@@ -94,11 +103,14 @@ struct Options {
     std::optional<fs::path> programmer;
     std::optional<fs::path> session;
     std::string serial;
+    std::string controlPort;
+    std::string target = "main";
+    unsigned attempts = 3;
     std::string buildType = "Release";
     std::string toolchain = "auto";
     std::string generator = "Ninja";
     bool clean = false;
-    bool autoGpio = true;
+    bool automaticBoot = true;
 };
 
 bool ParseOptions(const std::vector<std::string>& args, Options& options,
@@ -125,12 +137,22 @@ bool ParseOptions(const std::vector<std::string>& args, Options& options,
         else if (arg == "--programmer") { if (!nextPath("--programmer", options.programmer)) return false; }
         else if (arg == "--session") { if (!nextPath("--session", options.session)) return false; }
         else if (arg == "--serial") { if (!nextString("--serial", options.serial)) return false; }
+        else if (arg == "--control-port") { if (!nextString("--control-port", options.controlPort)) return false; }
+        else if (arg == "--target") { if (!nextString("--target", options.target)) return false; }
+        else if (arg == "--attempts") {
+            if (i + 1 >= args.size()) { error = "missing value for --attempts"; return false; }
+            try {
+                const std::string value = args[++i];
+                const unsigned long parsed = std::stoul(value);
+                if (parsed < 1 || parsed > 10 || std::to_string(parsed) != value) throw std::invalid_argument("range");
+                options.attempts = static_cast<unsigned>(parsed);
+            } catch (...) { error = "--attempts must be 1 through 10"; return false; }
+        }
         else if (arg == "--build-type") { if (!nextString("--build-type", options.buildType)) return false; }
         else if (arg == "--toolchain") { if (!nextString("--toolchain", options.toolchain)) return false; }
         else if (arg == "--generator") { if (!nextString("--generator", options.generator)) return false; }
         else if (arg == "--clean") options.clean = true;
-        else if (arg == "--manual-boot") options.autoGpio = false;
-        else if (arg == "--auto-gpio") options.autoGpio = true;
+        else if (arg == "--manual-boot") options.automaticBoot = false;
         else { error = "unknown option: " + arg; return false; }
     }
 
@@ -314,11 +336,16 @@ int Flash(const Options& options, Format format) {
         Emit(format, {{"event","error"},{"message","--firmware is required"}});
         return 2;
     }
+    if (options.target != "main" && options.target != "coproc") {
+        Emit(format, {{"event","error"},{"message","--target must be main or coproc"}});
+        return 2;
+    }
     std::string serial = options.serial;
     std::optional<RTEAutomation::SessionDescriptor> session;
     bool studioLease = false;
     std::string sessionError;
-    if (serial.empty()) {
+    if (options.target == "main" && serial.empty()
+        && (options.session || fs::exists(RTEAutomation::CurrentSessionPath()))) {
         session = RTEAutomation::DiscoverSession(options.session.value_or(fs::path{}), &sessionError);
         if (!session) {
             Emit(format, {{"event","error"},{"message",sessionError}});
@@ -336,8 +363,12 @@ int Flash(const Options& options, Format format) {
     RTEAutomation::FlashOptions flash;
     flash.firmware = *options.firmware;
     flash.serialPort = serial;
+    flash.controlPort = options.controlPort;
+    flash.target = options.target == "coproc"
+        ? RTEAutomation::FlashTarget::Coprocessor : RTEAutomation::FlashTarget::Main;
+    flash.automaticBoot = options.automaticBoot;
+    flash.attempts = options.attempts;
     if (options.programmer) flash.programmer = *options.programmer;
-    flash.autoGpio = options.autoGpio;
     const auto result = RTEAutomation::FlashFirmware(
         flash, [&](const RTEAutomation::FlashEvent& event) {
             Emit(format, {{"event","progress"},
@@ -394,12 +425,161 @@ void EmitDeviceResult(Format format, const std::string& operation, const json& r
     }
 }
 
+bool SameSerialPort(const std::string& left, const std::string& right) {
+    if (left.empty() || right.empty()) return false;
+    if (left == right) return true;
+    std::error_code ec;
+    return fs::equivalent(left, right, ec) && !ec;
+}
+
+unsigned CountAppFrames(const std::string& port, int sampleMs, std::string& error) {
+    ivp::UartTransport transport;
+    if (!transport.open(port, 460800)) {
+        error = "could not open UART bridge " + port;
+        return 0;
+    }
+    unsigned valid = 0;
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(sampleMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::array<std::uint8_t, ivp::UartTransport::RX_FRAME_CAP> packet{};
+        const int length = transport.receivePacket(packet.data(), packet.size());
+        if (length > 0) {
+            ivp_header_t header{};
+            const std::uint8_t* payload = nullptr;
+            std::uint16_t payloadLength = 0;
+            if (ivp_packet_parse(packet.data(), static_cast<std::size_t>(length),
+                                 &header, &payload, &payloadLength) == IVP_OK) ++valid;
+        }
+        if (valid >= 2) break;
+        if (length <= 0) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return valid;
+}
+
+json ProbeMainMode(const std::string& preferredBridge,
+                   const std::string& preferredControl,
+                   const fs::path& sessionPath,
+                   bool probeBootloader,
+                   const fs::path& preferredProgrammer) {
+    const auto discovered = RTEAutomation::DiscoverGen7BridgePorts(preferredBridge);
+    const std::string bridge = preferredBridge.empty() ? discovered.bridge : preferredBridge;
+    const std::string control = preferredControl.empty() ? discovered.control : preferredControl;
+    json report = {{"state", "unknown"}, {"bridge_port", bridge},
+                   {"control_port", control}, {"app_frames_observed", 0},
+                   {"notes", json::array()}};
+    const auto controlStatus = RTEAutomation::ReadGen7ControlStatus(control);
+    if (controlStatus.success) {
+        report["control_status"] = controlStatus.line;
+        if (controlStatus.line.find("UART_MODE=BOOT_8E1") != std::string::npos)
+            report["bridge_mode"] = "bootloader";
+        else if (controlStatus.line.find("UART_MODE=APP_8N1") != std::string::npos)
+            report["bridge_mode"] = "app";
+        else report["bridge_mode"] = "unknown";
+    } else {
+        report["bridge_mode"] = "unknown";
+        report["notes"].push_back(controlStatus.error);
+    }
+
+    std::string sessionError;
+    const auto session = RTEAutomation::DiscoverSession(sessionPath, &sessionError);
+    bool studioOwnsBridge = false;
+    if (session) {
+        const auto status = RTEAutomation::RequestSession(*session, "device.status",
+                                                           json::object(), &sessionError);
+        if (status && status->value("transport", "unknown") == "serial"
+            && SameSerialPort(status->value("device_port", ""), bridge)
+            && !status->value("suspended", false)) {
+            studioOwnsBridge = true;
+            report["observation_source"] = "RTE Studio telemetry";
+        }
+    }
+
+    if (report["bridge_mode"] == "bootloader") {
+        report["state"] = "bootloader_selected";
+        report["notes"].push_back("The coprocessor selected bootloader UART and reset the main MCU into boot mode; this alone does not prove the ROM bootloader responds.");
+        if (probeBootloader && !bridge.empty() && !studioOwnsBridge) {
+            const fs::path programmer = preferredProgrammer.empty()
+                ? RTEAutomation::FindStm32Programmer() : preferredProgrammer;
+            if (programmer.empty()) {
+                report["notes"].push_back("STM32_Programmer_CLI not found; bootloader handshake was not checked.");
+            } else {
+                RTEAutomation::ProcessSpec process;
+                process.executable = programmer;
+                process.arguments = {"-c", "port=" + bridge, "br=460800", "P=EVEN", "db=8", "sb=1"};
+                const auto probe = RTEAutomation::RunProcess(process, [](const std::string&) {});
+                report["bootloader_probe_success"] = probe.started && probe.exitCode == 0;
+                report["state"] = probe.started && probe.exitCode == 0
+                    ? "bootloader_responding" : "bootloader_unresponsive";
+                if (!probe.started) report["notes"].push_back(probe.error);
+            }
+        } else if (probeBootloader && studioOwnsBridge) {
+            report["notes"].push_back("Bootloader probe skipped because RTE Studio owns the UART bridge.");
+        }
+        return report;
+    }
+
+    unsigned frames = 0;
+    if (studioOwnsBridge) {
+        const auto first = RTEAutomation::RequestSession(*session, "device.telemetry",
+                                                          json::object(), &sessionError);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        const auto second = RTEAutomation::RequestSession(*session, "device.telemetry",
+                                                           json::object(), &sessionError);
+        if (first && second) {
+            const auto before = first->value("good_frames", std::uint64_t{0});
+            const auto after = second->value("good_frames", std::uint64_t{0});
+            frames = static_cast<unsigned>(after > before ? after - before : 0);
+        } else report["notes"].push_back(sessionError);
+    } else if (!bridge.empty()) {
+        std::string probeError;
+        frames = CountAppFrames(bridge, 750, probeError);
+        report["observation_source"] = "passive UART frame sample";
+        if (!probeError.empty()) report["notes"].push_back(probeError);
+    } else report["notes"].push_back("UART bridge not found; pass --serial PORT.");
+    report["app_frames_observed"] = frames;
+    if (frames > 0) {
+        report["state"] = "app_responding";
+    } else if (report["bridge_mode"] == "app") {
+        report["state"] = "app_unresponsive_or_silent";
+        report["notes"].push_back("No valid app frames were observed. The main MCU may be hung, silent, unpowered, or disconnected; this cannot be distinguished without a main MCU heartbeat or external health signal.");
+    }
+    return report;
+}
+
+int DeviceMode(const std::vector<std::string>& args, Format format) {
+    std::string serial, control;
+    fs::path session, programmer;
+    bool probeBootloader = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--probe-bootloader") { probeBootloader = true; continue; }
+        if (args[i] != "--serial" && args[i] != "--control-port"
+            && args[i] != "--session" && args[i] != "--programmer") {
+            Emit(format, {{"event", "error"}, {"message", "unknown device mode option: " + args[i]}});
+            return 2;
+        }
+        if (i + 1 >= args.size()) {
+            Emit(format, {{"event", "error"}, {"message", "missing value for " + args[i]}});
+            return 2;
+        }
+        if (args[i] == "--serial") serial = args[++i];
+        else if (args[i] == "--control-port") control = args[++i];
+        else if (args[i] == "--session") session = args[++i];
+        else if (args[i] == "--programmer") programmer = args[++i];
+    }
+    EmitDeviceResult(format, "mode", ProbeMainMode(serial, control, session,
+                                                    probeBootloader, programmer));
+    return 0;
+}
+
 int Device(const std::vector<std::string>& args, Format format) {
     if (args.empty()) {
         Emit(format, {{"event", "error"}, {"message", "device subcommand is required"}});
         return 2;
     }
     const std::string operation = args.front();
+    if (operation == "mode") return DeviceMode(
+        std::vector<std::string>(args.begin() + 1, args.end()), format);
     fs::path sessionPath;
     std::uint64_t since = 0;
     std::size_t lines = 100;
@@ -460,17 +640,36 @@ json McpText(const std::string& text, bool error = false) {
     return result;
 }
 
+json McpJson(const json& value) {
+    return {{"content", json::array({{{"type", "text"}, {"text", value.dump(2)}}})},
+            {"structuredContent", value}};
+}
+
 json ToolDefinition(const std::string& name, const std::string& description,
                     json properties, std::vector<std::string> required = {}) {
     json schema = {{"type", "object"}, {"properties", std::move(properties)},
                    {"additionalProperties", false}};
     if (!required.empty()) schema["required"] = std::move(required);
-    return {{"name", name}, {"description", description}, {"inputSchema", std::move(schema)}};
+    const bool readOnly = name == "rte_project_info" || name == "rte_graph_read"
+        || name == "rte_validate" || name == "rte_bridge_ports"
+        || name == "rte_device_status" || name == "rte_device_telemetry"
+        || name == "rte_device_mode"
+        || name == "rte_device_signal" || name == "rte_device_history"
+        || name == "rte_device_string_history"
+        || name == "rte_device_console";
+    const bool destructive = name == "rte_flash" || name == "rte_device_command"
+        || name == "rte_device_command_response" || name == "rte_mcp2221";
+    return {{"name", name}, {"description", description},
+            {"inputSchema", std::move(schema)},
+            {"annotations", {{"readOnlyHint", readOnly}, {"destructiveHint", destructive}}}};
 }
 
 json McpTools() {
     const json path = {{"type", "string"}};
     return json::array({
+        ToolDefinition("rte_project_info", "List the RTE workspace and available graph files.", {}),
+        ToolDefinition("rte_graph_read", "Read a graph JSON file from the workspace.",
+            {{"graph", path}}, {"graph"}),
         ToolDefinition("rte_validate", "Validate an RTE graph without changing files.",
             {{"graph", path}, {"templates", path}}, {"graph"}),
         ToolDefinition("rte_generate", "Generate firmware sources from an RTE graph.",
@@ -479,22 +678,54 @@ json McpTools() {
         ToolDefinition("rte_build", "Generate and build firmware in the RTE user cache.",
             {{"graph", path}, {"base_source", path}, {"templates", path},
              {"build_type", {{"type", "string"}}}}, {"graph", "base_source"}),
-        ToolDefinition("rte_flash", "Flash a firmware binary using the portable RTE worker.",
+        ToolDefinition("rte_sim", "UNRELIABLE: simulation is not correctly implemented and is not advised for control or hardware decisions. Run only for simulator development.",
+            {{"graph", path}, {"scenario", path}, {"base_source", path},
+             {"name", {{"type", "string"}}}, {"no_build", {{"type", "boolean"}}}}, {"graph"}),
+        ToolDefinition("rte_trace_export", "Export a recorded RTE CAN trace to CSV.",
+            {{"input", path}, {"output", path}}, {"input", "output"}),
+        ToolDefinition("rte_trace_record", "Record a bounded CAN trace to a capture file.",
+            {{"interface", {{"type", "string"}}}, {"output", path},
+             {"seconds", {{"type", "integer"}, {"minimum", 1}, {"maximum", 3600}}},
+             {"id_base", {{"type", "string"}}}}, {"interface", "output", "seconds"}),
+        ToolDefinition("rte_bridge_ports", "Discover the Gen7 UART bridge and coprocessor control ports.", {}),
+        ToolDefinition("rte_mcp2221", "Legacy Gen6 MCP2221A boot/reset GPIO action.",
+            {{"action", {{"type", "string"}, {"enum", json::array({"enter", "exit", "release"})}}}},
+            {"action"}),
+        ToolDefinition("rte_flash", "Flash main MCU over the Gen7 UART bridge or coprocessor over USB DFU.",
             {{"firmware", path}, {"serial", {{"type", "string"}}},
+             {"control_port", {{"type", "string"}}},
+             {"target", {{"type", "string"}, {"enum", json::array({"main", "coproc"})}}},
+             {"programmer", path},
+             {"attempts", {{"type", "integer"}, {"minimum", 1}, {"maximum", 10}}},
              {"manual_boot", {{"type", "boolean"}}}}, {"firmware"}),
         ToolDefinition("rte_device_status", "Read the active RTE Studio device status.", {}),
-        ToolDefinition("rte_device_telemetry", "Read latest telemetry from RTE Studio.", {}),
+        ToolDefinition("rte_device_mode", "Diagnose Gen7 main MCU app/bootloader responsiveness without changing firmware. Silent app state is inconclusive.",
+            {{"serial", {{"type", "string"}}}, {"control_port", {{"type", "string"}}},
+             {"probe_bootloader", {{"type", "boolean"}}}, {"programmer", path}}),
+        ToolDefinition("rte_device_telemetry", "Read all latest numeric and string telemetry plus receive statistics.", {}),
+        ToolDefinition("rte_device_signal", "Read the latest value of one numeric or string telemetry signal.",
+            {{"signal", {{"type", "string"}}}}, {"signal"}),
+        ToolDefinition("rte_device_history", "Read recent time and value samples for one numeric telemetry signal.",
+            {{"signal", {{"type", "string"}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 12000}}}}, {"signal"}),
+        ToolDefinition("rte_device_string_history", "Read recent string telemetry events for one signal.",
+            {{"signal", {{"type", "string"}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}, {"signal"}),
         ToolDefinition("rte_device_console", "Read device console lines from RTE Studio.",
             {{"since", {{"type", "integer"}, {"minimum", 0}}},
              {"lines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}),
         ToolDefinition("rte_device_command",
-            "Send a device command. Requires the disabled-by-default write preference in RTE Studio.",
-            {{"command", {{"type", "string"}}}}, {"command"})
+            "Send any inverter command through RTE Studio. Returns a console cursor for reading its reply. Requires external writes enabled in Studio.",
+            {{"command", {{"type", "string"}}}}, {"command"}),
+        ToolDefinition("rte_device_command_response",
+            "Send an inverter command and collect console lines received afterward. Replies are time-window observations and may include unrelated device output.",
+            {{"command", {{"type", "string"}}},
+             {"timeout_ms", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}, {"command"})
     });
 }
 
 json RunCliTool(const std::string& tool, const json& arguments,
-                const fs::path& workspace) {
+                const fs::path& workspace, const fs::path& sessionPath) {
     RTEAutomation::ProcessSpec process;
     process.executable = RTEAutomation::ExecutablePath();
     process.workingDirectory = workspace;
@@ -519,7 +750,38 @@ json RunCliTool(const std::string& tool, const json& arguments,
     } else if (tool == "rte_flash") {
         process.arguments.emplace_back("flash");
         addPath("--firmware", "firmware"); addPath("--serial", "serial");
+        if (!sessionPath.empty() && !arguments.contains("serial")) {
+            process.arguments.emplace_back("--session");
+            process.arguments.push_back(sessionPath.string());
+        }
+        addPath("--control-port", "control_port"); addPath("--target", "target");
+        addPath("--programmer", "programmer");
+        if (arguments.contains("attempts")) {
+            process.arguments.emplace_back("--attempts");
+            process.arguments.push_back(std::to_string(arguments["attempts"].get<unsigned>()));
+        }
         if (arguments.value("manual_boot", false)) process.arguments.emplace_back("--manual-boot");
+    } else if (tool == "rte_sim") {
+        process.arguments.emplace_back("sim");
+        addPath("--graph", "graph"); addPath("--scenario", "scenario");
+        addPath("--base-source", "base_source"); addPath("--name", "name");
+        if (arguments.value("no_build", false)) process.arguments.emplace_back("--no-build");
+        process.arguments.emplace_back("--output-format");
+        process.arguments.emplace_back("jsonl");
+    } else if (tool == "rte_trace_export") {
+        process.arguments.emplace_back("trace");
+        process.arguments.emplace_back("export");
+        addPath("--input", "input"); addPath("--output", "output");
+    } else if (tool == "rte_trace_record") {
+        process.arguments.emplace_back("trace");
+        process.arguments.emplace_back("record");
+        addPath("--interface", "interface"); addPath("--output", "output");
+        addPath("--id-base", "id_base");
+        process.arguments.emplace_back("--seconds");
+        process.arguments.push_back(std::to_string(arguments["seconds"].get<unsigned>()));
+    } else if (tool == "rte_mcp2221") {
+        process.arguments.emplace_back("mcp2221");
+        process.arguments.push_back(arguments["action"].get<std::string>());
     } else return McpText("unknown tool: " + tool, true);
     std::string output;
     const auto result = RTEAutomation::RunProcess(process, [&](const std::string& line) {
@@ -527,30 +789,165 @@ json RunCliTool(const std::string& tool, const json& arguments,
         output += '\n';
     });
     if (!result.started) return McpText(result.error, true);
-    return McpText(output.empty() ? (result.exitCode == 0 ? "complete" : "operation failed") : output,
-                   result.exitCode != 0);
+    if (result.exitCode != 0)
+        return McpText(output.empty() ? "operation failed" : output, true);
+    json events = json::array();
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (line.empty()) continue;
+        const json event = json::parse(line, nullptr, false);
+        if (event.is_discarded()) return McpText(output);
+        events.push_back(event);
+    }
+    return McpJson({{"events", std::move(events)}, {"success", true}});
+}
+
+std::optional<fs::path> WorkspaceFile(const fs::path& workspace,
+                                      const std::string& requested) {
+    if (requested.empty()) return std::nullopt;
+    std::error_code ec;
+    const fs::path root = fs::weakly_canonical(workspace, ec);
+    if (ec) return std::nullopt;
+    const fs::path path = fs::weakly_canonical(
+        fs::path(requested).is_absolute() ? fs::path(requested) : root / requested, ec);
+    if (ec) return std::nullopt;
+    const fs::path relative = path.lexically_relative(root);
+    if (relative.empty() || relative == "." || *relative.begin() == "..") return std::nullopt;
+    if (!fs::is_regular_file(path, ec)) return std::nullopt;
+    return path;
+}
+
+json ProjectInfo(const fs::path& workspace) {
+    json graphs = json::array();
+    std::error_code ec;
+    fs::recursive_directory_iterator it(workspace, fs::directory_options::skip_permission_denied, ec), end;
+    for (; !ec && it != end && graphs.size() < 200; it.increment(ec)) {
+        if (it->is_directory(ec)) {
+            const std::string name = it->path().filename().string();
+            if (name == ".git" || name == "build" || name == "node_modules") it.disable_recursion_pending();
+            continue;
+        }
+        if (it->path().extension() != ".json") continue;
+        if (it->path().filename() == "node.json") continue;
+        const std::string relative = it->path().lexically_relative(workspace).generic_string();
+        if (relative.find("graph") != std::string::npos
+            || relative.find("Assets/Examples/") == 0) graphs.push_back(relative);
+    }
+    return {{"workspace", workspace.string()}, {"graphs", std::move(graphs)}};
+}
+
+json ValidateToolArguments(const std::string& name, const json& arguments) {
+    for (const auto& definition : McpTools()) {
+        if (definition["name"] != name) continue;
+        if (!arguments.is_object()) return McpText("tool arguments must be an object", true);
+        const auto& schema = definition["inputSchema"];
+        const auto& properties = schema["properties"];
+        for (const auto& key : schema.value("required", std::vector<std::string>{}))
+            if (!arguments.contains(key)) return McpText("missing required argument: " + key, true);
+        for (auto it = arguments.begin(); it != arguments.end(); ++it) {
+            if (!properties.contains(it.key())) return McpText("unknown argument: " + it.key(), true);
+            const auto& property = properties[it.key()];
+            const std::string type = property.value("type", "");
+            if ((type == "string" && !it.value().is_string())
+                || (type == "boolean" && !it.value().is_boolean())
+                || (type == "integer" && !it.value().is_number_integer()))
+                return McpText("invalid type for argument: " + it.key(), true);
+            if (type == "integer") {
+                const auto number = it.value().get<std::int64_t>();
+                if ((property.contains("minimum") && number < property["minimum"].get<std::int64_t>())
+                    || (property.contains("maximum") && number > property["maximum"].get<std::int64_t>()))
+                    return McpText("argument out of range: " + it.key(), true);
+            }
+            if (property.contains("enum") && std::find(property["enum"].begin(), property["enum"].end(), it.value()) == property["enum"].end())
+                return McpText("invalid value for argument: " + it.key(), true);
+        }
+        return json();
+    }
+    return McpText("unknown tool: " + name, true);
 }
 
 json CallMcpTool(const std::string& name, const json& arguments,
                  const fs::path& workspace, const fs::path& sessionPath) {
-    if (name.rfind("rte_device_", 0) != 0) return RunCliTool(name, arguments, workspace);
+    if (const json invalid = ValidateToolArguments(name, arguments); !invalid.is_null()) return invalid;
+    if (name == "rte_project_info") return McpJson(ProjectInfo(workspace));
+    if (name == "rte_bridge_ports") {
+        const auto ports = RTEAutomation::DiscoverGen7BridgePorts();
+        return McpJson({{"bridge", ports.bridge}, {"control", ports.control}});
+    }
+    if (name == "rte_graph_read") {
+        const auto path = WorkspaceFile(workspace, arguments["graph"].get<std::string>());
+        if (!path) return McpText("graph file is missing or outside the workspace", true);
+        std::ifstream input(*path);
+        std::ostringstream contents;
+        contents << input.rdbuf();
+        return McpText(contents.str());
+    }
+    if (name == "rte_device_mode")
+        return McpJson(ProbeMainMode(arguments.value("serial", ""),
+                                     arguments.value("control_port", ""), sessionPath,
+                                     arguments.value("probe_bootloader", false),
+                                     arguments.value("programmer", "")));
+    if (name.rfind("rte_device_", 0) != 0)
+        return RunCliTool(name, arguments, workspace, sessionPath);
     std::string method;
     json params = json::object();
     if (name == "rte_device_status") method = "device.status";
-    else if (name == "rte_device_telemetry") method = "device.telemetry";
+    else if (name == "rte_device_telemetry" || name == "rte_device_signal") method = "device.telemetry";
+    else if (name == "rte_device_history") {
+        method = "device.history";
+        params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 1000)}};
+    } else if (name == "rte_device_string_history") {
+        method = "device.string_history";
+        params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 1000)}};
+    }
     else if (name == "rte_device_console") {
         method = "device.console";
         params = {{"since", arguments.value("since", std::uint64_t{0})},
                   {"lines", arguments.value("lines", std::size_t{100})}};
-    } else if (name == "rte_device_command") {
+    } else if (name == "rte_device_command" || name == "rte_device_command_response") {
         method = "device.command";
-        params = {{"command", arguments.value("command", "")}};
+        params = {{"command", arguments["command"]}};
     } else return McpText("unknown tool: " + name, true);
     std::string error;
     const auto session = RTEAutomation::DiscoverSession(sessionPath, &error);
     if (!session) return McpText(error, true);
     const auto result = RTEAutomation::RequestSession(*session, method, params, &error);
-    return result ? McpText(result->dump(2)) : McpText(error, true);
+    if (!result) return McpText(error, true);
+    if (name == "rte_device_signal") {
+        const std::string signal = arguments["signal"];
+        if (result->at("signals").contains(signal))
+            return McpJson({{"signal", signal}, {"kind", "number"},
+                            {"value", result->at("signals").at(signal)}});
+        if (result->at("strings").contains(signal))
+            return McpJson({{"signal", signal}, {"kind", "string"},
+                            {"value", result->at("strings").at(signal)}});
+        return McpText("unknown telemetry signal: " + signal, true);
+    }
+    if (name != "rte_device_command_response") return McpJson(*result);
+    const auto since = result->value("console_since", std::uint64_t{0});
+    const int timeout = arguments.value("timeout_ms", 1500);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
+    json observed = json::array();
+    bool responseObserved = false;
+    do {
+        const auto console = RTEAutomation::RequestSession(*session, "device.console",
+            {{"since", since}, {"lines", 1000}}, &error);
+        if (!console) return McpText(error, true);
+        observed = console->value("lines", json::array());
+        responseObserved = false;
+        for (const auto& line : observed) {
+            const std::string text = line.value("text", "");
+            if (text != "(sent)" && text != "> " + arguments["command"].get<std::string>())
+                responseObserved = true;
+        }
+        if (responseObserved || std::chrono::steady_clock::now() >= deadline) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    } while (true);
+    return McpJson({{"command", arguments["command"]}, {"sent", true},
+                        {"console_since", since}, {"observed_lines", observed},
+                        {"response_observed", responseObserved},
+                        {"correlation", "lines received after command; unrelated output may be included"}});
 }
 
 int Mcp(const std::vector<std::string>& args) {
@@ -561,19 +958,38 @@ int Mcp(const std::vector<std::string>& args) {
         else if (args[i] == "--session" && i + 1 < args.size()) sessionPath = args[++i];
         else { std::cerr << "rte mcp: unknown or incomplete option: " << args[i] << '\n'; return 2; }
     }
+    std::error_code workspaceError;
+    workspace = fs::weakly_canonical(workspace, workspaceError);
+    if (workspaceError || !fs::is_directory(workspace)) {
+        std::cerr << "rte mcp: workspace is not a directory\n";
+        return 2;
+    }
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
+        json id = nullptr;
         try {
             const json request = json::parse(line);
+            if (!request.is_object() || request.value("jsonrpc", "") != "2.0"
+                || !request.contains("method") || !request["method"].is_string()) {
+                const json invalidId = request.is_object() && request.contains("id")
+                    ? request["id"] : json();
+                std::cout << json{{"jsonrpc","2.0"},{"id",invalidId},
+                    {"error",{{"code",-32600},{"message","invalid JSON-RPC request"}}}}.dump() << '\n';
+                std::cout.flush();
+                continue;
+            }
             if (!request.contains("id")) continue;
-            const json id = request["id"];
+            id = request["id"];
             const std::string method = request.value("method", "");
             json result;
             if (method == "initialize") {
                 result = {{"protocolVersion", "2025-03-26"},
-                          {"capabilities", {{"tools", json::object()}}},
-                          {"serverInfo", {{"name", "rte"}, {"version", "0.1.0"}}}};
+                          {"capabilities", {{"tools", json::object()},
+                                            {"resources", json::object()},
+                                            {"prompts", json::object()}}},
+                          {"instructions", "RTE Studio owns the live inverter connection. Use rte_device_mode to check Gen7 app or bootloader responsiveness without changing firmware. Use rte_device_telemetry for all latest values and rte_device_console for replies. Simulation is not correctly implemented and is not advised for control or hardware decisions. Flashing controls real hardware."},
+                          {"serverInfo", {{"name", "rte"}, {"version", "0.2.0"}}}};
             } else if (method == "tools/list") {
                 result = {{"tools", McpTools()}};
             } else if (method == "tools/call") {
@@ -581,6 +997,49 @@ int Mcp(const std::vector<std::string>& args) {
                 result = CallMcpTool(params.value("name", ""),
                                      params.value("arguments", json::object()),
                                      workspace, sessionPath);
+            } else if (method == "resources/list") {
+                json resources = json::array();
+                if (fs::is_regular_file(workspace / "README.md"))
+                    resources.push_back({{"uri", "rte://workspace/README.md"},
+                                         {"name", "README.md"}, {"mimeType", "text/markdown"}});
+                const json project = ProjectInfo(workspace);
+                for (const auto& graph : project["graphs"])
+                    resources.push_back({{"uri", "rte://workspace/" + graph.get<std::string>()},
+                                         {"name", graph}, {"mimeType", "application/json"}});
+                result = {{"resources", std::move(resources)}};
+            } else if (method == "resources/read") {
+                const json params = request.value("params", json::object());
+                const std::string uri = params.value("uri", "");
+                const std::string prefix = "rte://workspace/";
+                const auto path = uri.rfind(prefix, 0) == 0
+                    ? WorkspaceFile(workspace, uri.substr(prefix.size())) : std::nullopt;
+                if (!path) {
+                    std::cout << json{{"jsonrpc","2.0"},{"id",id},
+                        {"error",{{"code",-32602},{"message","resource missing or outside workspace"}}}}.dump() << '\n';
+                    std::cout.flush();
+                    continue;
+                }
+                std::ifstream input(*path);
+                std::ostringstream contents;
+                contents << input.rdbuf();
+                result = {{"contents", json::array({{{"uri", uri},
+                    {"mimeType", path->extension() == ".json" ? "application/json" : "text/markdown"},
+                    {"text", contents.str()}}})}};
+            } else if (method == "prompts/list") {
+                result = {{"prompts", json::array({{{"name", "rte_inverter_diagnostics"},
+                    {"description", "Inspect live inverter status, telemetry, console, and a graph before suggesting a test."}}})}};
+            } else if (method == "prompts/get") {
+                const json params = request.value("params", json::object());
+                if (params.value("name", "") != "rte_inverter_diagnostics") {
+                    std::cout << json{{"jsonrpc","2.0"},{"id",id},
+                        {"error",{{"code",-32602},{"message","unknown prompt"}}}}.dump() << '\n';
+                    std::cout.flush();
+                    continue;
+                }
+                result = {{"description", "Diagnose an RTE inverter"},
+                          {"messages", json::array({{{"role", "user"},
+                              {"content", {{"type", "text"}, {"text",
+                                  "Read RTE device status, all telemetry, and recent console output. Inspect the relevant graph and validate it. Report observations before sending commands or flashing firmware."}}}}})}};
             } else if (method == "ping") {
                 result = json::object();
             } else {
@@ -591,9 +1050,13 @@ int Mcp(const std::vector<std::string>& args) {
             }
             std::cout << json{{"jsonrpc","2.0"},{"id",id},{"result",std::move(result)}}.dump() << '\n';
             std::cout.flush();
-        } catch (const std::exception& exception) {
+        } catch (const json::parse_error& exception) {
             std::cout << json{{"jsonrpc","2.0"},{"id",nullptr},
                 {"error",{{"code",-32700},{"message",exception.what()}}}}.dump() << '\n';
+            std::cout.flush();
+        } catch (const std::exception& exception) {
+            std::cout << json{{"jsonrpc","2.0"},{"id",id},
+                {"error",{{"code",-32602},{"message",exception.what()}}}}.dump() << '\n';
             std::cout.flush();
         }
     }
@@ -645,7 +1108,8 @@ void SimUsage() {
     std::cerr
         << "usage: rte sim --graph FILE [--scenario FILE] [--base-source DIR]\n"
         << "               [--name NAME] [--live] [--realtime F] [--no-build]\n"
-        << "               [--output-format text|json|jsonl]\n";
+        << "               [--output-format text|json|jsonl]\n"
+        << "WARNING: simulation is not correctly implemented; use is not advised.\n";
 }
 
 bool ParseSimOptions(const std::vector<std::string>& args, SimOptions& options,
@@ -820,6 +1284,8 @@ int Sim(const std::vector<std::string>& args, Format format) {
         Emit(format, {{"event","error"},{"message","graph not found: " + options.graph->string()}});
         return 3;
     }
+    Emit(format, {{"event", "warning"},
+                  {"message", "Simulation is not correctly implemented and is not advised for control or hardware decisions."}});
 
     const fs::path exeDir = RTEAutomation::ExecutablePath().parent_path();
     const fs::path repoRoot = FindRepoRoot(exeDir);

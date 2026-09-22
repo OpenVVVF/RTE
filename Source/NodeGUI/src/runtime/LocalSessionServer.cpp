@@ -101,6 +101,10 @@ void LocalSessionServer::SetDevicePort(std::string port) {
     devicePort_ = std::move(port);
 }
 
+void LocalSessionServer::SetTransportProvider(std::function<std::string()> provider) {
+    transportProvider_ = std::move(provider);
+}
+
 void LocalSessionServer::SetCommandHandler(
     std::function<bool(const std::string&)> handler) {
     commandHandler_ = std::move(handler);
@@ -156,12 +160,45 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             const auto stats = store_.GetStatsLine();
             result = {{"app", "RTE Studio"}, {"device_port", devicePort_},
                       {"connected", !devicePort_.empty() && !stats.suspended},
+                      {"transport", transportProvider_ ? transportProvider_() : "unknown"},
                       {"suspended", stats.suspended}, {"rx_hz", stats.rxHz},
                       {"external_writes_enabled", externalDeviceWritesEnabled_}};
         } else if (method == "device.telemetry") {
             const auto view = store_.GetDeviceView();
             result = {{"rx_hz", view.stats.rxHz}, {"suspended", view.stats.suspended},
+                      {"rx_bytes_per_sec", view.stats.rxBytesPerSec},
+                      {"good_frames", view.stats.goodFrames}, {"bad_frames", view.stats.badFrames},
+                      {"reject_crc", view.stats.rejectCrc}, {"reject_header", view.stats.rejectHdr},
+                      {"reject_length", view.stats.rejectLen},
+                      {"reject_payload", view.stats.rejectPayloadParse},
+                      {"reject_unknown_id", view.stats.rejectUnknownId},
+                      {"last_sequence", view.stats.lastSeq},
                       {"signals", view.latest}, {"strings", view.latestStr}};
+        } else if (method == "device.history") {
+            const std::string signal = params.value("signal", "");
+            const std::size_t limit = std::clamp(params.value("limit", std::size_t{1000}),
+                                                 std::size_t{1}, std::size_t{12000});
+            std::deque<float> times, values;
+            if (signal.empty() || !store_.CopyHistory(signal, times, values)) {
+                return json{{"ok", false}, {"error", "unknown numeric signal: " + signal}}.dump();
+            }
+            json samples = json::array();
+            const std::size_t first = times.size() > limit ? times.size() - limit : 0;
+            for (std::size_t i = first; i < times.size() && i < values.size(); ++i)
+                samples.push_back({{"time_s", times[i]}, {"value", values[i]}});
+            result = {{"signal", signal}, {"samples", std::move(samples)}};
+        } else if (method == "device.string_history") {
+            const std::string signal = params.value("signal", "");
+            const std::size_t limit = std::clamp(params.value("limit", std::size_t{1000}),
+                                                 std::size_t{1}, std::size_t{1000});
+            std::vector<SessionStringSample> history;
+            if (signal.empty() || !store_.CopyStringHistory(signal, limit, history)) {
+                return json{{"ok", false}, {"error", "unknown string signal: " + signal}}.dump();
+            }
+            json samples = json::array();
+            for (const auto& sample : history)
+                samples.push_back({{"time_s", sample.tsec}, {"value", sample.value}});
+            result = {{"signal", signal}, {"samples", std::move(samples)}};
         } else if (method == "device.console") {
             const std::uint64_t since = params.value("since", std::uint64_t{0});
             const auto lines = std::clamp(params.value("lines", std::size_t{100}),
@@ -178,11 +215,13 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
             if (command.empty()) {
                 return json{{"ok", false}, {"error", "command is empty"}}.dump();
             }
+            const auto consoleSince = store_.LatestConsoleSeq();
             if (store_.GetStatsLine().suspended || !commandHandler_
                 || !commandHandler_(command)) {
                 return json{{"ok", false}, {"error", "device command could not be sent"}}.dump();
             }
-            result = {{"sent", true}, {"command", command}};
+            result = {{"sent", true}, {"command", command},
+                      {"console_since", consoleSince}};
         } else if (method == "device.flash.begin") {
             if (!externalDeviceWritesEnabled_) {
                 return json{{"ok", false},

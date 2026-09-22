@@ -474,6 +474,12 @@ void MainWindow::SetupRuntime(const QString& serialPort,
         runtimeController_->Store(), this);
 
     localSessionServer_->SetDevicePort(effectiveSerialPort.toStdString());
+    localSessionServer_->SetTransportProvider([this] {
+        if (runtimeController_->HasLinkOverride() || runtimeController_->UsingTcp())
+            return std::string("tcp");
+        return runtimeController_->IsSimulating() ? std::string("simulation")
+                                                 : std::string("serial");
+    });
     localSessionServer_->SetCommandHandler(
         [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
     localSessionServer_->SetFlashLeaseHandler([this](bool acquire) {

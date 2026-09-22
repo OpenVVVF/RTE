@@ -38,6 +38,8 @@ rte validate --graph graph.json --templates Assets/NodeTemplates
 rte generate --graph graph.json --base-source Images/Gen6FW --output out
 rte build --graph graph.json --base-source Images/Gen6FW
 rte flash --firmware firmware.bin --serial /dev/ttyACM0
+rte device mode
+rte device mode --probe-bootloader
 rte sim --graph graph.json [--scenario file.json] [--base-source DIR] [--name NAME]
         [--live] [--realtime F] [--no-build] [--output-format text|json|jsonl]
 ```
@@ -54,6 +56,10 @@ composes build directories that are wiped between emits. When `rte` runs
 outside a source checkout (an installed binary finds no repo root), the sim
 workspace moves to the user cache (`~/.cache/rte/sim/` on Linux) instead of
 the install prefix.
+
+**Current status:** Simulation is not correctly implemented and is not advised
+for control tuning, firmware validation, or hardware decisions. `rte sim`
+remains available for simulator development and emits a warning when run.
 
 - `RTE_EMITTER` overrides the RTECodeEmitter executable path; a set-but-missing
   value falls through to the emitter next to `rte` (or on `PATH`), and the
@@ -81,19 +87,25 @@ the install prefix.
   absolute path as a `sim-trace` artifact event. `--no-build` reuses the most
   recent emit and/or build for the name.
 
-`rte flash` controls MCP2221A GP0 (BOOT0) and GP1 (active-low NRST) directly
-before and after invoking STM32CubeProgrammer. It uses the kernel GPIO
-character-device API on Linux and USB HID on Windows/macOS. This native path is
-the default and does not require Python or EasyMCP2221. Linux installations
-must install the packaged `share/rte/udev/60-rte-mcp2221.rules` once (the same
-rule is available at `packaging/udev/60-rte-mcp2221.rules` in a source tree).
-Pass
-`--manual-boot` only when BOOT0 and reset will be controlled by hand; automatic
-mode reports a hard error when the MCP2221A is missing or inaccessible instead
-of silently continuing in manual mode.
+`rte flash --firmware main.elf` flashes the Gen7 main processor. On Linux it
+discovers the matching OpenVVVF USB CDC ports under `/dev/serial/by-id`: `if00`
+for the UART bridge and `if02` for coprocessor control. It sends `BOOTLOADER`
+on `if02` at 115200 8N1, programs and verifies over `if00` at 460800 8E1,
+then sends `APP` on `if02`. It retries the programmer up to three times. Pass
+`--serial` and `--control-port` to select ports explicitly, `--attempts 1..10`
+to change retries, or `--manual-boot` when the main MCU is already in its ROM
+bootloader. `--programmer` selects `STM32_Programmer_CLI` explicitly.
 
-For hardware diagnosis without building or flashing firmware, the same backend
-is available as `rte mcp2221 enter|exit|release`.
+`rte flash --target coproc --firmware coproc.elf` flashes the coprocessor
+through STM32 USB DFU (`port=usb1`) and starts the ELF entry point afterward.
+The coprocessor must already be in DFU mode. A `.bin` image uses flash address
+`0x08000000` and its reset vector for the start address. For a `.hex` image,
+start the application separately after flashing because the start address is
+not derived from the HEX file. These sequences follow the scripts in
+`Images/Gen7FW/MainProcessor` and `Images/Gen7FW/CoProcessor`.
+
+The legacy `rte mcp2221 enter|exit|release` command remains available for
+Gen6 hardware diagnosis; it is no longer used by `rte flash`.
 
 When RTE Studio is running, read its device state through the discovered local
 session:
@@ -103,7 +115,33 @@ rte device status
 rte device telemetry
 rte device console --since 0 --lines 100
 rte device command status
+rte device mode
 ```
+
+`rte device mode` is a read only Gen7 diagnosis that does not modify either
+firmware image. It asks the coprocessor control port (`if02`) for `STATUS` and
+checks for fresh valid application frames on the UART bridge (`if00`). When
+RTE Studio owns that bridge, it checks Studio's frame counter instead of
+opening the port a second time. The MCP equivalent is `rte_device_mode`.
+
+The result uses these states:
+
+| State | Meaning |
+|---|---|
+| `app_responding` | Valid application frames arrived during the sample. |
+| `bootloader_selected` | Coprocessor selected the main MCU boot UART mode; MCU response is unverified. |
+| `bootloader_responding` | Optional connect only STM32CubeProgrammer probe reached the ROM bootloader. |
+| `bootloader_unresponsive` | That probe failed; this can also be a UART or power problem. |
+| `app_unresponsive_or_silent` | App UART mode is selected but no valid frames arrived. A hung MCU cannot be distinguished from a silent app, no power, or a broken link. |
+| `unknown` | Available signals do not establish a mode. |
+
+Pass `--probe-bootloader` (MCP: `probe_bootloader: true`) to run the
+[STM32CubeProgrammer connect command](https://dev.st.com/stm32cube-docs/prog/2.23.0/en/docs/markup/Uart_Connection_page.html)
+without download or flash options. The probe is skipped when Studio owns the
+bridge. `--serial`, `--control-port`, and `--programmer` override discovery.
+The coprocessor's `STATUS` reports its own selected UART mode, not an
+independent main MCU heartbeat, so an unresponsive app is a diagnosis lead
+rather than proof of a CPU hang.
 
 The session is bound to `127.0.0.1`, uses a random token stored in the user-only
 cache descriptor, and disappears when Studio exits. Device commands and a
@@ -119,11 +157,50 @@ Configure an MCP client to launch:
 rte mcp --workspace /path/to/project
 ```
 
-The server uses JSON-RPC over stdin/stdout and exposes project tools
-(`rte_validate`, `rte_generate`, `rte_build`, `rte_flash`) plus live device
-tools (`rte_device_status`, `rte_device_telemetry`, `rte_device_console`, and
-the gated `rte_device_command`). MCP is an adapter over the same CLI/library
-boundary, not a second backend.
+The stdio server exposes tools for project discovery, graph reading and
+validation, source generation, building, simulation, CAN trace recording and
+export, Gen7 bridge discovery, legacy MCP2221 control, and flashing either MCU.
+It also exposes main MCU mode diagnosis, device status, all latest numeric and string telemetry, one
+signal, numeric and string signal history, console
+lines, unrestricted command text, and a command-and-response time window.
+The command response tool returns console lines received after the command;
+the inverter protocol does not tag console replies with request IDs, so
+unrelated console output may appear in that window. The `console_since` cursor
+from `rte_device_command` allows later reads with `rte_device_console`.
+The server also lists workspace graph and README resources and offers an
+inverter diagnostics prompt. It uses the same Studio session and flash worker
+as the CLI. Studio must be running and connected for live device tools.
+
+For Codex CLI or the ChatGPT desktop app, add this to `~/.codex/config.toml`
+(or a trusted project's `.codex/config.toml`; see the
+[official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp)):
+
+```toml
+[mcp_servers.rte]
+command = "/absolute/path/to/RTE/build/bin/rte"
+args = ["mcp", "--workspace", "/absolute/path/to/RTE"]
+tool_timeout_sec = 600
+```
+
+For Kimi Code, add this to `~/.kimi-code/mcp.json` or a trusted project's
+`.kimi-code/mcp.json` (see the
+[Kimi Code MCP documentation](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/mcp.html)):
+
+```json
+{
+  "mcpServers": {
+    "rte": {
+      "command": "/absolute/path/to/RTE/build/bin/rte",
+      "args": ["mcp", "--workspace", "/absolute/path/to/RTE"],
+      "toolTimeoutMs": 600000
+    }
+  }
+}
+```
+
+The ChatGPT web app cannot launch a local stdio process; it needs a separately
+hosted MCP connection or a supported tunnel. The local setup above is for
+Codex, ChatGPT desktop, and Kimi Code on the machine connected to the inverter.
 
 ## Distribution
 

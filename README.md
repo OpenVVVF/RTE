@@ -1,5 +1,9 @@
 # RTE
 
+> **Simulation status:** HostSim and HostSIL are not correctly implemented at
+> this time. Their results are unreliable and use is not advised for control
+> tuning, firmware validation, or hardware decisions.
+
 RTE is an open-source model-based development toolchain for motor drives:
 design control as a node graph, and the toolchain turns the graph into
 flashable firmware. It ships with the base image for our OpenVVVF
@@ -9,8 +13,8 @@ plus the small `platform_api` contract the generated code calls.
 
 This repo holds the STM32H723 base firmware image, the node-graph
 libraries, the RTE Studio editor, and the tools that turn a graph into a
-flashable firmware binary. Two host simulators exercise graphs in closed
-loop before touching hardware: **HostSim** (`Images/HostSim/`) builds a
+flashable firmware binary. Two currently unreliable host simulator
+implementations are included: **HostSim** (`Images/HostSim/`) builds a
 graph into a host executable — `rte sim --graph G [--scenario S] [--live]`
 does emit, build, and run in one step — against a PMSM plant (discrete ODE
 by default, with an experimental [ngspice](https://ngspice.sourceforge.io/)
@@ -78,8 +82,9 @@ cmake -B build -G Ninja
 cmake --build build -j8
 ```
 
-On Linux, install the included udev rule once so non-root IDE/CLI processes can
-control MCP2221A GPIO, then unplug and reconnect the adapter:
+For legacy Gen6 hardware using MCP2221A GPIO, install the included udev rule
+once and reconnect the adapter. Gen7 flashing uses the OpenVVVF USB UART bridge
+and its control port instead:
 
 ```bash
 sudo install -m 0644 packaging/udev/60-rte-mcp2221.rules /etc/udev/rules.d/
@@ -177,6 +182,8 @@ manifest under the user cache (`~/.cache/rte/projects/...` on Linux,
 
 See [Automation backend](docs/automation-backend.md) for component boundaries,
 the cache layout, CLI examples, MCP setup, and the external-write security gate.
+For an AI agent setting up the MCP server, use
+[MCP_AGENT_SETUP.md](MCP_AGENT_SETUP.md); it starts by rebuilding the current code.
 
 ## Calibration
 

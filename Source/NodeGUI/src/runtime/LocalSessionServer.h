@@ -26,6 +26,7 @@ public:
     int Port() const;
 
     void SetDevicePort(std::string port);
+    void SetTransportProvider(std::function<std::string()> provider);
     void SetCommandHandler(std::function<bool(const std::string&)> handler);
     void SetFlashLeaseHandler(std::function<void(bool)> handler);
     void SetExternalDeviceWritesEnabled(bool enabled);
@@ -39,6 +40,7 @@ private:
     QTcpServer* server_ = nullptr;
     std::string token_;
     std::string devicePort_;
+    std::function<std::string()> transportProvider_;
     std::function<bool(const std::string&)> commandHandler_;
     std::function<void(bool)> flashLeaseHandler_;
     bool externalDeviceWritesEnabled_ = false;

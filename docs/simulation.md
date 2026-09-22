@@ -1,5 +1,10 @@
 # Simulation
 
+> **Current status:** Simulation is not correctly implemented. HostSim and
+> HostSIL results are unreliable, and using them to tune control, validate
+> firmware, or make hardware decisions is not advised. The instructions below
+> document the existing development tools only.
+
 RTE ships two host simulators, both living under `Images/`:
 
 - **HostSim** (`Images/HostSim/`) — a *base image* for the code emitter,
@@ -25,11 +30,10 @@ Both are pure host executables — no hardware, no cross-toolchain required.
 | Base image source | `Images/HostSim` | Emit of `Images/Gen6FW` (+ graph) behind `sil/` shims |
 | Plants | ODE PMSM/induction (default), experimental ngspice | ODE PMSM/induction |
 | Live GUI attach | Yes (`--live`; the sim publishes IVP over TCP `127.0.0.1:14608`) | Yes (`--live`; relays the firmware's own USART3 telemetry over TCP) |
-| Best for | Iterating on graph control logic, demos, live tuning, GUI work | Firmware-level checks: boot, command handling, ISR cadence, exact firmware behavior |
+| Intended use after implementation is corrected | Graph control logic and GUI development | Firmware behavior checks |
 
-Rule of thumb: develop and tune the *graph* in HostSim; verify the *firmware*
-(including anything HostSim's scheduler does not model) in HostSIL; then
-flash hardware.
+The comparison above describes intended capabilities; it is not a validation
+of either simulator's present behavior.
 
 ## Quickstart: `rte sim` (HostSim, graph mode)
 

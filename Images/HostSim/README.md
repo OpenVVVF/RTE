@@ -1,5 +1,9 @@
 # HostSim — upstream-compatible host simulator base image
 
+> **Current status:** Simulation is not correctly implemented. Results are
+> unreliable and use is not advised for control tuning, firmware validation,
+> or hardware decisions.
+
 > Overview of both simulators, `rte sim`, the live GUI loop, and the ngspice
 > backend: [docs/simulation.md](../../docs/simulation.md).
 

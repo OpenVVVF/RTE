@@ -1,5 +1,9 @@
 # HostSIL — firmware-in-the-loop SIL simulator
 
+> **Current status:** Simulation is not correctly implemented. Results are
+> unreliable and use is not advised for control tuning, firmware validation,
+> or hardware decisions.
+
 > Overview of both simulators and when to use which:
 > [docs/simulation.md](../../docs/simulation.md).
 

@@ -36,7 +36,7 @@ private:
 
     QLineEdit* pathEdit_ = nullptr;
     QPushButton* flashButton_ = nullptr;
-    QCheckBox* autoGpioCheck_ = nullptr;
+    QCheckBox* automaticBootCheck_ = nullptr;
     QLabel* manualHint_ = nullptr;
     QLabel* stateLabel_ = nullptr;
     QProgressBar* progressBar_ = nullptr;

@@ -43,7 +43,7 @@ QString RteCliPath() {
 FlashPanel::FlashPanel(RuntimeController* controller, QWidget* parent)
     : QWidget(parent), controller_(controller), process_(new QProcess(this)) {
     auto* layout = new QVBoxLayout(this);
-    layout->addWidget(new QLabel(QStringLiteral("Port: %1").arg(controller_->Port()), this));
+    layout->addWidget(new QLabel(QStringLiteral("Main MCU UART bridge: %1").arg(controller_->Port()), this));
 
     auto* pathRow = new QHBoxLayout;
     pathRow->addWidget(new QLabel(QStringLiteral("Firmware path"), this));
@@ -58,17 +58,17 @@ FlashPanel::FlashPanel(RuntimeController* controller, QWidget* parent)
     flashButton_ = new QPushButton(QStringLiteral("Flash"), this);
     connect(flashButton_, &QPushButton::clicked, this, &FlashPanel::OnFlashClicked);
     flashRow->addWidget(flashButton_);
-    autoGpioCheck_ = new QCheckBox(QStringLiteral("Auto GPIO (MCP2221A)"), this);
-    autoGpioCheck_->setChecked(true);
-    flashRow->addWidget(autoGpioCheck_);
+    automaticBootCheck_ = new QCheckBox(QStringLiteral("Automatic boot via Gen7 control port"), this);
+    automaticBootCheck_->setChecked(true);
+    flashRow->addWidget(automaticBootCheck_);
     flashRow->addStretch(1);
     layout->addLayout(flashRow);
 
     manualHint_ = new QLabel(
-        QStringLiteral("Manual mode: hold BOOT0 high and pulse NRST when prompted."), this);
+        QStringLiteral("Manual mode: put the main MCU in its ROM bootloader before flashing; start the app afterward."), this);
     manualHint_->setWordWrap(true);
     manualHint_->hide();
-    connect(autoGpioCheck_, &QCheckBox::toggled, manualHint_, &QWidget::setHidden);
+    connect(automaticBootCheck_, &QCheckBox::toggled, manualHint_, &QWidget::setHidden);
     layout->addWidget(manualHint_);
 
     stateLabel_ = new QLabel(QStringLiteral("State: Idle"), this);
@@ -100,13 +100,13 @@ void FlashPanel::OnFlashClicked() {
     if (process_->state() != QProcess::NotRunning) return;
     const QString firmware = pathEdit_->text().trimmed();
     if (firmware.isEmpty()) {
-        errorLabel_->setText(QStringLiteral("Choose a firmware binary first."));
+        errorLabel_->setText(QStringLiteral("Choose a firmware image first."));
         return;
     }
     QStringList arguments = {QStringLiteral("--format"), QStringLiteral("jsonl"),
                              QStringLiteral("flash"), QStringLiteral("--firmware"), firmware,
                              QStringLiteral("--serial"), controller_->Port()};
-    if (!autoGpioCheck_->isChecked()) arguments << QStringLiteral("--manual-boot");
+    if (!automaticBootCheck_->isChecked()) arguments << QStringLiteral("--manual-boot");
     outputBuffer_.clear();
     logView_->clear();
     errorLabel_->clear();
@@ -124,8 +124,8 @@ void FlashPanel::OnFlashClicked() {
 
 void FlashPanel::OnBrowse() {
     const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Select firmware binary"), QString(),
-        QStringLiteral("Firmware binaries (*.bin);;All files (*)"));
+        this, QStringLiteral("Select firmware image"), QString(),
+        QStringLiteral("Firmware images (*.elf *.hex *.bin);;All files (*)"));
     if (!path.isEmpty()) pathEdit_->setText(path);
 }
 

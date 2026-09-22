@@ -278,6 +278,17 @@ bool TelemetryStore::CopyHistoryInto(const std::string& key,
     return true;
 }
 
+bool TelemetryStore::CopyStringHistory(const std::string& key, std::size_t limit,
+                                       std::vector<SessionStringSample>& samples) const {
+    std::lock_guard lock(mtx_);
+    const auto it = sessionStringSignals_.find(key);
+    if (it == sessionStringSignals_.end()) return false;
+    const auto& source = it->second;
+    const auto first = source.size() > limit ? source.size() - limit : 0;
+    samples.assign(source.begin() + static_cast<std::ptrdiff_t>(first), source.end());
+    return true;
+}
+
 bool TelemetryStore::LatestValue(const std::string& key, float& value) const {
     std::lock_guard lock(mtx_);
     const auto it = snap_.latest.find(key);

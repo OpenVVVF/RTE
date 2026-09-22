@@ -73,7 +73,8 @@ install(DIRECTORY Images/Gen6FW/ DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/Images
 install(DIRECTORY Lib/InverterProtocol/ DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/Lib/InverterProtocol
     PATTERN "tests" EXCLUDE
 )
-install(FILES README.md CAN_TRACE.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte)
+install(FILES README.md CAN_TRACE.md MCP_AGENT_SETUP.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte)
+install(FILES docs/automation-backend.md DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/docs)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     install(FILES packaging/udev/60-rte-mcp2221.rules
         DESTINATION ${CMAKE_INSTALL_DATADIR}/rte/udev

@@ -43,6 +43,11 @@ ScenarioDialog::ScenarioDialog(const QString& graphPath, bool editOnly, QWidget*
     setMinimumWidth(460);
 
     auto* layout = new QVBoxLayout(this);
+    auto* reliabilityWarning = new QLabel(
+        QStringLiteral("Warning: simulation is not correctly implemented and is not advised for control or hardware decisions."), this);
+    reliabilityWarning->setWordWrap(true);
+    reliabilityWarning->setStyleSheet(QStringLiteral("color: #e09522; font-weight: 600;"));
+    layout->addWidget(reliabilityWarning);
 
     auto* pickerRow = new QHBoxLayout();
     pickerRow->addWidget(new QLabel(QStringLiteral("Scenario:"), this));
