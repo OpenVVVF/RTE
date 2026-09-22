@@ -106,8 +106,13 @@ void LocalSessionServer::SetTransportProvider(std::function<std::string()> provi
 }
 
 void LocalSessionServer::SetCommandHandler(
-    std::function<bool(const std::string&)> handler) {
+    std::function<bool(const std::string&, const std::string&)> handler) {
     commandHandler_ = std::move(handler);
+}
+
+void LocalSessionServer::SetActivityHandler(
+    std::function<void(const std::string&)> handler) {
+    activityHandler_ = std::move(handler);
 }
 
 void LocalSessionServer::SetFlashLeaseHandler(std::function<void(bool)> handler) {
@@ -207,21 +212,45 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                                  store_.LatestConsoleSeq(),
                                  store_.SessionEpoch(), lines);
         } else if (method == "device.command") {
+            const std::string source = params.value("source", "api");
+            const std::string command = params.value("command", "");
+            if (source != "api" && source != "mcp" && source != "cli") {
+                return json{{"ok", false}, {"error", "invalid command source"}}.dump();
+            }
             if (!externalDeviceWritesEnabled_) {
+                const std::string label = source == "mcp" ? "MCP"
+                    : source == "cli" ? "CLI" : "API";
+                if (activityHandler_)
+                    activityHandler_("[" + label + "] blocked command "
+                                     + json(command).dump(-1, ' ', true)
+                                     + ": external device writes disabled");
                 return json{{"ok", false},
                             {"error", "external device writes are disabled in RTE Studio preferences"}}.dump();
             }
-            const std::string command = params.value("command", "");
             if (command.empty()) {
                 return json{{"ok", false}, {"error", "command is empty"}}.dump();
             }
             const auto consoleSince = store_.LatestConsoleSeq();
-            if (store_.GetStatsLine().suspended || !commandHandler_
-                || !commandHandler_(command)) {
+            if (!commandHandler_ || !commandHandler_(command, source)) {
                 return json{{"ok", false}, {"error", "device command could not be sent"}}.dump();
             }
             result = {{"sent", true}, {"command", command},
                       {"console_since", consoleSince}};
+        } else if (method == "automation.activity") {
+            const std::string action = params.value("action", "");
+            const std::string detail = params.value("detail", "");
+            const std::string state = params.value("state", "");
+            if (action.empty() || action.size() > 80 || detail.size() > 500
+                || (state != "started" && state != "completed" && state != "failed")
+                || action.find_first_of("\r\n\t") != std::string::npos
+                || detail.find_first_of("\r\n\t") != std::string::npos) {
+                return json{{"ok", false}, {"error", "invalid automation activity"}}.dump();
+            }
+            if (activityHandler_) {
+                activityHandler_("[MCP] " + action + (detail.empty() ? "" : " " + detail)
+                                 + " — " + state);
+            }
+            result = {{"recorded", static_cast<bool>(activityHandler_)}};
         } else if (method == "device.flash.begin") {
             if (!externalDeviceWritesEnabled_) {
                 return json{{"ok", false},

@@ -167,6 +167,11 @@ The command response tool returns console lines received after the command;
 the inverter protocol does not tag console replies with request IDs, so
 unrelated console output may appear in that window. The `console_since` cursor
 from `rte_device_command` allows later reads with `rte_device_console`.
+RTE Studio's Runtime console shows MCP tool actions, write outcomes, and read
+failures as `[MCP]` lines. Inverter commands appear as `[MCP] > <command>` or `[CLI] > <command>`,
+followed by a send result. Frequent reads are logged at most once per five
+seconds per tool. These audit lines are included in session exports; the
+command-response tool ignores them when deciding if the inverter replied.
 The server also lists workspace graph and README resources and offers an
 inverter diagnostics prompt. It uses the same Studio session and flash worker
 as the CLI. Studio must be running and connected for live device tools.

@@ -26,7 +26,8 @@ exercise MCP discovery, telemetry, commands, main UART bridge flashing, and
 coprocessor DFU flashing using simulated ports; they do not touch hardware.
 If the build or tests fail, fix that before configuring a client. If the
 client was already configured, restart it after rebuilding so it launches
-the new binary.
+the new binary. Restart RTE Studio too so its Runtime console shows MCP
+activity from the new server.
 
 The server executable for this build is `build/bin/rte`. On a multi-config
 generator, use the actual configuration-specific executable path (for
@@ -150,6 +151,12 @@ Codex, ChatGPT desktop, and Kimi Code.
   unrelated output can be included. RTE Studio must have **Preferences →
   Automation → Allow CLI and MCP clients to send commands to the device**
   enabled for command writes and Studio-coordinated flashing.
+- Keep RTE Studio's Runtime console visible when operating hardware. It shows
+  `[MCP]` tool and resource reads with their arguments and write completion status, followed by
+  `[MCP] > ...` for the exact inverter command and `[MCP] sent` or a send
+  failure. CLI commands use `[CLI]`. Repeated telemetry, status, history, and
+  console reads are summarized at most once every five seconds per tool so
+  the console remains usable. These lines are also kept in session exports.
 - `rte_flash` targets the main MCU over the Gen7 bridge by default. Set
   `target: "coproc"` for USB DFU; the coprocessor must already be in DFU
   mode. `firmware` must name an existing `.elf`, `.hex`, or `.bin` image.

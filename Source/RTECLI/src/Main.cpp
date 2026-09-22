@@ -32,6 +32,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 using json = nlohmann::json;
@@ -620,7 +621,7 @@ int Device(const std::vector<std::string>& args, Format format) {
             return 2;
         }
         method = "device.command";
-        params = {{"command", command}};
+        params = {{"command", command}, {"source", "cli"}};
     } else {
         Emit(format, {{"event","error"},{"message","unknown device subcommand: " + operation}});
         return 2;
@@ -870,6 +871,25 @@ json ValidateToolArguments(const std::string& name, const json& arguments) {
     return McpText("unknown tool: " + name, true);
 }
 
+bool IsFrequentMcpRead(const std::string& name) {
+    return name == "rte_device_status" || name == "rte_device_telemetry"
+        || name == "rte_device_signal" || name == "rte_device_history"
+        || name == "rte_device_string_history" || name == "rte_device_console";
+}
+
+void RecordMcpActivity(const fs::path& sessionPath, const std::string& name,
+                       const json& arguments, const std::string& state) {
+    std::string error;
+    const auto session = RTEAutomation::DiscoverSession(sessionPath, &error);
+    if (!session) return;
+    json visibleArguments = arguments;
+    if (visibleArguments.is_object()) visibleArguments.erase("command");
+    std::string detail = visibleArguments.empty() ? "" : visibleArguments.dump(-1, ' ', true);
+    if (detail.size() > 480) detail = detail.substr(0, 477) + "...";
+    RTEAutomation::RequestSession(*session, "automation.activity",
+        {{"action", name}, {"detail", detail}, {"state", state}}, &error);
+}
+
 json CallMcpTool(const std::string& name, const json& arguments,
                  const fs::path& workspace, const fs::path& sessionPath) {
     if (const json invalid = ValidateToolArguments(name, arguments); !invalid.is_null()) return invalid;
@@ -910,7 +930,7 @@ json CallMcpTool(const std::string& name, const json& arguments,
                   {"lines", arguments.value("lines", std::size_t{100})}};
     } else if (name == "rte_device_command" || name == "rte_device_command_response") {
         method = "device.command";
-        params = {{"command", arguments["command"]}};
+        params = {{"command", arguments["command"]}, {"source", "mcp"}};
     } else return McpText("unknown tool: " + name, true);
     std::string error;
     const auto session = RTEAutomation::DiscoverSession(sessionPath, &error);
@@ -941,7 +961,9 @@ json CallMcpTool(const std::string& name, const json& arguments,
         responseObserved = false;
         for (const auto& line : observed) {
             const std::string text = line.value("text", "");
-            if (text != "(sent)" && text != "> " + arguments["command"].get<std::string>())
+            if (text.rfind("[MCP] ", 0) != 0 && text.rfind("[CLI] ", 0) != 0
+                && text.rfind("[API] ", 0) != 0
+                && text != "(sent)" && text != "> " + arguments["command"].get<std::string>())
                 responseObserved = true;
         }
         if (responseObserved || std::chrono::steady_clock::now() >= deadline) break;
@@ -968,6 +990,7 @@ int Mcp(const std::vector<std::string>& args) {
         return 2;
     }
     std::string line;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastReadAudit;
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
         json id = nullptr;
@@ -997,9 +1020,27 @@ int Mcp(const std::vector<std::string>& args) {
                 result = {{"tools", McpTools()}};
             } else if (method == "tools/call") {
                 const json params = request.value("params", json::object());
-                result = CallMcpTool(params.value("name", ""),
-                                     params.value("arguments", json::object()),
-                                     workspace, sessionPath);
+                const std::string name = params.value("name", "");
+                const json arguments = params.value("arguments", json::object());
+                if (const json invalid = ValidateToolArguments(name, arguments); !invalid.is_null()) {
+                    result = invalid;
+                } else {
+                    const bool frequentRead = IsFrequentMcpRead(name);
+                    const auto now = std::chrono::steady_clock::now();
+                    bool record = true;
+                    if (frequentRead) {
+                        const auto previous = lastReadAudit.find(name);
+                        record = previous == lastReadAudit.end()
+                            || now - previous->second >= std::chrono::seconds(5);
+                        if (record) lastReadAudit[name] = now;
+                    }
+                    if (record) RecordMcpActivity(sessionPath, name, arguments, "started");
+                    result = CallMcpTool(name, arguments, workspace, sessionPath);
+                    if (!frequentRead || (record && result.value("isError", false))) {
+                        RecordMcpActivity(sessionPath, name, json::object(),
+                                          result.value("isError", false) ? "failed" : "completed");
+                    }
+                }
             } else if (method == "resources/list") {
                 json resources = json::array();
                 if (fs::is_regular_file(workspace / "README.md"))
@@ -1025,6 +1066,7 @@ int Mcp(const std::vector<std::string>& args) {
                 std::ifstream input(*path);
                 std::ostringstream contents;
                 contents << input.rdbuf();
+                RecordMcpActivity(sessionPath, "resources/read", {{"uri", uri}}, "completed");
                 result = {{"contents", json::array({{{"uri", uri},
                     {"mimeType", path->extension() == ".json" ? "application/json" : "text/markdown"},
                     {"text", contents.str()}}})}};

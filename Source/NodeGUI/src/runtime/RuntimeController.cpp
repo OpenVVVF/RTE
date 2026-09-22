@@ -31,6 +31,19 @@ constexpr SimWave kSimWaves[] = {
     {"temp_c", 0.05, 1.5, 35.0},
 };
 
+std::string ConsoleSafe(const std::string& value) {
+    std::string safe;
+    safe.reserve(value.size());
+    for (const unsigned char ch : value) {
+        if (ch == '\n') safe += "\\n";
+        else if (ch == '\r') safe += "\\r";
+        else if (ch == '\t') safe += "\\t";
+        else if (ch < 0x20 || ch == 0x7f) safe += '?';
+        else safe += static_cast<char>(ch);
+    }
+    return safe;
+}
+
 }  // namespace
 
 RuntimeController::RuntimeController(QString port,
@@ -232,10 +245,20 @@ bool RuntimeController::SendCommand(const QString& line) {
     return true;
 }
 
-bool RuntimeController::SendCommandRaw(const std::string& line) {
+bool RuntimeController::SendCommandRaw(const std::string& line,
+                                       const std::string& source) {
+    const std::string label = source == "mcp" ? "MCP" : source == "cli" ? "CLI" : "API";
+    store_.AddConsoleLine("[" + label + "] > " + ConsoleSafe(line));
     const bool ok = SendLine(line);
-    store_.AddCommand(line, "api", ok);
+    store_.AddCommand(line, source, ok);
+    store_.AddConsoleLine("[" + label + "] " + (ok ? "sent" : "FAILED to send"));
+    emit storeChanged();
     return ok;
+}
+
+void RuntimeController::AddAutomationLine(const std::string& line) {
+    store_.AddConsoleLine(line);
+    emit storeChanged();
 }
 
 RuntimeSessionSnapshot RuntimeController::CaptureSession() {

@@ -27,7 +27,8 @@ public:
 
     void SetDevicePort(std::string port);
     void SetTransportProvider(std::function<std::string()> provider);
-    void SetCommandHandler(std::function<bool(const std::string&)> handler);
+    void SetCommandHandler(std::function<bool(const std::string&, const std::string&)> handler);
+    void SetActivityHandler(std::function<void(const std::string&)> handler);
     void SetFlashLeaseHandler(std::function<void(bool)> handler);
     void SetExternalDeviceWritesEnabled(bool enabled);
 
@@ -41,7 +42,8 @@ private:
     std::string token_;
     std::string devicePort_;
     std::function<std::string()> transportProvider_;
-    std::function<bool(const std::string&)> commandHandler_;
+    std::function<bool(const std::string&, const std::string&)> commandHandler_;
+    std::function<void(const std::string&)> activityHandler_;
     std::function<void(bool)> flashLeaseHandler_;
     bool externalDeviceWritesEnabled_ = false;
 };

@@ -106,11 +106,18 @@ def main():
                                           "value": "idle" if method == "device.string_history" else 1.25}]}
                 elif method == "device.command":
                     self.server.commands.append(message["params"]["command"])
+                    self.server.command_sources.append(message["params"].get("source"))
                     value = {"sent": True, "command": self.server.commands[-1],
                              "console_since": 4}
                 elif method == "device.console":
-                    value = {"lines": [{"seq": 5, "text": "OK: " + self.server.commands[-1]}]
-                             if self.server.commands else [], "latest_seq": 5}
+                    lines = [{"seq": 5, "text": "[MCP] sent"}]
+                    if self.server.commands and self.server.commands[-1] != "silent":
+                        lines.append({"seq": 6, "text": "OK: " + self.server.commands[-1]})
+                    value = {"lines": lines if self.server.commands else [],
+                             "latest_seq": lines[-1]["seq"]}
+                elif method == "automation.activity":
+                    self.server.activities.append(message["params"])
+                    value = {"recorded": True}
                 else:
                     value = {"connected": True, "device_port": "mock"}
                 self.wfile.write((json.dumps({"ok": True, "result": value}) + "\n").encode())
@@ -118,6 +125,8 @@ def main():
         session_server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), SessionHandler)
         session_server.daemon_threads = True
         session_server.commands = []
+        session_server.command_sources = []
+        session_server.activities = []
         session_server.good_frames = 100
         session_server.transport = "serial"
         session_worker = threading.Thread(target=session_server.serve_forever, daemon=True)
@@ -152,6 +161,7 @@ def main():
             invalid = request(server, 13, "tools/call", {"name": "rte_flash",
                               "arguments": {"firmware": str(firmware), "target": "invalid"}})
             assert invalid["isError"], invalid
+            assert [entry["action"] for entry in session_server.activities] == ["resources/read"]
             ports = request(server, 3, "tools/call", {"name": "rte_bridge_ports",
                             "arguments": {}})
             assert str(bridge) in ports["content"][0]["text"], ports
@@ -193,7 +203,27 @@ def main():
             reply = request(server, 9, "tools/call", {"name": "rte_device_command_response",
                             "arguments": {"command": "get currents", "timeout_ms": 100}})
             assert "OK: get currents" in reply["content"][0]["text"], reply
+            assert reply["structuredContent"]["response_observed"], reply
             assert session_server.commands == ["get currents"], session_server.commands
+            assert session_server.command_sources == ["mcp"], session_server.command_sources
+            assert any(entry["action"] == "rte_flash" and entry["state"] == "started"
+                       and str(firmware) in entry["detail"] for entry in session_server.activities)
+            assert any(entry["action"] == "rte_flash" and entry["state"] == "failed"
+                       for entry in session_server.activities)
+            assert any(entry["action"] == "rte_device_command_response"
+                       and entry["state"] == "completed" for entry in session_server.activities)
+            assert all("get currents" not in entry["detail"]
+                       for entry in session_server.activities)
+            silent = request(server, 19, "tools/call", {"name": "rte_device_command_response",
+                             "arguments": {"command": "silent", "timeout_ms": 0}})
+            assert not silent["structuredContent"]["response_observed"], silent
+            assert session_server.command_sources == ["mcp", "mcp"]
+            cli_command = subprocess.run(
+                [str(executable), "--format", "json", "device", "command",
+                 "--session", str(descriptor), "--command", "get status"],
+                capture_output=True, text=True, env=env, check=True, timeout=5)
+            assert '"sent": true' in cli_command.stdout, cli_command.stdout
+            assert session_server.command_sources == ["mcp", "mcp", "cli"]
             mode = request(server, 15, "tools/call", {"name": "rte_device_mode",
                            "arguments": {}})["structuredContent"]
             assert mode["state"] == "app_responding", mode

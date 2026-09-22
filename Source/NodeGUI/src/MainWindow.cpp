@@ -481,7 +481,12 @@ void MainWindow::SetupRuntime(const QString& serialPort,
                                                  : std::string("serial");
     });
     localSessionServer_->SetCommandHandler(
-        [this](const std::string& cmd) { return runtimeController_->SendCommandRaw(cmd); });
+        [this](const std::string& cmd, const std::string& source) {
+            return runtimeController_->SendCommandRaw(cmd, source);
+        });
+    localSessionServer_->SetActivityHandler([this](const std::string& line) {
+        runtimeController_->AddAutomationLine(line);
+    });
     localSessionServer_->SetFlashLeaseHandler([this](bool acquire) {
         if (acquire) runtimeController_->SuspendForFlash();
         else runtimeController_->ResumeAfterFlash();

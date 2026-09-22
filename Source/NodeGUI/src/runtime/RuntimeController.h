@@ -60,9 +60,12 @@ public:
     // console (UI path).
     bool SendCommand(const QString& line);
 
-    // Sends a text shell command line without echoing into the console (HTTP
-    // API path; response lines are collected by the caller via the console).
-    bool SendCommandRaw(const std::string& line);
+    // Sends an external command and records its source, exact text, and send
+    // result in the visible console and session command history.
+    bool SendCommandRaw(const std::string& line, const std::string& source);
+
+    // Adds an MCP action to the visible console and exportable session.
+    void AddAutomationLine(const std::string& line);
 
     TelemetryStore& Store() { return store_; }
     const TelemetryStore& Store() const { return store_; }
