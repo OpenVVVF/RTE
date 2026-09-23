@@ -259,6 +259,12 @@ uses `isr_stopped` only for an explicitly stopped ISR, and uses the two-second
 publishes `foc_running` and still marks its controller-only telemetry
 `foc_stopped`. These semantics require rebuilding and reflashing the main MCU
 image; the coprocessor firmware is unchanged.
+Gen7 ADC graph dispatch consumes the just-completed current burst, after
+base-image overcurrent checks, and uses the PWM-period time step. ADC and
+TIM1 dispatch save and restore the interrupted domain's time step, preventing
+a preempting ADC graph from changing the current PI's integration interval.
+This correction requires rebuilding and reflashing the main MCU only; it
+does not change command, manifest, or telemetry formats.
 Firmware build identity fields are republished every ten seconds and retain
 their current value for up to 15 seconds while the link stays active.
 `rte_device_signal` includes signal age and freshness; when a name is absent,

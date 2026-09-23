@@ -1,0 +1,810 @@
+{
+  "iq_command_a": 25,
+  "offset_deg": 150,
+  "change": "ADC graph consumes current burst",
+  "time_limit_s": 15,
+  "speed_cutoff_rpm": 500,
+  "reason": "500 RPM cutoff",
+  "rows": [
+    {
+      "elapsed_s": 0.036,
+      "Mech_RPM": 0.0016695719677954912,
+      "cg_id_a": 0.07221931964159012,
+      "cg_iq_a": -0.2038920521736145,
+      "cg_vd_v": 0.1354113519191742,
+      "cg_vq_v": -0.3082917332649231,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 0.191,
+      "Mech_RPM": 0.1179467961192131,
+      "cg_id_a": 3.6038007736206055,
+      "cg_iq_a": 12.016463279724121,
+      "cg_vd_v": -1.360756754875183,
+      "cg_vq_v": 1.5786441564559937,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 0.329,
+      "Mech_RPM": 1.390084981918335,
+      "cg_id_a": 0.6521243453025818,
+      "cg_iq_a": 16.034297943115234,
+      "cg_vd_v": -1.7064391374588013,
+      "cg_vq_v": 1.758515477180481,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 0.479,
+      "Mech_RPM": 5.6053056716918945,
+      "cg_id_a": -3.838968515396118,
+      "cg_iq_a": 18.82615089416504,
+      "cg_vd_v": -2.0293400287628174,
+      "cg_vq_v": 2.5971627235412598,
+      "pwm_moe": 1,
+      "vdc_v": 49.70785903930664,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 0.618,
+      "Mech_RPM": 12.802654266357422,
+      "cg_id_a": -2.5931601524353027,
+      "cg_iq_a": 20.85603904724121,
+      "cg_vd_v": -2.278693199157715,
+      "cg_vq_v": 3.0029969215393066,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 0.763,
+      "Mech_RPM": 22.91750717163086,
+      "cg_id_a": -3.87410831451416,
+      "cg_iq_a": 16.080720901489258,
+      "cg_vd_v": -2.4092960357666016,
+      "cg_vq_v": 3.8583474159240723,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 0.902,
+      "Mech_RPM": 35.594398498535156,
+      "cg_id_a": -4.998030662536621,
+      "cg_iq_a": 21.587749481201172,
+      "cg_vd_v": -2.536391019821167,
+      "cg_vq_v": 4.229857444763184,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.059,
+      "Mech_RPM": 50.54106140136719,
+      "cg_id_a": -2.1044604778289795,
+      "cg_iq_a": 24.428190231323242,
+      "cg_vd_v": -2.7534210681915283,
+      "cg_vq_v": 4.794760227203369,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.216,
+      "Mech_RPM": 72.08082580566406,
+      "cg_id_a": 1.735601544380188,
+      "cg_iq_a": 28.2366886138916,
+      "cg_vd_v": -3.2953457832336426,
+      "cg_vq_v": 5.314760684967041,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.387,
+      "Mech_RPM": 93.10173034667969,
+      "cg_id_a": -3.769310712814331,
+      "cg_iq_a": 28.24245262145996,
+      "cg_vd_v": -3.13423228263855,
+      "cg_vq_v": 5.940208911895752,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.534,
+      "Mech_RPM": 112.48412322998047,
+      "cg_id_a": -2.6026175022125244,
+      "cg_iq_a": 22.4139347076416,
+      "cg_vd_v": -3.3545596599578857,
+      "cg_vq_v": 6.75123405456543,
+      "pwm_moe": 1,
+      "vdc_v": 49.70785903930664,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.671,
+      "Mech_RPM": 132.69261169433594,
+      "cg_id_a": 4.233689308166504,
+      "cg_iq_a": 27.125566482543945,
+      "cg_vd_v": -3.6636507511138916,
+      "cg_vq_v": 7.118907451629639,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.822,
+      "Mech_RPM": 156.38671875,
+      "cg_id_a": 2.468151569366455,
+      "cg_iq_a": 23.26314353942871,
+      "cg_vd_v": -3.820542573928833,
+      "cg_vq_v": 7.835781574249268,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 1.959,
+      "Mech_RPM": 174.49691772460938,
+      "cg_id_a": -4.534557342529297,
+      "cg_iq_a": 27.20920753479004,
+      "cg_vd_v": -3.757293701171875,
+      "cg_vq_v": 8.085334777832031,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.11,
+      "Mech_RPM": 201.88327026367188,
+      "cg_id_a": 2.093869209289551,
+      "cg_iq_a": 24.04498291015625,
+      "cg_vd_v": -4.181432247161865,
+      "cg_vq_v": 8.843388557434082,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.25,
+      "Mech_RPM": 220.150634765625,
+      "cg_id_a": -0.5629703402519226,
+      "cg_iq_a": 23.923053741455078,
+      "cg_vd_v": -4.0429911613464355,
+      "cg_vq_v": 9.415449142456055,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.397,
+      "Mech_RPM": 244.51515197753906,
+      "cg_id_a": -1.3882648944854736,
+      "cg_iq_a": 24.785186767578125,
+      "cg_vd_v": -4.35492467880249,
+      "cg_vq_v": 9.892576217651367,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.535,
+      "Mech_RPM": 265.72369384765625,
+      "cg_id_a": -0.0577903613448143,
+      "cg_iq_a": 23.2052059173584,
+      "cg_vd_v": -4.316711902618408,
+      "cg_vq_v": 10.377983093261719,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.686,
+      "Mech_RPM": 286.70709228515625,
+      "cg_id_a": 4.329352855682373,
+      "cg_iq_a": 23.940765380859375,
+      "cg_vd_v": -4.7010817527771,
+      "cg_vq_v": 10.81637191772461,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.825,
+      "Mech_RPM": 307.48779296875,
+      "cg_id_a": 1.3666187524795532,
+      "cg_iq_a": 23.272829055786133,
+      "cg_vd_v": -4.617081165313721,
+      "cg_vq_v": 11.20691204071045,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 2.97,
+      "Mech_RPM": 327.76251220703125,
+      "cg_id_a": 0.5571385025978088,
+      "cg_iq_a": 26.840744018554688,
+      "cg_vd_v": -4.944690227508545,
+      "cg_vq_v": 11.492205619812012,
+      "pwm_moe": 1,
+      "vdc_v": 48.82807159423828,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.122,
+      "Mech_RPM": 347.822021484375,
+      "cg_id_a": -3.174304246902466,
+      "cg_iq_a": 27.63811492919922,
+      "cg_vd_v": -4.875771522521973,
+      "cg_vq_v": 11.660696029663086,
+      "pwm_moe": 1,
+      "vdc_v": 49.70785903930664,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.266,
+      "Mech_RPM": 367.634521484375,
+      "cg_id_a": -0.02035664953291416,
+      "cg_iq_a": 27.079544067382812,
+      "cg_vd_v": -4.97461462020874,
+      "cg_vq_v": 11.985274314880371,
+      "pwm_moe": 1,
+      "vdc_v": 50.14775466918945,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.44,
+      "Mech_RPM": 395.00189208984375,
+      "cg_id_a": 3.1538503170013428,
+      "cg_iq_a": 29.317073822021484,
+      "cg_vd_v": -5.386582851409912,
+      "cg_vq_v": 12.646218299865723,
+      "pwm_moe": 1,
+      "vdc_v": 48.82807159423828,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.578,
+      "Mech_RPM": 413.6716003417969,
+      "cg_id_a": 0.9546204209327698,
+      "cg_iq_a": 25.84355926513672,
+      "cg_vd_v": -5.334525108337402,
+      "cg_vq_v": 12.886475563049316,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.711,
+      "Mech_RPM": 431.7503356933594,
+      "cg_id_a": 0.010811839252710342,
+      "cg_iq_a": 25.877241134643555,
+      "cg_vd_v": -5.255702972412109,
+      "cg_vq_v": 13.214138984680176,
+      "pwm_moe": 1,
+      "vdc_v": 49.70785903930664,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.845,
+      "Mech_RPM": 447.0048828125,
+      "cg_id_a": -1.1337462663650513,
+      "cg_iq_a": 26.17144775390625,
+      "cg_vd_v": -5.218955993652344,
+      "cg_vq_v": 13.478930473327637,
+      "pwm_moe": 1,
+      "vdc_v": 48.82807159423828,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 3.997,
+      "Mech_RPM": 466.9355773925781,
+      "cg_id_a": -4.241182327270508,
+      "cg_iq_a": 29.878292083740234,
+      "cg_vd_v": -5.446598052978516,
+      "cg_vq_v": 13.747928619384766,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 4.134,
+      "Mech_RPM": 483.893310546875,
+      "cg_id_a": -0.096525177359581,
+      "cg_iq_a": 24.68182373046875,
+      "cg_vd_v": -5.52487325668335,
+      "cg_vq_v": 14.195100784301758,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    },
+    {
+      "elapsed_s": 4.285,
+      "Mech_RPM": 500.3666076660156,
+      "cg_id_a": -2.573763370513916,
+      "cg_iq_a": 25.727378845214844,
+      "cg_vd_v": -5.60358190536499,
+      "cg_vq_v": 14.651256561279297,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    }
+  ],
+  "coast": [
+    {
+      "elapsed_s": 0.03,
+      "Mech_RPM": 535.4442138671875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.166,
+      "Mech_RPM": 546.4847412109375,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.299,
+      "Mech_RPM": 553.130126953125,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.434,
+      "Mech_RPM": 557.600830078125,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 0.579,
+      "Mech_RPM": 559.8818359375,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 0.715,
+      "Mech_RPM": 560.8321533203125,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 0.852,
+      "Mech_RPM": 560.6793212890625,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 0.993,
+      "Mech_RPM": 557.6096801757812,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.127,
+      "Mech_RPM": 553.5971069335938,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.264,
+      "Mech_RPM": 548.18994140625,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.412,
+      "Mech_RPM": 539.589599609375,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.548,
+      "Mech_RPM": 531.9081420898438,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.683,
+      "Mech_RPM": 523.475341796875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.828,
+      "Mech_RPM": 514.4387817382812,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 1.966,
+      "Mech_RPM": 504.84539794921875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.117,
+      "Mech_RPM": 493.26995849609375,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.254,
+      "Mech_RPM": 484.3125915527344,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.406,
+      "Mech_RPM": 470.4071044921875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.538,
+      "Mech_RPM": 462.4569396972656,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.671,
+      "Mech_RPM": 451.2814636230469,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.829,
+      "Mech_RPM": 438.3071594238281,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 2.987,
+      "Mech_RPM": 423.46514892578125,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 3.144,
+      "Mech_RPM": 411.9031982421875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 3.281,
+      "Mech_RPM": 400.21160888671875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 3.432,
+      "Mech_RPM": 386.8954162597656,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 3.57,
+      "Mech_RPM": 376.9097595214844,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 3.719,
+      "Mech_RPM": 361.9807434082031,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 3.908,
+      "Mech_RPM": 347.0550842285156,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.042,
+      "Mech_RPM": 337.2060546875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.179,
+      "Mech_RPM": 327.36285400390625,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.323,
+      "Mech_RPM": 312.7603454589844,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.46,
+      "Mech_RPM": 304.714111328125,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.595,
+      "Mech_RPM": 293.4715576171875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.742,
+      "Mech_RPM": 280.8000183105469,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 4.882,
+      "Mech_RPM": 269.8157653808594,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.02,
+      "Mech_RPM": 257.4109802246094,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.152,
+      "Mech_RPM": 248.17247009277344,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.288,
+      "Mech_RPM": 237.56419372558594,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.424,
+      "Mech_RPM": 228.55625915527344,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.572,
+      "Mech_RPM": 216.71034240722656,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.708,
+      "Mech_RPM": 206.48416137695312,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 5.868,
+      "Mech_RPM": 196.39149475097656,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.025,
+      "Mech_RPM": 183.6313018798828,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.162,
+      "Mech_RPM": 175.27206420898438,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.327,
+      "Mech_RPM": 164.3026123046875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.475,
+      "Mech_RPM": 154.8122100830078,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.635,
+      "Mech_RPM": 142.93284606933594,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.807,
+      "Mech_RPM": 132.6389617919922,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 6.949,
+      "Mech_RPM": 122.47825622558594,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.085,
+      "Mech_RPM": 115.00598907470703,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.238,
+      "Mech_RPM": 103.987060546875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.373,
+      "Mech_RPM": 96.78558349609375,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.526,
+      "Mech_RPM": 87.42578887939453,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.66,
+      "Mech_RPM": 80.63572692871094,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.817,
+      "Mech_RPM": 71.81654357910156,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 7.955,
+      "Mech_RPM": 64.38201141357422,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.102,
+      "Mech_RPM": 57.216243743896484,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.239,
+      "Mech_RPM": 49.757965087890625,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.389,
+      "Mech_RPM": 42.730247497558594,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.522,
+      "Mech_RPM": 37.13385009765625,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.66,
+      "Mech_RPM": 32.264591217041016,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.81,
+      "Mech_RPM": 27.43001937866211,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 8.977,
+      "Mech_RPM": 23.36343002319336,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.127,
+      "Mech_RPM": 19.85819435119629,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.265,
+      "Mech_RPM": 17.603076934814453,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.416,
+      "Mech_RPM": 14.968308448791504,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.557,
+      "Mech_RPM": 12.999842643737793,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.7,
+      "Mech_RPM": 11.29973316192627,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.838,
+      "Mech_RPM": 9.795714378356934,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 9.99,
+      "Mech_RPM": 8.32429027557373,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 10.128,
+      "Mech_RPM": 7.391420841217041,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 10.292,
+      "Mech_RPM": 6.162123680114746,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 10.442,
+      "Mech_RPM": 5.461045742034912,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 10.595,
+      "Mech_RPM": 4.831024169921875,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 10.732,
+      "Mech_RPM": 4.36446475982666,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 10.891,
+      "Mech_RPM": 3.6263911724090576,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 11.045,
+      "Mech_RPM": 3.0254263877868652,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    },
+    {
+      "elapsed_s": 11.185,
+      "Mech_RPM": 2.6361165046691895,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "date": "2026-09-22",
+  "saved_graph_keys": {
+    "Motor.Encoder.SinCos.OffsetDeg": 150,
+    "Motor.Encoder.SinCos.Sign": 1,
+    "Motor.Poles": 10,
+    "Ctrl.PiD.Kp": 0.04,
+    "Ctrl.PiD.Ki": 5,
+    "Ctrl.PiQ.Kp": 0.04,
+    "Ctrl.PiQ.Ki": 5,
+    "Ctrl.Iq.SlewAps": 50,
+    "Ctrl.ThrottleEnable": 1,
+    "Motor.Ld": 0,
+    "Motor.Lq": 0,
+    "Motor.Lambda": 0.04,
+    "Motor.KneeV": 0
+  },
+  "existing_persistent_driver_remap": {
+    "Motor.PhaseSwap": 4
+  },
+  "saves": [
+    {
+      "key": "Motor.Encoder.SinCos.OffsetDeg",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Motor.Encoder.SinCos.Sign",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Motor.Poles",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Ctrl.PiD.Kp",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Ctrl.PiD.Ki",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Ctrl.PiQ.Kp",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Ctrl.PiQ.Ki",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Ctrl.Iq.SlewAps",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Ctrl.ThrottleEnable",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Motor.Ld",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Motor.Lq",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Motor.Lambda",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    },
+    {
+      "key": "Motor.KneeV",
+      "verified_save": true,
+      "lines": [
+        "[SHELL] config value saved to FRAM (1)"
+      ]
+    }
+  ],
+  "reboot_verification": "Main MCU reflashed and rebooted after saving; no config set commands were issued before readback.",
+  "readback": [
+    {
+      "key": "Motor.Encoder.SinCos.OffsetDeg",
+      "expected": 150,
+      "actual": 150,
+      "match": true
+    },
+    {
+      "key": "Motor.Encoder.SinCos.Sign",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "key": "Motor.Poles",
+      "expected": 10,
+      "actual": 10,
+      "match": true
+    },
+    {
+      "key": "Ctrl.PiD.Kp",
+      "expected": 0.04,
+      "actual": 0.04,
+      "match": true
+    },
+    {
+      "key": "Ctrl.PiD.Ki",
+      "expected": 5,
+      "actual": 5,
+      "match": true
+    },
+    {
+      "key": "Ctrl.PiQ.Kp",
+      "expected": 0.04,
+      "actual": 0.04,
+      "match": true
+    },
+    {
+      "key": "Ctrl.PiQ.Ki",
+      "expected": 5,
+      "actual": 5,
+      "match": true
+    },
+    {
+      "key": "Ctrl.Iq.SlewAps",
+      "expected": 50,
+      "actual": 50,
+      "match": true
+    },
+    {
+      "key": "Ctrl.ThrottleEnable",
+      "expected": 1,
+      "actual": 1,
+      "match": true
+    },
+    {
+      "key": "Motor.Ld",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "key": "Motor.Lq",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "key": "Motor.Lambda",
+      "expected": 0.04,
+      "actual": 0.04,
+      "match": true
+    },
+    {
+      "key": "Motor.KneeV",
+      "expected": 0,
+      "actual": 0,
+      "match": true
+    },
+    {
+      "key": "Motor.PhaseSwap",
+      "expected": 4,
+      "actual": 4,
+      "match": true
+    }
+  ],
+  "firmware": {
+    "graph": "foc_demo",
+    "graph_hash": "dd8a7cd4d92a99c9",
+    "binary_sha256": "36c6ed503e19da80a3d9aa08592d2e63ac34791c4c55941c783b1fb69746c640",
+    "binary": "build/torque-adc-fw/STM32CubeMX.bin",
+    "elf": "build/torque-adc-fw/STM32CubeMX.elf"
+  },
+  "final": {
+    "signals": {
+      "Mech_RPM": 0.0030892298091202974,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    "strings": {
+      "control_state": "IDLE",
+      "fault_active_names": "none",
+      "fw_graph_hash": "dd8a7cd4d92a99c9"
+    },
+    "variables": [
+      "[SHELL]   IqVar = 0.0000",
+      "[SHELL]   IdVar = 0.0000",
+      "[SHELL]   ThrottleEnable = 1.0000"
+    ]
+  },
+  "graph_fallback_changes": {
+    "encoder_offset_degrees": 150,
+    "pi_d_kp": 0.04,
+    "pi_q_kp": 0.04,
+    "pi_d_ki": 5,
+    "pi_q_ki": 5
+  }
+}

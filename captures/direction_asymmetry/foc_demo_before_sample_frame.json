@@ -49,14 +49,14 @@
       }
     },
     {
-      "id": "sample_c7_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
       "consumer": {
-        "nodeId": "PiD",
-        "portName": "Measurement"
+        "nodeId": "Clarke",
+        "portName": "I_A"
+      },
+      "id": "i_a_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_A"
       },
       "type": {
         "dtype": "f32",
@@ -65,14 +65,14 @@
       }
     },
     {
-      "id": "sample_c9_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
       "consumer": {
-        "nodeId": "PiQ",
-        "portName": "Measurement"
+        "nodeId": "Clarke",
+        "portName": "I_B"
+      },
+      "id": "i_b_bridge",
+      "producer": {
+        "nodeId": "Currents",
+        "portName": "I_B"
       },
       "type": {
         "dtype": "f32",
@@ -81,115 +81,19 @@
       }
     },
     {
-      "id": "sample_c43_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
       "consumer": {
-        "nodeId": "LogId",
-        "portName": "Value"
+        "nodeId": "Clarke",
+        "portName": "I_C"
       },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
-      }
-    },
-    {
-      "id": "sample_c44_bridge",
+      "id": "i_c_bridge",
       "producer": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
-      "consumer": {
-        "nodeId": "LogIq",
-        "portName": "Value"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
-      }
-    },
-    {
-      "id": "sample_c_ff_id_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
-      "consumer": {
-        "nodeId": "FocFeedforward",
-        "portName": "I_D"
+        "nodeId": "Currents",
+        "portName": "I_C"
       },
       "type": {
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
-    },
-    {
-      "id": "sample_c_ff_iq_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
-      "consumer": {
-        "nodeId": "FocFeedforward",
-        "portName": "I_Q"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
-      }
-    },
-    {
-      "id": "sample_EncoderSign_bridge",
-      "producer": {
-        "nodeId": "CfgEncSign",
-        "portName": "Value"
-      },
-      "consumer": {
-        "nodeId": "CurrentSampleElecAngle",
-        "portName": "EncoderSign"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
-      }
-    },
-    {
-      "id": "sample_OffsetDeg_bridge",
-      "producer": {
-        "nodeId": "CfgEncOffset",
-        "portName": "Value"
-      },
-      "consumer": {
-        "nodeId": "CurrentSampleElecAngle",
-        "portName": "OffsetDeg"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
-      }
-    },
-    {
-      "id": "sample_Poles_bridge",
-      "producer": {
-        "nodeId": "CfgPoles",
-        "portName": "Value"
-      },
-      "consumer": {
-        "nodeId": "CurrentSampleElecAngle",
-        "portName": "Poles"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
       }
     }
   ],
@@ -218,7 +122,7 @@
     },
     {
       "from": {
-        "nodeId": "CurrentSampleElecAngle",
+        "nodeId": "ElecAngle",
         "portName": "ThetaElec"
       },
       "id": "c2",
@@ -258,6 +162,28 @@
       "to": {
         "nodeId": "PiD",
         "portName": "Setpoint"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c7",
+      "to": {
+        "nodeId": "PiD",
+        "portName": "Measurement"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c9",
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Measurement"
       }
     },
     {
@@ -434,6 +360,28 @@
       "to": {
         "nodeId": "ElecAngle",
         "portName": "Poles"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c43",
+      "to": {
+        "nodeId": "LogId",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c44",
+      "to": {
+        "nodeId": "LogIq",
+        "portName": "Value"
       }
     },
     {
@@ -845,6 +793,28 @@
     },
     {
       "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c_ff_id",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_D"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c_ff_iq",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_Q"
+      }
+    },
+    {
+      "from": {
         "nodeId": "RPMMechElec1",
         "portName": "RpmElec"
       },
@@ -874,50 +844,6 @@
       "to": {
         "nodeId": "PiQ",
         "portName": "Feedforward"
-      }
-    },
-    {
-      "id": "sample_i_a_bridge",
-      "from": {
-        "nodeId": "Currents",
-        "portName": "I_A"
-      },
-      "to": {
-        "nodeId": "Clarke",
-        "portName": "I_A"
-      }
-    },
-    {
-      "id": "sample_i_b_bridge",
-      "from": {
-        "nodeId": "Currents",
-        "portName": "I_B"
-      },
-      "to": {
-        "nodeId": "Clarke",
-        "portName": "I_B"
-      }
-    },
-    {
-      "id": "sample_i_c_bridge",
-      "from": {
-        "nodeId": "Currents",
-        "portName": "I_C"
-      },
-      "to": {
-        "nodeId": "Clarke",
-        "portName": "I_C"
-      }
-    },
-    {
-      "id": "sample_ThetaMech",
-      "from": {
-        "nodeId": "CurrentSampleEncoder",
-        "portName": "Theta"
-      },
-      "to": {
-        "nodeId": "CurrentSampleElecAngle",
-        "portName": "ThetaMech"
       }
     }
   ],
@@ -2833,7 +2759,7 @@
         }
       ],
       "isEntryPoint": false,
-      "maxInstances": 2,
+      "maxInstances": 1,
       "outputPorts": [
         {
           "description": "Electrical rotor angle wrapped to the range 0 through 2\u03c0 radians.",
@@ -4320,7 +4246,7 @@
       "displayName": "Phase Currents (ISR)",
       "domain": "adc_isr",
       "id": "Custom.PhaseCurrentsBurst",
-      "inlineCode": "/* Micro-burst phase-current sampling:\n *   ADC1 injected: [U_sig, V_sig, U_sig, V_sig] (ranks 1..4)\n *   ADC2 injected: [U_ref, V_ref, U_ref, V_ref] (ranks 1..4)\n * Average the two points per phase for a cleaner sample. */\nfloat iu0 = 0.0f, iv0 = 0.0f, iu1 = 0.0f, iv1 = 0.0f;\nuint32_t burst_time_us = 0;\nif (platform_adc_get_burst_sample(&iu0, &iv0, &iu1, &iv1, &burst_time_us)) {\n    const float iu_avg = 0.5f * (iu0 + iu1);\n    const float iv_avg = 0.5f * (iv0 + iv1);\n\n    /* W is computed from the two measured phases (three-wire balanced load). */\n    const float iw_avg = -(iu_avg + iv_avg);\n\n    /* Bench-verified current-to-PWM phase mapping: the first measured\n     * channel is PWM phase C, the second is PWM phase A; phase B is the\n     * reconstructed channel. A stationary positive d-current at 0/60/120\n     * degrees exposed the former negate-all mapping as a +60-degree\n     * voltage/current rotation. Keep currents in the PWM A/B/C frame. */\n    I_A = rte::Amperes(iv_avg);\n    I_B = rte::Amperes(iw_avg);\n    I_C = rte::Amperes(iu_avg);\n}\n",
+      "inlineCode": "/* Micro-burst phase-current sampling:\n *   ADC1 injected: [U_sig, V_sig, U_sig, V_sig] (ranks 1..4)\n *   ADC2 injected: [U_ref, V_ref, U_ref, V_ref] (ranks 1..4)\n * Average the two points per phase for a cleaner sample. */\nfloat iu0 = 0.0f, iv0 = 0.0f, iu1 = 0.0f, iv1 = 0.0f;\nuint32_t burst_time_us = 0;\nif (platform_adc_get_burst_sample(&iu0, &iv0, &iu1, &iv1, &burst_time_us)) {\n    const float iu_avg = 0.5f * (iu0 + iu1);\n    const float iv_avg = 0.5f * (iv0 + iv1);\n\n    /* W is computed from the two measured phases (three-wire balanced load). */\n    const float iw_avg = -(iu_avg + iv_avg);\n\n    /* The phase-current sensors on this hardware are wired with inverted\n     * polarity relative to the FOC convention.  Negate all three so\n     * downstream transforms see the correct sign. */\n    I_A = rte::Amperes(-iu_avg);\n    I_B = rte::Amperes(-iv_avg);\n    I_C = rte::Amperes(-iw_avg);\n}\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
@@ -4570,7 +4496,7 @@
   "nodes": [
     {
       "displayName": "",
-      "domain": "adc_isr",
+      "domain": "tim_isr",
       "id": "Clarke",
       "parameters": {},
       "position": {
@@ -4599,7 +4525,7 @@
       "id": "ElecAngle",
       "parameters": {
         "EncoderSign": "1.0",
-        "OffsetDeg": "150.0",
+        "OffsetDeg": "6.445",
         "Poles": "10.0"
       },
       "position": {
@@ -4839,7 +4765,7 @@
     },
     {
       "displayName": "",
-      "domain": "adc_isr",
+      "domain": "tim_isr",
       "id": "Park",
       "parameters": {},
       "position": {
@@ -4861,8 +4787,8 @@
         "Dt": "0.0002",
         "Feedforward": "0.0",
         "Integral": "0.0",
-        "Ki": "5.0",
-        "Kp": "0.04",
+        "Ki": "10.0",
+        "Kp": "0.03",
         "OutputMax": "200.0",
         "OutputMin": "-200.0"
       },
@@ -4885,8 +4811,8 @@
         "Dt": "0.0002",
         "Feedforward": "0.0",
         "Integral": "0.0",
-        "Ki": "5.0",
-        "Kp": "0.04",
+        "Ki": "10.0",
+        "Kp": "0.03",
         "OutputMax": "200.0",
         "OutputMin": "-200.0"
       },
@@ -4961,7 +4887,7 @@
       "id": "CfgEncOffset",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "150.0",
+        "DefaultValue": "6.445",
         "Key": "Motor.Encoder.SinCos.OffsetDeg"
       },
       "position": {
@@ -5517,32 +5443,6 @@
         "y": 3550.0
       },
       "type": "Values.Config"
-    },
-    {
-      "displayName": "CurrentSampleEncoder",
-      "domain": "adc_isr",
-      "id": "CurrentSampleEncoder",
-      "parameters": {},
-      "position": {
-        "x": -1561.111111111111,
-        "y": 2369.3333333333335
-      },
-      "type": "Custom.EncoderAngle"
-    },
-    {
-      "displayName": "CurrentSampleElecAngle",
-      "domain": "adc_isr",
-      "id": "CurrentSampleElecAngle",
-      "parameters": {
-        "EncoderSign": "1.0",
-        "OffsetDeg": "150.0",
-        "Poles": "10.0"
-      },
-      "position": {
-        "x": -1280.0,
-        "y": 2640.222222222222
-      },
-      "type": "Transforms.ElecAngle"
     }
   ],
   "schemaVersion": 1

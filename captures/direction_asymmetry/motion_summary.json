@@ -1,0 +1,232 @@
+{
+  "positive": {
+    "time_to_600_s": null,
+    "bands": [
+      {
+        "lo_rpm": 50,
+        "hi_rpm": 150,
+        "acceleration_rpm_s": 75.21522801699075,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 9,
+        "reported_mean_iq_a": 14.62761476304796
+      },
+      {
+        "lo_rpm": 150,
+        "hi_rpm": 250,
+        "acceleration_rpm_s": 61.13821593954295,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 11,
+        "reported_mean_iq_a": 14.9189246784557
+      },
+      {
+        "lo_rpm": 250,
+        "hi_rpm": 350,
+        "acceleration_rpm_s": 32.54730129196324,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 21,
+        "reported_mean_iq_a": 14.4221126919701
+      },
+      {
+        "lo_rpm": 400,
+        "hi_rpm": 500,
+        "acceleration_rpm_s": null,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 26,
+        "reported_mean_iq_a": 14.771048105680025
+      },
+      {
+        "lo_rpm": 500,
+        "hi_rpm": 600,
+        "acceleration_rpm_s": null,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 0,
+        "reported_mean_iq_a": null
+      }
+    ],
+    "maximum_observed_speed_rpm": 415.5414733886719
+  },
+  "negative": {
+    "time_to_600_s": 10.149506020029255,
+    "bands": [
+      {
+        "lo_rpm": 50,
+        "hi_rpm": 150,
+        "acceleration_rpm_s": 80.29763634017988,
+        "coast_deceleration_rpm_s": 55.721923071230016,
+        "poll_samples_in_band": 8,
+        "reported_mean_iq_a": -15.09108817577362
+      },
+      {
+        "lo_rpm": 150,
+        "hi_rpm": 250,
+        "acceleration_rpm_s": 79.68021413162957,
+        "coast_deceleration_rpm_s": 68.24988688568273,
+        "poll_samples_in_band": 8,
+        "reported_mean_iq_a": -14.982152581214905
+      },
+      {
+        "lo_rpm": 250,
+        "hi_rpm": 350,
+        "acceleration_rpm_s": 69.11879510392663,
+        "coast_deceleration_rpm_s": 77.4409140572779,
+        "poll_samples_in_band": 9,
+        "reported_mean_iq_a": -14.596601486206055
+      },
+      {
+        "lo_rpm": 400,
+        "hi_rpm": 500,
+        "acceleration_rpm_s": 52.538377673481655,
+        "coast_deceleration_rpm_s": 82.57691500658925,
+        "poll_samples_in_band": 13,
+        "reported_mean_iq_a": -14.755296487074633
+      },
+      {
+        "lo_rpm": 500,
+        "hi_rpm": 600,
+        "acceleration_rpm_s": 43.4413905791258,
+        "coast_deceleration_rpm_s": 68.68059633562649,
+        "poll_samples_in_band": 15,
+        "reported_mean_iq_a": -14.980228614807128
+      }
+    ],
+    "maximum_observed_speed_rpm": 618.227294921875
+  },
+  "positive_repeat": {
+    "time_to_600_s": null,
+    "bands": [
+      {
+        "lo_rpm": 50,
+        "hi_rpm": 150,
+        "acceleration_rpm_s": 72.6406917083498,
+        "coast_deceleration_rpm_s": 55.443563350476296,
+        "poll_samples_in_band": 9,
+        "reported_mean_iq_a": 15.4216644499037
+      },
+      {
+        "lo_rpm": 150,
+        "hi_rpm": 250,
+        "acceleration_rpm_s": 61.35695906146631,
+        "coast_deceleration_rpm_s": 66.75116540859145,
+        "poll_samples_in_band": 10,
+        "reported_mean_iq_a": 14.340215969085694
+      },
+      {
+        "lo_rpm": 250,
+        "hi_rpm": 350,
+        "acceleration_rpm_s": 32.74825167413259,
+        "coast_deceleration_rpm_s": 68.38529383073329,
+        "poll_samples_in_band": 20,
+        "reported_mean_iq_a": 14.731118631362914
+      },
+      {
+        "lo_rpm": 400,
+        "hi_rpm": 500,
+        "acceleration_rpm_s": null,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 1,
+        "reported_mean_iq_a": 15.560980796813965
+      },
+      {
+        "lo_rpm": 500,
+        "hi_rpm": 600,
+        "acceleration_rpm_s": null,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 0,
+        "reported_mean_iq_a": null
+      }
+    ],
+    "maximum_observed_speed_rpm": 401.08343505859375
+  },
+  "positive_25a": {
+    "time_to_600_s": 6.533848471457206,
+    "bands": [
+      {
+        "lo_rpm": 50,
+        "hi_rpm": 150,
+        "acceleration_rpm_s": 114.31904243832174,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 6,
+        "reported_mean_iq_a": 25.75601100921631
+      },
+      {
+        "lo_rpm": 150,
+        "hi_rpm": 250,
+        "acceleration_rpm_s": 158.61220884940198,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 4,
+        "reported_mean_iq_a": 23.17025852203369
+      },
+      {
+        "lo_rpm": 250,
+        "hi_rpm": 350,
+        "acceleration_rpm_s": 126.82840400820338,
+        "coast_deceleration_rpm_s": null,
+        "poll_samples_in_band": 4,
+        "reported_mean_iq_a": 26.34192132949829
+      },
+      {
+        "lo_rpm": 400,
+        "hi_rpm": 500,
+        "acceleration_rpm_s": 90.44375279704904,
+        "coast_deceleration_rpm_s": 83.98542869393614,
+        "poll_samples_in_band": 8,
+        "reported_mean_iq_a": 26.562288999557495
+      },
+      {
+        "lo_rpm": 500,
+        "hi_rpm": 600,
+        "acceleration_rpm_s": 61.364946484979136,
+        "coast_deceleration_rpm_s": 72.0564968514053,
+        "poll_samples_in_band": 11,
+        "reported_mean_iq_a": 27.642952485518023
+      }
+    ],
+    "maximum_observed_speed_rpm": 622.1922607421875
+  },
+  "negative_25a": {
+    "time_to_600_s": 4.5559295119509,
+    "bands": [
+      {
+        "lo_rpm": 50,
+        "hi_rpm": 150,
+        "acceleration_rpm_s": 136.89418381252761,
+        "coast_deceleration_rpm_s": 56.32974950169693,
+        "poll_samples_in_band": 5,
+        "reported_mean_iq_a": -21.472293853759766
+      },
+      {
+        "lo_rpm": 150,
+        "hi_rpm": 250,
+        "acceleration_rpm_s": 156.2952083147986,
+        "coast_deceleration_rpm_s": 69.1883925425753,
+        "poll_samples_in_band": 4,
+        "reported_mean_iq_a": -23.420833587646484
+      },
+      {
+        "lo_rpm": 250,
+        "hi_rpm": 350,
+        "acceleration_rpm_s": 170.11622956410056,
+        "coast_deceleration_rpm_s": 79.31705387773927,
+        "poll_samples_in_band": 4,
+        "reported_mean_iq_a": -24.383199214935303
+      },
+      {
+        "lo_rpm": 400,
+        "hi_rpm": 500,
+        "acceleration_rpm_s": 147.5594822089516,
+        "coast_deceleration_rpm_s": 87.63328112230614,
+        "poll_samples_in_band": 5,
+        "reported_mean_iq_a": -24.287174224853516
+      },
+      {
+        "lo_rpm": 500,
+        "hi_rpm": 600,
+        "acceleration_rpm_s": 180.35693007069153,
+        "coast_deceleration_rpm_s": 88.32847293135025,
+        "poll_samples_in_band": 3,
+        "reported_mean_iq_a": -25.874670028686523
+      }
+    ],
+    "maximum_observed_speed_rpm": 715.990966796875
+  }
+}

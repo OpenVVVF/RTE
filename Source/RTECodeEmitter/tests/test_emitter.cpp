@@ -22,6 +22,65 @@ std::string ReadFile(const std::filesystem::path& path) {
 
 }  // namespace
 
+TEST(Emitter, Gen7CurrentGraphReadsCompletedAdcBurst) {
+    const auto root = std::filesystem::path(__FILE__).parent_path()
+                          .parent_path().parent_path().parent_path();
+    const auto temp = std::filesystem::temp_directory_path() / "rte_gen7_adc_order_test";
+    std::filesystem::remove_all(temp);
+    const auto base = temp / "base";
+    const auto output = temp / "output";
+    const auto graph = temp / "graph.json";
+    const auto driver = root / "Images/Gen7FW/MainProcessor/Src/Inverter/Drivers/Sensors/PhaseCurrentADC.cpp";
+    ASSERT_TRUE(std::filesystem::exists(driver));
+    WriteFile(base / "PhaseCurrentADC.cpp", ReadFile(driver));
+    WriteFile(graph, R"({
+      "name":"adc_order", "nodeTypes":[{
+        "id":"adc.reader", "inputPorts":[],
+        "outputPorts":[{"name":"out","direction":"output",
+          "type":{"quantity":"dimensionless","frame":"scalar","dtype":"f32"}}],
+        "inlineCode":"out = 0.0f;"
+      }],
+      "nodes":[{"id":"reader","type":"adc.reader","domain":"adc_isr",
+        "position":{"x":0,"y":0},"parameters":{}}], "connections":[]
+    })");
+    RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
+    RTECodeEmitter::Emitter emitter(logger);
+    RTECodeEmitter::EmitterOptions options;
+    options.baseSrc = base;
+    options.graphPath = graph;
+    options.outputDir = output;
+    options.verbosity = RTECodeEmitter::LogLevel::Error;
+    ASSERT_TRUE(emitter.Run(options));
+
+    const auto source = ReadFile(output / "PhaseCurrentADC.cpp");
+    const auto begin = source.find("void PhaseCurrentADC::onInjectedConversionComplete()");
+    ASSERT_NE(begin, std::string::npos);
+    const auto end = source.find("bool PhaseCurrentADC::sample(", begin);
+    ASSERT_NE(end, std::string::npos);
+    const auto callback = source.substr(begin, end - begin);
+    const auto step = callback.find("app::AdcIsrStep(appState.adc_isr);");
+    ASSERT_NE(step, std::string::npos);
+    // latestBurst() must expose every rank and its timestamp from this IRQ,
+    // and hardware protection must run before generated graph consumers.
+    for (const auto* prerequisite : {
+             "m_raw_burst_u_sig[1] =", "m_raw_burst_v_sig[1] =",
+             "m_raw_burst_u_ref[1] =", "m_raw_burst_v_ref[1] =",
+             "m_last_burst_us =", "FaultReason::PhaseOvercurrentSoftware",
+             "m_new_data = true;"}) {
+        const auto position = callback.find(prerequisite);
+        ASSERT_NE(position, std::string::npos) << prerequisite;
+        EXPECT_LT(position, step) << prerequisite;
+    }
+    EXPECT_NE(callback.find("1.0f / PWM_GetFrequency()"), std::string::npos);
+    const auto saveDt = callback.find("const float interrupted_domain_dt = platform_get_current_domain_dt();");
+    const auto restoreDt = callback.find("platform_set_current_domain_dt(interrupted_domain_dt);");
+    ASSERT_NE(saveDt, std::string::npos);
+    ASSERT_NE(restoreDt, std::string::npos);
+    EXPECT_LT(saveDt, step);
+    EXPECT_GT(restoreDt, step);
+    std::filesystem::remove_all(temp);
+}
+
 TEST(Emitter, RejectsOutputInsideBaseSrc) {
     RTECodeEmitter::Logger logger(RTECodeEmitter::LogLevel::Error);
     RTECodeEmitter::Emitter emitter(logger);

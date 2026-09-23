@@ -1,0 +1,30 @@
+[
+  {
+    "attempt": 1,
+    "captured": false,
+    "message": "[SHELL] spikes: no capture (triggers so far: 0, threshold 8.0 A)"
+  },
+  {
+    "attempt": 2,
+    "captured": true,
+    "peaks": {
+      "angle_deg": {
+        "min": 187.60000610351562,
+        "max": 187.8000030517578
+      },
+      "iu_a": {
+        "min": -8.899999618530273,
+        "max": 1.600000023841858
+      },
+      "iv_a": {
+        "min": -1.7000000476837158,
+        "max": 3.700000047683716
+      }
+    }
+  },
+  {
+    "attempt": 3,
+    "captured": false,
+    "message": "[SHELL] spikes: no capture (triggers so far: 1, threshold 8.0 A)"
+  }
+]

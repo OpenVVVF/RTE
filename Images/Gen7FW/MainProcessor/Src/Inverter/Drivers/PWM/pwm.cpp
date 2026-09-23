@@ -354,7 +354,9 @@ bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
      * The quiet windows for three-shunt sampling are:
      *   - All-low:  max_ccr .. ARR  (up) + ARR .. max_ccr (down)
      *   - All-high: 0 .. min_ccr    (up) + min_ccr .. 0    (down)
-     * Choose the larger of the two windows. */
+     * Sample at the center of a complete symmetric window, not halfway
+     * through one of its up/down-count halves. Off-center samples include
+     * PWM ripple and do not represent the cycle-average phase current. */
     uint32_t min_ccr = ccr_u;
     if (ccr_v < min_ccr) min_ccr = ccr_v;
     if (ccr_w < min_ccr) min_ccr = ccr_w;
@@ -366,28 +368,25 @@ bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
     const uint32_t gap_all_high = 2U * min_ccr;
     const uint32_t gap_all_low  = 2U * (arr - max_ccr);
 
-    uint32_t best_gap = 0;
-    uint32_t best_mid = 0;
-    if (gap_all_low >= gap_all_high) {
-        /* Sample in the middle of the all-low window.  The window spans
-         * max_ccr..ARR on up-count and ARR..max_ccr on down-count, so the
-         * midpoint is near the top of the triangle. */
-        best_gap = gap_all_low;
-        best_mid = (max_ccr + arr) / 2U;
-    } else {
-        /* Sample in the middle of the all-high window, near the bottom. */
-        best_gap = gap_all_high;
-        best_mid = min_ccr / 2U;
+    /* OC4REF must have a nonzero pulse width. Prefer the bottom whenever
+     * its window is valid: min-max SVPWM has nearly equal zero windows,
+     * so choosing the larger one toggles the sample phase on rounding alone.
+     * Ten timer ticks puts the rising edge immediately before CNT=0. */
+    constexpr uint32_t center_margin = 10U;
+    if (arr > 2U * center_margin &&
+        gap_all_high >= min_gap_ticks + 2U * center_margin) {
+        *out_ccr4 = center_margin;
+        *out_gap_ticks = gap_all_high;
+        return true;
     }
-
-    if (best_gap < min_gap_ticks) {
-        *out_gap_ticks = best_gap;
-        return false;
+    if (arr > 2U * center_margin &&
+        gap_all_low >= min_gap_ticks + 2U * center_margin) {
+        *out_ccr4 = arr - center_margin;
+        *out_gap_ticks = gap_all_low;
+        return true;
     }
-
-    *out_ccr4 = best_mid;
-    *out_gap_ticks = best_gap;
-    return true;
+    *out_gap_ticks = (gap_all_high > gap_all_low) ? gap_all_high : gap_all_low;
+    return false;
 }
 
 /* TIME_DOMAIN: OPEN_LOOP_MODULATION_START
@@ -442,7 +441,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance != TIM1) return;
     ++Inverter::LoopStats::tim_isr;
 
-    /* Set the domain time step for generated code that needs it. */
+    /* Preserve the interrupted application's domain time step. */
+    const float interrupted_domain_dt = platform_get_current_domain_dt();
     platform_set_current_domain_dt(1.0f / pwm_update_freq_hz);
 
     /* RTE codegen: PWM-synchronous measurement, telemetry, control, and
@@ -452,6 +452,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
      * generated outputs. This ISR is shared with base-image open-loop and
      * native FOC users, whose direct PWM writes remain independent. */
     // RTE_EMIT: tim_isr step
+    platform_set_current_domain_dt(interrupted_domain_dt);
 
     if (foc_active) {
         FocControlManager_OnPwmPeriod();
@@ -533,9 +534,27 @@ void PWM_StopPhase(uint8_t phase)
 
 void PWM_Start(void)
 {
-    PWM_StartPhase(0);
-    PWM_StartPhase(1);
-    PWM_StartPhase(2);
+    /* The per-channel HAL start calls each assert MOE immediately. That
+     * briefly powers an incomplete bridge, even with neutral CCR values.
+     * Arm all three complementary pairs with MOE clear, then enable them
+     * together. Keep HAL's channel bookkeeping compatible with stop and
+     * the independent per-phase diagnostic functions. */
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    CLEAR_BIT(htim1.Instance->BDTR, TIM_BDTR_MOE);
+    for (uint8_t phase = 0; phase < 3; ++phase) {
+        const uint32_t channel = PWM_PhaseToChannel(phase);
+        TIM_CHANNEL_STATE_SET(&htim1, channel, HAL_TIM_CHANNEL_STATE_BUSY);
+        TIM_CHANNEL_N_STATE_SET(&htim1, channel, HAL_TIM_CHANNEL_STATE_BUSY);
+    }
+    SET_BIT(htim1.Instance->CCER,
+            TIM_CCER_CC1E | TIM_CCER_CC1NE |
+            TIM_CCER_CC2E | TIM_CCER_CC2NE |
+            TIM_CCER_CC3E | TIM_CCER_CC3NE);
+    __HAL_TIM_ENABLE(&htim1);
+    __HAL_TIM_MOE_ENABLE(&htim1);
+    __DMB();
+    __set_PRIMASK(primask);
 }
 
 void PWM_Stop(void)

@@ -1,0 +1,54 @@
+{
+  "previous": {
+    "positive": {
+      "time_to_1000_rpm_s": 3.519465492823351,
+      "acceleration_400_800_rpm_per_s": 402.5824624307466,
+      "mean_iq_400_800_a": 33.89633973439535,
+      "mean_id_400_800_a": 2.744969808806976,
+      "last_powered_rpm": 1292.4019775390625,
+      "max_logged_abs_rpm": 1310.0455322265625,
+      "peak_abs_id_a": 8.743672370910645,
+      "peak_abs_iq_a": 39.7786979675293,
+      "stop_reason": "Sustained voltage vector limiting",
+      "faults": []
+    },
+    "negative": {
+      "time_to_1000_rpm_s": 3.395398687780711,
+      "acceleration_400_800_rpm_per_s": 412.9506488402765,
+      "mean_iq_400_800_a": -32.17240969340006,
+      "mean_id_400_800_a": 1.1615850925445557,
+      "last_powered_rpm": -1281.339111328125,
+      "max_logged_abs_rpm": 1310.17431640625,
+      "peak_abs_id_a": 8.983878135681152,
+      "peak_abs_iq_a": 39.23148727416992,
+      "stop_reason": "Sustained voltage vector limiting",
+      "faults": []
+    }
+  },
+  "after_latest_flash": {
+    "positive": {
+      "time_to_1000_rpm_s": 3.4700663452098706,
+      "acceleration_400_800_rpm_per_s": 394.9119336018674,
+      "mean_iq_400_800_a": 35.415411631266274,
+      "mean_id_400_800_a": 0.763070305188497,
+      "last_powered_rpm": 1284.654052734375,
+      "max_logged_abs_rpm": 1304.1168212890625,
+      "peak_abs_id_a": 10.395889282226562,
+      "peak_abs_iq_a": 42.25050735473633,
+      "stop_reason": "Sustained voltage vector limiting",
+      "faults": []
+    },
+    "negative": {
+      "time_to_1000_rpm_s": 3.415345324338217,
+      "acceleration_400_800_rpm_per_s": 411.34600017993796,
+      "mean_iq_400_800_a": -34.47665541512625,
+      "mean_id_400_800_a": 0.9939277682985578,
+      "last_powered_rpm": -1291.9456787109375,
+      "max_logged_abs_rpm": 1312.368408203125,
+      "peak_abs_id_a": 9.467988014221191,
+      "peak_abs_iq_a": 38.135807037353516,
+      "stop_reason": "Sustained voltage vector limiting",
+      "faults": []
+    }
+  }
+}

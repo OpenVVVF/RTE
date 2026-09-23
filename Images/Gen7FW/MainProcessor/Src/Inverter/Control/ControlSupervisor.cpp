@@ -115,10 +115,17 @@ bool ControlSupervisor::start() {
     platform_set_control_outputs_enabled(false);
     resetGeneratedState();
 
+    /* The timer keeps sampling while idle, but actuator writes are gated.
+     * Its CCR preload/active registers can therefore still contain the last
+     * powered voltage vector. Load a neutral vector before enabling phases;
+     * resetting the graph alone does not reset the timer registers. */
+    PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+    TIM1->EGR = TIM_EGR_UG;
+
     PWM_ClearFault();
     PWM_EnableFocMode();
-    platform_set_control_outputs_enabled(true);
     PWM_Start();
+    platform_set_control_outputs_enabled(true);
 
     if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
         /* Diagnostics: why is MOE blocked?  Report the live pin states and

@@ -422,14 +422,6 @@ bool PhaseCurrentADC::calibrateOffsets() {
 
 void PhaseCurrentADC::onInjectedConversionComplete() {
     ++LoopStats::adc_isr;
-    /* Set the domain time step for generated code that needs it. */
-    platform_set_current_domain_dt(1.0f / PWM_GetUpdateFrequency());
-
-    /* RTE codegen: ADC current-sense step.  Generated code can consume the raw
-     * or scaled phase currents for protection, observers, or logging.
-     * The base image continues to perform safety overcurrent checks below. */
-    // RTE_EMIT: adc_isr step
-
     /* Read the 4-rank micro-burst:
      *   ADC1 ranks: U_sig, V_sig, U_sig, V_sig
      *   ADC2 ranks: U_ref, V_ref, U_ref, V_ref
@@ -510,6 +502,16 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
                                                 encoderADC().lastRawCos());
 
     m_new_data = true;
+
+    /* Publish this completed conversion before the generated graph reads it.
+     * Calling the graph above the JDR reads made latestBurst() return the
+     * previous PWM period's currents, adding a full sample of feedback delay.
+     * Keep base-image overcurrent protection ahead of graph execution. */
+    const float interrupted_domain_dt = platform_get_current_domain_dt();
+    platform_set_current_domain_dt(1.0f / PWM_GetFrequency());
+    // RTE_EMIT: adc_isr step
+    /* ADC IRQ can preempt TIM1: do not change the interrupted PI time step. */
+    platform_set_current_domain_dt(interrupted_domain_dt);
 }
 
 bool PhaseCurrentADC::sample(float& iu, float& iv, float& iw) {

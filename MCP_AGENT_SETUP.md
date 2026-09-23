@@ -169,6 +169,13 @@ Codex, ChatGPT desktop, and Kimi Code.
 
 ## 4. Use the tools
 
+Gen7 current acquisition publishes the completed ADC burst before executing
+the generated `adc_isr` graph, after base-image overcurrent protection. The
+ADC domain uses the PWM-period time step; ADC and TIM1 graph dispatch restore
+the interrupted domain's time step. This feedback-timing correction requires
+a **main MCU rebuild and reflash**. Command and telemetry formats are unchanged;
+no coprocessor reflash is needed.
+
 - Use `rte_project_info`, `rte_graph_read`, and `rte_validate` to inspect a
   graph. `rte_graph_read` returns a compact node summary by default. Select
   `section` (`nodes`, `connections`, `bridges`, or `node_types`) and use

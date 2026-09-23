@@ -1,0 +1,26 @@
+{
+  "configuration_changes": false,
+  "allowed_actuation_commands": [
+    "control start",
+    "control stop",
+    "var set IqVar 0",
+    "var set IqVar 35",
+    "var set IqVar -35",
+    "var set IdVar 0"
+  ],
+  "variables": [
+    "[SHELL]   IqVar = 0.0000",
+    "[SHELL]   IdVar = 0.0000",
+    "[SHELL]   ThrottleEnable = 1.0000"
+  ],
+  "signals": {
+    "Mech_RPM": 0.0029975580982863903,
+    "control_outputs_enabled": 0,
+    "pwm_moe": 0
+  },
+  "strings": {
+    "control_state": "IDLE",
+    "fault_active_names": "none",
+    "fw_graph_hash": "dd8a7cd4d92a99c9"
+  }
+}
