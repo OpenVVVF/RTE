@@ -58,3 +58,15 @@ flashed image. Document which main or coprocessor image must be reflashed.
 
 The MCP server and Studio CLI expose the same host actions; keep manual
 routes in Studio available when adding an MCP action.
+
+## Keep agent responses bounded
+
+Prefer exact signal lists, filters, snapshots, and `rte_device_trends` before
+requesting raw telemetry histories. Keep telemetry, catalog, graph, console,
+and raw-history pagination and limits intact when their contracts change.
+Large raw datasets belong in `rte_device_history_export` CSV files for local
+numeric analysis. MCP responses above 32 KiB are intentionally withheld; do
+not bypass that guard or repeat a completed hardware action to obtain discarded
+details. If a new host or firmware feature can return an unbounded collection,
+add compact defaults, server-side filtering or pagination, an equivalent
+manual `rte tool` route, and integration coverage.

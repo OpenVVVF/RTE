@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
@@ -35,6 +36,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using json = nlohmann::json;
@@ -715,6 +717,248 @@ json McpJson(const json& value) {
             {"structuredContent", value}};
 }
 
+std::string LowerText(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool MatchesText(const json& value, const std::string& filter) {
+    if (filter.empty()) return true;
+    return LowerText(value.dump()).find(LowerText(filter)) != std::string::npos;
+}
+
+void AddPageMetadata(json& value, std::size_t matching, std::size_t returned,
+                     std::size_t offset, std::size_t limit) {
+    const bool more = offset + returned < matching;
+    value["matching"] = matching;
+    value["returned"] = returned;
+    value["offset"] = offset;
+    value["limit"] = limit;
+    value["has_more"] = more;
+    value["next_offset"] = more ? json(offset + returned) : json(nullptr);
+    if (more) {
+        value["token_warning"] = "More data matched than was returned. Refine the filter or request next_offset; avoid requesting every page unless raw values are necessary.";
+    }
+}
+
+json GraphQuery(const fs::path& path, const json& arguments) {
+    std::ifstream input(path);
+    json graph;
+    try { input >> graph; }
+    catch (const std::exception& error) {
+        return McpText("could not parse graph JSON: " + std::string(error.what()), true);
+    }
+    const std::string section = arguments.value("section", "summary");
+    const std::string filter = arguments.value("filter", "");
+    const bool includeCode = arguments.value("include_code", false);
+    const std::size_t offset = arguments.value("offset", std::size_t{0});
+    const std::size_t limit = arguments.value("limit", std::size_t{50});
+    json source = json::array();
+    if (section == "summary" || section == "nodes") source = graph.value("nodes", json::array());
+    else if (section == "connections") source = graph.value("connections", json::array());
+    else if (section == "bridges") source = graph.value("bridges", json::array());
+    else source = graph.value("nodeTypes", json::array());
+
+    json matching = json::array();
+    for (const auto& item : source) {
+        if (!MatchesText(item, filter)) continue;
+        if (section == "summary") {
+            matching.push_back({{"id", item.value("id", "")},
+                                {"type", item.value("type", "")},
+                                {"display_name", item.value("displayName", "")},
+                                {"domain", item.value("domain", "")}});
+        } else if (section == "node_types" && !includeCode) {
+            matching.push_back({{"id", item.value("id", "")},
+                                {"display_name", item.value("displayName", "")},
+                                {"default_name", item.value("defaultName", "")},
+                                {"domain", item.value("domain", "")},
+                                {"description", item.value("description", "")},
+                                {"input_ports", item.value("inputPorts", json::array()).size()},
+                                {"output_ports", item.value("outputPorts", json::array()).size()},
+                                {"parameter_types", item.value("parameterTypes", json::array()).size()}});
+        } else {
+            matching.push_back(item);
+        }
+    }
+    json items = json::array();
+    for (std::size_t i = offset; i < matching.size() && items.size() < limit; ++i)
+        items.push_back(matching[i]);
+    json report = {{"graph", path.string()}, {"name", graph.value("name", "")},
+                   {"schema_version", graph.value("schemaVersion", 0)},
+                   {"section", section}, {"filter", filter},
+                   {"include_code", includeCode},
+                   {"counts", {{"nodes", graph.value("nodes", json::array()).size()},
+                                {"connections", graph.value("connections", json::array()).size()},
+                                {"bridges", graph.value("bridges", json::array()).size()},
+                                {"node_types", graph.value("nodeTypes", json::array()).size()}}},
+                   {section == "summary" ? "nodes" : "items", std::move(items)},
+                   {"query_guidance", "Use section/filter/offset/limit to inspect only relevant graph data. Node type source code is omitted by default; request include_code only with a narrow filter and limit."}};
+    AddPageMetadata(report, matching.size(), report[section == "summary" ? "nodes" : "items"].size(),
+                    offset, limit);
+    report["estimated_payload_tokens"] = (report.dump().size() + 3) / 4;
+    return McpJson(report);
+}
+
+json FilterTelemetry(const json& source, const json& arguments) {
+    std::vector<std::string> names;
+    std::unordered_set<std::string> seen;
+    const json numeric = source.value("signals", json::object());
+    const json strings = source.value("strings", json::object());
+    const std::string filter = LowerText(arguments.value("filter", ""));
+    if (arguments.contains("signals")) {
+        for (const auto& requested : arguments["signals"]) {
+            const std::string name = requested.get<std::string>();
+            if (seen.insert(name).second) names.push_back(name);
+        }
+    } else {
+        auto collect = [&](const json& values) {
+            for (auto it = values.begin(); it != values.end(); ++it) {
+                if (!filter.empty() && LowerText(it.key()).find(filter) == std::string::npos) continue;
+                if (seen.insert(it.key()).second) names.push_back(it.key());
+            }
+        };
+        collect(numeric);
+        collect(strings);
+        std::sort(names.begin(), names.end());
+    }
+    const std::size_t offset = arguments.value("offset", std::size_t{0});
+    const std::size_t defaultLimit = arguments.contains("signals")
+        ? std::max<std::size_t>(1, names.size()) : 50;
+    const std::size_t limit = arguments.value("limit", defaultLimit);
+    json selectedNumbers = json::object(), selectedStrings = json::object();
+    json statuses = json::object(), lastKnown = json::object(), stopped = json::array();
+    json missing = json::array();
+    std::unordered_set<std::string> selected;
+    std::size_t pageCount = 0;
+    const json sourceStatus = source.value("signal_status", json::object());
+    const json sourceLast = source.value("last_known_values", json::object());
+    for (std::size_t i = offset; i < names.size() && pageCount < limit; ++i, ++pageCount) {
+        const std::string& name = names[i];
+        if (numeric.contains(name)) selectedNumbers[name] = numeric[name];
+        else if (strings.contains(name)) selectedStrings[name] = strings[name];
+        else { missing.push_back(name); continue; }
+        selected.insert(name);
+        if (arguments.value("include_status", true) && sourceStatus.contains(name))
+            statuses[name] = sourceStatus[name];
+        if (sourceLast.contains(name)) lastKnown[name] = sourceLast[name];
+        if (sourceStatus.contains(name) && !sourceStatus[name].value("fresh", false))
+            stopped.push_back(name);
+    }
+    json report = json::object();
+    for (const char* key : {"rx_hz", "suspended", "rx_bytes_per_sec", "good_frames",
+                            "bad_frames", "frame_age_s", "age_s", "reporting_timeout_s",
+                            "firmware_metadata_timeout_s", "value_meaning"})
+        if (source.contains(key)) report[key] = source[key];
+    report["signals"] = std::move(selectedNumbers);
+    report["strings"] = std::move(selectedStrings);
+    report["last_known_values"] = std::move(lastKnown);
+    report["stopped_signals"] = std::move(stopped);
+    report["missing"] = std::move(missing);
+    if (arguments.value("include_status", true)) report["signal_status"] = std::move(statuses);
+    if (arguments.value("include_groups", false)) {
+        json groups = json::object();
+        const json sourceGroups = source.value("groups", json::object());
+        for (auto group = sourceGroups.begin(); group != sourceGroups.end(); ++group) {
+            for (auto item = group.value().begin(); item != group.value().end(); ++item)
+                if (selected.count(item.key())) groups[group.key()][item.key()] = item.value();
+        }
+        report["groups"] = std::move(groups);
+    }
+    AddPageMetadata(report, names.size(), pageCount, offset, limit);
+    report["returned_values"] = selected.size();
+    report["query_guidance"] = "Use signals for exact names, filter for a substring, and next_offset for another page. Use rte_device_trends for time-series analysis.";
+    report["estimated_payload_tokens"] = (report.dump().size() + 3) / 4;
+    return McpJson(report);
+}
+
+json PaginateCatalog(const json& source, const json& arguments) {
+    const json entries = source.value("signals", json::array());
+    const std::size_t offset = arguments.value("offset", std::size_t{0});
+    const std::size_t limit = arguments.value("limit", std::size_t{50});
+    json page = json::array();
+    for (std::size_t i = offset; i < entries.size() && page.size() < limit; ++i)
+        page.push_back(entries[i]);
+    json report = source;
+    report["signals"] = std::move(page);
+    AddPageMetadata(report, entries.size(), report["signals"].size(), offset, limit);
+    report["query_guidance"] = "Refine filter or signal before paging through a large catalog.";
+    report["estimated_payload_tokens"] = (report.dump().size() + 3) / 4;
+    return McpJson(report);
+}
+
+json CompactBuildInfo(const json& source, const json& arguments) {
+    if (arguments.value("detail", "summary") == "full") return McpJson(source);
+    json report = {{"available", source.value("available", false)},
+                   {"source", source.value("source", "")},
+                   {"reason", source.value("reason", "")}};
+    const json manifest = source.value("manifest", json());
+    json identity = json::object(), counts = json::object();
+    if (manifest.is_object()) {
+        for (auto it = manifest.begin(); it != manifest.end(); ++it) {
+            if (it.value().is_primitive()) identity[it.key()] = it.value();
+            else if (it.value().is_array() || it.value().is_object())
+                counts[it.key()] = it.value().size();
+        }
+    }
+    report["identity"] = std::move(identity);
+    report["manifest_counts"] = std::move(counts);
+    report["query_guidance"] = "Use rte_signal_info for paginated signal details. Request detail=full only when the complete manifest is necessary.";
+    return McpJson(report);
+}
+
+bool McpToolMayHaveSideEffects(const std::string& name) {
+    return name == "rte_generate" || name == "rte_build" || name == "rte_flash"
+        || name == "rte_trace_record" || name == "rte_mcp2221"
+        || name == "rte_device_command" || name == "rte_device_command_response"
+        || name == "rte_spike_capture" || name == "rte_device_history_export";
+}
+
+json EnforceMcpResponseBudget(const std::string& name, json response) {
+    constexpr std::size_t kWarningBytes = 16U * 1024U;
+    constexpr std::size_t kMaximumBytes = 32U * 1024U;
+    const std::size_t bytes = response.dump().size();
+    const std::size_t estimatedTokens = (bytes + 3) / 4;
+    if (bytes <= kMaximumBytes) {
+        if (bytes >= kWarningBytes && response.contains("structuredContent")
+            && response["structuredContent"].is_object()) {
+            response["structuredContent"]["response_budget"] = {
+                {"bytes", bytes}, {"estimated_tokens", estimatedTokens},
+                {"warning", "This response is relatively large. Narrow the next query with signals, filter, limit, or a shorter window."}};
+        }
+        return response;
+    }
+    std::string guidance = "Narrow the request with filter, signals, offset, or limit.";
+    if (name == "rte_device_history" || name == "rte_device_histories")
+        guidance = "Use rte_device_trends for local analysis, lower the raw sample limit, or use rte_device_history_export to write raw data to CSV.";
+    else if (name == "rte_device_telemetry" || name == "rte_signal_info")
+        guidance = "Request exact signals or a filter and follow next_offset only when another page is needed.";
+    else if (name == "rte_graph_read" || name.rfind("resource:", 0) == 0)
+        guidance = "Use rte_graph_read with section, filter, offset, and limit instead of reading the full graph resource.";
+    else if (name == "rte_device_console" || name == "rte_device_command_response")
+        guidance = "Use a console filter and a smaller line limit.";
+    const bool actionCompleted = McpToolMayHaveSideEffects(name)
+        && !response.value("isError", false);
+    const std::string text = actionCompleted
+        ? "Operation completed, but its oversized details were withheld from the agent response. " + guidance
+        : "MCP response withheld because it exceeded the 32 KiB context budget. " + guidance;
+    if (name.rfind("resource:", 0) == 0) {
+        const std::string uri = name.substr(std::string("resource:").size());
+        return {{"contents", json::array({{{"uri", uri}, {"mimeType", "text/plain"},
+                    {"text", text}}})},
+                {"response_withheld", true}, {"original_bytes", bytes},
+                {"estimated_tokens", estimatedTokens}, {"budget_bytes", kMaximumBytes},
+                {"guidance", guidance}};
+    }
+    json compact = McpText(text, !actionCompleted);
+    compact["structuredContent"] = {{"response_withheld", true},
+        {"operation_completed", actionCompleted}, {"original_bytes", bytes},
+        {"estimated_tokens", estimatedTokens}, {"budget_bytes", kMaximumBytes},
+        {"guidance", guidance}};
+    return compact;
+}
+
 json ToolDefinition(const std::string& name, const std::string& description,
                     json properties, std::vector<std::string> required = {}) {
     // An empty braced initializer would construct a null JSON value, which
@@ -745,8 +989,13 @@ json McpTools() {
     const json path = {{"type", "string"}};
     return json::array({
         ToolDefinition("rte_project_info", "List the RTE workspace and available graph files.", {}),
-        ToolDefinition("rte_graph_read", "Read a graph JSON file from the workspace.",
-            {{"graph", path}}, {"graph"}),
+        ToolDefinition("rte_graph_read", "Query a graph locally without returning the full JSON. Defaults to a paginated node summary; filter by node text or select nodes, connections, bridges, or node_types.",
+            {{"graph", path},
+             {"section", {{"type", "string"}, {"enum", json::array({"summary", "nodes", "connections", "bridges", "node_types"})}}},
+             {"filter", {{"type", "string"}}},
+             {"include_code", {{"type", "boolean"}}},
+             {"offset", {{"type", "integer"}, {"minimum", 0}, {"maximum", 100000}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 200}}}}, {"graph"}),
         ToolDefinition("rte_validate", "Validate an RTE graph without changing files.",
             {{"graph", path}, {"templates", path}}, {"graph"}),
         ToolDefinition("rte_generate", "Generate firmware sources from an RTE graph.",
@@ -779,10 +1028,20 @@ json McpTools() {
         ToolDefinition("rte_device_mode", "Diagnose Gen7 main MCU app/bootloader responsiveness without changing firmware. Silent app state is inconclusive.",
             {{"serial", {{"type", "string"}}}, {"control_port", {{"type", "string"}}},
              {"probe_bootloader", {{"type", "boolean"}}}, {"programmer", path}}),
-        ToolDefinition("rte_device_telemetry", "Read current telemetry and per-signal reporting state. Stopped signals have null current values and separate last-known values.", {}),
-        ToolDefinition("rte_build_info", "Read the graph identity and node/signal manifest announced by the running firmware.", {}),
-        ToolDefinition("rte_signal_info", "List observed and firmware-declared signals, their source nodes, units, and freshness.",
-            {{"filter", {{"type", "string"}}}, {"signal", {{"type", "string"}}}}),
+        ToolDefinition("rte_device_telemetry", "Read filtered current telemetry with pagination. Defaults to 50 signals and omits duplicate grouped values. Use signals or filter before requesting more; stopped signals have null current values and separate last-known values.",
+            {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"minItems", 1}, {"maxItems", 64}}},
+             {"filter", {{"type", "string"}}},
+             {"offset", {{"type", "integer"}, {"minimum", 0}, {"maximum", 100000}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}},
+             {"include_status", {{"type", "boolean"}}},
+             {"include_groups", {{"type", "boolean"}}}}),
+        ToolDefinition("rte_build_info", "Read a compact graph/build identity summary from the running firmware. Set detail=full only when the manifest is known to be small; the MCP response budget still applies.",
+            {{"detail", {{"type", "string"}, {"enum", json::array({"summary", "full"})}}}}),
+        ToolDefinition("rte_signal_info", "Query observed and firmware-declared signals locally by name, substring, offset, and limit. Defaults to 50 entries.",
+            {{"filter", {{"type", "string"}}}, {"signal", {{"type", "string"}}},
+             {"offset", {{"type", "integer"}, {"minimum", 0}, {"maximum", 100000}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}}}),
         ToolDefinition("rte_control_status", "Read the main RTE graph motor control state, latched fault names, and actual PWM/gate status.", {}),
         ToolDefinition("rte_device_snapshot", "Read a named FOC bundle or up to 32 selected signals from one store snapshot, with freshness and missing keys.",
             {{"bundle", {{"type", "string"}, {"enum", json::array({"foc"})}}},
@@ -790,35 +1049,47 @@ json McpTools() {
                            {"minItems", 1}, {"maxItems", 32}}}}),
         ToolDefinition("rte_device_signal", "Read one telemetry signal. When reporting stops, value is null and last_value retains the old measurement.",
             {{"signal", {{"type", "string"}}}}, {"signal"}),
-        ToolDefinition("rte_device_history", "Read recent time and value samples for one numeric telemetry signal.",
+        ToolDefinition("rte_device_history", "Read a bounded raw history for one numeric signal. Defaults to 200 samples and caps at 400; use rte_device_trends for longer-window analysis or export raw data to a file.",
             {{"signal", {{"type", "string"}}},
-             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 12000}}}}, {"signal"}),
-        ToolDefinition("rte_device_string_history", "Read recent string telemetry events for one signal.",
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 400}}}}, {"signal"}),
+        ToolDefinition("rte_device_string_history", "Read bounded recent string telemetry events for one signal. Defaults to 50 and caps at 100.",
             {{"signal", {{"type", "string"}}},
-             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}, {"signal"}),
-        ToolDefinition("rte_device_histories", "Read up to eight numeric histories with individual timestamps and reporting state. The live window advances even after samples stop.",
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}}}, {"signal"}),
+        ToolDefinition("rte_device_histories", "Read bounded raw numeric histories with individual timestamps. The request may contain up to eight signals but is limited to 400 returned samples total. Prefer rte_device_trends for comparisons and long windows.",
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}},
-             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 4000}}}}, {"signals"}),
-        ToolDefinition("rte_device_trends", "Analyze live telemetry time series and show stopped-reporting states: sparklines, slopes, changes, spikes, and resolved oscillation. Defaults to available FOC signals.",
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 400}}}}, {"signals"}),
+        ToolDefinition("rte_device_trends", "Recommended compact analysis for live telemetry: performs local math and returns sparklines, slopes, changes, correlations, spikes, and resolved oscillation without returning raw samples. Defaults to available FOC signals.",
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}}}),
-        ToolDefinition("rte_spike_capture", "Dump and re-arm the firmware's frozen 64-sample, 5 kHz current-spike capture. Returns parsed samples and current/angle trend charts; sends the spikes inverter command.",
-            {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}}}),
-        ToolDefinition("rte_device_console", "Read device console lines from RTE Studio.",
+        ToolDefinition("rte_device_history_export", "Export up to eight full numeric histories to a local CSV file and return only a compact statistical summary. Use this instead of putting large raw datasets in model context.",
+            {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"minItems", 1}, {"maxItems", 8}}},
+             {"output", path},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 12000}}}},
+            {"signals", "output"}),
+        ToolDefinition("rte_spike_capture", "Dump and re-arm the firmware's frozen 64-sample, 5 kHz current-spike capture. Returns compact current/angle trend analysis; set include_samples=true only when raw samples are necessary.",
+            {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}},
+             {"include_samples", {{"type", "boolean"}}}}),
+        ToolDefinition("rte_device_console", "Read filtered recent console lines from RTE Studio. Defaults to 25 and caps at 100 to protect model context.",
             {{"since", {{"type", "integer"}, {"minimum", 0}}},
-             {"lines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}),
+             {"lines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}},
+             {"filter", {{"type", "string"}}}}),
         ToolDefinition("rte_device_commands", "Discover every command registered by the connected firmware by sending help; returns names, usage, descriptions, argument ranges, and motor control command guidance. Use control for the main RTE graph motor control; foc is the internal test native diagnostic. Requires external command writes enabled in Studio.",
-            {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}}}),
+            {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}},
+             {"filter", {{"type", "string"}}},
+             {"offset", {{"type", "integer"}, {"minimum", 0}, {"maximum", 100000}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}}}),
         ToolDefinition("rte_device_command",
             "Send any inverter command through RTE Studio. Returns a console cursor for reading its reply. Requires external writes enabled in Studio.",
             {{"command", {{"type", "string"}}}}, {"command"}),
         ToolDefinition("rte_device_command_response",
-            "Send an inverter command and collect console lines received afterward. Replies are time-window observations and may include unrelated device output.",
+            "Send an inverter command and collect a bounded number of console lines received afterward. Replies are time-window observations and may include unrelated device output.",
             {{"command", {{"type", "string"}}},
-             {"timeout_ms", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}}}, {"command"})
+             {"timeout_ms", {{"type", "integer"}, {"minimum", 0}, {"maximum", 10000}}},
+             {"max_lines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}}}, {"command"})
     });
 }
 
@@ -882,9 +1153,15 @@ json RunCliTool(const std::string& tool, const json& arguments,
         process.arguments.push_back(arguments["action"].get<std::string>());
     } else return McpText("unknown tool: " + tool, true);
     const bool compactFlash = tool == "rte_flash";
+    const bool compactPipeline = tool == "rte_build" || tool == "rte_generate"
+        || tool == "rte_validate";
     std::string output;
     std::string flashError;
     bool flashComplete = false;
+    std::string pipelineError;
+    bool pipelineComplete = false;
+    json pipelineResult = json::object();
+    json pipelineArtifacts = json::array(), pipelineWarnings = json::array();
     const auto result = RTEAutomation::RunProcess(process, [&](const std::string& line) {
         if (compactFlash) {
             const json event = json::parse(line, nullptr, false);
@@ -892,6 +1169,20 @@ json RunCliTool(const std::string& tool, const json& arguments,
             const std::string type = event.value("event", "");
             if (type == "error") flashError = event.value("message", "firmware flash failed");
             else if (type == "complete" && event.value("success", false)) flashComplete = true;
+            return;
+        }
+        if (compactPipeline) {
+            const json event = json::parse(line, nullptr, false);
+            if (!event.is_object()) return;
+            const std::string type = event.value("event", "");
+            if (type == "error") pipelineError = event.value("message", "operation failed");
+            else if (type == "complete" && event.value("success", false)) {
+                pipelineComplete = true;
+                pipelineResult = event;
+            }
+            else if (type == "artifact") pipelineArtifacts.push_back(event);
+            else if (type == "warning" && pipelineWarnings.size() < 20)
+                pipelineWarnings.push_back(event.value("message", "warning"));
             return;
         }
         output += line;
@@ -919,6 +1210,17 @@ json RunCliTool(const std::string& tool, const json& arguments,
                                : flashError);
         if (!flashComplete) return respond(false, "flash process returned no completion result");
         return respond(true, {});
+    }
+    if (compactPipeline) {
+        if (!result.started) return McpText(result.error.empty()
+            ? "could not start operation" : result.error, true);
+        if (result.exitCode != 0) return McpText(pipelineError.empty()
+            ? (result.error.empty() ? "operation failed" : result.error) : pipelineError, true);
+        if (!pipelineComplete) return McpText("operation returned no completion result", true);
+        return McpJson({{"success", true}, {"result", std::move(pipelineResult)},
+                        {"artifacts", std::move(pipelineArtifacts)},
+                        {"warnings", std::move(pipelineWarnings)},
+                        {"token_note", "Progress and compiler log lines were consumed locally and omitted from this response."}});
     }
     if (!result.started) return McpText(result.error, true);
     if (result.exitCode != 0)
@@ -948,6 +1250,91 @@ std::optional<fs::path> WorkspaceFile(const fs::path& workspace,
     if (relative.empty() || relative == "." || *relative.begin() == "..") return std::nullopt;
     if (!fs::is_regular_file(path, ec)) return std::nullopt;
     return path;
+}
+
+std::optional<fs::path> WorkspaceOutputFile(const fs::path& workspace,
+                                            const std::string& requested) {
+    if (requested.empty()) return std::nullopt;
+    std::error_code ec;
+    const fs::path root = fs::weakly_canonical(workspace, ec);
+    if (ec) return std::nullopt;
+    const fs::path requestedPath = fs::path(requested).is_absolute()
+        ? fs::path(requested) : root / requested;
+    fs::path path = fs::weakly_canonical(requestedPath, ec);
+    if (ec) {
+        ec.clear();
+        path = fs::weakly_canonical(requestedPath.parent_path(), ec)
+            / requestedPath.filename();
+    }
+    if (ec) return std::nullopt;
+    const fs::path relative = path.lexically_relative(root);
+    if (relative.empty() || relative == "." || *relative.begin() == "..") return std::nullopt;
+    return path;
+}
+
+std::string CsvField(const std::string& value) {
+    std::string escaped = "\"";
+    for (const char c : value) escaped += c == '"' ? "\"\"" : std::string(1, c);
+    return escaped + "\"";
+}
+
+json ExportDeviceHistories(const json& arguments, const fs::path& workspace,
+                           const fs::path& sessionPath) {
+    const auto output = WorkspaceOutputFile(workspace, arguments["output"].get<std::string>());
+    if (!output || LowerText(output->extension().string()) != ".csv")
+        return McpText("output must be a .csv path inside the MCP workspace", true);
+    std::error_code ec;
+    fs::create_directories(output->parent_path(), ec);
+    if (ec) return McpText("could not create export directory: " + ec.message(), true);
+    std::ofstream file(*output, std::ios::trunc);
+    if (!file) return McpText("could not open export file: " + output->string(), true);
+    file << "signal,time_s,value\n";
+
+    std::string error;
+    const auto session = RTEAutomation::DiscoverSession(sessionPath, &error);
+    if (!session) return McpText(error, true);
+    const std::size_t limit = arguments.value("limit", std::size_t{12000});
+    json summaries = json::object(), missing = json::array();
+    std::size_t totalSamples = 0;
+    for (const auto& item : arguments["signals"]) {
+        const std::string signal = item.get<std::string>();
+        const auto history = RTEAutomation::RequestSession(*session, "device.history",
+            {{"signal", signal}, {"limit", limit}}, &error);
+        if (!history) {
+            missing.push_back({{"signal", signal}, {"error", error}});
+            continue;
+        }
+        const json samples = history->value("samples", json::array());
+        double low = std::numeric_limits<double>::infinity();
+        double high = -std::numeric_limits<double>::infinity();
+        double sum = 0.0, squareSum = 0.0;
+        for (const auto& sample : samples) {
+            const double time = sample.value("time_s", 0.0);
+            const double value = sample.value("value", 0.0);
+            file << CsvField(signal) << ',' << time << ',' << value << '\n';
+            low = std::min(low, value);
+            high = std::max(high, value);
+            sum += value;
+            squareSum += value * value;
+        }
+        totalSamples += samples.size();
+        summaries[signal] = {{"samples", samples.size()},
+            {"start_time_s", samples.empty() ? json(nullptr) : json(samples.front().value("time_s", 0.0))},
+            {"end_time_s", samples.empty() ? json(nullptr) : json(samples.back().value("time_s", 0.0))},
+            {"min", samples.empty() ? json(nullptr) : json(low)},
+            {"max", samples.empty() ? json(nullptr) : json(high)},
+            {"mean", samples.empty() ? json(nullptr) : json(sum / samples.size())},
+            {"rms", samples.empty() ? json(nullptr) : json(std::sqrt(squareSum / samples.size()))},
+            {"status", history->value("status", json::object())}};
+    }
+    file.close();
+    if (!file) return McpText("failed while writing export file: " + output->string(), true);
+    if (summaries.empty()) return McpText("no requested histories could be exported", true);
+    return McpJson({{"success", true}, {"output", output->string()},
+                    {"format", "long_csv"}, {"columns", {"signal", "time_s", "value"}},
+                    {"total_samples", totalSamples}, {"signals", std::move(summaries)},
+                    {"missing", std::move(missing)},
+                    {"token_note", "Raw samples were written locally and are not included in this MCP response."}});
 }
 
 json ProjectInfo(const fs::path& workspace) {
@@ -1057,6 +1444,8 @@ json McpTrends(const json& histories) {
     chart << "Recent " << window << " s; rows are auto-scaled, left older and right newer. "
           << "Analysis uses recorded sample times.\n";
     json metrics = json::object();
+    std::unordered_map<std::string, std::array<double, width>> correlationBins;
+    std::unordered_map<std::string, std::array<bool, width>> correlationOccupied;
     const json signalStatus = histories.value("signal_status", json::object());
     for (auto it = histories.at("series").begin(); it != histories.at("series").end(); ++it) {
         const std::string name = it.key();
@@ -1245,6 +1634,11 @@ json McpTrends(const json& histories) {
             occupied[i] = true;
             ++occupiedBins;
         }
+        std::array<double, width> binMeans{};
+        for (std::size_t i = 0; i < width; ++i)
+            if (bucketCount[i]) binMeans[i] = bucketSum[i] / bucketCount[i];
+        correlationBins[name] = binMeans;
+        correlationOccupied[name] = occupied;
         bool passedNegativeLobe = false;
         double oscillationHz = 0.0, bestCorrelation = 0.0;
         std::size_t detectedLag = 0;
@@ -1355,11 +1749,42 @@ json McpTrends(const json& histories) {
                          {"pattern", pattern}, {"interpretation", interpretation.str()},
                          {"sparkline", spark}, {"range_sparkline", spread}};
     }
+    json correlations = json::array();
+    std::vector<std::string> correlationNames;
+    correlationNames.reserve(correlationBins.size());
+    for (const auto& [name, bins] : correlationBins) correlationNames.push_back(name);
+    std::sort(correlationNames.begin(), correlationNames.end());
+    for (std::size_t a = 0; a < correlationNames.size(); ++a) {
+        for (std::size_t b = a + 1; b < correlationNames.size(); ++b) {
+            const auto& left = correlationBins[correlationNames[a]];
+            const auto& right = correlationBins[correlationNames[b]];
+            const auto& leftOccupied = correlationOccupied[correlationNames[a]];
+            const auto& rightOccupied = correlationOccupied[correlationNames[b]];
+            double x = 0.0, y = 0.0, xx = 0.0, yy = 0.0, xy = 0.0;
+            std::size_t count = 0;
+            for (std::size_t i = 0; i < width; ++i) {
+                if (!leftOccupied[i] || !rightOccupied[i]) continue;
+                x += left[i]; y += right[i]; xx += left[i] * left[i];
+                yy += right[i] * right[i]; xy += left[i] * right[i]; ++count;
+            }
+            const double varianceX = count ? xx - x * x / count : 0.0;
+            const double varianceY = count ? yy - y * y / count : 0.0;
+            const json coefficient = count >= 12 && varianceX > 0.0 && varianceY > 0.0
+                ? json((xy - x * y / count) / std::sqrt(varianceX * varianceY))
+                : json(nullptr);
+            correlations.push_back({{"left", correlationNames[a]},
+                                    {"right", correlationNames[b]},
+                                    {"coefficient", coefficient},
+                                    {"overlap_bins", count},
+                                    {"quality", count >= 24 ? "adequate" : "limited"}});
+        }
+    }
     const json report = {{"window_s", window}, {"window_end_s", end},
                          {"metrics", metrics}, {"chart", chart.str()},
+                         {"correlations", std::move(correlations)},
                          {"missing", histories.value("missing", json::array())},
                          {"signal_status", signalStatus},
-                         {"note", "Stopped signals have null current_value; last_measured and historical metrics are old samples, not a measured zero. Mean, RMS, and regression use received samples without interpolation; sampling gaps can bias them. Pattern labels describe sampled telemetry only; absence of detected oscillation does not rule out faster motor or PWM behavior."}};
+                         {"note", "Stopped signals have null current_value; last_measured and historical metrics are old samples, not a measured zero. Mean, RMS, regression, and correlation use received samples without interpolation; sampling gaps can bias them. Correlation compares shared time bins and does not prove causation. Pattern labels describe sampled telemetry only; absence of detected oscillation does not rule out faster motor or PWM behavior."}};
     json response = McpText(chart.str());
     response["structuredContent"] = report;
     return response;
@@ -1377,11 +1802,10 @@ json CallMcpTool(const std::string& name, const json& arguments,
     if (name == "rte_graph_read") {
         const auto path = WorkspaceFile(workspace, arguments["graph"].get<std::string>());
         if (!path) return McpText("graph file is missing or outside the workspace", true);
-        std::ifstream input(*path);
-        std::ostringstream contents;
-        contents << input.rdbuf();
-        return McpText(contents.str());
+        return GraphQuery(*path, arguments);
     }
+    if (name == "rte_device_history_export")
+        return ExportDeviceHistories(arguments, workspace, sessionPath);
     if (name == "rte_device_mode")
         return McpJson(ProbeMainMode(arguments.value("serial", ""),
                                      arguments.value("control_port", ""), sessionPath,
@@ -1432,20 +1856,28 @@ json CallMcpTool(const std::string& name, const json& arguments,
             }
         }
         if (signals.empty()) return McpText("no numeric telemetry signals are available", true);
+        const std::size_t limit = name == "rte_device_trends"
+            ? std::size_t{4000}
+            : arguments.value("limit", std::min<std::size_t>(200,
+                  std::max<std::size_t>(1, 400 / signals.size())));
+        if (name == "rte_device_histories" && signals.size() * limit > 400) {
+            return McpText("raw history request exceeds the 400-sample MCP budget; lower limit, request fewer signals, use rte_device_trends for local analysis, or use rte_device_history_export for full raw data", true);
+        }
         params = {{"signals", signals}, {"window_s", arguments.value("window_s", 5.0)},
-                  {"limit", arguments.value("limit", 4000)}};
+                  {"limit", limit}};
     }
     else if (name == "rte_device_history") {
         method = "device.history";
-        params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 1000)}};
+        params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 200)}};
     } else if (name == "rte_device_string_history") {
         method = "device.string_history";
-        params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 1000)}};
+        params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 50)}};
     }
     else if (name == "rte_device_console") {
         method = "device.console";
         params = {{"since", arguments.value("since", std::uint64_t{0})},
-                  {"lines", arguments.value("lines", std::size_t{100})}};
+                  {"lines", arguments.contains("filter") ? std::size_t{100}
+                       : arguments.value("lines", std::size_t{25})}};
     } else if (name == "rte_device_command" || name == "rte_device_command_response") {
         method = "device.command";
         params = {{"command", arguments["command"]}, {"source", commandSource}};
@@ -1462,6 +1894,27 @@ json CallMcpTool(const std::string& name, const json& arguments,
     const auto result = RTEAutomation::RequestSession(*session, method, params, &error);
     if (!result) return McpText(error, true);
     if (name == "rte_device_trends") return McpTrends(*result);
+    if (name == "rte_device_telemetry") return FilterTelemetry(*result, arguments);
+    if (name == "rte_build_info") return CompactBuildInfo(*result, arguments);
+    if (name == "rte_signal_info") return PaginateCatalog(*result, arguments);
+    if (name == "rte_device_console" && arguments.contains("filter")) {
+        const std::string filter = LowerText(arguments["filter"].get<std::string>());
+        const std::size_t limit = arguments.value("lines", std::size_t{25});
+        json lines = json::array();
+        std::size_t matching = 0;
+        for (const auto& line : result->value("lines", json::array())) {
+            if (LowerText(line.value("text", "")).find(filter) == std::string::npos) continue;
+            ++matching;
+            if (lines.size() < limit) lines.push_back(line);
+        }
+        json report = *result;
+        report["lines"] = std::move(lines);
+        report["filter"] = arguments["filter"];
+        report["matching_in_recent_window"] = matching;
+        report["returned"] = report["lines"].size();
+        report["token_note"] = "Filtering was performed locally before this response was returned.";
+        return McpJson(report);
+    }
     if (name == "rte_device_commands") {
         std::uint64_t cursor = result->value("console_since", std::uint64_t{0});
         const auto deadline = std::chrono::steady_clock::now()
@@ -1546,6 +1999,16 @@ json CallMcpTool(const std::string& name, const json& arguments,
         const bool countVerified = expectedCount && commands.size() == *expectedCount;
         const bool complete = footerSeen && rangesComplete
             && (!expectedCount || countVerified);
+        const std::string filter = arguments.value("filter", "");
+        json matchingCommands = json::array();
+        for (const auto& command : commands)
+            if (MatchesText(command, filter)) matchingCommands.push_back(command);
+        const std::size_t offset = arguments.value("offset", std::size_t{0});
+        const std::size_t limit = arguments.value("limit", std::size_t{50});
+        json commandPage = json::array();
+        for (std::size_t i = offset; i < matchingCommands.size()
+             && commandPage.size() < limit; ++i)
+            commandPage.push_back(matchingCommands[i]);
         json report = {{"source", "connected firmware help"}, {"complete", complete},
                        {"motor_control_command", "control start"},
                        {"motor_control_role", "main RTE graph motor control"},
@@ -1555,7 +2018,8 @@ json CallMcpTool(const std::string& name, const json& arguments,
                             ? json(*expectedCount) : json(nullptr)},
                        {"count_verified", countVerified},
                        {"argument_ranges_complete", rangesComplete},
-                       {"commands", commands}};
+                       {"filter", filter}, {"commands", commandPage}};
+        AddPageMetadata(report, matchingCommands.size(), commandPage.size(), offset, limit);
         if (!complete) {
             json response = McpText(started ? "firmware command list was incomplete"
                 : "firmware did not answer help", true);
@@ -1565,14 +2029,33 @@ json CallMcpTool(const std::string& name, const json& arguments,
         std::ostringstream summary;
         summary << "Motor control: use 'control start' for the MAIN RTE graph motor control.\n"
                 << "Internal testing only: 'foc start <iq_a> [id_a]' runs the native FOC diagnostic.\n\n"
-                << commands.size() << " commands from connected firmware:\n";
-        for (const auto& command : commands)
+                << commandPage.size() << " of " << matchingCommands.size()
+                << " matching commands from " << commands.size()
+                << " discovered in connected firmware:\n";
+        for (const auto& command : commandPage)
             summary << command.value("name", "") << ' '
                     << command.value("usage", "") << " — "
                     << command.value("description", "") << '\n';
         json response = McpText(summary.str());
         response["structuredContent"] = std::move(report);
         return response;
+    }
+    if (name == "rte_device_history" || name == "rte_device_string_history") {
+        json report = *result;
+        report["returned_samples"] = report.value("samples", json::array()).size();
+        report["token_note"] = "Raw samples are bounded for MCP context. Use rte_device_trends for compact analysis or rte_device_history_export for a full local CSV.";
+        return McpJson(report);
+    }
+    if (name == "rte_device_histories") {
+        json report = *result;
+        std::size_t returned = 0;
+        const json series = report.value("series", json::object());
+        for (const auto& [signal, samples] : series.items())
+            if (samples.is_array()) returned += samples.size();
+        report["returned_samples"] = returned;
+        report["sample_budget"] = 400;
+        report["token_note"] = "Raw histories are limited to 400 samples total. Use rte_device_trends for local comparison and correlation without returning raw data.";
+        return McpJson(report);
     }
     if (name == "rte_spike_capture") {
         std::uint64_t cursor = result->value("console_since", std::uint64_t{0});
@@ -1626,8 +2109,10 @@ json CallMcpTool(const std::string& name, const json& arguments,
         const json trend = McpTrends({{"series", series}, {"window_end_s", 63.0 / 5000.0},
                                      {"window_s", 64.0 / 5000.0}, {"missing", json::array()}});
         json report = {{"captured", !samples.empty()}, {"complete", complete},
-                       {"sample_rate_hz", 5000}, {"header", header},
-                       {"samples", samples}, {"trends", trend["structuredContent"]}};
+                       {"sample_rate_hz", 5000}, {"sample_count", samples.size()},
+                       {"header", header}, {"trends", trend["structuredContent"]},
+                       {"token_note", "Raw spike samples are omitted by default; request include_samples=true only when the compact trend analysis is insufficient."}};
+        if (arguments.value("include_samples", false)) report["samples"] = samples;
         json response = McpText(header + "\n" + trend["content"][0]["text"].get<std::string>());
         response["structuredContent"] = std::move(report);
         return response;
@@ -1668,12 +2153,13 @@ json CallMcpTool(const std::string& name, const json& arguments,
     if (name != "rte_device_command_response") return McpJson(*result);
     const auto since = result->value("console_since", std::uint64_t{0});
     const int timeout = arguments.value("timeout_ms", 1500);
+    const std::size_t maxLines = arguments.value("max_lines", std::size_t{50});
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
     json observed = json::array();
     bool responseObserved = false;
     do {
         const auto console = RTEAutomation::RequestSession(*session, "device.console",
-            {{"since", since}, {"lines", 1000}}, &error);
+            {{"since", since}, {"lines", maxLines}}, &error);
         if (!console) return McpText(error, true);
         observed = console->value("lines", json::array());
         responseObserved = false;
@@ -1774,18 +2260,20 @@ int Mcp(const std::vector<std::string>& args) {
             id = request["id"];
             const std::string method = request.value("method", "");
             json result;
+            std::string responseBudgetName;
             if (method == "initialize") {
                 result = {{"protocolVersion", "2025-03-26"},
                           {"capabilities", {{"tools", json::object()},
                                             {"resources", json::object()},
                                             {"prompts", json::object()}}},
-                          {"instructions", "RTE Studio owns the live inverter connection. Use rte_device_mode to check Gen7 app or bootloader responsiveness without changing firmware. Use rte_device_telemetry for all latest values and rte_device_console for replies. Simulation is not correctly implemented and is not advised for control or hardware decisions. Flashing controls real hardware."},
+                          {"instructions", "RTE Studio owns the live inverter connection. Protect context: begin with device/control status, filtered signal discovery, snapshots, and rte_device_trends. Telemetry, catalogs, console, histories, and graph queries are paginated or bounded; follow next_offset only when needed. Export full raw histories to CSV instead of returning them in chat. Responses above 32 KiB are withheld with refinement guidance. Use rte_device_mode to check Gen7 app or bootloader responsiveness without changing firmware. Simulation is not correctly implemented and is not advised for control or hardware decisions. Flashing controls real hardware."},
                           {"serverInfo", {{"name", "rte"}, {"version", "0.2.0"}}}};
             } else if (method == "tools/list") {
                 result = {{"tools", McpTools()}};
             } else if (method == "tools/call") {
                 const json params = request.value("params", json::object());
                 const std::string name = params.value("name", "");
+                responseBudgetName = name;
                 const json arguments = params.value("arguments", json::object());
                 if (const json invalid = ValidateToolArguments(name, arguments); !invalid.is_null()) {
                     result = invalid;
@@ -1819,6 +2307,7 @@ int Mcp(const std::vector<std::string>& args) {
             } else if (method == "resources/read") {
                 const json params = request.value("params", json::object());
                 const std::string uri = params.value("uri", "");
+                responseBudgetName = "resource:" + uri;
                 const std::string prefix = "rte://workspace/";
                 const auto path = uri.rfind(prefix, 0) == 0
                     ? WorkspaceFile(workspace, uri.substr(prefix.size())) : std::nullopt;
@@ -1849,7 +2338,7 @@ int Mcp(const std::vector<std::string>& args) {
                 result = {{"description", "Diagnose an RTE inverter"},
                           {"messages", json::array({{{"role", "user"},
                               {"content", {{"type", "text"}, {"text",
-                                  "Read RTE device status, all telemetry, and recent console output. Inspect the relevant graph and validate it. Report observations before sending commands or flashing firmware."}}}}})}};
+                                  "Read device and control status first. Discover relevant signals with a filter, then use a focused snapshot or rte_device_trends for compact local analysis. Query only the necessary telemetry page or console lines. Use paginated graph queries and validate the graph. Export raw histories to CSV if detailed offline analysis is necessary. Report observations before sending commands or flashing firmware."}}}}})}};
             } else if (method == "ping") {
                 result = json::object();
             } else {
@@ -1858,6 +2347,8 @@ int Mcp(const std::vector<std::string>& args) {
                 std::cout.flush();
                 continue;
             }
+            if (!responseBudgetName.empty())
+                result = EnforceMcpResponseBudget(responseBudgetName, std::move(result));
             std::cout << json{{"jsonrpc","2.0"},{"id",id},{"result",std::move(result)}}.dump() << '\n';
             std::cout.flush();
         } catch (const json::parse_error& exception) {
