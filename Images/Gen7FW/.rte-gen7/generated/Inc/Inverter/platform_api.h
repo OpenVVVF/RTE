@@ -20,6 +20,16 @@ extern "C" {
  * -------------------------------------------------------------------------- */
 
 /**
+ * @brief Allow or suppress actuator writes from generated control code.
+ *
+ * The generated TIM ISR continues to execute for measurements and telemetry
+ * while this is false. Only ControlSupervisor enables writes during an
+ * intentional generated-control run.
+ */
+void platform_set_control_outputs_enabled(bool enabled);
+bool platform_control_outputs_enabled(void);
+
+/**
  * @brief Set raw three-phase PWM duties [0, 100].
  */
 void platform_pwm_set(float du, float dv, float dw);

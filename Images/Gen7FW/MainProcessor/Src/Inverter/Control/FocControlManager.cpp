@@ -306,7 +306,6 @@ void FocControlManager::stepStartup(uint32_t now_ms) {
 
 void FocControlManager::stop() {
     PWM_DisableFocMode();
-    PWM_StopUpdateInterrupt();
     PWM_StopSPWM();
     GateDriver_DisableOutputs();
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);

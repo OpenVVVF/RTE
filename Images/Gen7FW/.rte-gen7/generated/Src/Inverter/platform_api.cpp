@@ -23,12 +23,30 @@
  * PWM / gate-driver outputs
  * -------------------------------------------------------------------------- */
 
+static volatile bool s_control_outputs_enabled = false;
+
+void platform_set_control_outputs_enabled(bool enabled) {
+    const bool changed = s_control_outputs_enabled != enabled;
+    s_control_outputs_enabled = enabled;
+    if (changed) {
+        Telemetry::log("control_outputs_enabled", enabled ? 1.0f : 0.0f);
+    }
+}
+
+bool platform_control_outputs_enabled(void) {
+    return s_control_outputs_enabled;
+}
+
 void platform_pwm_set(float du, float dv, float dw) {
-    PWM_SetThreePhaseDuty(du, dv, dw);
+    if (s_control_outputs_enabled) {
+        PWM_SetThreePhaseDuty(du, dv, dw);
+    }
 }
 
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc) {
-    PWM_SetVoltageVector(valpha, vbeta, vdc);
+    if (s_control_outputs_enabled) {
+        PWM_SetVoltageVector(valpha, vbeta, vdc);
+    }
 }
 
 /* --------------------------------------------------------------------------
@@ -111,6 +129,9 @@ void platform_observer_correct(float iu_meas_a, float iv_meas_a,
 
 uint32_t platform_schedule_adaptive_sample(float duty_u, float duty_v,
                                            float duty_w, uint32_t arr) {
+    if (!s_control_outputs_enabled) {
+        return 0U;
+    }
     /* 6 us at 275 MHz timer clock: deadtime + switching settling + ADC burst. */
     const uint32_t min_gap_ticks = 1650U;
     uint32_t ccr4 = 10U;
@@ -215,17 +236,17 @@ float platform_get_dc_link_power(void) {
  * can block for the SPI timeout). */
 float platform_phase_voltage_u(void) {
     /* MAX22530 AIN3 (index 2) = VSENSE_PH_U_B. */
-    return Inverter::dcLinkVoltageSensor().adc().voltage(2);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(2) * Inverter::VSENSE_DIVIDER_RATIO;
 }
 
 float platform_phase_voltage_v(void) {
     /* MAX22530 AIN2 (index 1) = VSENSE_PH_V_B. */
-    return Inverter::dcLinkVoltageSensor().adc().voltage(1);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(1) * Inverter::VSENSE_DIVIDER_RATIO;
 }
 
 float platform_phase_voltage_w(void) {
     /* MAX22530 AIN1 (index 0) = VSENSE_PH_W_B. */
-    return Inverter::dcLinkVoltageSensor().adc().voltage(0);
+    return Inverter::dcLinkVoltageSensor().adc().voltage(0) * Inverter::VSENSE_DIVIDER_RATIO;
 }
 
 /* --------------------------------------------------------------------------

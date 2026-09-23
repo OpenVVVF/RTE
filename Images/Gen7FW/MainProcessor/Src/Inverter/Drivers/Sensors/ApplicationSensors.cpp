@@ -140,7 +140,8 @@ void ApplicationSensors::updateThrottlePlausibility(uint32_t now_ms) {
     }
     if ((now_ms - m_thr_implausible_since) >= THROTTLE_PLAUS_MS) {
         m_thr_plausible = false;
-        if (!m_thr_fault_raised) {
+        if (!m_thr_fault_raised ||
+            !FaultManager::instance().isActive(FaultSource::ThrottlePlausibility)) {
             m_thr_fault_raised = true;
             FaultManager::instance().raise(FaultSource::ThrottlePlausibility,
                                            FaultReason::ThrottlePlausibilityMismatch);
@@ -513,7 +514,8 @@ void ApplicationSensors::updateOutOfRange(uint8_t ch, uint32_t now_ms) {
         return;
     }
 
-    if (!c.out_of_range) {
+    if (!c.out_of_range ||
+        !FaultManager::instance().isActive(FaultSource::TempSensor)) {
         c.out_of_range = true;
         static const FaultReason OPEN_REASONS[NUM_CHANNELS] = {
             FaultReason::TempSensorOpenInv1, FaultReason::TempSensorOpenInv2,
@@ -558,7 +560,9 @@ void ApplicationSensors::updateOverTemp(uint8_t ch, uint32_t now_ms) {
         return;
     }
 
-    if (!c.over_temp_raised) {
+    const FaultSource source = (ch == 3) ? FaultSource::OvertemperatureMotor
+                                         : FaultSource::OvertemperatureInverter;
+    if (!c.over_temp_raised || !FaultManager::instance().isActive(source)) {
         c.over_temp_raised = true;
         if (ch == 3) {
             FaultManager::instance().raise(FaultSource::OvertemperatureMotor,

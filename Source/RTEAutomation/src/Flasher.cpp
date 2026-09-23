@@ -46,6 +46,23 @@ std::string Lower(std::string value) {
     return value;
 }
 
+std::string BoundedDiagnostic(const std::string& line) {
+    constexpr std::size_t kMaxLength = 1024;
+    if (line.size() <= kMaxLength) return line;
+    return line.substr(0, kMaxLength) + "...";
+}
+
+bool IsDiagnostic(const std::string& line) {
+    const std::string lower = Lower(line);
+    return lower.find("error") != std::string::npos
+        || lower.find("fail") != std::string::npos
+        || lower.find("unable") != std::string::npos
+        || lower.find("cannot") != std::string::npos
+        || lower.find("not found") != std::string::npos
+        || lower.find("timeout") != std::string::npos
+        || lower.find("abort") != std::string::npos;
+}
+
 bool SamePort(const fs::path& left, const fs::path& right) {
     if (left == right) return true;
     std::error_code leftError, rightError;
@@ -115,16 +132,19 @@ FlashResult RunProgrammer(const fs::path& programmer,
     spec.arguments = arguments;
     bool verifying = false;
     std::string tail;
+    std::string diagnostic;
     const auto result = RunProcess(spec, [&](const std::string& line) {
         if (Lower(line).find("verif") != std::string::npos) verifying = true;
         Notify(callback, verifying ? FlashPhase::Verify : FlashPhase::Program,
                line, ParsePercent(line));
-        tail = line;
+        tail = BoundedDiagnostic(line);
+        if (IsDiagnostic(line)) diagnostic = BoundedDiagnostic(line);
     });
     if (!result.started) return {false, result.error};
     if (result.exitCode != 0)
         return {false, "STM32CubeProgrammer exited with " + std::to_string(result.exitCode)
-            + (tail.empty() ? "" : ": " + tail)};
+            + (!diagnostic.empty() ? ": " + diagnostic
+                                   : tail.empty() ? "" : ": " + tail)};
     return {true, {}};
 }
 

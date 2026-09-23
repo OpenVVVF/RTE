@@ -17,6 +17,11 @@ format stays compatible**. Numeric and string telemetry are discovered from
 received frames; generated Gen7 firmware also announces a graph and signal
 manifest. New signal names can be requested without adding a host tool.
 
+For motor operation, `control start` is the main RTE graph motor control.
+`foc start <iq_a> [id_a]` invokes the base image's native FOC diagnostic for
+internal testing. Keep this distinction explicit in firmware help, Studio
+console responses, MCP guidance, and documentation.
+
 The following behavior is coupled to firmware and needs a coordinated host
 change and test when its contract changes:
 
@@ -30,10 +35,13 @@ change and test when its contract changes:
 - FOC signal names: Studio's FOC plot and snapshot preset, plus the MCP trend
   tool's default FOC selection. Explicit signal lists continue to use runtime
   names.
-- Generated control lifecycle: `ControlSupervisor` publishes `control_state`
-  at transitions; Studio uses the manifest's `tim_isr` domain to mark its
-  signals stopped immediately. Legacy FOC publishes `foc_running` at
-  transitions; keep these publishers and Studio's reporting mapping aligned.
+- Generated control lifecycle: the TIM1 ISR remains active for measurement and
+  telemetry while generated actuation is idle or faulted. Firmware publishes
+  `tim_isr_running` and `control_outputs_enabled` separately from
+  `control_state`; Studio uses ISR state with the
+  manifest's `tim_isr` domain to distinguish live monitoring from an actually
+  stopped ISR. Legacy FOC publishes `foc_running` at transitions; keep these
+  publishers and Studio's reporting mapping aligned.
 - `spikes` command or capture text: the main recorder and the MCP
   `rte_spike_capture` parser, including its assumed sample count and rate.
 - Bridge control commands, USB port identity, bootloader entry, or flash
@@ -50,3 +58,15 @@ flashed image. Document which main or coprocessor image must be reflashed.
 
 The MCP server and Studio CLI expose the same host actions; keep manual
 routes in Studio available when adding an MCP action.
+
+## Keep agent responses bounded
+
+Prefer exact signal lists, filters, snapshots, and `rte_device_trends` before
+requesting raw telemetry histories. Keep telemetry, catalog, graph, console,
+and raw-history pagination and limits intact when their contracts change.
+Large raw datasets belong in `rte_device_history_export` CSV files for local
+numeric analysis. MCP responses above 32 KiB are intentionally withheld; do
+not bypass that guard or repeat a completed hardware action to obtain discarded
+details. If a new host or firmware feature can return an unbounded collection,
+add compact defaults, server-side filtering or pagination, an equivalent
+manual `rte tool` route, and integration coverage.

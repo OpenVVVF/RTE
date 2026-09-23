@@ -477,13 +477,14 @@ public:
         PWM_Start();
 
         /* Phase-sense channels share the DC-link divider ratio, so a full
-         * GND->DC+ swing should produce ~1.0x the DC-link channel's raw
-         * input volts on the responding sense channel. */
-        const float expected_swing = 1.0f * Inverter::dcLinkVoltageSensor().adc().voltage(3);
+         * GND->DC+ swing should produce ~1.0x the DC-link channel's scaled
+         * volts on the responding sense channel. */
+        const float expected_swing =
+            Inverter::VSENSE_DIVIDER_RATIO * Inverter::dcLinkVoltageSensor().adc().voltage(3);
         const char names[3] = {'U', 'V', 'W'};
         bool all_ok = true;
 
-        Telemetry::printf("[PM] vdc=%.1f V, expected sense swing ~%+.3f raw V",
+        Telemetry::printf("[PM] vdc=%.1f V, expected sense swing ~%+.3f V",
                           static_cast<double>(vdc), static_cast<double>(expected_swing));
 
         for (uint8_t p = 0; p < 3; ++p) {

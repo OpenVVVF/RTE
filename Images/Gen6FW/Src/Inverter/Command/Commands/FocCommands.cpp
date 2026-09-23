@@ -14,7 +14,7 @@ using Inverter::FocControlManager;
 using Inverter::focControlManager;
 
 /**
- * @brief Single `foc <subcommand> [args...]` dispatcher.
+ * @brief Internal test native FOC `foc <subcommand> [args...]` dispatcher.
  *
  * Supported forms:
  *   foc start <iq_a> [id_a]
@@ -31,7 +31,7 @@ using Inverter::focControlManager;
 class FocCommand : public CommandInterface {
 public:
     FocCommand()
-      : CommandInterface("foc", "FOC control: start/stop/id/iq/kp/ki/vlim/offset/encsign/forced/status",
+      : CommandInterface("foc", "INTERNAL TEST native FOC diagnostic (main motor control uses 'control')",
             {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING},
              ArgSpec{"value1", "", -1000.0f, 1000.0f, 0.0f, false, ArgSpec::FLOAT},
              ArgSpec{"value2", "", -1000.0f, 1000.0f, 0.0f, false, ArgSpec::FLOAT}}) {}
@@ -43,9 +43,10 @@ public:
 
         if (strcasecmp(sub, "start") == 0) {
             if (Inverter::ControlSupervisor::instance().isRunning()) {
-                Telemetry::printf("[SHELL] stop the generated control loop first ('control stop')");
+                Telemetry::printf("[SHELL] stop MAIN motor control first ('control stop')");
                 return;
             }
+            Telemetry::printf("[SHELL] INTERNAL TEST: starting native FOC diagnostic; main motor control uses 'control start'");
             focControlManager().start(v1, v2);
         } else if (strcasecmp(sub, "stop") == 0) {
             focControlManager().stop();
@@ -78,7 +79,8 @@ private:
     void printStatus() const {
         FocControlManager& mgr = focControlManager();
         const Inverter::FocController& ctrl = mgr.controller();
-        Telemetry::printf("[SHELL] FOC run=%s", mgr.isRunning() ? "Y" : "N");
+        Telemetry::printf("[SHELL] FOC run=%s (INTERNAL TEST native diagnostic; main motor control uses 'control')",
+                          mgr.isRunning() ? "Y" : "N");
         Telemetry::printf("[SHELL] id_cmd=%.2f iq_cmd=%.2f",
                           static_cast<double>(mgr.setpoints().id_a),
                           static_cast<double>(mgr.setpoints().iq_a));

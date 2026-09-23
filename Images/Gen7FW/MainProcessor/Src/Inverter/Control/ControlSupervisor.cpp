@@ -8,6 +8,7 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/platform_api.h"
 
 #include "main.h"
 
@@ -15,13 +16,35 @@
 
 namespace Inverter {
 
+namespace {
+
+void resetGeneratedState() {
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    app::TimIsrStart(appState.tim_isr);
+    __DMB();
+    __set_PRIMASK(primask);
+}
+
+void zeroGeneratedState() {
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    app::TimIsrStop(appState.tim_isr);
+    __DMB();
+    __set_PRIMASK(primask);
+}
+
+} // namespace
+
 ControlSupervisor& ControlSupervisor::instance() {
     static ControlSupervisor inst;
     return inst;
 }
 
 bool ControlSupervisor::init() {
+    platform_set_control_outputs_enabled(false);
     app::TimIsrInit(appState.tim_isr);
+    PWM_StartUpdateInterrupt();
     m_state = State::Idle;
     Telemetry::log("control_state", stateName());
     Telemetry::printf("[SUP] initialized");
@@ -74,10 +97,11 @@ bool ControlSupervisor::start() {
      * running both at once corrupts both loops.  foc start refuses while the
      * graph control runs (FocCommands), so refuse the reverse here too. */
     if (focControlManager().isRunning()) {
-        Telemetry::printf("[SUP] ERROR: native FOC is running; stop it first (foc stop)");
+        Telemetry::printf("[SUP] ERROR: INTERNAL TEST native FOC is running; stop it first (foc stop)");
         return false;
     }
 
+    platform_set_control_outputs_enabled(false);
     m_state = State::Starting;
 
     if (!gateDriverStartup()) {
@@ -88,10 +112,12 @@ bool ControlSupervisor::start() {
 
     /* Reset generated control state BEFORE outputs are re-enabled, so a
      * previously wound-up PI can never drive the motor. */
-    app::TimIsrStart(appState.tim_isr);
+    platform_set_control_outputs_enabled(false);
+    resetGeneratedState();
 
     PWM_ClearFault();
     PWM_EnableFocMode();
+    platform_set_control_outputs_enabled(true);
     PWM_Start();
 
     if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
@@ -107,13 +133,15 @@ bool ControlSupervisor::start() {
                           (unsigned long)TIM1->AF1,
                           (unsigned long)TIM1->BDTR,
                           (unsigned long)TIM1->SR);
+        platform_set_control_outputs_enabled(false);
+        zeroGeneratedState();
+        PWM_DisableFocMode();
+        PWM_Stop();
         GateDriver_DisableOutputs();
         m_state = State::Fault;
         Telemetry::log("control_state", stateName());
         return false;
     }
-
-    PWM_StartUpdateInterrupt();
 
     /* Lock the encoder sample stream onto the control timebase (TIM1 TRGO2
      * update events) so the FOC never sees a stall/catch-up angle step from
@@ -136,13 +164,11 @@ void ControlSupervisor::stop() {
 
     m_state = State::Stopping;
 
-    /* Zero generated outputs before stopping the ISR. */
-    app::TimIsrStop(appState.tim_isr);
-
-    /* Halt the generated control step entirely: while stopped the PI would
-     * otherwise keep running and re-wind its integrators against the
-     * setpoint, ready to spike on the next start. */
-    PWM_StopUpdateInterrupt();
+    /* Keep the TIM ISR alive for measurement and telemetry. Suppress graph
+     * actuator writes first, then zero its state atomically. start() resets
+     * all generated state again before outputs can be enabled. */
+    platform_set_control_outputs_enabled(false);
+    zeroGeneratedState();
 
     /* Back to the free-running TIM2 encoder trigger (always sampling). */
     Inverter::encoderADC().useSynchronizedTrigger(false);
@@ -159,10 +185,29 @@ void ControlSupervisor::requestStopFromIsr() {
     m_stop_requested = true;
 }
 
+bool ControlSupervisor::resetFaultState() {
+    if (m_state != State::Fault) {
+        return true;
+    }
+    if (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::High)) {
+        return false;
+    }
+
+    m_stop_requested = false;
+    platform_set_control_outputs_enabled(false);
+    m_state = State::Idle;
+    Telemetry::log("control_state", stateName());
+    Telemetry::printf("[SUP] fault state reset -> IDLE");
+    return true;
+}
+
 void ControlSupervisor::enterFaultState() {
+    platform_set_control_outputs_enabled(false);
     if (m_state == State::Running || m_state == State::Starting) {
         Inverter::encoderADC().useSynchronizedTrigger(false);
-        app::TimIsrStop(appState.tim_isr);
+        zeroGeneratedState();
+        PWM_DisableFocMode();
         PWM_Stop();
         GateDriver_DisableOutputs();
     }

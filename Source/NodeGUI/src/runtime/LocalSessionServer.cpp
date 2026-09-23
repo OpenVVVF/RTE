@@ -89,6 +89,8 @@ json FirmwareManifest(const TelemetryStore::DeviceView& view) {
 struct ReportingContext {
     std::unordered_set<std::string> timIsrSignals;
     std::string controlState;
+    bool timIsrStateKnown = false;
+    bool timIsrRunning = false;
     bool focStateKnown = false;
     bool focRunning = false;
 };
@@ -98,6 +100,10 @@ ReportingContext MakeReportingContext(const TelemetryStore::DeviceView& view,
     ReportingContext context;
     if (Fresh(view, "control_state"))
         context.controlState = view.latestStr.at("control_state");
+    if (Fresh(view, "tim_isr_running")) {
+        context.timIsrStateKnown = true;
+        context.timIsrRunning = view.latest.at("tim_isr_running") > 0.5f;
+    }
     if (Fresh(view, "foc_running")) {
         context.focStateKnown = true;
         context.focRunning = view.latest.at("foc_running") > 0.5f;
@@ -124,8 +130,12 @@ const char* ReportingState(const TelemetryStore::DeviceView& view,
     if (view.stats.frameAgeSeconds < 0.0
         || view.stats.frameAgeSeconds > kReportingTimeoutSeconds)
         return "link_silent";
-    if (context.timIsrSignals.count(key) && !context.controlState.empty()
-        && context.controlState != "RUNNING") return "control_stopped";
+    if (context.timIsrSignals.count(key)) {
+        if (context.timIsrStateKnown && !context.timIsrRunning) return "isr_stopped";
+        // Compatibility with firmware that predates the explicit ISR state.
+        if (!context.timIsrStateKnown && !context.controlState.empty()
+            && context.controlState != "RUNNING") return "control_stopped";
+    }
     if (context.focStateKnown && !context.focRunning && IsLegacyFocSignal(key))
         return "foc_stopped";
     const auto age = view.ageSeconds.find(key);
@@ -280,7 +290,8 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                 if (it != owners.end()) return it->second;
                 if (key.rfind("fw_", 0) == 0) return "firmware_build";
                 if (key.rfind("fault_", 0) == 0 || key.rfind("control_", 0) == 0
-                    || key.rfind("gate_", 0) == 0 || key == "pwm_moe")
+                    || key.rfind("gate_", 0) == 0 || key == "pwm_moe"
+                    || key == "tim_isr_running")
                     return "firmware_control";
                 return "observed_only";
             };
@@ -385,6 +396,8 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                       {"pwm_moe", numberValue("pwm_moe")},
                       {"gate_ready", numberValue("gate_ready")},
                       {"gate_fault", numberValue("gate_fault")},
+                      {"tim_isr_running", numberValue("tim_isr_running")},
+                      {"control_outputs_enabled", numberValue("control_outputs_enabled")},
                       {"age_s", view.ageSeconds}};
         } else if (method == "device.snapshot") {
             const auto view = store_.GetDeviceView();
@@ -402,7 +415,8 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                             "foc_vq", "foc_elec_angle", "foc_speed", "foc_vdc",
                             "foc_iu", "foc_iv", "foc_iw"};
                 keys.insert(keys.end(), {"control_state", "fault_flags_hex",
-                    "fault_active_names", "pwm_moe", "gate_ready", "gate_fault"});
+                    "fault_active_names", "pwm_moe", "gate_ready", "gate_fault",
+                    "tim_isr_running", "control_outputs_enabled"});
             }
             if (keys.empty() || keys.size() > 32)
                 return json{{"ok", false}, {"error", "snapshot requires 1 to 32 signal names or bundle=foc"}}.dump();

@@ -97,6 +97,7 @@ try:
         if method == "tools/list":
             names = {tool["name"] for tool in answer["result"]["tools"]}
             assert {"rte_device_mode", "rte_device_telemetry", "rte_device_trends",
+                    "rte_device_history_export",
                     "rte_device_snapshot", "rte_build_info", "rte_signal_info",
                     "rte_control_status", "rte_device_commands", "rte_spike_capture",
                     "rte_device_command_response", "rte_flash"} <= names, names
@@ -169,64 +170,108 @@ Codex, ChatGPT desktop, and Kimi Code.
 ## 4. Use the tools
 
 - Use `rte_project_info`, `rte_graph_read`, and `rte_validate` to inspect a
-  graph. `rte_generate` and `rte_build` create firmware artifacts.
+  graph. `rte_graph_read` returns a compact node summary by default. Select
+  `section` (`nodes`, `connections`, `bridges`, or `node_types`) and use
+  `filter`, `offset`, and `limit` to inspect only the relevant entries. Full
+  node-type source is omitted by default; request `include_code: true` with a
+  narrow filter and limit when that implementation is specifically needed.
+  Complete graph resources can exceed the MCP context budget and will be withheld with
+  instructions to use the query tool. `rte_generate` and `rte_build` create
+  firmware artifacts and return a bounded result instead of compiler progress.
 - Use `rte_bridge_ports` to find the Gen7 `if00` UART bridge and `if02`
   coprocessor control port. Use `rte_device_mode` for a read only mode check.
   `app_responding` and `bootloader_responding` confirm replies; an
   `app_unresponsive_or_silent` result does **not** prove a hung MCU. The
   optional `probe_bootloader` argument makes a connect only programmer probe.
 - For live data, run `RTEStudio` connected to the inverter first. Use
-  `rte_device_status`, `rte_device_telemetry` for all latest numeric and
-  string values (flat and grouped by source node), `rte_device_signal` for
-  one value, `rte_device_snapshot` for a FOC bundle or custom signal list,
-  and the history tools for samples over time. After two seconds without a
+  `rte_device_status`, filtered `rte_signal_info`, `rte_device_signal`, or
+  `rte_device_snapshot` first. `rte_device_telemetry` accepts exact `signals`
+  or a substring `filter`, returns at most 50 values by default, and omits
+  duplicate source-node groups unless `include_groups` is true. Follow
+  `next_offset` only when another page is needed. After two seconds without a
   new report, a signal's current `value` becomes `null`; its `state` is
   `stopped_reporting` when the link is still active, or `link_silent` when
   telemetry frames have stopped. The old measurement remains in `last_value`
   or `last_known_values`, never as a fabricated zero. A stopped report does
   not by itself prove why the ISR stopped. With a matching Gen7 main image,
-  `control stop` or a control fault publishes `control_state` at the transition;
-  signals declared in the firmware manifest's `tim_isr` domain immediately
-  become `control_stopped`. Legacy `foc stop` similarly publishes
-  `foc_running=0`, marking native FOC signals `foc_stopped`. These require a
-  **main MCU reflash** to work immediately; older images use the two-second
-  fallback. Firmware build identity fields
+  TIM1 remains a permanent measurement and telemetry ISR after `control stop`
+  and control faults. `control_state` describes the supervisor,
+  `control_outputs_enabled` says whether graph PWM writes are permitted, and
+  `tim_isr_running` independently describes the ISR. Manifest signals in the
+  `tim_isr` domain remain `live` while fresh when control is `IDLE` or `FAULT`,
+  and become `isr_stopped` only when firmware explicitly reports the ISR
+  stopped. A two-second `stopped_reporting` fallback catches missing samples
+  while the ISR claims to run. Legacy `foc stop` still publishes
+  `foc_running=0`, marking native FOC controller outputs `foc_stopped`. These
+  semantics require a **main MCU reflash**; older images retain the prior
+  control-state fallback. Firmware build identity fields
   (`fw_manifest`, `fw_graph`, `fw_graph_hash`) are normally republished every
   ten seconds and use a 15-second signal timeout while the link remains live.
-  `rte_device_histories` reads
-  up to eight signals from one Studio store snapshot; each sample retains
+  `rte_device_histories` reads up to eight signals from one Studio store
+  snapshot, with a total MCP budget of 400 raw samples; each sample retains
   its own timestamp, and its window continues advancing after reports stop.
   `rte_device_trends` analyzes the live numeric time
-  series, not the graph JSON: 48-bin sparklines plus slope and fit, early/late
+  series locally, not the graph JSON: 48-bin sparklines plus slope and fit,
+  early/late
   mean and RMS change, standard deviation, steps, isolated spikes, approximate
-  resolved oscillation frequency, sample rate, and sampling gaps. Its text
+  resolved oscillation frequency, pairwise correlation over shared time bins,
+  sample rate, and sampling gaps. Its text
   names the observed pattern; structured metrics retain the evidence. Call
   it before and after a motor adjustment with the same signals and window
-  to compare behavior. Use `rte_device_histories` for the underlying samples
-  when a pattern needs closer inspection. A `limited` quality flag means the
+  to compare behavior. Correlation is a timing clue, not proof that one signal
+  caused another. Use `rte_device_histories` for a small raw sample inspection,
+  or `rte_device_history_export` to write up to eight longer histories to a
+  local long-form CSV without feeding those samples to the model. A `limited`
+  quality flag means the
   observed samples or window coverage do not support a strong conclusion;
   mean and RMS are sample based and do not interpolate gaps. Use
   `rte_device_console` for received lines.
-- `rte_build_info` returns the running firmware's graph hash, effective node
-  list, and declared graph telemetry signals. `rte_signal_info` joins that
+- `rte_build_info` returns a compact running firmware identity and manifest
+  counts by default. Request `detail: full` only when the full manifest is
+  necessary and small enough for the response budget. `rte_signal_info` joins that
   catalog with observed signal freshness and units. `rte_control_status`
-  reads state, latched fault names, PWM MOE, and gate status. These fields
+  reads state, ISR and generated-output enable state, latched fault names, PWM
+  MOE, and gate status. These fields
   require a newly generated and flashed Gen7 main image; older images return
   unavailable metadata while ordinary telemetry still works.
 - `rte_spike_capture` sends `spikes` to dump the firmware's existing frozen
-  64-sample, 5 kHz current/encoder capture and re-arm it. It returns parsed
-  samples and a current/angle trend chart. It reports no capture if the
+  64-sample, 5 kHz current/encoder capture and re-arm it. It returns compact
+  current/angle trend analysis by default. Set `include_samples: true` only
+  when all 64 parsed samples are needed. It reports no capture if the
   current threshold has not fired. Set that threshold with the ordinary
   inverter command `spikes <amps>` if needed.
 - Call `rte_device_commands` to discover the commands actually registered in
   the connected firmware. It sends `help`, waits for the closing reference
-  line, and returns command names, usage, descriptions, and argument ranges.
+  line, and returns command names, usage, descriptions, argument ranges, and
+  explicit motor control roles. Use `control start` to run the main motor
+  control implemented by the loaded RTE graph. The separate
+  `foc start <iq_a> [id_a]` path runs the base image's native FOC diagnostic
+  for internal testing. Do not use `foc start` as the normal way to run the
+  graph based motor controller. The two paths are mutually exclusive.
   Newly built Gen7 firmware also announces the registered command count so
   the tool can verify that no command entry was lost; older images report
   `count_verified: false`.
+  Results default to 50 commands; use `filter`, `offset`, and `limit` if a
+  future firmware exposes a larger command set. Discovery and command-count
+  verification still cover the complete firmware `help` response before the
+  returned page is selected.
   An incomplete response is reported as an error with the partial list. As
   with other agent-sent inverter commands, Studio must allow external command
   writes for this call.
+- The same distinction appears for a person using Studio: enter `help` in the
+  Runtime console to see `control` labeled as the main motor control and `foc`
+  labeled as the internal test diagnostic. A main MCU image rebuilt from this
+  source also prints that role when either path starts or reports status.
+  Updating this wording requires a main MCU reflash; it does not require a
+  coprocessor reflash.
+- On current Gen7 main firmware, use `fault` as the canonical command for fault
+  operations: `fault status`, `fault sources`, `fault clear [all|warning|high|critical|source]`,
+  and `fault test <source>`. A bare `fault clear` resets all software fault
+  latches, related gate/PWM and MAX22530 hardware latches, and the generated
+  controller fault state. It refuses the gate reset while control or PWM is
+  active. `fault reset`, `clear fault`, and legacy `clearfault` are aliases for
+  the same clear routine. A persistent live condition is reported again after
+  the clear.
 - Use `rte_device_command` to send any inverter text command and get a console
   cursor, or `rte_device_command_response` to send and collect subsequent
   lines. The protocol does not associate each console line with a request;
@@ -241,7 +286,12 @@ Codex, ChatGPT desktop, and Kimi Code.
   the console remains usable. These lines are also kept in session exports.
 - `rte_flash` targets the main MCU over the Gen7 bridge by default. Set
   `target: "coproc"` for USB DFU; the coprocessor must already be in DFU
-  mode. `firmware` must name an existing `.elf`, `.hex`, or `.bin` image.
+  mode. `firmware` must name an existing `.elf`, `.hex`, or `.bin` image. The
+  MCP result is deliberately compact: success returns one confirmation and
+  failure returns one bounded error message. STM32CubeProgrammer byte dumps,
+  percentages, and other progress lines are consumed by the wrapper and are
+  never returned to the agent. Studio's local flash screen still shows its
+  progress bar and log for a person operating the hardware.
 - `rte_sim` remains exposed for simulator development, but simulation is
   **not correctly implemented** and is **not advised** for control tuning,
   firmware validation, or hardware decisions.
@@ -268,6 +318,8 @@ device snapshot --bundle foc
 device histories --signal cg_id_a --signal cg_iq_a --window-s 5
 device ports
 tool rte_device_trends --arguments '{"signals":["cg_id_a","cg_iq_a"],"window_s":5}'
+tool rte_device_telemetry --arguments '{"filter":"current","limit":25}'
+tool rte_device_history_export --arguments '{"signals":["cg_id_a","cg_iq_a"],"output":"captures/foc.csv","limit":12000}'
 tool rte_device_commands
 tool rte_spike_capture
 flash --firmware /absolute/path/to/main.elf
@@ -288,6 +340,24 @@ For the high-rate spike capture, send `spikes` in the Runtime console; use
 `spikes <amps>` to change its trigger threshold.
 Send `help` in that console to see the same live command reference returned by
 `rte_device_commands`.
+
+## 5. Keep model context bounded
+
+Use a narrow-to-detailed sequence: device and control status, filtered signal
+discovery, an exact snapshot, then `rte_device_trends`. Request bounded raw
+history only to inspect individual timestamps, and export larger datasets to
+CSV for external scripts or plotting. Telemetry, signal catalogs, graph
+sections, console lines, and histories have conservative defaults and hard
+limits. Responses at or above 16 KiB carry a warning; responses above 32 KiB
+are withheld with a refinement message. A completed command or flash is marked
+completed even if oversized details are withheld, so do not repeat a hardware
+action just to retrieve its discarded log.
+
+The CSV export path must end in `.csv` and remain inside the configured
+workspace. The MCP response contains file location, sample counts, and summary
+statistics; the raw rows stay in the file. Agents may use local Python or a
+numeric library on that file when custom analysis is more appropriate than the
+built-in trend metrics.
 
 The full CLI and hardware details are in
 [docs/automation-backend.md](docs/automation-backend.md).

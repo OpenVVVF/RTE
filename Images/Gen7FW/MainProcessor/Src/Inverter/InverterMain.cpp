@@ -236,29 +236,15 @@ static void loop()
         Telemetry::log("hz_vsense", static_cast<float>(Inverter::LoopStats::vsense));
         Telemetry::log("hz_tim_isr", static_cast<float>(Inverter::LoopStats::tim_isr));
         Telemetry::log("hz_adc_isr", static_cast<float>(Inverter::LoopStats::adc_isr));
+        Telemetry::log("tim_isr_running", PWM_IsUpdateInterruptRunning() ? 1.0f : 0.0f);
+        Telemetry::log("control_outputs_enabled",
+                       platform_control_outputs_enabled() ? 1.0f : 0.0f);
         // Telemetry::log("shell_uart_errors", static_cast<float>(Inverter::commandShell().uartErrorCount()));
         // Telemetry::log("shell_rx_dropped", static_cast<float>(Inverter::commandShell().rxDroppedCount()));
         // Telemetry::log("shell_rx_rearm_failures", static_cast<float>(Inverter::commandShell().rxRearmFailureCount()));
         Telemetry::log("control_state", Inverter::ControlSupervisor::instance().stateName());
         Telemetry::log("foc_running", Inverter::focControlManager().isRunning() ? 1.0f : 0.0f);
-        char fault_flags[16];
-        const uint32_t active_faults = Inverter::FaultManager::instance().activeFlags();
-        std::snprintf(fault_flags, sizeof(fault_flags), "0x%08lX",
-                      static_cast<unsigned long>(active_faults));
-        Telemetry::log("fault_flags_hex", fault_flags);
-        char fault_names[512] = {};
-        size_t fault_names_used = 0;
-        for (size_t i = 0; i < Inverter::FaultManager::metaCount(); ++i) {
-            const auto& meta = Inverter::FaultManager::metaTable()[i];
-            if ((active_faults & static_cast<uint32_t>(meta.source)) == 0U) continue;
-            const int written = std::snprintf(fault_names + fault_names_used,
-                sizeof(fault_names) - fault_names_used, "%s%s",
-                fault_names_used ? "," : "", meta.name);
-            if (written < 0 || static_cast<size_t>(written) >= sizeof(fault_names) - fault_names_used)
-                break;
-            fault_names_used += static_cast<size_t>(written);
-        }
-        Telemetry::log("fault_active_names", fault_names_used ? fault_names : "none");
+        Inverter::FaultManager::instance().publishStatus();
         Telemetry::log("pwm_moe", (TIM1->BDTR & TIM_BDTR_MOE) != 0U ? 1.0f : 0.0f);
         Telemetry::log("gate_ready", GateDriver_IsReady() ? 1.0f : 0.0f);
         Telemetry::log("gate_fault", GateDriver_IsFault() ? 1.0f : 0.0f);

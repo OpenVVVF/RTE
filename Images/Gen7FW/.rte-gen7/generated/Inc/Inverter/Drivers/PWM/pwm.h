@@ -54,9 +54,14 @@ bool PWM_IsFocModeActive(void);
 void PWM_StartUpdateInterrupt(void);
 
 /**
- * @brief Stop the TIM1 update interrupt only if SPWM is not running.
+ * @brief Pause the shared TIM1 update ISR for an exclusive timer operation.
+ *
+ * Normal control stop and fault paths must leave this running. The caller is
+ * responsible for calling PWM_StartUpdateInterrupt() when the exclusive
+ * operation finishes.
  */
 void PWM_StopUpdateInterrupt(void);
+bool PWM_IsUpdateInterruptRunning(void);
 
 float PWM_GetFrequency(void);
 float PWM_GetUpdateFrequency(void);

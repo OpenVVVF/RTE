@@ -83,8 +83,15 @@ def main():
                               "import json, os, sys\n"
                               "with open(os.environ['RTE_TEST_PROGRAMMER_LOG'], 'a') as f:\n"
                               "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                              "if '-d' in sys.argv:\n"
+                              "    for percent in range(101):\n"
+                              "        print(f'{percent}% ' + 'A5' * 1024)\n"
+                              "if any('fail.bin' in arg for arg in sys.argv):\n"
+                              "    print('Error: simulated programmer failure ' + 'E7' * 4096)\n"
+                              "    print('cleanup complete')\n"
+                              "    sys.exit(1)\n"
                               "print('verified 100%')\n"
-                              "sys.exit(1 if any('fail.bin' in arg for arg in sys.argv) else 0)\n")
+                              "sys.exit(0)\n")
         programmer.chmod(0o755)
         env = dict(os.environ, RTE_SERIAL_BY_ID_DIR=str(by_id),
                    RTE_TEST_PROGRAMMER_LOG=str(log))
@@ -96,8 +103,11 @@ def main():
                 method = message["method"]
                 if method == "device.telemetry":
                     self.server.good_frames += 10
+                    bulk = {f"zz_bulk_{index:03d}": float(index) for index in range(120)}
+                    bulk_status = {name: {"state": "live", "fresh": True, "age_s": 0.1}
+                                   for name in bulk}
                     value = {"signals": {"phase_current_a": 1.25, "dc_bus_v": 48.0,
-                                         "stopped_current_a": None},
+                                         "stopped_current_a": None, **bulk},
                              "strings": {"state": "idle"}, "rx_hz": 200.0,
                              "good_frames": self.server.good_frames,
                              "signal_status": {
@@ -108,18 +118,34 @@ def main():
                                  "state": {"state": "live", "fresh": True,
                                            "age_s": 0.1},
                                  "stopped_current_a": {"state": "stopped_reporting",
-                                                       "fresh": False, "age_s": 3.0}},
+                                                       "fresh": False, "age_s": 3.0},
+                                 **bulk_status},
+                             "groups": {"current_sensor": {"phase_current_a": 1.25},
+                                        "bulk": bulk},
                              "stopped_signals": ["stopped_current_a"],
                              "last_known_values": {"stopped_current_a": 4.5}}
                 elif method == "device.build_info":
-                    value = {"verified": True, "graph": "foc_demo", "graph_hash": "deadbeef",
-                             "nodes": [{"id": "foc", "type": "Control.FOC"}]}
+                    value = {"available": True, "source": "running firmware telemetry",
+                             "reason": "", "manifest": {
+                                 "verified": True, "graph": "foc_demo",
+                                 "graph_hash": "deadbeef",
+                                 "nodes": [{"id": "foc", "type": "Control.FOC"}],
+                                 "signals": [{"name": "phase_current_a"}]}}
                 elif method == "device.catalog":
                     requested = message["params"].get("signal", "")
+                    catalog = [{"name": "phase_current_a", "state": "live", "unit": "A",
+                                "source_node": "current_sensor"}]
+                    catalog += [{"name": f"zz_bulk_{index:03d}", "state": "live",
+                                 "unit": "", "source_node": "bulk"}
+                                for index in range(120)]
+                    if requested:
+                        catalog = [entry for entry in catalog if entry["name"] == requested]
+                    filter_text = message["params"].get("filter", "").lower()
+                    if filter_text:
+                        catalog = [entry for entry in catalog
+                                   if filter_text in json.dumps(entry).lower()]
                     value = {"build_verified": True,
-                             "signals": ([{"name": "phase_current_a", "state": "live",
-                                           "unit": "A", "source_node": "current_sensor"}]
-                                         if requested in ("", "phase_current_a") else []),
+                             "signals": catalog,
                              "state": "not_in_build" if requested == "missing_signal" else "live"}
                 elif method == "device.control_status":
                     value = {"fresh": True, "state": "idle", "fault_names": "none",
@@ -132,6 +158,9 @@ def main():
                     def history_for(key):
                         if key == "analysis_ramp":
                             return [{"time_s": i / 80, "value": 1 + 2 * i / 80}
+                                    for i in range(401)]
+                        if key == "analysis_ramp_copy":
+                            return [{"time_s": i / 80, "value": 2 + 4 * i / 80}
                                     for i in range(401)]
                         if key == "analysis_osc":
                             return [{"time_s": i / 80,
@@ -255,6 +284,8 @@ def main():
             names = {tool["name"] for tool in request(server, 2, "tools/list")["tools"]}
             definitions = {tool["name"]: tool for tool in request(server, 17, "tools/list")["tools"]}
             assert "not correctly implemented" in definitions["rte_sim"]["description"]
+            assert "main RTE graph motor control" in definitions["rte_device_commands"]["description"]
+            assert "internal test native diagnostic" in definitions["rte_device_commands"]["description"]
             for tool in definitions.values():
                 assert isinstance(tool["inputSchema"]["properties"], dict), tool["name"]
             for name in ("rte_flash", "rte_device_telemetry", "rte_device_signal",
@@ -262,19 +293,33 @@ def main():
                          "rte_device_command_response", "rte_device_mode",
                          "rte_build_info", "rte_signal_info", "rte_control_status",
                          "rte_device_histories", "rte_device_trends",
-                         "rte_device_snapshot", "rte_spike_capture",
+                         "rte_device_snapshot", "rte_device_history_export",
+                         "rte_spike_capture",
                          "rte_device_commands"):
                 assert name in names, name
+            assert definitions["rte_device_history"]["inputSchema"]["properties"]["limit"]["maximum"] == 400
+            assert definitions["rte_device_console"]["inputSchema"]["properties"]["lines"]["maximum"] == 100
+            assert "filter" in definitions["rte_device_telemetry"]["inputSchema"]["properties"]
             resources = request(server, 11, "resources/list")["resources"]
             assert any(item["uri"] == "rte://workspace/Assets/Examples/foc_demo.json"
                        for item in resources), resources
             graph = request(server, 12, "resources/read",
                             {"uri": "rte://workspace/Assets/Examples/foc_demo.json"})
-            assert graph["contents"][0]["mimeType"] == "application/json", graph
+            assert graph["response_withheld"], graph
+            assert graph["contents"][0]["mimeType"] == "text/plain", graph
+            assert graph["estimated_tokens"] > 8000, graph
+            graph_query = request(server, 35, "tools/call", {"name": "rte_graph_read",
+                                  "arguments": {"graph": "Assets/Examples/foc_demo.json"}})
+            assert not graph_query.get("isError"), graph_query
+            assert graph_query["structuredContent"]["section"] == "summary", graph_query
+            assert "counts" in graph_query["structuredContent"], graph_query
+            assert "inlineCode" not in json.dumps(graph_query), graph_query
+            assert len(json.dumps(graph_query)) < 32768, graph_query
             invalid = request(server, 13, "tools/call", {"name": "rte_flash",
                               "arguments": {"firmware": str(firmware), "target": "invalid"}})
             assert invalid["isError"], invalid
-            assert [entry["action"] for entry in session_server.activities] == ["resources/read"]
+            assert [entry["action"] for entry in session_server.activities] == [
+                "resources/read", "rte_graph_read", "rte_graph_read"]
             ports = request(server, 3, "tools/call", {"name": "rte_bridge_ports",
                             "arguments": {}})
             assert str(bridge) in ports["content"][0]["text"], ports
@@ -284,6 +329,9 @@ def main():
                                            "programmer": str(programmer)}})
             assert not result.get("isError"), result
             assert result["structuredContent"]["success"], result
+            assert result["structuredContent"]["target"] == "main", result
+            assert result["content"][0]["text"] == "Firmware flash succeeded.", result
+            assert len(json.dumps(result)) < 512, result
             assert received == ["BOOTLOADER", "APP"], received
             main_args = json.loads(log.read_text().splitlines()[0])
             assert "port=" + str(bridge) in main_args, main_args
@@ -292,6 +340,9 @@ def main():
                               "arguments": {"firmware": str(firmware), "target": "coproc",
                                             "programmer": str(programmer)}})
             assert not coproc.get("isError"), coproc
+            assert coproc["structuredContent"]["target"] == "coproc", coproc
+            assert coproc["content"][0]["text"] == "Firmware flash succeeded.", coproc
+            assert len(json.dumps(coproc)) < 512, coproc
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             assert ["-c", "port=usb1", "-g", "0x08001235"] == calls[-1], calls
             assert "0x08000000" in calls[-2], calls
@@ -300,12 +351,31 @@ def main():
                                            "serial": str(bridge),
                                            "programmer": str(programmer), "attempts": 2}})
             assert failed.get("isError"), failed
+            assert not failed["structuredContent"]["success"], failed
+            assert "simulated programmer failure" in failed["structuredContent"]["error"], failed
+            assert "cleanup complete" not in failed["structuredContent"]["error"], failed
+            assert "A5A5A5" not in json.dumps(failed), failed
+            assert len(json.dumps(failed)) < 4096, failed
             assert received[-3:] == ["BOOTLOADER", "BOOTLOADER", "APP"], received
             telemetry = request(server, 6, "tools/call", {"name": "rte_device_telemetry",
                                 "arguments": {}})
             assert '"phase_current_a": 1.25' in telemetry["content"][0]["text"], telemetry
             assert telemetry["structuredContent"]["signals"]["stopped_current_a"] is None
             assert telemetry["structuredContent"]["last_known_values"]["stopped_current_a"] == 4.5
+            assert telemetry["structuredContent"]["returned"] == 50, telemetry
+            assert telemetry["structuredContent"]["matching"] == 124, telemetry
+            assert telemetry["structuredContent"]["has_more"], telemetry
+            assert telemetry["structuredContent"]["next_offset"] == 50, telemetry
+            assert "groups" not in telemetry["structuredContent"], telemetry
+            assert len(json.dumps(telemetry)) < 32768, telemetry
+            selected_telemetry = request(server, 36, "tools/call", {
+                "name": "rte_device_telemetry",
+                "arguments": {"signals": ["phase_current_a", "state"],
+                              "include_status": False, "include_groups": True}})
+            selected = selected_telemetry["structuredContent"]
+            assert selected["returned"] == 2 and selected["returned_values"] == 2, selected
+            assert "signal_status" not in selected, selected
+            assert selected["groups"]["current_sensor"]["phase_current_a"] == 1.25, selected
             signal = request(server, 7, "tools/call", {"name": "rte_device_signal",
                              "arguments": {"signal": "state"}})
             assert '"idle"' in signal["content"][0]["text"], signal
@@ -333,10 +403,15 @@ def main():
             assert '"idle"' in strings["content"][0]["text"], strings
             build_info = request(server, 20, "tools/call", {"name": "rte_build_info",
                                  "arguments": {}})
-            assert build_info["structuredContent"]["graph"] == "foc_demo", build_info
+            assert build_info["structuredContent"]["identity"]["graph"] == "foc_demo", build_info
+            assert build_info["structuredContent"]["manifest_counts"]["nodes"] == 1, build_info
             catalog = request(server, 21, "tools/call", {"name": "rte_signal_info",
                               "arguments": {"signal": "phase_current_a"}})
             assert catalog["structuredContent"]["signals"][0]["unit"] == "A", catalog
+            catalog_page = request(server, 37, "tools/call", {"name": "rte_signal_info",
+                                   "arguments": {}})
+            assert catalog_page["structuredContent"]["returned"] == 50, catalog_page
+            assert catalog_page["structuredContent"]["has_more"], catalog_page
             control_status = request(server, 22, "tools/call", {"name": "rte_control_status",
                                      "arguments": {}})
             assert control_status["structuredContent"]["gate_ready"] == 1, control_status
@@ -347,20 +422,41 @@ def main():
                                 "arguments": {"signals": ["phase_current_a"],
                                               "window_s": 1.0}})
             assert len(histories["structuredContent"]["series"]["phase_current_a"]) == 3
+            excessive_histories = request(server, 38, "tools/call", {
+                "name": "rte_device_histories",
+                "arguments": {"signals": ["a", "b", "c"], "limit": 200}})
+            assert excessive_histories["isError"], excessive_histories
+            assert "400-sample" in excessive_histories["content"][0]["text"], excessive_histories
+            export_path = workspace / "build" / "mcp-test-history.csv"
+            exported = request(server, 39, "tools/call", {
+                "name": "rte_device_history_export",
+                "arguments": {"signals": ["phase_current_a", "dc_bus_v"],
+                              "output": "build/mcp-test-history.csv", "limit": 100}})
+            assert exported["structuredContent"]["success"], exported
+            assert exported["structuredContent"]["total_samples"] == 2, exported
+            assert "samples" not in exported["structuredContent"], exported
+            assert export_path.read_text().splitlines()[0] == "signal,time_s,value"
+            assert len(json.dumps(exported)) < 4096, exported
             trends = request(server, 24, "tools/call", {"name": "rte_device_trends",
                              "arguments": {"signals": ["phase_current_a"],
                                            "window_s": 1.0}})
             assert trends["structuredContent"]["metrics"]["phase_current_a"]["rms"] > 0
             assert "phase_current_a" in trends["content"][0]["text"], trends
             analyzed = request(server, 29, "tools/call", {"name": "rte_device_trends",
-                               "arguments": {"signals": ["analysis_ramp", "analysis_osc",
-                                                         "analysis_spike"], "window_s": 5.0}})
+                               "arguments": {"signals": ["analysis_ramp",
+                                                         "analysis_ramp_copy",
+                                                         "analysis_osc", "analysis_spike"],
+                                             "window_s": 5.0}})
             metrics = analyzed["structuredContent"]["metrics"]
             assert metrics["analysis_ramp"]["pattern"] == "rising", metrics
             assert abs(metrics["analysis_ramp"]["slope_per_s"] - 2.0) < 0.01, metrics
             assert metrics["analysis_osc"]["pattern"] == "oscillating", metrics
             assert 1.5 < metrics["analysis_osc"]["oscillation_hz"] < 2.5, metrics
             assert metrics["analysis_spike"]["isolated_spikes"] == 1, metrics
+            ramp_correlation = next(item for item in analyzed["structuredContent"]["correlations"]
+                                    if {item["left"], item["right"]} ==
+                                    {"analysis_ramp", "analysis_ramp_copy"})
+            assert ramp_correlation["coefficient"] > 0.999, ramp_correlation
             assert "early→late mean" in analyzed["content"][0]["text"], analyzed
             edge_cases = request(server, 30, "tools/call", {"name": "rte_device_trends",
                                  "arguments": {"signals": ["analysis_constant", "analysis_step",
@@ -458,6 +554,15 @@ def main():
                  "--session", str(descriptor)],
                 capture_output=True, text=True, env=env, check=True, timeout=5)
             assert "phase_current_a" in manual_tool.stdout, manual_tool.stdout
+            manual_export = subprocess.run(
+                [str(executable), "--format", "json", "tool",
+                 "rte_device_history_export", "--arguments",
+                 '{"signals":["phase_current_a"],'
+                 '"output":"build/manual-history.csv","limit":100}',
+                 "--workspace", str(workspace), "--session", str(descriptor)],
+                capture_output=True, text=True, env=env, check=True, timeout=5)
+            assert '"success": true' in manual_export.stdout, manual_export.stdout
+            assert (workspace / "build" / "manual-history.csv").is_file()
             mode = request(server, 15, "tools/call", {"name": "rte_device_mode",
                            "arguments": {}})["structuredContent"]
             assert mode["state"] == "app_responding", mode
@@ -516,17 +621,36 @@ def main():
             spike = request(server, 27, "tools/call", {"name": "rte_spike_capture",
                             "arguments": {"timeout_ms": 1000}})
             assert spike["structuredContent"]["complete"], spike
-            assert len(spike["structuredContent"]["samples"]) == 64, spike
-            assert spike["structuredContent"]["samples"][47]["trigger"], spike
+            assert spike["structuredContent"]["sample_count"] == 64, spike
+            assert "samples" not in spike["structuredContent"], spike
             assert "iu_a" in spike["content"][0]["text"], spike
+            spike_samples = request(server, 40, "tools/call", {"name": "rte_spike_capture",
+                                    "arguments": {"timeout_ms": 1000,
+                                                  "include_samples": True}})
+            assert len(spike_samples["structuredContent"]["samples"]) == 64, spike_samples
+            assert spike_samples["structuredContent"]["samples"][47]["trigger"], spike_samples
             commands = request(server, 29, "tools/call", {"name": "rte_device_commands",
                                "arguments": {"timeout_ms": 1000}})
             catalog = commands["structuredContent"]
             assert catalog["complete"] and catalog["count"] == 2, catalog
             assert catalog["count_verified"] and catalog["argument_ranges_complete"], catalog
+            assert catalog["motor_control_command"] == "control start", catalog
+            assert catalog["motor_control_role"] == "main RTE graph motor control", catalog
+            assert catalog["internal_test_command"] == "foc start <iq_a> [id_a]", catalog
+            assert "internal testing only" in catalog["internal_test_role"], catalog
+            assert "MAIN RTE graph motor control" in commands["content"][0]["text"], commands
+            assert "Internal testing only" in commands["content"][0]["text"], commands
             assert catalog["commands"][1]["arguments"][0] == {
                 "name": "hz", "required": True, "range": "0.0-100.0 Hz", "type": "float"}, catalog
             assert session_server.commands[-1] == "help"
+            filtered_commands = request(server, 41, "tools/call", {
+                "name": "rte_device_commands",
+                "arguments": {"timeout_ms": 1000, "filter": "freq", "limit": 1}})
+            filtered_catalog = filtered_commands["structuredContent"]
+            assert filtered_catalog["count"] == 2, filtered_catalog
+            assert filtered_catalog["matching"] == 1, filtered_catalog
+            assert filtered_catalog["returned"] == 1, filtered_catalog
+            assert filtered_catalog["commands"][0]["name"] == "freq", filtered_catalog
             session_server.incomplete_help = True
             incomplete = request(server, 30, "tools/call", {"name": "rte_device_commands",
                                  "arguments": {"timeout_ms": 1000}})

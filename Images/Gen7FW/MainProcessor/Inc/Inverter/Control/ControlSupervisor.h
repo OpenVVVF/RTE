@@ -48,6 +48,13 @@ public:
      */
     void requestStopFromIsr();
 
+    /**
+     * @brief Return a faulted generated-control supervisor to Idle.
+     *
+     * Refuses while any Critical or High software fault remains active.
+     */
+    bool resetFaultState();
+
     bool isRunning() const { return m_state == State::Running; }
     bool isFaulted() const { return m_state == State::Fault; }
     State state() const { return m_state; }

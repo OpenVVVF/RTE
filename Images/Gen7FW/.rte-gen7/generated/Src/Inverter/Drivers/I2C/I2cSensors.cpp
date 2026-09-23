@@ -153,7 +153,9 @@ void I2cSensors::evaluateFaults(uint32_t now_ms) {
         m_ot_cond = cond;
         if (!cond) {
             m_ot_raised = false;
-        } else if (!m_ot_raised && (now_ms - m_ot_since_ms) >= FAULT_SUSTAIN_MS) {
+        } else if ((!m_ot_raised ||
+                    !FaultManager::instance().isActive(FaultSource::OnboardOvertemperature)) &&
+                   (now_ms - m_ot_since_ms) >= FAULT_SUSTAIN_MS) {
             m_ot_raised = true;
             FaultManager::instance().raise(FaultSource::OnboardOvertemperature,
                                            FaultReason::OnboardOvertemperature);
@@ -185,7 +187,8 @@ void I2cSensors::evaluateFaults(uint32_t now_ms) {
         cond = c;
         if (!c) {
             raised = false;
-        } else if (!raised && (now_ms - since) >= FAULT_SUSTAIN_MS) {
+        } else if ((!raised || !FaultManager::instance().isActive(src)) &&
+                   (now_ms - since) >= FAULT_SUSTAIN_MS) {
             raised = true;
             FaultManager::instance().raise(src, reason);
         }

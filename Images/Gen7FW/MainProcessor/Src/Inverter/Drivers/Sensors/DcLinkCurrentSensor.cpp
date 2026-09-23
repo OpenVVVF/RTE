@@ -101,7 +101,8 @@ void DcLinkCurrentSensor::update() {
     if (!plausible) {
         if (m_implausible_since_ms == 0) {
             m_implausible_since_ms = HAL_GetTick();
-        } else if (!m_fault_raised &&
+        } else if ((!m_fault_raised ||
+                    !FaultManager::instance().isActive(FaultSource::CurrentSensorRef)) &&
                    (HAL_GetTick() - m_implausible_since_ms) >= 500U) {
             m_fault_raised = true;
             FaultManager::instance().raise(FaultSource::CurrentSensorRef,
@@ -164,4 +165,3 @@ void DcLinkCurrentSensor::update() {
 }
 
 } // namespace Inverter
-
