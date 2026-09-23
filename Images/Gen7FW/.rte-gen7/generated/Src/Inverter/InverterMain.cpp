@@ -48,10 +48,10 @@
 #include "ontime_logger.h"
 
 #include <cstdio>
-#include "../../generated/domain_vsense_generated.h"
 #include "../../generated/domain_adc_isr_generated.h"
-#include "../../generated/domain_tim_isr_generated.h"
 #include "../../generated/domain_app_loop_generated.h"
+#include "../../generated/domain_tim_isr_generated.h"
+#include "../../generated/domain_vsense_generated.h"
 
 /* Global RTE codegen state variable.  Referenced by app::<DomainTitle>Init/Step
  * calls inserted at // RTE_EMIT markers. */

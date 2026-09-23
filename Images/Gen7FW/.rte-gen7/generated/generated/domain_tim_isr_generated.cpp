@@ -2,6 +2,7 @@
 
 #include "domain_tim_isr_generated.h"
 #include "platform_api.h"
+#include <math.h>
 
 namespace app {
 
@@ -221,17 +222,6 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: Park
     {
     }
-    // Init node: LogId
-    {
-        state.LogId.Key = "cg_id_a";
-    }
-    // Init node: LogIq
-    {
-        state.LogIq.Key = "cg_iq_a";
-    }
-    // Init node: FocFeedforward
-    {
-    }
     // Init node: PiD
     {
         state.PiD.AwGain = 1.0f;
@@ -249,6 +239,14 @@ void TimIsrInit(TimIsrState& state) {
         state.PiQ.Integral = 0.0f;
         state.PiQ.OutputMax = 200.0f;
         state.PiQ.OutputMin = -200.0f;
+    }
+    // Init node: LogId
+    {
+        state.LogId.Key = "cg_id_a";
+    }
+    // Init node: LogIq
+    {
+        state.LogIq.Key = "cg_iq_a";
     }
     // Init node: LogVd
     {
@@ -606,54 +604,11 @@ I_D = I_Alpha * cos_theta + I_Beta * sin_theta;
 I_Q = -I_Alpha * sin_theta + I_Beta * cos_theta;
 
     }
-    // Step node: LogId (Debug.TelemetryLog)
-    {
-        const rte::Dimensionless Value = state.Park.I_D.in(au::amperes);
-        const char*& Key = state.LogId.Key;
-        platform_telemetry_log_f32(Key, Value);
-
-    }
-    // Step node: LogIq (Debug.TelemetryLog)
-    {
-        const rte::Dimensionless Value = state.Park.I_Q.in(au::amperes);
-        const char*& Key = state.LogIq.Key;
-        platform_telemetry_log_f32(Key, Value);
-
-    }
-    // Step node: FocFeedforward (Control.FocFeedforward)
-    {
-        const rte::Current I_D = state.Park.I_D;
-        const rte::Current I_Q = state.Park.I_Q;
-        const rte::Dimensionless RpmElec = state.RPMMechElec1.RpmElec;
-        const rte::Dimensionless Ld = state.CfgLd.Value;
-        const rte::Dimensionless Lq = state.CfgLq.Value;
-        const rte::Dimensionless Lambda = state.CfgLambda.Value;
-        rte::Voltage& V_D = state.FocFeedforward.V_D;
-        rte::Voltage& V_Q = state.FocFeedforward.V_Q;
-        /* PMSM voltage feed-forward: cross-coupling and back-EMF terms.
- * Electrical speed is supplied in RPM and converted to rad/s internally.
- *
- *   Vd_ff = -ωe * Lq * Iq
- *   Vq_ff =  ωe * Ld * Id + ωe * Lambda
- */
-constexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;
-const float omega_e = RpmElec * RPM_TO_RAD_S;
-
-const float id_a = I_D.in(au::amperes);
-const float iq_a = I_Q.in(au::amperes);
-
-const float vd_ff = -(omega_e * Lq * iq_a);
-const float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);
-
-V_D = rte::Volts(vd_ff);
-V_Q = rte::Volts(vq_ff);
-
-    }
     // Step node: PiD (Custom.PiCurrent)
     {
         const rte::Current Setpoint = state.IdVar.Value;
         const rte::Current Measurement = state.Park.I_D;
-        const rte::Voltage Feedforward = state.FocFeedforward.V_D;
+        const rte::Voltage& Feedforward = state.PiD.Feedforward;
         const rte::Dimensionless Kp = state.CfgKpD.Value;
         const rte::Dimensionless Ki = state.CfgKiD.Value;
         rte::Voltage& Output = state.PiD.Output;
@@ -694,7 +649,7 @@ Output = rte::Volts(limited_output);
     {
         const rte::Current Setpoint = rte::Amperes(state.IqGate.Out);
         const rte::Current Measurement = state.Park.I_Q;
-        const rte::Voltage Feedforward = state.FocFeedforward.V_Q;
+        const rte::Voltage& Feedforward = state.PiQ.Feedforward;
         const rte::Dimensionless Kp = state.CfgKpQ.Value;
         const rte::Dimensionless Ki = state.CfgKiQ.Value;
         rte::Voltage& Output = state.PiQ.Output;
@@ -729,6 +684,20 @@ if (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {
 }
 
 Output = rte::Volts(limited_output);
+
+    }
+    // Step node: LogId (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.Park.I_D.in(au::amperes);
+        const char*& Key = state.LogId.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: LogIq (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.Park.I_Q.in(au::amperes);
+        const char*& Key = state.LogIq.Key;
+        platform_telemetry_log_f32(Key, Value);
 
     }
     // Step node: LogVd (Debug.TelemetryLog)
@@ -952,17 +921,6 @@ void TimIsrStart(TimIsrState& state) {
     // Reset node: Park
     {
     }
-    // Reset node: LogId
-    {
-        state.LogId.Key = "cg_id_a";
-    }
-    // Reset node: LogIq
-    {
-        state.LogIq.Key = "cg_iq_a";
-    }
-    // Reset node: FocFeedforward
-    {
-    }
     // Reset node: PiD
     {
         state.PiD.AwGain = 1.0f;
@@ -980,6 +938,14 @@ void TimIsrStart(TimIsrState& state) {
         state.PiQ.Integral = 0.0f;
         state.PiQ.OutputMax = 200.0f;
         state.PiQ.OutputMin = -200.0f;
+    }
+    // Reset node: LogId
+    {
+        state.LogId.Key = "cg_id_a";
+    }
+    // Reset node: LogIq
+    {
+        state.LogIq.Key = "cg_iq_a";
     }
     // Reset node: LogVd
     {
@@ -1148,17 +1114,6 @@ void TimIsrStop(TimIsrState& state) {
         state.Park.I_D = rte::Current{};
         state.Park.I_Q = rte::Current{};
     }
-    // Zero node: LogId
-    {
-    }
-    // Zero node: LogIq
-    {
-    }
-    // Zero node: FocFeedforward
-    {
-        state.FocFeedforward.V_D = rte::Voltage{};
-        state.FocFeedforward.V_Q = rte::Voltage{};
-    }
     // Zero node: PiD
     {
         state.PiD.Output = rte::Voltage{};
@@ -1166,6 +1121,12 @@ void TimIsrStop(TimIsrState& state) {
     // Zero node: PiQ
     {
         state.PiQ.Output = rte::Voltage{};
+    }
+    // Zero node: LogId
+    {
+    }
+    // Zero node: LogIq
+    {
     }
     // Zero node: LogVd
     {

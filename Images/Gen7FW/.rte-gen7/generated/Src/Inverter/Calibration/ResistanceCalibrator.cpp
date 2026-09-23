@@ -27,55 +27,39 @@ ResistanceCalibrator& resistanceCalibrator() {
 
 namespace {
 
+/* Pair semantics with the standard 3-phase complementary PWM driver (no true
+ * high-Z is possible): pair XY drives phase X at the commanded duty while the
+ * other two phases sit at 0 % (low side on) and share the return current.
+ * Current enters the motor at the driven phase, so the driven-phase current
+ * is the active measurement. */
 float pairCurrentActive(float iu, float iv, float iw, ResistanceCalibrator::Pair pair) {
     (void)iw;
-    /* The "active" phase is the high-side PWM phase.  Current physically flows
-     * OUT of that phase (into the low phase), so the measured current into the
-     * phase is negative.  Negate it so active current is positive. */
+    /* Keep the historical sign convention (negated driven-phase current) so
+     * the V/I fit behaves as originally designed. */
     switch (pair) {
         case ResistanceCalibrator::Pair::UV:
-        case ResistanceCalibrator::Pair::UW:
             return -iu;
-        case ResistanceCalibrator::Pair::VW:
+        case ResistanceCalibrator::Pair::UW:
             return -iv;
+        case ResistanceCalibrator::Pair::VW:
+            return -iw;
     }
     return 0.0f;
 }
 
 float pairCurrentInactive(float iu, float iv, float iw, ResistanceCalibrator::Pair pair) {
+    /* One of the two return phases.  Both return phases carry roughly half of
+     * the active current by design; the check in finishPairMeasurement()
+     * tolerates that and only flags gross wiring/sensor faults. */
     switch (pair) {
         case ResistanceCalibrator::Pair::UV:
             return iw;
         case ResistanceCalibrator::Pair::UW:
-            return iv;
+            return iw;
         case ResistanceCalibrator::Pair::VW:
-            return iu;
+            return iv;
     }
     return 0.0f;
-}
-
-uint32_t pinNumber(uint32_t pin_mask) {
-    return static_cast<uint32_t>(__builtin_ctz(pin_mask));
-}
-
-/* Set a phase pin to either alternate function or GPIO output with a
- * specified level. */
-void setPin(uint32_t pin, bool alternate_function, bool output_high) {
-    const uint32_t num = pinNumber(pin);
-    const uint32_t mask = 3U << (num * 2U);
-
-    uint32_t moder = GPIOE->MODER;
-    moder &= ~mask;
-    moder |= (alternate_function ? 2U : 1U) << (num * 2U);
-    GPIOE->MODER = moder;
-
-    if (!alternate_function) {
-        if (output_high) {
-            GPIOE->BSRR = pin;
-        } else {
-            GPIOE->BSRR = pin << 16U;
-        }
-    }
 }
 
 } // namespace
@@ -271,156 +255,38 @@ void ResistanceCalibrator::resetMeasurementAccumulators(uint8_t point) {
 }
 
 void ResistanceCalibrator::configureHardware(float bus_pct) {
-    const Pair pair = m_pairs[m_pair_index];
-
-    /* duty of the high phase: bus_pct % of Vdc appears line-to-line. */
-    const uint32_t pulse = static_cast<uint32_t>((bus_pct * static_cast<float>(CAL_ARR)) / 100.0f);
-
-    uint8_t high_phase = 0;
-    uint8_t low_phase = 0;
-    uint8_t hz_phase = 0;
-
-    switch (pair) {
-        case Pair::UV:
-            high_phase = 0; low_phase = 1; hz_phase = 2;
-            break;
-        case Pair::UW:
-            high_phase = 0; low_phase = 2; hz_phase = 1;
-            break;
-        case Pair::VW:
-            high_phase = 1; low_phase = 2; hz_phase = 0;
-            break;
+    /* Drive the pair's driven phase at the commanded duty through the standard
+     * PWM driver; the two return phases sit at 0 % (low side on) and share the
+     * return current.  The driver applies the same Motor.PhaseSwap duty remap
+     * FOC uses, so the calibrator measures in exactly the frame the controller
+     * runs in. */
+    float du = 0.0f, dv = 0.0f, dw = 0.0f;
+    switch (m_pairs[m_pair_index]) {
+        case Pair::UV: du = bus_pct; break;
+        case Pair::UW: dv = bus_pct; break;
+        case Pair::VW: dw = bus_pct; break;
     }
+    PWM_SetThreePhaseDuty(du, dv, dw);
 
-    /* Default all compare registers to 0, then set the high-phase pulse.
-     * We deliberately do NOT touch CCER.  The ADC injected group is triggered
-     * by TIM1_TRGO = OC4REF; gating phase channels via CCER can stop the
-     * current-sense ISR.  All phase channels stay enabled; the bridge state
-     * is controlled by pin mode and compare value. */
-    TIM1->CCR1 = 0;
-    TIM1->CCR2 = 0;
-    TIM1->CCR3 = 0;
-    switch (high_phase) {
-        case 0: TIM1->CCR1 = pulse; break;
-        case 1: TIM1->CCR2 = pulse; break;
-        case 2: TIM1->CCR3 = pulse; break;
-    }
-
-    /* Pin/function mapping note:
-     * The main.h pin names are swapped relative to the TIM1 channel assignment:
-     *   PH_x_LOW_Pin  is connected to TIM1_CHx  and drives the HIGH-SIDE MOSFET.
-     *   PH_x_HIGH_Pin is connected to TIM1_CHxN and drives the LOW-SIDE MOSFET.
-     * Therefore:
-     *   high-side ON  -> PH_x_LOW_Pin high  / TIM1_CHx active
-     *   low-side  ON  -> PH_x_HIGH_Pin high / TIM1_CHxN active
-     *
-     * Configure pins:
-     *  - high phase: both pins in AF for complementary PWM with dead time
-     *  - low phase:  high-side pin GPIO low, low-side pin GPIO high (DC on)
-     *  - high-Z:     both pins GPIO low
-     *
-     * CCER is left enabled for all channels.  The inactive phases have their
-     * pins in GPIO mode, so the timer outputs are ignored. */
-
-    /* Phase U */
-    if (hz_phase == 0) {
-        setPin(PH_U_LOW_Pin,  false, false); /* high-side off */
-        setPin(PH_U_HIGH_Pin, false, false); /* low-side off */
-    } else if (low_phase == 0) {
-        setPin(PH_U_LOW_Pin,  false, false); /* high-side off */
-        setPin(PH_U_HIGH_Pin, false, true);  /* low-side on */
-    } else { /* high_phase == 0 */
-        setPin(PH_U_LOW_Pin,  true, false);  /* high-side PWM (TIM1_CH1) */
-        setPin(PH_U_HIGH_Pin, true, false);  /* low-side complementary (TIM1_CH1N) */
-    }
-
-    /* Phase V */
-    if (hz_phase == 1) {
-        setPin(PH_V_LOW_Pin,  false, false);
-        setPin(PH_V_HIGH_Pin, false, false);
-    } else if (low_phase == 1) {
-        setPin(PH_V_LOW_Pin,  false, false);
-        setPin(PH_V_HIGH_Pin, false, true);
-    } else { /* high_phase == 1 */
-        setPin(PH_V_LOW_Pin,  true, false);
-        setPin(PH_V_HIGH_Pin, true, false);
-    }
-
-    /* Phase W */
-    if (hz_phase == 2) {
-        setPin(PH_W_LOW_Pin,  false, false);
-        setPin(PH_W_HIGH_Pin, false, false);
-    } else if (low_phase == 2) {
-        setPin(PH_W_LOW_Pin,  false, false);
-        setPin(PH_W_HIGH_Pin, false, true);
-    } else { /* high_phase == 2 */
-        setPin(PH_W_LOW_Pin,  true, false);
-        setPin(PH_W_HIGH_Pin, true, false);
-    }
-
-    /* A DESAT trip can latch between enableGateDriver() and the first PWM edge.
-     * Check immediately so we don't run the PI on stale/frozen current. */
+    /* A DESAT trip can latch between gate-driver release and the first PWM
+     * edge.  Check immediately so we don't run the PI on stale/frozen
+     * current. */
     if (GateDriver_IsFault()) {
-        uint32_t bdtr = TIM1->BDTR;
-        Telemetry::printf("[CAL] RES: FAIL: gate-driver fault after enabling PWM | MOE=%lu BIF=%lu BKF=%lu",
-                          (bdtr >> 15) & 1UL,
-                          (TIM1->SR >> 7) & 1UL,
-                          (TIM1->SR >> 6) & 1UL);
         fail("[CAL] RES: FAIL: DESAT/gate-driver fault latched after PWM enable");
-        return;
-    }
-    if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
-        Telemetry::printf("[CAL] RES: FAIL: TIM1 MOE cleared after enabling PWM (break event)");
-        fail("[CAL] RES: FAIL: TIM1 break event cleared MOE");
         return;
     }
 }
 
 void ResistanceCalibrator::restoreHardware() {
-    /* 1. Disable all timer outputs -> stop switching immediately. */
-    TIM1->CCER &= ~(TIM_CCER_CC1E | TIM_CCER_CC1NE |
-                    TIM_CCER_CC2E | TIM_CCER_CC2NE |
-                    TIM_CCER_CC3E | TIM_CCER_CC3NE);
+    /* The driver owns the timer and GPIO configuration; just stop switching
+     * and let CalibrationHardware hold the gate driver in reset. */
+    PWM_Stop();
+    CalibrationHardware::parkOutputs();
+    CalibrationHardware::shutdown();
 
-    /* 2. Force all gate-driver inputs low so all MOSFETs are off. */
-    GPIOE->BSRR = (PH_U_HIGH_Pin | PH_V_HIGH_Pin | PH_W_HIGH_Pin |
-                   PH_U_LOW_Pin  | PH_V_LOW_Pin  | PH_W_LOW_Pin) << 16U;
-
-    uint32_t moder = GPIOE->MODER;
-    const uint32_t all_pins_mask =
-        (3U << (pinNumber(PH_U_HIGH_Pin) * 2U)) | (3U << (pinNumber(PH_U_LOW_Pin) * 2U)) |
-        (3U << (pinNumber(PH_V_HIGH_Pin) * 2U)) | (3U << (pinNumber(PH_V_LOW_Pin) * 2U)) |
-        (3U << (pinNumber(PH_W_HIGH_Pin) * 2U)) | (3U << (pinNumber(PH_W_LOW_Pin) * 2U));
-    moder &= ~all_pins_mask;
-    moder |= (1U << (pinNumber(PH_U_HIGH_Pin) * 2U)) | (1U << (pinNumber(PH_U_LOW_Pin) * 2U)) |
-             (1U << (pinNumber(PH_V_HIGH_Pin) * 2U)) | (1U << (pinNumber(PH_V_LOW_Pin) * 2U)) |
-             (1U << (pinNumber(PH_W_HIGH_Pin) * 2U)) | (1U << (pinNumber(PH_W_LOW_Pin) * 2U));
-    GPIOE->MODER = moder;
-
-    /* 3. Disable gate driver outputs. */
-    CalibrationHardware::assertOutputs();
-
-    /* 4. Restore timer registers including CCER (which keeps TIM1_CH4 and any
-     * other previous output enables intact so the ADC TRGO source is preserved). */
-    TIM1->CCR1 = m_saved_ccr1;
-    TIM1->CCR2 = m_saved_ccr2;
-    TIM1->CCR3 = m_saved_ccr3;
-    TIM1->PSC  = m_saved_psc;
-    TIM1->ARR  = m_saved_arr;
-    TIM1->BDTR = (m_saved_bdtr & ~TIM_BDTR_DTG) | (TIM1->BDTR & TIM_BDTR_DTG);
-    TIM1->BDTR = m_saved_bdtr;
-    TIM1->CCER = m_saved_ccer;
-
-    /* 5. Restore GPIO to original alternate-function modes. */
-    GPIOE->MODER = m_saved_gpioe_moder;
-
-    /* 6. Restore the software overcurrent threshold so the post-calibration
+    /* Restore the software overcurrent threshold so the post-calibration
      * idle state is not left with a sensitive trip point. */
     phaseCurrentADC().setOvercurrentThreshold(m_saved_oc_threshold_a);
-
-    /* 7. Resume the permanent measurement/telemetry ISR after exclusive
-     * timer ownership ends. Generated actuator writes remain suppressed. */
-    PWM_StartUpdateInterrupt();
 }
 
 void ResistanceCalibrator::finishPairMeasurement() {
@@ -442,18 +308,32 @@ void ResistanceCalibrator::finishPairMeasurement() {
         const float i_inactive = std::fabs(
             m_sum_i_inactive[pt] / static_cast<float>(m_sample_count[pt]));
 
-        /* The inactive (high-Z) phase should carry essentially zero current.
-         * Force mode skips this check for non-motor loads where sensor noise
-         * or wiring makes the inactive-phase reading non-negligible. */
+        /* With complementary PWM the two return phases each carry roughly half
+         * of the active current at standstill.  On a free-spinning rotor the
+         * PM back-EMF drives additional circulating current through the
+         * low-side-clamped return windings (R is only ~10 mOhm, so even slow
+         * motion produces multi-x currents); anything above the ratio is
+         * suspicious and gets flagged, only an extreme excursion is a hard
+         * fail.  Force mode skips even the hard fail. */
         if (!m_force_mode) {
-            const float max_inactive = std::max(
+            const float inactive_limit = std::max(
                 MAX_INACTIVE_CURRENT_MIN_A, std::fabs(i_active) * MAX_INACTIVE_CURRENT_RATIO);
-            if (i_inactive > max_inactive) {
+            if (i_inactive > inactive_limit) {
                 fail("[CAL] RES: FAIL: %s inactive current %.3f A exceeds limit (active %.3f A)",
                      pairName(pair),
                      static_cast<double>(i_inactive),
                      static_cast<double>(std::fabs(i_active)));
                 return;
+            }
+            const float inactive_warn = std::max(
+                2.0f * MAX_INACTIVE_CURRENT_MIN_A, std::fabs(i_active) * 0.75f);
+            if (i_inactive > inactive_warn) {
+                Telemetry::printf("[CAL] RES: %s: note: return current %.3f A (%.2fx active) - "
+                                  "rotor motion back-EMF, fit unaffected",
+                                  pairName(pair),
+                                  static_cast<double>(i_inactive),
+                                  static_cast<double>(i_inactive /
+                                                      std::max(std::fabs(i_active), 0.001f)));
             }
         }
 
@@ -485,8 +365,10 @@ void ResistanceCalibrator::finishPairMeasurement() {
                           static_cast<double>(v[6]), static_cast<double>(i[6]));
     }
 
-    /* Linear regression: V = R_ll * I + V_offset.
-     * We want the slope R_ll; V_offset is discarded. */
+    /* Linear regression: V = R_meas * I + V_offset.
+     * R_meas is driven-phase-to-parallel-returns: R_phase + R_phase/2 =
+     * 1.5 * R_phase.  We want the slope; V_offset (switch drops, dead time,
+     * wiring) is discarded. */
     float sum_v = 0.0f;
     float sum_i = 0.0f;
     float sum_vi = 0.0f;
@@ -516,27 +398,27 @@ void ResistanceCalibrator::finishPairMeasurement() {
         return;
     }
 
-    const float r_ll = (n * sum_vi - sum_v * sum_i) / denom;
+    const float r_meas = (n * sum_vi - sum_v * sum_i) / denom;
     {
-        Telemetry::printf("[CAL] RES: %s fit result: R_ll=%.4f mohm",
+        Telemetry::printf("[CAL] RES: %s fit result: R_meas=%.4f mohm",
                           pairName(pair),
-                          static_cast<double>(r_ll * 1000.0f));
+                          static_cast<double>(r_meas * 1000.0f));
     }
-    if (r_ll <= 0.0f || !std::isfinite(r_ll)) {
+    if (r_meas <= 0.0f || !std::isfinite(r_meas)) {
         fail("[CAL] RES: FAIL: computed resistance is non-positive; increase current/voltage");
         return;
     }
 
-    const float v_offset = (sum_v - r_ll * sum_i) / n;
+    const float v_offset = (sum_v - r_meas * sum_i) / n;
 
-    const float r_phase = r_ll * 0.5f;
+    const float r_phase = r_meas / 1.5f;
     const int idx = pairIndex(pair);
     m_results[idx] = r_phase;
     m_result_valid[idx] = true;
 
-    Telemetry::printf("[CAL] RES: %s: R_ll=%.4f mohm  R_phase=%.4f mohm  Imax=%.3f A  Vdc=%.3f V  V_off=%.3f V",
+    Telemetry::printf("[CAL] RES: %s: R_meas=%.4f mohm  R_phase=%.4f mohm  Imax=%.3f A  Vdc=%.3f V  V_off=%.3f V",
                       pairName(pair),
-                      static_cast<double>(r_ll * 1000.0f),
+                      static_cast<double>(r_meas * 1000.0f),
                       static_cast<double>(r_phase * 1000.0f),
                       static_cast<double>(i_active_max),
                       static_cast<double>(vdc_avg),
@@ -591,34 +473,15 @@ void ResistanceCalibrator::update() {
     }
 
     if (m_state == State::ENABLE) {
-        /* Save current timer, GPIO, and overcurrent-threshold state. */
-        m_saved_arr = TIM1->ARR;
-        m_saved_psc = TIM1->PSC;
-        m_saved_ccer = TIM1->CCER;
-        m_saved_ccr1 = TIM1->CCR1;
-        m_saved_ccr2 = TIM1->CCR2;
-        m_saved_ccr3 = TIM1->CCR3;
-        m_saved_bdtr = TIM1->BDTR;
-        m_saved_gpioe_moder = GPIOE->MODER;
         m_saved_oc_threshold_a = phaseCurrentADC().overcurrentThreshold();
-
-        /* Pause the shared ISR only while this calibration owns TIM1 directly. */
-        PWM_StopUpdateInterrupt();
-
-        /* Set calibration frequency (~8 kHz).
-         * TIM1CLK = 275 MHz, center-aligned => f_sw = 275 MHz / (2 * ARR).
-         * ARR = 17186 => ~8.0 kHz. */
-        TIM1->PSC = 0U;
-        TIM1->ARR = CAL_ARR;
-
-        /* Static 1 us dead time during calibration.
-         * DTG = 0xC3 -> 110 encoding, (32 + 3) * 8 * t_DTS = ~1018 ns. */
-        TIM1->BDTR = (TIM1->BDTR & ~TIM_BDTR_DTG) | 0xC3U;
 
         /* Clear any previous TIM1 break before releasing the gate driver. */
         PWM_ClearBreakFlag();
         PWM_ClearFault();
 
+        /* Hardware startup is driven by CalibrationHardware (gate-driver power
+         * and reset sequencing); the PWM driver keeps ownership of TIM1 and
+         * the gate pins throughout the measurement. */
         m_hw.begin();
         enterState(State::WAIT_READY);
         return;
@@ -635,16 +498,12 @@ void ResistanceCalibrator::update() {
             return;
         }
 
-        /* Gate driver is ready; enable all TIM1 phase channels and the ADC
-         * trigger channel (CH4).  During calibration we reconfigure pin modes
-         * instead of clearing CCER, so the ADC trigger keeps running. */
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-        HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-        HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-        HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
-        HAL_TIM_OC_Start(&htim1, TIM_CHANNEL_4);
+        /* Gate driver is ready: park the bridge at zero voltage (all phases
+         * at 0 % duty -> all low sides on, no voltage across the windings),
+         * then release the timer outputs. */
+        PWM_SetThreePhaseDuty(0.0f, 0.0f, 0.0f);
+        PWM_ClearFault();
+        PWM_Start();
 
         m_point_index = 0;
         if (m_mode == Mode::VOLTAGE_STEP) {

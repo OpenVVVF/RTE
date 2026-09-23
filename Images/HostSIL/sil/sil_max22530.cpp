@@ -3,7 +3,7 @@
  *
  * Models the isolated 4-channel ADC: no SPI transactions, voltages arrive
  * directly from the SIL world (DC-link on channel 0, phase pole voltages on
- * channels 1..3, both through the 1516:1 sense divider).  dataReady() is
+ * channels 1..3, both through the 1001:1 sense divider).  dataReady() is
  * always true once initialized (the real chip free-runs at 20 kHz into DMA).
  *
  * The comparator windows are modeled at register-behavior level:
@@ -55,10 +55,10 @@ uint16_t        s_cout_status = 0;
 float hostVoltage(uint8_t channel) {
     const SilWorld& w = silWorld();
     switch (channel) {
-        case 0: return w.vdc_v / 1516.0f;
-        case 1: return w.phase_pole_v[0] / 1516.0f;
-        case 2: return w.phase_pole_v[1] / 1516.0f;
-        case 3: return w.phase_pole_v[2] / 1516.0f;
+        case 0: return w.vdc_v / 1001.0f;
+        case 1: return w.phase_pole_v[0] / 1001.0f;
+        case 2: return w.phase_pole_v[1] / 1001.0f;
+        case 3: return w.phase_pole_v[2] / 1001.0f;
         default: return 0.0f;
     }
 }

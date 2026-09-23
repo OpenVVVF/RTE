@@ -4,6 +4,11 @@
 
 namespace Inverter {
 
+/* Gen7 voltage-sense input divider: 1 MΩ over 1 kΩ, so the high-side voltage
+ * is (1e6 + 1e3)/1e3 = 1001x the MAX22530 input voltage.  Applies to the
+ * DC-link channel and the three phase-pole sense channels. */
+inline constexpr float VSENSE_DIVIDER_RATIO = 1001.0f;
+
 /**
  * @brief High-voltage DC-link voltage sensor using the isolated ADC.
  *
@@ -17,11 +22,11 @@ public:
      * @param adc            MAX22530 isolated ADC driver.
      * @param telemetry_key  Key used for telemetry, e.g. "vdc_v".
      * @param scale          Voltage-divider ratio from raw ADC volts to
-     *                       high-side volts (default 1501.5f).
+     *                       high-side volts (default VSENSE_DIVIDER_RATIO).
      */
     DcLinkVoltageSensor(MAX22530& adc,
                         const char* telemetry_key = "vdc_v",
-                        float scale = 1516.0f);
+                        float scale = VSENSE_DIVIDER_RATIO);
 
     /**
      * @brief Initialize the underlying ADC.

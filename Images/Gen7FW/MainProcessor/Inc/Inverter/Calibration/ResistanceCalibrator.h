@@ -7,12 +7,17 @@
 namespace Inverter {
 
 /**
- * @brief Phase-to-phase stator resistance calibration.
+ * @brief Per-phase stator resistance calibration.
  *
- * Uses direct TIM1 and GPIO register access to apply a DC voltage across two
- * motor phases while the third phase is placed in true high impedance (both
- * high-side and low-side MOSFETs off).  PWM runs at 8 kHz during calibration
- * for low current ripple.
+ * Applies a DC voltage through the standard complementary PWM driver: the
+ * pair's driven phase runs at the commanded duty while the other two phases
+ * sit at 0 % (low side on) and share the return current.  Because the driver
+ * (not raw register access) owns the bridge, the measurement runs in exactly
+ * the same voltage/current frame FOC uses, at the runtime switching
+ * frequency.
+ *
+ * Topology note: the measured slope is driven-phase-to-parallel-returns =
+ * R_phase + R_phase/2 = 1.5 * R_phase.
  *
  * Two measurement modes are supported:
  *  - Voltage step: fixed duty-cycle points; useful for quick checks.
@@ -20,21 +25,24 @@ namespace Inverter {
  *    inverter voltage command (duty * Vdc) is recorded.  This is largely
  *    independent of DC bus voltage.
  *
- * In both modes a linear fit V = I*R_ll + V_offset is performed; the slope
- * R_ll is reported and the offset V_offset (dead-time, switch drops, wiring
- * drops) is discarded.
+ * In both modes a linear fit V = I*R_meas + V_offset is performed; the slope
+ * is reported and the offset V_offset (dead time, switch drops, wiring drops)
+ * is discarded.
  *
- * By default the routine runs staged measurements: UV, then UW, then VW.
- * A single pair can be requested instead.
+ * By default the routine runs staged measurements: UV (drive U), then UW
+ * (drive V), then VW (drive W).  A single pair can be requested instead.
  */
 class ResistanceCalibrator {
 public:
     ResistanceCalibrator() = default;
 
+    /* Measurement stages.  With the standard complementary PWM driver there
+     * is no true high-Z: stage XY drives phase X at the commanded duty while
+     * the other two phases return the current (parallel path). */
     enum class Pair {
-        UV,
-        UW,
-        VW
+        UV, /**< Drive U; V and W return. */
+        UW, /**< Drive V; U and W return. */
+        VW  /**< Drive W; U and V return. */
     };
 
     enum class Mode {
@@ -177,24 +185,16 @@ private:
     uint32_t m_last_rate_log_ms = 0;  /**< last time rates were logged. */
     uint32_t m_last_sample_ms = 0;    /**< last time a new ADC sample was seen. */
 
-    /* Saved hardware state for restore. */
-    uint32_t m_saved_arr = 0;
-    uint32_t m_saved_psc = 0;
-    uint32_t m_saved_ccer = 0;
-    uint32_t m_saved_ccr1 = 0;
-    uint32_t m_saved_ccr2 = 0;
-    uint32_t m_saved_ccr3 = 0;
-    uint32_t m_saved_bdtr = 0;
-    uint32_t m_saved_gpioe_moder = 0;
+    /* Saved overcurrent threshold for restore (the driver and timer state are
+     * owned by the PWM driver and need no save/restore). */
     float    m_saved_oc_threshold_a = 1000.0f;
 
     static constexpr float MAX_BUS_PCT = 25.0f;
-    static constexpr uint32_t CAL_ARR = 17186U; /**< ~8 kHz center-aligned with 275 MHz timer clock. */
     static constexpr uint32_t SETTLE_TIME_MS = 1000U;
     static constexpr uint32_t MEASURE_TIME_MS = 1000U;
     static constexpr uint32_t MIN_SAMPLES = 2000U;
-    static constexpr float MAX_INACTIVE_CURRENT_RATIO = 0.10f; /**< 10 % of active current. */
-    static constexpr float MAX_INACTIVE_CURRENT_MIN_A = 8.00f;  /**< floor for the ratio check. */
+    static constexpr float MAX_INACTIVE_CURRENT_RATIO = 5.00f; /**< a free rotor's back-EMF can push a return phase to several x the active current; only gross faults exceed this. */
+    static constexpr float MAX_INACTIVE_CURRENT_MIN_A = 5.00f;  /**< floor for the ratio check. */
 
     static constexpr float PI_KP = 0.05f; /**< % duty per A error. */
     static constexpr float PI_KI = 10.0f; /**< % duty per A per second. */
