@@ -47,6 +47,12 @@ rte sim --graph graph.json [--scenario file.json] [--base-source DIR] [--name NA
 Use `--format json` for one structured result or `--format jsonl` for progress
 events. Commands never require a local web server.
 
+The MCP `rte_flash` wrapper consumes the CLI's JSONL progress stream without
+putting it in the tool response. It returns one short success result or one
+bounded failure message selected from the programmer diagnostics. This keeps
+byte dumps and percentage updates out of an agent's context. Direct CLI and
+Studio flash flows retain progress events for their local user interfaces.
+
 `rte sim` emits a graph into the HostSim base image (default `Images/HostSim`
 in the same checkout, discovered by walking up from the `rte` executable),
 builds it with cmake under `build/hostsim_<name>_emitted_build`, and runs

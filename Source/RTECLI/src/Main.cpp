@@ -768,7 +768,7 @@ json McpTools() {
         ToolDefinition("rte_mcp2221", "Legacy Gen6 MCP2221A boot/reset GPIO action.",
             {{"action", {{"type", "string"}, {"enum", json::array({"enter", "exit", "release"})}}}},
             {"action"}),
-        ToolDefinition("rte_flash", "Flash main MCU over the Gen7 UART bridge or coprocessor over USB DFU.",
+        ToolDefinition("rte_flash", "Flash main MCU over the Gen7 UART bridge or coprocessor over USB DFU. Returns one compact success result or a bounded error message; programmer progress is kept out of the agent response.",
             {{"firmware", path}, {"serial", {{"type", "string"}}},
              {"control_port", {{"type", "string"}}},
              {"target", {{"type", "string"}, {"enum", json::array({"main", "coproc"})}}},
@@ -881,11 +881,45 @@ json RunCliTool(const std::string& tool, const json& arguments,
         process.arguments.emplace_back("mcp2221");
         process.arguments.push_back(arguments["action"].get<std::string>());
     } else return McpText("unknown tool: " + tool, true);
+    const bool compactFlash = tool == "rte_flash";
     std::string output;
+    std::string flashError;
+    bool flashComplete = false;
     const auto result = RTEAutomation::RunProcess(process, [&](const std::string& line) {
+        if (compactFlash) {
+            const json event = json::parse(line, nullptr, false);
+            if (!event.is_object()) return;
+            const std::string type = event.value("event", "");
+            if (type == "error") flashError = event.value("message", "firmware flash failed");
+            else if (type == "complete" && event.value("success", false)) flashComplete = true;
+            return;
+        }
         output += line;
         output += '\n';
     });
+    if (compactFlash) {
+        auto respond = [&](bool success, std::string message) {
+            constexpr std::size_t kMaxErrorLength = 2048;
+            if (message.size() > kMaxErrorLength) {
+                message.resize(kMaxErrorLength);
+                message += "...";
+            }
+            json response = McpText(success ? "Firmware flash succeeded."
+                                            : "Firmware flash failed: " + message,
+                                    !success);
+            response["structuredContent"] = success
+                ? json{{"success", true}, {"target", arguments.value("target", "main")}}
+                : json{{"success", false}, {"error", message}};
+            return response;
+        };
+        if (!result.started) return respond(false,
+            result.error.empty() ? "could not start flash process" : result.error);
+        if (result.exitCode != 0) return respond(false,
+            flashError.empty() ? (result.error.empty() ? "operation failed" : result.error)
+                               : flashError);
+        if (!flashComplete) return respond(false, "flash process returned no completion result");
+        return respond(true, {});
+    }
     if (!result.started) return McpText(result.error, true);
     if (result.exitCode != 0)
         return McpText(output.empty() ? "operation failed" : output, true);

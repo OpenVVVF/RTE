@@ -83,8 +83,15 @@ def main():
                               "import json, os, sys\n"
                               "with open(os.environ['RTE_TEST_PROGRAMMER_LOG'], 'a') as f:\n"
                               "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                              "if '-d' in sys.argv:\n"
+                              "    for percent in range(101):\n"
+                              "        print(f'{percent}% ' + 'A5' * 1024)\n"
+                              "if any('fail.bin' in arg for arg in sys.argv):\n"
+                              "    print('Error: simulated programmer failure ' + 'E7' * 4096)\n"
+                              "    print('cleanup complete')\n"
+                              "    sys.exit(1)\n"
                               "print('verified 100%')\n"
-                              "sys.exit(1 if any('fail.bin' in arg for arg in sys.argv) else 0)\n")
+                              "sys.exit(0)\n")
         programmer.chmod(0o755)
         env = dict(os.environ, RTE_SERIAL_BY_ID_DIR=str(by_id),
                    RTE_TEST_PROGRAMMER_LOG=str(log))
@@ -286,6 +293,9 @@ def main():
                                            "programmer": str(programmer)}})
             assert not result.get("isError"), result
             assert result["structuredContent"]["success"], result
+            assert result["structuredContent"]["target"] == "main", result
+            assert result["content"][0]["text"] == "Firmware flash succeeded.", result
+            assert len(json.dumps(result)) < 512, result
             assert received == ["BOOTLOADER", "APP"], received
             main_args = json.loads(log.read_text().splitlines()[0])
             assert "port=" + str(bridge) in main_args, main_args
@@ -294,6 +304,9 @@ def main():
                               "arguments": {"firmware": str(firmware), "target": "coproc",
                                             "programmer": str(programmer)}})
             assert not coproc.get("isError"), coproc
+            assert coproc["structuredContent"]["target"] == "coproc", coproc
+            assert coproc["content"][0]["text"] == "Firmware flash succeeded.", coproc
+            assert len(json.dumps(coproc)) < 512, coproc
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             assert ["-c", "port=usb1", "-g", "0x08001235"] == calls[-1], calls
             assert "0x08000000" in calls[-2], calls
@@ -302,6 +315,11 @@ def main():
                                            "serial": str(bridge),
                                            "programmer": str(programmer), "attempts": 2}})
             assert failed.get("isError"), failed
+            assert not failed["structuredContent"]["success"], failed
+            assert "simulated programmer failure" in failed["structuredContent"]["error"], failed
+            assert "cleanup complete" not in failed["structuredContent"]["error"], failed
+            assert "A5A5A5" not in json.dumps(failed), failed
+            assert len(json.dumps(failed)) < 4096, failed
             assert received[-3:] == ["BOOTLOADER", "BOOTLOADER", "APP"], received
             telemetry = request(server, 6, "tools/call", {"name": "rte_device_telemetry",
                                 "arguments": {}})

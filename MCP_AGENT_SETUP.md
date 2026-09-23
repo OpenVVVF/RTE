@@ -266,7 +266,12 @@ Codex, ChatGPT desktop, and Kimi Code.
   the console remains usable. These lines are also kept in session exports.
 - `rte_flash` targets the main MCU over the Gen7 bridge by default. Set
   `target: "coproc"` for USB DFU; the coprocessor must already be in DFU
-  mode. `firmware` must name an existing `.elf`, `.hex`, or `.bin` image.
+  mode. `firmware` must name an existing `.elf`, `.hex`, or `.bin` image. The
+  MCP result is deliberately compact: success returns one confirmation and
+  failure returns one bounded error message. STM32CubeProgrammer byte dumps,
+  percentages, and other progress lines are consumed by the wrapper and are
+  never returned to the agent. Studio's local flash screen still shows its
+  progress bar and log for a person operating the hardware.
 - `rte_sim` remains exposed for simulator development, but simulation is
   **not correctly implemented** and is **not advised** for control tuning,
   firmware validation, or hardware decisions.
