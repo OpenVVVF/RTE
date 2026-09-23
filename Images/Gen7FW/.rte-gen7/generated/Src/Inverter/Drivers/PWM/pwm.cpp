@@ -11,8 +11,8 @@
 #include "tim.h"
 #include "Inverter/AppState.h"
 #include "Inverter/LoopStats.h"
+#include "Inverter/Telemetry.h"
 #include "Inverter/platform_api.h"
-#include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Calibration/MotorCalibration.h"
 #include "mcp2221a_driver.h"
 #include <math.h>
@@ -272,19 +272,30 @@ bool PWM_IsFocModeActive(void)
     return foc_active != 0;
 }
 
+bool PWM_IsUpdateInterruptRunning(void)
+{
+    return (htim1.Instance->CR1 & TIM_CR1_CEN) != 0U &&
+           (htim1.Instance->DIER & TIM_DIER_UIE) != 0U &&
+           NVIC_GetEnableIRQ(TIM1_UP_IRQn) != 0U;
+}
+
 void PWM_StartUpdateInterrupt(void)
 {
+    const bool was_running = PWM_IsUpdateInterruptRunning();
     HAL_NVIC_SetPriority(TIM1_UP_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
     __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
+    __HAL_TIM_ENABLE(&htim1);
+    if (!was_running) {
+        Telemetry::log("tim_isr_running", 1.0f);
+    }
 }
 
 void PWM_StopUpdateInterrupt(void)
 {
-    if (!spwm_running) {
-        __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
-        HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
-    }
+    __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
+    HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
+    Telemetry::log("tim_isr_running", 0.0f);
 }
 
 float PWM_GetFrequency(void)
@@ -387,16 +398,12 @@ void PWM_StartSPWM(float fundamental_freq_hz, float modulation_index)
     spwm_angle = 0.0f;
     spwm_running = 1;
 
-    HAL_NVIC_SetPriority(TIM1_UP_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
-    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
+    PWM_StartUpdateInterrupt();
 }
 
 void PWM_StopSPWM(void)
 {
     spwm_running = 0;
-    __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
-    HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
 }
 
 void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
@@ -425,19 +432,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     /* Set the domain time step for generated code that needs it. */
     platform_set_current_domain_dt(1.0f / pwm_update_freq_hz);
 
-    /* RTE codegen: PWM-synchronous control + modulation step.
-     * Generated code reads sensors, runs the selected control law, and writes
-     * PWM duties.  The example FOC/SPWM code below is reference only; it is
-     * superseded once the graph contains nodes assigned to the tim_isr domain.
-     *
-     * The generated step is gated on the supervisor actually running graph
-     * control: this ISR is shared with the base-image users (open-loop SPWM
-     * calibrators, FocControlManager), and an ungated graph FOC writes duties
-     * every tick and fights whichever of them owns the stage — the failure
-     * mode that silently broke the FOC-based calibrators (inductance, flux). */
-    if (Inverter::ControlSupervisor::instance().isRunning()) {
-        app::TimIsrStep(appState.tim_isr);
-    }
+    /* RTE codegen: PWM-synchronous measurement, telemetry, control, and
+     * modulation step. The graph always runs so its sensor values remain live
+     * while control is idle or faulted. platform_api suppresses actuator and
+     * adaptive-sampling writes unless ControlSupervisor explicitly enables
+     * generated outputs. This ISR is shared with base-image open-loop and
+     * native FOC users, whose direct PWM writes remain independent. */
+    app::TimIsrStep(appState.tim_isr);
 
     if (foc_active) {
         FocControlManager_OnPwmPeriod();
@@ -511,6 +512,10 @@ void PWM_StopPhase(uint8_t phase)
     uint32_t channel = PWM_PhaseToChannel(phase);
     HAL_TIM_PWM_Stop(&htim1, channel);
     HAL_TIMEx_PWMN_Stop(&htim1, channel);
+    /* HAL's per-channel stop also stops the whole timer. TIM1 is the permanent
+     * current-sampling and telemetry timebase, so restart its counter without
+     * re-enabling this PWM channel or MOE. */
+    __HAL_TIM_ENABLE(&htim1);
 }
 
 void PWM_Start(void)
@@ -568,4 +573,3 @@ void PWM_PrintSPWMState(void)
                      (double)spwm_modulation_index,
                      (double)du, (double)dv, (double)dw);
 }
-

@@ -418,9 +418,9 @@ void ResistanceCalibrator::restoreHardware() {
      * idle state is not left with a sensitive trip point. */
     phaseCurrentADC().setOvercurrentThreshold(m_saved_oc_threshold_a);
 
-    /* 6. Leave the SPWM update interrupt disabled until open-loop starts again. */
-    TIM1->DIER &= ~TIM_DIER_UIE;
-    HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
+    /* 7. Resume the permanent measurement/telemetry ISR after exclusive
+     * timer ownership ends. Generated actuator writes remain suppressed. */
+    PWM_StartUpdateInterrupt();
 }
 
 void ResistanceCalibrator::finishPairMeasurement() {
@@ -602,9 +602,8 @@ void ResistanceCalibrator::update() {
         m_saved_gpioe_moder = GPIOE->MODER;
         m_saved_oc_threshold_a = phaseCurrentADC().overcurrentThreshold();
 
-        /* Disable the SPWM update interrupt; we will drive the timer directly. */
-        TIM1->DIER &= ~TIM_DIER_UIE;
-        HAL_NVIC_DisableIRQ(TIM1_UP_IRQn);
+        /* Pause the shared ISR only while this calibration owns TIM1 directly. */
+        PWM_StopUpdateInterrupt();
 
         /* Set calibration frequency (~8 kHz).
          * TIM1CLK = 275 MHz, center-aligned => f_sw = 275 MHz / (2 * ARR).

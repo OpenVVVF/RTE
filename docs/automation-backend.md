@@ -222,14 +222,16 @@ pauses the connection. This reports absence of data, not a measured zero or
 a diagnosis of the ISR. History windows advance with elapsed time even when
 no samples arrive, and trend results report the stopped state rather than
 describing old values as current behavior.
-New Gen7 main firmware publishes `control_state` immediately on generated
-control start, stop, and fault transitions. Studio uses the running image's
-manifest to mark `tim_isr` signals `control_stopped` as soon as it receives
-that transition. Native FOC publishes `foc_running` on transitions and marks
-its telemetry `foc_stopped`. The two-second timeout remains the fallback for
-older firmware, other signal sources, or a lost lifecycle message. Immediate
-status requires rebuilding and reflashing the main MCU image; the coprocessor
-firmware is unchanged.
+New Gen7 main firmware keeps TIM1 running as a permanent measurement and
+telemetry ISR after generated control stops or faults. It publishes
+`control_state` for the supervisor, `control_outputs_enabled` for permission to
+write generated PWM duties, and `tim_isr_running` for the ISR itself. Studio
+keeps fresh manifest `tim_isr` signals live while control is `IDLE` or `FAULT`,
+uses `isr_stopped` only for an explicitly stopped ISR, and uses the two-second
+`stopped_reporting` fallback if an expected signal stops arriving. Native FOC
+publishes `foc_running` and still marks its controller-only telemetry
+`foc_stopped`. These semantics require rebuilding and reflashing the main MCU
+image; the coprocessor firmware is unchanged.
 Firmware build identity fields are republished every ten seconds and retain
 their current value for up to 15 seconds while the link stays active.
 `rte_device_signal` includes signal age and freshness; when a name is absent,

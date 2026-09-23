@@ -191,6 +191,10 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
                 ? nlohmann::json(nullptr) : nlohmann::json(view.stats.frameAgeSeconds)},
             {"control_state", view.latestStr.count("control_state")
                 ? nlohmann::json(view.latestStr.at("control_state")) : nlohmann::json(nullptr)},
+            {"tim_isr_running", view.latest.count("tim_isr_running")
+                ? nlohmann::json(view.latest.at("tim_isr_running")) : nlohmann::json(nullptr)},
+            {"control_outputs_enabled", view.latest.count("control_outputs_enabled")
+                ? nlohmann::json(view.latest.at("control_outputs_enabled")) : nlohmann::json(nullptr)},
             {"fault_flags_hex", view.latestStr.count("fault_flags_hex")
                 ? nlohmann::json(view.latestStr.at("fault_flags_hex")) : nlohmann::json(nullptr)},
             {"fault_active_names", view.latestStr.count("fault_active_names")

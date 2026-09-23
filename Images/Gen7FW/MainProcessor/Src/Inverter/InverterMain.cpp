@@ -236,6 +236,9 @@ static void loop()
         Telemetry::log("hz_vsense", static_cast<float>(Inverter::LoopStats::vsense));
         Telemetry::log("hz_tim_isr", static_cast<float>(Inverter::LoopStats::tim_isr));
         Telemetry::log("hz_adc_isr", static_cast<float>(Inverter::LoopStats::adc_isr));
+        Telemetry::log("tim_isr_running", PWM_IsUpdateInterruptRunning() ? 1.0f : 0.0f);
+        Telemetry::log("control_outputs_enabled",
+                       platform_control_outputs_enabled() ? 1.0f : 0.0f);
         // Telemetry::log("shell_uart_errors", static_cast<float>(Inverter::commandShell().uartErrorCount()));
         // Telemetry::log("shell_rx_dropped", static_cast<float>(Inverter::commandShell().rxDroppedCount()));
         // Telemetry::log("shell_rx_rearm_failures", static_cast<float>(Inverter::commandShell().rxRearmFailureCount()));

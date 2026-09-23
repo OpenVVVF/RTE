@@ -185,12 +185,17 @@ Codex, ChatGPT desktop, and Kimi Code.
   telemetry frames have stopped. The old measurement remains in `last_value`
   or `last_known_values`, never as a fabricated zero. A stopped report does
   not by itself prove why the ISR stopped. With a matching Gen7 main image,
-  `control stop` or a control fault publishes `control_state` at the transition;
-  signals declared in the firmware manifest's `tim_isr` domain immediately
-  become `control_stopped`. Legacy `foc stop` similarly publishes
-  `foc_running=0`, marking native FOC signals `foc_stopped`. These require a
-  **main MCU reflash** to work immediately; older images use the two-second
-  fallback. Firmware build identity fields
+  TIM1 remains a permanent measurement and telemetry ISR after `control stop`
+  and control faults. `control_state` describes the supervisor,
+  `control_outputs_enabled` says whether graph PWM writes are permitted, and
+  `tim_isr_running` independently describes the ISR. Manifest signals in the
+  `tim_isr` domain remain `live` while fresh when control is `IDLE` or `FAULT`,
+  and become `isr_stopped` only when firmware explicitly reports the ISR
+  stopped. A two-second `stopped_reporting` fallback catches missing samples
+  while the ISR claims to run. Legacy `foc stop` still publishes
+  `foc_running=0`, marking native FOC controller outputs `foc_stopped`. These
+  semantics require a **main MCU reflash**; older images retain the prior
+  control-state fallback. Firmware build identity fields
   (`fw_manifest`, `fw_graph`, `fw_graph_hash`) are normally republished every
   ten seconds and use a 15-second signal timeout while the link remains live.
   `rte_device_histories` reads
@@ -210,7 +215,8 @@ Codex, ChatGPT desktop, and Kimi Code.
 - `rte_build_info` returns the running firmware's graph hash, effective node
   list, and declared graph telemetry signals. `rte_signal_info` joins that
   catalog with observed signal freshness and units. `rte_control_status`
-  reads state, latched fault names, PWM MOE, and gate status. These fields
+  reads state, ISR and generated-output enable state, latched fault names, PWM
+  MOE, and gate status. These fields
   require a newly generated and flashed Gen7 main image; older images return
   unavailable metadata while ordinary telemetry still works.
 - `rte_spike_capture` sends `spikes` to dump the firmware's existing frozen

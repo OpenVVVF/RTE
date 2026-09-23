@@ -2,6 +2,7 @@
 #include "Inverter/Telemetry.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/platform_api.h"
 
 #include "main.h"
 #include "tim.h"
@@ -318,6 +319,7 @@ void FaultManager::executeSafetyActions() {
     if (TIM1 != nullptr) {
         TIM1->EGR |= TIM_EGR_BG;
     }
+    platform_set_control_outputs_enabled(false);
     PWM_StopSPWM();
     GateDriver_DisableOutputs();
     GateDriver_EnablePower(false);
