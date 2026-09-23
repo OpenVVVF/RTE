@@ -1,0 +1,98 @@
+{
+  "date": "2026-09-22",
+  "running_graph": "foc_demo",
+  "running_graph_hash": "f5194253acc36e4f",
+  "bus_v_approx": 49.3,
+  "conditions": {
+    "nominal_speed_rpm": 500,
+    "iq_setpoint_abs_a": 15,
+    "id_setpoint_a": 0,
+    "kp_d": 0.04,
+    "kp_q": 0.04,
+    "ki_d": 5,
+    "ki_q": 5,
+    "cross_coupling_ld_h": 0,
+    "cross_coupling_lq_h": 0,
+    "knee_v": 0
+  },
+  "power_sign": "Positive values mean power returned to the Sorensen. Manual display readings; approximate, not independently logged.",
+  "readings": [
+    {
+      "file": "pos500_iqneg15_offset150.csv",
+      "direction": "encoder_positive",
+      "offset_deg": 150,
+      "regen_w": 30,
+      "note": "initial A/B point"
+    },
+    {
+      "file": "neg500_iqpos15_offset150.csv",
+      "direction": "encoder_negative",
+      "offset_deg": 150,
+      "regen_w": 78
+    },
+    {
+      "file": "neg500_iqpos15_offset135.csv",
+      "direction": "encoder_negative",
+      "offset_deg": 135,
+      "regen_w": 100
+    },
+    {
+      "file": "neg500_iqpos15_offset120.csv",
+      "direction": "encoder_negative",
+      "offset_deg": 120,
+      "regen_w": 110,
+      "note": "operator: 110 ish; hard to say, not a big difference"
+    },
+    {
+      "file": "neg500_iqpos15_offset165.csv",
+      "direction": "encoder_negative",
+      "offset_deg": 165,
+      "regen_w": 47
+    },
+    {
+      "file": "pos500_iqneg15_offset150_repeat.csv",
+      "direction": "encoder_positive",
+      "offset_deg": 150,
+      "regen_w": 30,
+      "note": "baseline repeated"
+    },
+    {
+      "file": "pos500_iqneg15_offset135.csv",
+      "direction": "encoder_positive",
+      "offset_deg": 135,
+      "regen_w": 65,
+      "note": "operator subsequently confirmed regen sign"
+    },
+    {
+      "file": "pos500_iqneg15_offset120.csv",
+      "direction": "encoder_positive",
+      "offset_deg": 120,
+      "regen_w": 90
+    },
+    {
+      "file": "pos500_iqneg15_offset165.csv",
+      "direction": "encoder_positive",
+      "offset_deg": 165,
+      "regen_w": 50,
+      "note": "operator: 50 W regen ish"
+    }
+  ],
+  "final_state": {
+    "control": "IDLE",
+    "pwm_moe": 0,
+    "control_outputs_enabled": 0,
+    "iq_setpoint_a": 0,
+    "id_setpoint_a": 0,
+    "encoder_offset_deg": 150,
+    "dyno": "operator confirmed stopped",
+    "fram_written": false,
+    "firmware_changed": false
+  },
+  "limitations": [
+    "No independent shaft torque measurement provided.",
+    "No independent phase-current measurement.",
+    "No 60 A rerun; those observations are supplied history.",
+    "Offset optimum not bracketed below 120 degrees.",
+    "No encoder recalibration or higher-speed test performed."
+  ]
+}

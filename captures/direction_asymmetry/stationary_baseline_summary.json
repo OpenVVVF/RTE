@@ -1,0 +1,70 @@
+{
+  "window_end_s": 66513.89981869,
+  "window_s": 5,
+  "metrics": {
+    "Mech_RPM": {
+      "mean": -0.05172324117890093,
+      "stddev": 0.05550437451117279,
+      "min": -0.18120455741882324,
+      "max": 0.05494094640016556,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "cg_iu_a": {
+      "mean": 0.7329888269901276,
+      "stddev": 0.5985352608039138,
+      "min": -1.3218190670013428,
+      "max": 2.8824658393859863,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "cg_iv_a": {
+      "mean": -0.9714722409248352,
+      "stddev": 0.41459603889015684,
+      "min": -2.5753345489501953,
+      "max": 0.7228543758392334,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "cg_iw_a": {
+      "mean": 0.23848341393470765,
+      "stddev": 0.41730345918484774,
+      "min": -1.901859998703003,
+      "max": 1.6137919425964355,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "control_outputs_enabled": {
+      "mean": 0,
+      "stddev": 0,
+      "min": 0,
+      "max": 0,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "hz_adc_isr": {
+      "mean": 2499.55,
+      "stddev": 0.49749371855330743,
+      "min": 2499,
+      "max": 2500,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "pwm_moe": {
+      "mean": 0,
+      "stddev": 0,
+      "min": 0,
+      "max": 0,
+      "samples": 500,
+      "quality": "adequate"
+    },
+    "vdc_v": {
+      "mean": 49.267967224121094,
+      "stddev": 0,
+      "min": 49.267967224121094,
+      "max": 49.267967224121094,
+      "samples": 500,
+      "quality": "adequate"
+    }
+  }
+}

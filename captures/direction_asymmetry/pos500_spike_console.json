@@ -1,0 +1,227 @@
+{
+  "filter": "spk",
+  "latest_seq": 20540,
+  "lines": [
+    {
+      "seq": 20468,
+      "text": "[SHELL] spk 00 t=758519 iu=   -7.7 iv=   -7.0 ang= 141.7 dang= +nan du= 40.8 dv= 44.0 dw= 59.2 sin=45620 cos=16397"
+    },
+    {
+      "seq": 20469,
+      "text": "[SHELL] spk 01 t=758519 iu=   -5.5 iv=   -6.6 ang= 142.9 dang=+1.21 du= 41.2 dv= 42.5 dw= 58.8 sin=45271 cos=16132"
+    },
+    {
+      "seq": 20470,
+      "text": "[SHELL] spk 02 t=758520 iu=   -5.0 iv=   -5.6 ang= 144.2 dang=+1.25 du= 42.3 dv= 41.3 dw= 58.7 sin=44902 cos=15889"
+    },
+    {
+      "seq": 20471,
+      "text": "[SHELL] spk 03 t=758520 iu=   -4.9 iv=   -5.1 ang= 145.3 dang=+1.17 du= 43.9 dv= 41.0 dw= 59.0 sin=44545 cos=15640"
+    },
+    {
+      "seq": 20472,
+      "text": "[SHELL] spk 04 t=758521 iu=   -4.4 iv=   -5.6 ang= 146.5 dang=+1.18 du= 45.7 dv= 40.8 dw= 59.2 sin=44200 cos=15392"
+    },
+    {
+      "seq": 20473,
+      "text": "[SHELL] spk 05 t=758521 iu=   -3.8 iv=   -7.8 ang= 147.7 dang=+1.22 du= 47.2 dv= 40.6 dw= 59.4 sin=43832 cos=15147"
+    },
+    {
+      "seq": 20474,
+      "text": "[SHELL] spk 06 t=758521 iu=   -3.3 iv=   -8.3 ang= 149.0 dang=+1.23 du= 49.0 dv= 40.5 dw= 59.5 sin=43455 cos=14912"
+    },
+    {
+      "seq": 20475,
+      "text": "[SHELL] spk 07 t=758522 iu=   -1.8 iv=   -9.0 ang= 150.2 dang=+1.22 du= 50.6 dv= 40.4 dw= 59.6 sin=43084 cos=14670"
+    },
+    {
+      "seq": 20476,
+      "text": "[SHELL] spk 08 t=758522 iu=   -0.5 iv=  -10.5 ang= 151.4 dang=+1.23 du= 52.3 dv= 40.5 dw= 59.5 sin=42691 cos=14460"
+    },
+    {
+      "seq": 20477,
+      "text": "[SHELL] spk 09 t=758523 iu=    2.9 iv=  -13.0 ang= 152.7 dang=+1.29 du= 54.0 dv= 40.7 dw= 59.3 sin=42283 cos=14229"
+    },
+    {
+      "seq": 20478,
+      "text": "[SHELL] spk 10 t=758523 iu=    3.0 iv=  -11.2 ang= 153.7 dang=+1.01 du= 55.7 dv= 41.0 dw= 59.0 sin=41948 cos=14082"
+    },
+    {
+      "seq": 20479,
+      "text": "[SHELL] spk 11 t=758523 iu=    5.9 iv=  -11.9 ang= 155.0 dang=+1.26 du= 57.4 dv= 41.4 dw= 58.6 sin=41532 cos=13891"
+    },
+    {
+      "seq": 20480,
+      "text": "[SHELL] spk 12 t=758524 iu=    6.3 iv=  -10.7 ang= 156.3 dang=+1.28 du= 58.5 dv= 41.5 dw= 57.6 sin=41117 cos=13685"
+    },
+    {
+      "seq": 20481,
+      "text": "[SHELL] spk 13 t=758524 iu=    5.8 iv=   -9.7 ang= 157.5 dang=+1.22 du= 58.9 dv= 41.1 dw= 56.0 sin=40725 cos=13485"
+    },
+    {
+      "seq": 20482,
+      "text": "[SHELL] spk 14 t=758525 iu=    6.9 iv=   -9.9 ang= 158.7 dang=+1.18 du= 59.1 dv= 40.9 dw= 54.4 sin=40323 cos=13341"
+    },
+    {
+      "seq": 20483,
+      "text": "[SHELL] spk 15 t=758525 iu=   10.1 iv=  -11.2 ang= 159.9 dang=+1.19 du= 59.3 dv= 40.7 dw= 52.7 sin=39922 cos=13180"
+    },
+    {
+      "seq": 20484,
+      "text": "[SHELL] spk 16 t=758525 iu=   11.5 iv=  -11.3 ang= 160.9 dang=+1.06 du= 59.4 dv= 40.6 dw= 51.1 sin=39562 cos=13043"
+    },
+    {
+      "seq": 20485,
+      "text": "[SHELL] spk 17 t=758526 iu=   13.8 iv=  -10.8 ang= 162.3 dang=+1.36 du= 59.5 dv= 40.5 dw= 49.1 sin=39096 cos=12887"
+    },
+    {
+      "seq": 20486,
+      "text": "[SHELL] spk 18 t=758526 iu=   13.8 iv=   -9.7 ang= 163.5 dang=+1.23 du= 59.4 dv= 40.6 dw= 47.4 sin=38664 cos=12773"
+    },
+    {
+      "seq": 20487,
+      "text": "[SHELL] spk 19 t=758527 iu=   13.9 iv=   -7.9 ang= 164.8 dang=+1.25 du= 59.2 dv= 40.8 dw= 45.7 sin=38227 cos=12651"
+    },
+    {
+      "seq": 20488,
+      "text": "[SHELL] spk 20 t=758527 iu=   12.4 iv=   -4.9 ang= 165.9 dang=+1.15 du= 58.9 dv= 41.1 dw= 43.9 sin=37825 cos=12540"
+    },
+    {
+      "seq": 20489,
+      "text": "[SHELL] spk 21 t=758527 iu=   10.9 iv=   -2.8 ang= 167.0 dang=+1.12 du= 58.5 dv= 41.5 dw= 42.4 sin=37431 cos=12447"
+    },
+    {
+      "seq": 20490,
+      "text": "[SHELL] spk 22 t=758528 iu=    5.9 iv=   -0.9 ang= 168.2 dang=+1.19 du= 58.5 dv= 42.7 dw= 41.5 sin=37018 cos=12325"
+    },
+    {
+      "seq": 20491,
+      "text": "[SHELL] spk 23 t=758528 iu=    8.0 iv=   -1.5 ang= 169.6 dang=+1.35 du= 58.9 dv= 44.4 dw= 41.1 sin=36532 cos=12267"
+    },
+    {
+      "seq": 20492,
+      "text": "[SHELL] spk 24 t=758529 iu=    8.8 iv=   -2.1 ang= 170.7 dang=+1.15 du= 59.0 dv= 46.1 dw= 41.0 sin=36128 cos=12163"
+    },
+    {
+      "seq": 20493,
+      "text": "[SHELL] spk 25 t=758529 iu=    9.3 iv=   -1.8 ang= 172.0 dang=+1.26 du= 59.2 dv= 47.5 dw= 40.8 sin=35675 cos=12100"
+    },
+    {
+      "seq": 20494,
+      "text": "[SHELL] spk 26 t=758529 iu=    8.8 iv=    0.1 ang= 173.1 dang=+1.12 du= 59.3 dv= 49.2 dw= 40.7 sin=35274 cos=12041"
+    },
+    {
+      "seq": 20495,
+      "text": "[SHELL] spk 27 t=758530 iu=    9.0 iv=    1.6 ang= 174.2 dang=+1.11 du= 59.3 dv= 50.8 dw= 40.7 sin=34877 cos=11975"
+    },
+    {
+      "seq": 20496,
+      "text": "[SHELL] spk 28 t=758530 iu=    8.8 iv=    3.2 ang= 175.4 dang=+1.23 du= 59.2 dv= 52.5 dw= 40.8 sin=34432 cos=11926"
+    },
+    {
+      "seq": 20497,
+      "text": "[SHELL] spk 29 t=758531 iu=    8.6 iv=    5.8 ang= 176.8 dang=+1.32 du= 59.1 dv= 54.2 dw= 40.9 sin=33955 cos=11884"
+    },
+    {
+      "seq": 20498,
+      "text": "[SHELL] spk 30 t=758531 iu=    5.1 iv=    9.2 ang= 178.0 dang=+1.22 du= 58.8 dv= 55.9 dw= 41.2 sin=33514 cos=11868"
+    },
+    {
+      "seq": 20499,
+      "text": "[SHELL] spk 31 t=758531 iu=    3.9 iv=    9.7 ang= 179.1 dang=+1.17 du= 58.4 dv= 57.6 dw= 41.6 sin=33088 cos=11853"
+    },
+    {
+      "seq": 20500,
+      "text": "[SHELL] spk 32 t=758532 iu=    1.2 iv=   10.5 ang= 180.3 dang=+1.15 du= 57.3 dv= 58.4 dw= 41.6 sin=32672 cos=11869"
+    },
+    {
+      "seq": 20501,
+      "text": "[SHELL] spk 33 t=758532 iu=    0.9 iv=   11.2 ang= 181.6 dang=+1.27 du= 55.7 dv= 58.9 dw= 41.1 sin=32213 cos=11843"
+    },
+    {
+      "seq": 20502,
+      "text": "[SHELL] spk 34 t=758533 iu=    1.1 iv=   11.7 ang= 182.8 dang=+1.24 du= 53.8 dv= 59.2 dw= 40.8 sin=31764 cos=11845"
+    },
+    {
+      "seq": 20503,
+      "text": "[SHELL] spk 35 t=758533 iu=   -2.6 iv=   15.1 ang= 184.0 dang=+1.24 du= 52.2 dv= 59.4 dw= 40.6 sin=31316 cos=11883"
+    },
+    {
+      "seq": 20504,
+      "text": "[SHELL] spk 36 t=758533 iu=   -3.4 iv=   16.5 ang= 185.3 dang=+1.28 du= 50.6 dv= 59.5 dw= 40.5 sin=30853 cos=11901"
+    },
+    {
+      "seq": 20505,
+      "text": "[SHELL] spk 37 t=758534 iu=   -3.4 iv=   15.7 ang= 186.6 dang=+1.27 du= 48.9 dv= 59.5 dw= 40.5 sin=30395 cos=11941"
+    },
+    {
+      "seq": 20506,
+      "text": "[SHELL] spk 38 t=758534 iu=   -5.1 iv=   16.4 ang= 187.7 dang=+1.10 du= 47.1 dv= 59.4 dw= 40.6 sin=29999 cos=11998"
+    },
+    {
+      "seq": 20507,
+      "text": "[SHELL] spk 39 t=758535 iu=   -7.2 iv=   18.0 ang= 188.9 dang=+1.21 du= 45.5 dv= 59.2 dw= 40.8 sin=29572 cos=12121"
+    },
+    {
+      "seq": 20508,
+      "text": "[SHELL] spk 40 t=758535 iu=  -10.7 iv=   17.5 ang= 190.0 dang=+1.13 du= 44.0 dv= 58.9 dw= 41.1 sin=29149 cos=12081"
+    },
+    {
+      "seq": 20509,
+      "text": "[SHELL] spk 41 t=758535 iu=  -11.1 iv=   15.7 ang= 191.3 dang=+1.32 du= 42.2 dv= 58.5 dw= 41.5 sin=28680 cos=12189"
+    },
+    {
+      "seq": 20510,
+      "text": "[SHELL] spk 42 t=758536 iu=   -9.3 iv=   12.8 ang= 192.5 dang=+1.14 du= 41.3 dv= 58.7 dw= 42.9 sin=28278 cos=12282"
+    },
+    {
+      "seq": 20511,
+      "text": "[SHELL] spk 43 t=758536 iu=   -9.4 iv=   12.1 ang= 193.7 dang=+1.20 du= 41.0 dv= 59.0 dw= 44.5 sin=27851 cos=12372"
+    },
+    {
+      "seq": 20512,
+      "text": "[SHELL] spk 44 t=758537 iu=  -11.0 iv=   13.0 ang= 195.0 dang=+1.27 du= 40.8 dv= 59.2 dw= 46.2 sin=27400 cos=12473"
+    },
+    {
+      "seq": 20513,
+      "text": "[SHELL] spk 45 t=758537 iu=  -11.0 iv=   13.3 ang= 210.5 dang=+1.18 du= 40.4 dv= 49.1 dw= 59.6 sin=22212 cos=14661"
+    },
+    {
+      "seq": 20514,
+      "text": "[SHELL] spk 58 t=758542 iu=  -17.6 iv=   -0.9 ang= 211.8 dang=+1.25 du= 40.4 dv= 47.3 dw= 59.6 sin=21812 cos=14874"
+    },
+    {
+      "seq": 20515,
+      "text": "[SHELL] spk 59 t=758543 iu=  -13.9 iv=   -5.4 ang= 213.0 dang=+1.19 du= 40.6 dv= 45.7 dw= 59.4 sin=21462 cos=15131"
+    },
+    {
+      "seq": 20516,
+      "text": "[SHELL] spk 60 t=758543 iu=   -9.7 iv=   -7.4 ang= 214.2 dang=+1.21 du= 41.0 dv= 44.0 dw= 59.0 sin=21092 cos=15363"
+    },
+    {
+      "seq": 20517,
+      "text": "[SHELL] spk 61 t=758543 iu=   -7.4 iv=   -7.2 ang= 215.2 dang=+1.06 du= 41.4 dv= 42.4 dw= 58.6 sin=20751 cos=15545"
+    },
+    {
+      "seq": 20518,
+      "text": "[SHELL] spk 62 t=758544 iu=   -6.3 iv=   -7.3 ang= 216.6 dang=+1.33 du= 42.6 dv= 41.4 dw= 58.6 sin=20364 cos=15831"
+    },
+    {
+      "seq": 20519,
+      "text": "[SHELL] spk 63 t=758544 iu=   -6.8 iv=   -6.9 ang= 217.8 dang=+1.23 du= 44.4 dv= 41.0 dw= 59.0 sin=19999 cos=16089"
+    },
+    {
+      "seq": 20540,
+      "text": "[MCP] rte_device_console {\"filter\":\"spk\",\"lines\":70,\"since\":20462} — started"
+    }
+  ],
+  "matching_in_recent_window": 53,
+  "response_budget": {
+    "bytes": 16995,
+    "estimated_tokens": 4249,
+    "warning": "This response is relatively large. Narrow the next query with signals, filter, limit, or a shorter window."
+  },
+  "returned": 53,
+  "session_epoch": 5,
+  "token_note": "Filtering was performed locally before this response was returned."
+}

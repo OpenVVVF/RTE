@@ -1,0 +1,676 @@
+{
+  "start_zero": {
+    "age_s": {
+      "Elec_RPM": 0.024493842,
+      "EncoderCos": 0.024490072,
+      "EncoderSin": 0.024491999,
+      "GapTicks": 0.024473878,
+      "Mech_RPM": 0.024495771,
+      "cg_du": 0.02447978,
+      "cg_dv": 0.024477743,
+      "cg_dw": 0.024475799,
+      "cg_id_a": 0.024487723,
+      "cg_iq_a": 0.024485646,
+      "cg_iu_a": 0.024451563,
+      "cg_iv_a": 0.024449201,
+      "cg_iw_a": 0.024447057,
+      "cg_theta_rad": 0.024445136,
+      "cg_vd_v": 0.024483599,
+      "cg_vdc_v": 0.024442974,
+      "cg_vq_v": 0.024481662,
+      "cg_vu_v": 0.024427627,
+      "cg_vv_v": 0.024425579,
+      "cg_vw_v": 0.024423435,
+      "control_outputs_enabled": 0.024461705,
+      "control_state": 0.953190983,
+      "dclink_i_a": 0.0244109,
+      "dclink_p_w": 0.02440892,
+      "enc_isr_hz": 0.024406999,
+      "enc_rejects": 0.024405109,
+      "fault_active_names": 0.95317709,
+      "fault_flags_hex": 0.953180734,
+      "foc_running": 0.02445959,
+      "fw_graph": 6.393646724,
+      "fw_graph_hash": 6.39352844,
+      "fw_manifest": 6.393664697,
+      "gate_fault": 0.024453391,
+      "gate_ready": 0.02445571,
+      "hz_adc_isr": 0.024463806,
+      "hz_app_loop": 0.024469901,
+      "hz_tim_isr": 0.024465753,
+      "hz_vsense": 0.024467733,
+      "pwm_moe": 0.024457716,
+      "temp_inv1_c": 0.024438766,
+      "temp_inv2_c": 0.024436508,
+      "temp_inv3_c": 0.024434409,
+      "temp_motor_c": 0.024441082,
+      "thr_a": 0.024415021,
+      "thr_a_norm": 0.024432112,
+      "thr_a_v": 0.024419225,
+      "thr_b": 0.024412807,
+      "thr_b_norm": 0.024429851,
+      "thr_b_v": 0.024417118,
+      "tim_isr_running": 0.024472041,
+      "vdc_v": 0.024421352
+    },
+    "bad_frames": 185,
+    "estimated_payload_tokens": 692,
+    "firmware_metadata_timeout_s": 15,
+    "frame_age_s": 0.922309258,
+    "good_frames": 3636744,
+    "has_more": false,
+    "last_known_values": {},
+    "limit": 8,
+    "matching": 8,
+    "missing": [],
+    "next_offset": null,
+    "offset": 0,
+    "query_guidance": "Use signals for exact names, filter for a substring, and next_offset for another page. Use rte_device_trends for time-series analysis.",
+    "reporting_timeout_s": 2,
+    "returned": 8,
+    "returned_values": 8,
+    "rx_bytes_per_sec": 37810.8671875,
+    "rx_hz": 126.99620056152344,
+    "signal_status": {
+      "Mech_RPM": {
+        "age_s": 0.024495771,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "cg_id_a": {
+        "age_s": 0.024487723,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "cg_iq_a": {
+        "age_s": 0.024485646,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "cg_vd_v": {
+        "age_s": 0.024483599,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "cg_vq_v": {
+        "age_s": 0.024481662,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "control_state": {
+        "age_s": 0.953190983,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "pwm_moe": {
+        "age_s": 0.024457716,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      },
+      "vdc_v": {
+        "age_s": 0.024421352,
+        "fresh": true,
+        "state": "live",
+        "timeout_s": 2
+      }
+    },
+    "signals": {
+      "Mech_RPM": 498.3104248046875,
+      "cg_id_a": -1.2639535665512085,
+      "cg_iq_a": -0.5484731793403625,
+      "cg_vd_v": -1.9100137948989868,
+      "cg_vq_v": 11.193587303161621,
+      "pwm_moe": 1,
+      "vdc_v": 49.267967224121094
+    },
+    "stopped_signals": [],
+    "strings": {
+      "control_state": "RUNNING"
+    },
+    "suspended": false,
+    "value_meaning": "null means no current report; inspect signal_status and last_known_values. A stopped report is not a measured zero."
+  },
+  "pos500_neg15": {
+    "window_end_s": 65785.68868362,
+    "window_s": 5,
+    "metrics": {
+      "Elec_RPM": {
+        "mean": 2500.4119772989243,
+        "stddev": 0.3053611291935373,
+        "min": 2499.677490234375,
+        "max": 2500.94775390625,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "Mech_RPM": {
+        "mean": 500.0823968355773,
+        "stddev": 0.061072218911006795,
+        "min": 499.9355163574219,
+        "max": 500.1895446777344,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.36000739410400323,
+        "stddev": 1.963433961845595,
+        "min": -4.298377990722656,
+        "max": 5.387535095214844,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": -14.99635430144482,
+        "stddev": 2.3893081292787706,
+        "min": -19.67534065246582,
+        "max": -7.408753871917725,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": -0.168410229077159,
+        "stddev": 0.13190650308341736,
+        "min": -0.4951835572719574,
+        "max": 0.104657381772995,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": 11.015944510209756,
+        "stddev": 0.1504882399112621,
+        "min": 10.666014671325684,
+        "max": 11.351200103759766,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.310333588084234,
+        "stddev": 0.20929845571087288,
+        "min": 48.82807159423828,
+        "max": 49.70785903930664,
+        "samples": 488,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 25,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "neg500_pos15": {
+    "window_end_s": 65919.322156707,
+    "window_s": 5,
+    "metrics": {
+      "Elec_RPM": {
+        "mean": -2493.0237796930464,
+        "stddev": 1.051375853667577,
+        "min": -2495.307373046875,
+        "max": -2489.6767578125,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "Mech_RPM": {
+        "mean": -498.6047555795789,
+        "stddev": 0.21027506397515003,
+        "min": -499.0614929199219,
+        "max": -497.93536376953125,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.03369004769783475,
+        "stddev": 1.9689215884443563,
+        "min": -6.293423175811768,
+        "max": 5.374391555786133,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": 14.659979153840101,
+        "stddev": 2.433335756481695,
+        "min": 7.19976282119751,
+        "max": 22.307859420776367,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": -0.328842316563364,
+        "stddev": 0.0945154685933401,
+        "min": -0.5690821409225464,
+        "max": -0.06083264574408531,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": -10.1248535016971,
+        "stddev": 0.1067196369984544,
+        "min": -10.50137710571289,
+        "max": -9.826934814453125,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.437499566687535,
+        "stddev": 0.2140903424448294,
+        "min": 49.267967224121094,
+        "max": 49.70785903930664,
+        "samples": 493,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 20,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "neg500_pos15_off135": {
+    "window_end_s": 65987.729994945,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": -498.61048672063566,
+        "stddev": 0.07076675567565857,
+        "min": -498.8110046386719,
+        "max": -498.4436340332031,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.05468468130490462,
+        "stddev": 2.2497774283341903,
+        "min": -5.506722927093506,
+        "max": 6.5110883712768555,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": 14.721378060860362,
+        "stddev": 2.9604046790872394,
+        "min": 6.23475456237793,
+        "max": 22.131999969482422,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": 2.6636308804760134,
+        "stddev": 0.1038767398437789,
+        "min": 2.3453519344329834,
+        "max": 2.947063446044922,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": -9.510783906874618,
+        "stddev": 0.12821644346484676,
+        "min": -9.839744567871094,
+        "max": -9.115120887756348,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.353799060108216,
+        "stddev": 0.4605406456752939,
+        "min": 48.38818359375,
+        "max": 50.14775466918945,
+        "samples": 492,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 27,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "neg500_pos15_off120": {
+    "window_end_s": 66037.646726492,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": -498.5172589983259,
+        "stddev": 0.057903599219341954,
+        "min": -498.6299743652344,
+        "max": -498.4043884277344,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.1925797252630701,
+        "stddev": 3.0403801831429185,
+        "min": -6.509505271911621,
+        "max": 8.861939430236816,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": 14.660136229651314,
+        "stddev": 3.9333591252800035,
+        "min": 5.073101043701172,
+        "max": 25.47611427307129,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": 5.453903877491854,
+        "stddev": 0.1289029557841146,
+        "min": 5.052093982696533,
+        "max": 5.7178144454956055,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": -8.03408289442257,
+        "stddev": 0.1662786688373229,
+        "min": -8.486547470092773,
+        "max": -7.658140182495117,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.34786512413803,
+        "stddev": 0.4420588264937551,
+        "min": 48.82807159423828,
+        "max": 50.14775466918945,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "neg500_pos15_off165": {
+    "window_end_s": 66112.176159624,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": -498.90695947265624,
+        "stddev": 0.07472746033994068,
+        "min": -499.08807373046875,
+        "max": -498.68572998046875,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.06293248685635626,
+        "stddev": 1.8752559088684588,
+        "min": -5.153260707855225,
+        "max": 5.757092475891113,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": 14.772263414382934,
+        "stddev": 2.601290548007401,
+        "min": 8.569694519042969,
+        "max": 22.433761596679688,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": -3.354865354537964,
+        "stddev": 0.09021331157269084,
+        "min": -3.5833027362823486,
+        "max": -3.109978199005127,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": -9.945168123245239,
+        "stddev": 0.12150173757084672,
+        "min": -10.273929595947266,
+        "max": -9.67070198059082,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.372661437988285,
+        "stddev": 0.1973914787504918,
+        "min": 48.82807159423828,
+        "max": 49.70785903930664,
+        "samples": 500,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "pos500_sorensen_w": -30,
+  "neg500_sorensen_w": -78,
+  "neg500_off135_sorensen_w": -100,
+  "neg500_off120_sorensen_w": -110,
+  "neg500_off165_sorensen_w": -47,
+  "disabled_current_baseline": {
+    "window_end_s": 66185.316656929,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": -334.04706993496296,
+        "stddev": 100.03594973142,
+        "min": -494.3819274902344,
+        "max": -159.5923614501953,
+        "samples": 485,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_iu_a": {
+        "mean": 1.2908756285598597,
+        "stddev": 1.0082087019033117,
+        "min": -1.7567448616027832,
+        "max": 3.7885615825653076,
+        "samples": 485,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_iv_a": {
+        "mean": -1.5663359686271432,
+        "stddev": 0.8965526435846843,
+        "min": -3.4451866149902344,
+        "max": 1.1940240859985352,
+        "samples": 485,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_iw_a": {
+        "mean": 0.27546034006728337,
+        "stddev": 0.4745730583226955,
+        "min": -1.901859998703003,
+        "max": 1.8674986362457275,
+        "samples": 485,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 485,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      }
+    }
+  }
+}

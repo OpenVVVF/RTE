@@ -1,0 +1,381 @@
+{
+  "pos500_neg15_off150_repeat": {
+    "window_end_s": 66220.782547293,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": 505.47620646158856,
+        "stddev": 0.20824150936522717,
+        "min": 504.771484375,
+        "max": 505.7593688964844,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.037533044882388,
+        "stddev": 2.1413487615519813,
+        "min": -5.6602373123168945,
+        "max": 5.702655792236328,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": -15.023421664793329,
+        "stddev": 2.7576600165101146,
+        "min": -21.96091079711914,
+        "max": -8.61328125,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": -0.18583901274489262,
+        "stddev": 0.13148174112730612,
+        "min": -0.5690892338752747,
+        "max": 0.11213809251785278,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": 11.14737687819454,
+        "stddev": 0.1548037135272987,
+        "min": 10.827295303344727,
+        "max": 11.62747859954834,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.39074773673551,
+        "stddev": 0.3055073455889237,
+        "min": 48.82807159423828,
+        "max": 49.70785903930664,
+        "samples": 498,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 23,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "pos500_neg15_off135": {
+    "window_end_s": 66297.133590816,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": 505.46943842413964,
+        "stddev": 0.06207203747557689,
+        "min": 505.3375549316406,
+        "max": 505.70208740234375,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.07869056601016372,
+        "stddev": 2.1025278876226325,
+        "min": -5.460638523101807,
+        "max": 4.856738090515137,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": -14.924413086202735,
+        "stddev": 2.5361391249952696,
+        "min": -21.699735641479492,
+        "max": -8.28786563873291,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": -3.0865720010730144,
+        "stddev": 0.1213799180050841,
+        "min": -3.401301622390747,
+        "max": -2.8268227577209473,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": 10.27943434647012,
+        "stddev": 0.13775923957350056,
+        "min": 9.94943904876709,
+        "max": 10.599491119384766,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.379514401675735,
+        "stddev": 0.19947852420753312,
+        "min": 48.82807159423828,
+        "max": 49.70785903930664,
+        "samples": 489,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 22,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "pos500_neg15_off120": {
+    "window_end_s": 66348.953114374,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": 505.3205753248565,
+        "stddev": 0.05925016146974512,
+        "min": 505.2012939453125,
+        "max": 505.4710388183594,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": 0.03996798646997432,
+        "stddev": 2.3233951182072445,
+        "min": -6.342792987823486,
+        "max": 5.346686840057373,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": -14.955992936114876,
+        "stddev": 2.1726514084975435,
+        "min": -21.995563507080078,
+        "max": -9.035820007324219,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": -5.64767982424522,
+        "stddev": 0.1207465355513443,
+        "min": -5.961867809295654,
+        "max": -5.332318305969238,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": 8.675528156514071,
+        "stddev": 0.12015634879717302,
+        "min": 8.369396209716797,
+        "max": 9.009743690490723,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.392752262037625,
+        "stddev": 0.34509856428949176,
+        "min": 48.82807159423828,
+        "max": 50.14775466918945,
+        "samples": 490,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 24,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "pos500_neg15_off165": {
+    "window_end_s": 66394.150783301,
+    "window_s": 5,
+    "metrics": {
+      "Mech_RPM": {
+        "mean": 505.7942707314042,
+        "stddev": 0.09874773651735112,
+        "min": 505.47930908203125,
+        "max": 505.98394775390625,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "cg_id_a": {
+        "mean": -0.02052445335309945,
+        "stddev": 1.8704847466954249,
+        "min": -5.864919185638428,
+        "max": 5.315404415130615,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "cg_iq_a": {
+        "mean": -14.981106200055752,
+        "stddev": 2.44094897164707,
+        "min": -22.14735221862793,
+        "max": -8.343172073364258,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "cg_vd_v": {
+        "mean": 2.847968708776042,
+        "stddev": 0.1112908426582604,
+        "min": 2.5544376373291016,
+        "max": 3.1493520736694336,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "cg_vq_v": {
+        "mean": 11.197716642238333,
+        "stddev": 0.13721217826754514,
+        "min": 10.883659362792969,
+        "max": 11.592122077941895,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "enc_rejects": {
+        "mean": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "pwm_moe": {
+        "mean": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      },
+      "vdc_v": {
+        "mean": 49.325267692367156,
+        "stddev": 0.17000849248348882,
+        "min": 48.82807159423828,
+        "max": 49.70785903930664,
+        "samples": 499,
+        "quality": "adequate",
+        "sample_rate_hz": 128,
+        "sampling_gaps": 26,
+        "reporting_state": "live"
+      }
+    }
+  },
+  "pos500_off150_repeat_sorensen_w": -30,
+  "pos500_off135_sorensen_w": -65,
+  "pos500_off120_sorensen_w": -90
+}

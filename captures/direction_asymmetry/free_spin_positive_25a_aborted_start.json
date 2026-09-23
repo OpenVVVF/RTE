@@ -1,0 +1,70 @@
+{
+  "iq_command_a": 25,
+  "offset_deg": 150,
+  "time_limit_s": 15,
+  "speed_cutoff_rpm": 600,
+  "reason": "fault/output disabled",
+  "rows": [
+    {
+      "elapsed_s": 0.036,
+      "Mech_RPM": -0.0113685829564929,
+      "cg_id_a": 0.24947716295719147,
+      "cg_iq_a": -0.08999333530664444,
+      "cg_vd_v": 0.7461531758308411,
+      "cg_vq_v": 1.4995931386947632,
+      "pwm_moe": 0,
+      "vdc_v": 49.267967224121094,
+      "state": "RUNNING"
+    }
+  ],
+  "coast": [
+    {
+      "elapsed_s": 0.049,
+      "Mech_RPM": 1.702155351638794,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.195,
+      "Mech_RPM": 2.3288793563842773,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.338,
+      "Mech_RPM": 2.129279136657715,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.482,
+      "Mech_RPM": 1.7855740785598755,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.627,
+      "Mech_RPM": 1.6108406782150269,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.768,
+      "Mech_RPM": 1.4557592868804932,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 0.914,
+      "Mech_RPM": 1.1836600303649902,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 1
+    },
+    {
+      "elapsed_s": 1.06,
+      "Mech_RPM": 0.9437610507011414,
+      "control_outputs_enabled": 0,
+      "pwm_moe": 0
+    }
+  ]
+}
