@@ -17,6 +17,11 @@ format stays compatible**. Numeric and string telemetry are discovered from
 received frames; generated Gen7 firmware also announces a graph and signal
 manifest. New signal names can be requested without adding a host tool.
 
+For motor operation, `control start` is the main RTE graph motor control.
+`foc start <iq_a> [id_a]` invokes the base image's native FOC diagnostic for
+internal testing. Keep this distinction explicit in firmware help, Studio
+console responses, MCP guidance, and documentation.
+
 The following behavior is coupled to firmware and needs a coordinated host
 change and test when its contract changes:
 

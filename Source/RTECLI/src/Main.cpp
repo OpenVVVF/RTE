@@ -783,7 +783,7 @@ json McpTools() {
         ToolDefinition("rte_build_info", "Read the graph identity and node/signal manifest announced by the running firmware.", {}),
         ToolDefinition("rte_signal_info", "List observed and firmware-declared signals, their source nodes, units, and freshness.",
             {{"filter", {{"type", "string"}}}, {"signal", {{"type", "string"}}}}),
-        ToolDefinition("rte_control_status", "Read controller state, latched fault names, and actual PWM/gate status.", {}),
+        ToolDefinition("rte_control_status", "Read the main RTE graph motor control state, latched fault names, and actual PWM/gate status.", {}),
         ToolDefinition("rte_device_snapshot", "Read a named FOC bundle or up to 32 selected signals from one store snapshot, with freshness and missing keys.",
             {{"bundle", {{"type", "string"}, {"enum", json::array({"foc"})}}},
              {"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
@@ -810,7 +810,7 @@ json McpTools() {
         ToolDefinition("rte_device_console", "Read device console lines from RTE Studio.",
             {{"since", {{"type", "integer"}, {"minimum", 0}}},
              {"lines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}}}),
-        ToolDefinition("rte_device_commands", "Discover every command registered by the connected firmware by sending help; returns names, usage, descriptions, and argument ranges. Requires external command writes enabled in Studio.",
+        ToolDefinition("rte_device_commands", "Discover every command registered by the connected firmware by sending help; returns names, usage, descriptions, argument ranges, and motor control command guidance. Use control for the main RTE graph motor control; foc is the internal test native diagnostic. Requires external command writes enabled in Studio.",
             {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}}}),
         ToolDefinition("rte_device_command",
             "Send any inverter command through RTE Studio. Returns a console cursor for reading its reply. Requires external writes enabled in Studio.",
@@ -1513,6 +1513,10 @@ json CallMcpTool(const std::string& name, const json& arguments,
         const bool complete = footerSeen && rangesComplete
             && (!expectedCount || countVerified);
         json report = {{"source", "connected firmware help"}, {"complete", complete},
+                       {"motor_control_command", "control start"},
+                       {"motor_control_role", "main RTE graph motor control"},
+                       {"internal_test_command", "foc start <iq_a> [id_a]"},
+                       {"internal_test_role", "native FOC diagnostic; internal testing only"},
                        {"count", commands.size()}, {"expected_count", expectedCount
                             ? json(*expectedCount) : json(nullptr)},
                        {"count_verified", countVerified},
@@ -1525,7 +1529,9 @@ json CallMcpTool(const std::string& name, const json& arguments,
             return response;
         }
         std::ostringstream summary;
-        summary << commands.size() << " commands from connected firmware:\n";
+        summary << "Motor control: use 'control start' for the MAIN RTE graph motor control.\n"
+                << "Internal testing only: 'foc start <iq_a> [id_a]' runs the native FOC diagnostic.\n\n"
+                << commands.size() << " commands from connected firmware:\n";
         for (const auto& command : commands)
             summary << command.value("name", "") << ' '
                     << command.value("usage", "") << " — "

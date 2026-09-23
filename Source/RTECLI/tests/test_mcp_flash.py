@@ -255,6 +255,8 @@ def main():
             names = {tool["name"] for tool in request(server, 2, "tools/list")["tools"]}
             definitions = {tool["name"]: tool for tool in request(server, 17, "tools/list")["tools"]}
             assert "not correctly implemented" in definitions["rte_sim"]["description"]
+            assert "main RTE graph motor control" in definitions["rte_device_commands"]["description"]
+            assert "internal test native diagnostic" in definitions["rte_device_commands"]["description"]
             for tool in definitions.values():
                 assert isinstance(tool["inputSchema"]["properties"], dict), tool["name"]
             for name in ("rte_flash", "rte_device_telemetry", "rte_device_signal",
@@ -524,6 +526,12 @@ def main():
             catalog = commands["structuredContent"]
             assert catalog["complete"] and catalog["count"] == 2, catalog
             assert catalog["count_verified"] and catalog["argument_ranges_complete"], catalog
+            assert catalog["motor_control_command"] == "control start", catalog
+            assert catalog["motor_control_role"] == "main RTE graph motor control", catalog
+            assert catalog["internal_test_command"] == "foc start <iq_a> [id_a]", catalog
+            assert "internal testing only" in catalog["internal_test_role"], catalog
+            assert "MAIN RTE graph motor control" in commands["content"][0]["text"], commands
+            assert "Internal testing only" in commands["content"][0]["text"], commands
             assert catalog["commands"][1]["arguments"][0] == {
                 "name": "hz", "required": True, "range": "0.0-100.0 Hz", "type": "float"}, catalog
             assert session_server.commands[-1] == "help"

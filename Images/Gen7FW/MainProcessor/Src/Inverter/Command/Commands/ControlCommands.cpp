@@ -26,7 +26,7 @@ using Inverter::ControlSupervisor;
 using Inverter::FaultManager;
 
 /**
- * @brief `control <subcommand>` for the generated control loop.
+ * @brief `control <subcommand>` for the main RTE graph motor control.
  *
  * Supported forms:
  *   control start
@@ -36,7 +36,7 @@ using Inverter::FaultManager;
 class ControlCommand : public CommandInterface {
 public:
     ControlCommand()
-      : CommandInterface("control", "Generated control: start/stop/status",
+      : CommandInterface("control", "MAIN motor control (RTE graph): start/stop/status",
             {ArgSpec{"subcommand", "", 0.0f, 0.0f, 0.0f, true, ArgSpec::STRING}}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
@@ -44,13 +44,13 @@ public:
 
         if (strcasecmp(sub, "start") == 0) {
             if (ControlSupervisor::instance().start()) {
-                Telemetry::printf("[SHELL] control started");
+                Telemetry::printf("[SHELL] control started: MAIN motor control (RTE graph)");
             } else {
-                Telemetry::printf("[SHELL] control start failed");
+                Telemetry::printf("[SHELL] control start failed: MAIN motor control (RTE graph)");
             }
         } else if (strcasecmp(sub, "stop") == 0) {
             ControlSupervisor::instance().stop();
-            Telemetry::printf("[SHELL] control stopped");
+            Telemetry::printf("[SHELL] control stopped: MAIN motor control (RTE graph)");
         } else if (strcasecmp(sub, "status") == 0) {
             printStatus();
         } else {
@@ -61,7 +61,7 @@ public:
 private:
     void printStatus() const {
         ControlSupervisor& sup = ControlSupervisor::instance();
-        Telemetry::printf("[SHELL] state=%s running=%s faulted=%s",
+        Telemetry::printf("[SHELL] MAIN motor control (RTE graph) state=%s running=%s faulted=%s",
                           sup.stateName(),
                           sup.isRunning() ? "Y" : "N",
                           sup.isFaulted() ? "Y" : "N");

@@ -243,12 +243,18 @@ parsed phase current, encoder, and duty samples plus compact trend charts.
 Its trigger is the firmware's current threshold, set with `spikes <amps>` in
 the Runtime console or through `rte_device_command`.
 `rte_device_commands` sends the firmware's `help` command and parses the full
-reference into a live command catalog with names, usage, descriptions, and
-argument ranges. It verifies the closing line and, on newly built Gen7
+reference into a live command catalog with names, usage, descriptions,
+argument ranges, and explicit motor control roles. Use `control start` for the
+main motor control implemented by the loaded RTE graph. Use
+`foc start <iq_a> [id_a]` only for the base image's native FOC diagnostic during
+internal testing. These paths are mutually exclusive. It verifies the closing
+line and, on newly built Gen7
 firmware, the announced command count before marking the catalog complete.
 Older images report `count_verified: false`. The manual equivalent is `help`
 in Studio's Runtime console or `tool rte_device_commands` in its RTE command
-dialog.
+dialog. A main MCU image rebuilt from this source labels both paths in its
+help and command responses. That firmware wording requires a main MCU reflash;
+the coprocessor image is unchanged.
 
 Current Gen7 main firmware uses `fault` as its canonical fault command. Use `fault
 status`, `fault sources`, `fault clear [all|warning|high|critical|source]`, or

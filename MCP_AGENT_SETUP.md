@@ -226,13 +226,24 @@ Codex, ChatGPT desktop, and Kimi Code.
   inverter command `spikes <amps>` if needed.
 - Call `rte_device_commands` to discover the commands actually registered in
   the connected firmware. It sends `help`, waits for the closing reference
-  line, and returns command names, usage, descriptions, and argument ranges.
+  line, and returns command names, usage, descriptions, argument ranges, and
+  explicit motor control roles. Use `control start` to run the main motor
+  control implemented by the loaded RTE graph. The separate
+  `foc start <iq_a> [id_a]` path runs the base image's native FOC diagnostic
+  for internal testing. Do not use `foc start` as the normal way to run the
+  graph based motor controller. The two paths are mutually exclusive.
   Newly built Gen7 firmware also announces the registered command count so
   the tool can verify that no command entry was lost; older images report
   `count_verified: false`.
   An incomplete response is reported as an error with the partial list. As
   with other agent-sent inverter commands, Studio must allow external command
   writes for this call.
+- The same distinction appears for a person using Studio: enter `help` in the
+  Runtime console to see `control` labeled as the main motor control and `foc`
+  labeled as the internal test diagnostic. A main MCU image rebuilt from this
+  source also prints that role when either path starts or reports status.
+  Updating this wording requires a main MCU reflash; it does not require a
+  coprocessor reflash.
 - On current Gen7 main firmware, use `fault` as the canonical command for fault
   operations: `fault status`, `fault sources`, `fault clear [all|warning|high|critical|source]`,
   and `fault test <source>`. A bare `fault clear` resets all software fault

@@ -97,7 +97,7 @@ bool ControlSupervisor::start() {
      * running both at once corrupts both loops.  foc start refuses while the
      * graph control runs (FocCommands), so refuse the reverse here too. */
     if (focControlManager().isRunning()) {
-        Telemetry::printf("[SUP] ERROR: native FOC is running; stop it first (foc stop)");
+        Telemetry::printf("[SUP] ERROR: INTERNAL TEST native FOC is running; stop it first (foc stop)");
         return false;
     }
 
