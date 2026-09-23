@@ -746,6 +746,105 @@
         "nodeId": "EncoderCos",
         "portName": "Value"
       }
+    },
+    {
+      "from": {
+        "nodeId": "CfgLd",
+        "portName": "Value"
+      },
+      "id": "c_ff_ld",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Ld"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgLq",
+        "portName": "Value"
+      },
+      "id": "c_ff_lq",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Lq"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgLambda",
+        "portName": "Value"
+      },
+      "id": "c_ff_lambda",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Lambda"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "CfgKnee",
+        "portName": "Value"
+      },
+      "id": "c_ff_knee",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "Knee"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "id": "c_ff_id",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_D"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "id": "c_ff_iq",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_Q"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "RPMMechElec1",
+        "portName": "RpmElec"
+      },
+      "id": "c_ff_rpm",
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "RpmElec"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "FocFeedforward",
+        "portName": "V_D"
+      },
+      "id": "c_ff_vd",
+      "to": {
+        "nodeId": "PiD",
+        "portName": "Feedforward"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "FocFeedforward",
+        "portName": "V_Q"
+      },
+      "id": "c_ff_vq",
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Feedforward"
+      }
     }
   ],
   "name": "foc_demo",
@@ -1205,11 +1304,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "FocFeedforward",
-      "description": "Computes PMSM d/q voltage feed-forward terms from electrical speed, measured currents, and motor parameters. Outputs cross-coupling and back-EMF voltages for the current-loop PI controllers.",
+      "description": "Computes PMSM d/q voltage feed-forward terms from electrical speed, measured currents, and motor parameters. Outputs cross-coupling and back-EMF voltages for the current-loop PI controllers, plus an optional q-axis conduction-knee compensation.",
       "displayName": "FOC Feed-Forward",
       "domain": "",
       "id": "Control.FocFeedforward",
-      "inlineCode": "/* PMSM voltage feed-forward: cross-coupling and back-EMF terms.\n * Electrical speed is supplied in RPM and converted to rad/s internally.\n *\n *   Vd_ff = -\u03c9e * Lq * Iq\n *   Vq_ff =  \u03c9e * Ld * Id + \u03c9e * Lambda\n */\nconstexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;\nconst float omega_e = RpmElec * RPM_TO_RAD_S;\n\nconst float id_a = I_D.in(au::amperes);\nconst float iq_a = I_Q.in(au::amperes);\n\nconst float vd_ff = -(omega_e * Lq * iq_a);\nconst float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);\n\nV_D = rte::Volts(vd_ff);\nV_Q = rte::Volts(vq_ff);\n",
+      "inlineCode": "/* PMSM voltage feed-forward: cross-coupling, back-EMF, and conduction-knee terms.\n * Electrical speed is supplied in RPM and converted to rad/s internally.\n *\n *   Vd_ff = -we*Lq*Iq\n *   Vq_ff =  we*Ld*Id + we*Lambda + Knee*sign(Iq)\n *\n * The knee term pre-compensates the IGBT/diode conduction drop that opposes\n * the current vector. It is applied on the q-axis only: id sits at ~0 A, so\n * a d-axis sign() would relay-chatter on measurement noise and inject a\n * +/-Knee V square wave into the d-loop (measured: id spikes past -75 A).\n * The 0.5 A deadband keeps iq sign() quiet near zero torque.\n */\nconstexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;\nconst float omega_e = RpmElec * RPM_TO_RAD_S;\n\nconst float id_a = I_D.in(au::amperes);\nconst float iq_a = I_Q.in(au::amperes);\n\nconst float vd_ff = -(omega_e * Lq * iq_a);\nconst float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);\n\nconst float iq_sign = (iq_a > 0.5f) ? 1.0f : ((iq_a < -0.5f) ? -1.0f : 0.0f);\n\nV_D = rte::Volts(vd_ff);\nV_Q = rte::Volts(vq_ff + Knee * iq_sign);\n",
       "inputPorts": [
         {
           "description": "Measured d-axis current.",
@@ -1272,6 +1371,12 @@
         }
       ],
       "parameterTypes": {
+        "Knee": {
+          "description": "IGBT/diode conduction knee voltage compensated in the direction of the d/q current.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
         "Lambda": {
           "description": "Permanent-magnet flux linkage in webers.",
           "dtype": "f32",
@@ -4862,7 +4967,7 @@
       "id": "CfgKpQ",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.16",
+        "DefaultValue": "0.04",
         "Key": "Ctrl.PiQ.Kp"
       },
       "position": {
@@ -5120,7 +5225,7 @@
       "id": "CfgKpD",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.08",
+        "DefaultValue": "0.04",
         "Key": "Ctrl.PiD.Kp"
       },
       "position": {
@@ -5135,7 +5240,7 @@
       "id": "CfgKiD",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "10.0",
+        "DefaultValue": "5.0",
         "Key": "Ctrl.PiD.Ki"
       },
       "position": {
@@ -5150,7 +5255,7 @@
       "id": "CfgKiQ",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "10.0",
+        "DefaultValue": "5.0",
         "Key": "Ctrl.PiQ.Ki"
       },
       "position": {
@@ -5263,7 +5368,7 @@
       "id": "CfgLd",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.0001",
+        "DefaultValue": "0.0",
         "Key": "Motor.Ld"
       },
       "position": {
@@ -5278,7 +5383,7 @@
       "id": "CfgLq",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.0001",
+        "DefaultValue": "0.0",
         "Key": "Motor.Lq"
       },
       "position": {
@@ -5293,12 +5398,49 @@
       "id": "CfgLambda",
       "parameters": {
         "Cached": "0.0",
-        "DefaultValue": "0.01",
+        "DefaultValue": "0.04",
         "Key": "Motor.Lambda"
       },
       "position": {
         "x": -250.0,
         "y": 3400.0
+      },
+      "type": "Values.Config"
+    },
+    {
+      "displayName": "FocFeedforward",
+      "domain": "tim_isr",
+      "id": "FocFeedforward",
+      "parameterInputs": [
+        "Ld",
+        "Lq",
+        "Lambda",
+        "Knee"
+      ],
+      "parameters": {
+        "Knee": "0.0",
+        "Lambda": "0.04",
+        "Ld": "0.0",
+        "Lq": "0.0"
+      },
+      "position": {
+        "x": 1700.0,
+        "y": 2900.0
+      },
+      "type": "Control.FocFeedforward"
+    },
+    {
+      "displayName": "CfgKnee",
+      "domain": "tim_isr",
+      "id": "CfgKnee",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.0",
+        "Key": "Motor.KneeV"
+      },
+      "position": {
+        "x": -250.0,
+        "y": 3550.0
       },
       "type": "Values.Config"
     }

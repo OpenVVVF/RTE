@@ -7,6 +7,7 @@
 #include "dma.h"
 
 #include <cmath>
+#include <cstring>
 
 namespace Inverter {
 
@@ -24,6 +25,11 @@ EncoderADC::SinCosFit EncoderADC::s_fit __attribute__((section(".dma_buffers")))
 
 /* Angle-linearity trace ring: diagnostic-only, lives in RAM_D2 to free DTCM. */
 EncoderADC::TraceEntry EncoderADC::m_trace[EncoderADC::TRACE_LEN]
+    __attribute__((section(".trace_buffers")));
+
+/* IRQ-locked snapshot of the trace ring taken by traceDump() so the slow
+ * UART dump cannot race the ~1 kHz ring writer. */
+EncoderADC::TraceEntry EncoderADC::s_trace_snapshot[EncoderADC::TRACE_LEN]
     __attribute__((section(".trace_buffers")));
 
 EncoderADC& encoderADC() {
@@ -151,6 +157,12 @@ bool EncoderADC::init() {
     initializeFitState();
     m_trace_head = 0;
     m_trace_decim = 0;
+    m_prev_valid = false;
+    m_prev_angle = 0.0f;
+    m_reject_holdoff = 0;
+    m_reject_candidate = 0.0f;
+    m_reject_count = 0;
+    m_reject_pub_count = 0;
 
     if (!configureAdcChannels()) return false;
     if (!initTimer()) return false;
@@ -190,20 +202,11 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     if (ccos < COS_MIN_CAP) ccos = COS_MIN_CAP;
     if (ccos > COS_MAX_CAP) ccos = COS_MAX_CAP;
 
-    /* Expand the learned bounds from the observed signal.  They start empty
-     * and bracket the true signal range after roughly one revolution.  When a
-     * fitted correction is active these bounds are no longer used for angle
-     * decoding, but they are still needed for signal-quality diagnostics. */
-    if (csin < m_obs_sin_min) m_obs_sin_min = csin;
-    if (csin > m_obs_sin_max) m_obs_sin_max = csin;
-    if (ccos < m_obs_cos_min) m_obs_cos_min = ccos;
-    if (ccos > m_obs_cos_max) m_obs_cos_max = ccos;
-
     /* Prefer the learned bounds once both channels have seen enough span;
-     * the hardcoded caps are only a fallback until then.  Normalizing with
-     * bounds that do not match the real signal (stale mids or spans)
-     * distorts the angle with a 2nd-harmonic error large enough to
-     * detent-lock the rotor under FOC. */
+     * the hardcoded caps are only a fallback until then.  The bounds are
+     * updated separately in learnBounds(), which is only called for samples
+     * that pass single-sample outlier rejection — a single EMI burst must
+     * not permanently re-base the decoder. */
     const bool learned_valid =
         (m_obs_sin_max >= m_obs_sin_min + LEARNED_MIN_SPAN) &&
         (m_obs_cos_max >= m_obs_cos_min + LEARNED_MIN_SPAN);
@@ -250,6 +253,25 @@ float EncoderADC::computeAngle(uint16_t raw_sin, uint16_t raw_cos) {
     return angle_deg;
 }
 
+void EncoderADC::learnBounds(uint16_t raw_sin, uint16_t raw_cos) {
+    /* Expand the learned bounds from the observed signal.  They start empty
+     * and bracket the true signal range after roughly one revolution.  When a
+     * fitted correction is active these bounds are no longer used for angle
+     * decoding, but they are still needed for signal-quality diagnostics.
+     * Call ONLY for samples that passed outlier rejection. */
+    uint16_t csin = raw_sin;
+    uint16_t ccos = raw_cos;
+    if (csin < SIN_MIN_CAP) csin = SIN_MIN_CAP;
+    if (csin > SIN_MAX_CAP) csin = SIN_MAX_CAP;
+    if (ccos < COS_MIN_CAP) ccos = COS_MIN_CAP;
+    if (ccos > COS_MAX_CAP) ccos = COS_MAX_CAP;
+
+    if (csin < m_obs_sin_min) m_obs_sin_min = csin;
+    if (csin > m_obs_sin_max) m_obs_sin_max = csin;
+    if (ccos < m_obs_cos_min) m_obs_cos_min = ccos;
+    if (ccos > m_obs_cos_max) m_obs_cos_max = ccos;
+}
+
 float EncoderADC::extrapolatedAngleDeg() {
     const float angle = m_snapshot.angle;
     if (!m_running || !m_rpm_init) {
@@ -283,12 +305,15 @@ void EncoderADC::useSynchronizedTrigger(bool sync) {
 void EncoderADC::traceDump() {
     Telemetry::printf("[SHELL] enc trace: %d samples @ ~1 kHz (sin cos angle_deg), oldest first",
                       static_cast<int>(TRACE_LEN));
-    /* Pause the ring while dumping so lines stay consistent. */
+    /* Copy the ring with IRQs disabled: the ~3 s UART dump below races the
+     * ~1 kHz ring writer without this, printing a mix of old and freshly
+     * overwritten entries (observed as phantom 44-164 deg angle jumps). */
     __disable_irq();
     const size_t head = m_trace_head;
+    memcpy(s_trace_snapshot, m_trace, sizeof(m_trace));
     __enable_irq();
     for (size_t k = 0; k < TRACE_LEN; ++k) {
-        const TraceEntry& e = m_trace[(head + k) % TRACE_LEN];
+        const TraceEntry& e = s_trace_snapshot[(head + k) % TRACE_LEN];
         Telemetry::printf("[TR] %u %u %.3f", e.raw_sin, e.raw_cos,
                           static_cast<double>(e.angle_deg));
     }
@@ -302,30 +327,75 @@ void EncoderADC::onDmaComplete() {
     const uint16_t raw_sin = s_enc_dma_buffer[0];
     const uint16_t raw_cos = s_enc_dma_buffer[1];
 
-    /* Compute angle before touching the snapshot so the ISR writes all three
-     * fields atomically relative to the main-loop readers. */
+    /* Compute the candidate angle before touching the snapshot so the ISR
+     * writes all three fields atomically relative to the main-loop readers. */
     const float angle = computeAngle(raw_sin, raw_cos);
 
-    m_snapshot.angle = angle;
-    m_snapshot.raw_sin = raw_sin;
-    m_snapshot.raw_cos = raw_cos;
+    /* Single-sample outlier rejection: a real rotor moves only a few degrees
+     * per sample at these trigger rates, while a single EMI-corrupted ADC
+     * conversion decodes up to ~130 deg away (measured at 300+ RPM).  A
+     * candidate that persists for SAMPLE_REJECT_HOLDOFF consecutive samples
+     * is accepted as genuine motion so a real step cannot wedge the decoder
+     * at its old position.  Rejected samples never reach the snapshot, the
+     * learned bounds, the fit accumulator, or the angle trace. */
+    bool accept = true;
+    if (m_prev_valid) {
+        float d = angle - m_prev_angle;
+        if (d > 180.0f) d -= 360.0f;
+        else if (d < -180.0f) d += 360.0f;
+        if (fabsf(d) > MAX_SAMPLE_DELTA_DEG) {
+            ++m_reject_count;
+            accept = false;
+            float dc = angle - m_reject_candidate;
+            if (dc > 180.0f) dc -= 360.0f;
+            else if (dc < -180.0f) dc += 360.0f;
+            if (m_reject_holdoff == 0 || fabsf(dc) <= MAX_SAMPLE_DELTA_DEG) {
+                m_reject_candidate = angle;
+                ++m_reject_holdoff;
+                if (m_reject_holdoff >= SAMPLE_REJECT_HOLDOFF) {
+                    /* Persistent new position: real motion, accept it. */
+                    m_prev_angle = angle;
+                    m_reject_holdoff = 0;
+                    accept = true;
+                }
+            } else {
+                /* Jumped somewhere else entirely: restart the holdoff. */
+                m_reject_candidate = angle;
+                m_reject_holdoff = 1;
+            }
+        } else {
+            m_reject_holdoff = 0;
+        }
+    } else {
+        m_prev_valid = true;
+    }
+
+    if (accept) {
+        m_prev_angle = angle;
+        learnBounds(raw_sin, raw_cos);
+
+        m_snapshot.angle = angle;
+        m_snapshot.raw_sin = raw_sin;
+        m_snapshot.raw_cos = raw_cos;
+
+        /* Layer 1 ellipse-fit capture: accumulate every accepted raw sample
+         * at the full encoder rate while a calibration routine requests it. */
+        if (m_fit_capture) {
+            s_fit_acc.add(raw_sin, raw_cos);
+        }
+
+        /* Angle-linearity trace: decimated ring for the `enc_trace` command. */
+        if (++m_trace_decim >= TRACE_DECIM) {
+            m_trace_decim = 0;
+            m_trace[m_trace_head] = {raw_sin, raw_cos, angle};
+            m_trace_head = (m_trace_head + 1) % TRACE_LEN;
+        }
+    }
+
     m_new_data = true;
     m_last_sample_ms = HAL_GetTick();
     m_last_sample_cycles = DWT->CYCCNT;
     ++m_isr_count;
-
-    /* Layer 1 ellipse-fit capture: accumulate every raw sample at the full
-     * encoder rate while a calibration routine requests it. */
-    if (m_fit_capture) {
-        s_fit_acc.add(raw_sin, raw_cos);
-    }
-
-    /* Angle-linearity trace: decimated ring for the `enc_trace` command. */
-    if (++m_trace_decim >= TRACE_DECIM) {
-        m_trace_decim = 0;
-        m_trace[m_trace_head] = {raw_sin, raw_cos, angle};
-        m_trace_head = (m_trace_head + 1) % TRACE_LEN;
-    }
 }
 
 bool EncoderADC::sample(float& angle_deg) {
@@ -643,9 +713,16 @@ void EncoderADC::diagnose() {
         m_sample_hz = hz;
         s_last_count = m_isr_count;
         s_last_ms = now_ms;
+        /* Publish the outlier-reject count too: a rising rate here means the
+         * encoder wiring/screening is picking up switching EMI, which is
+         * worth knowing even though rejected samples no longer reach FOC. */
+        Telemetry::log("enc_rejects",
+                       static_cast<float>(m_reject_count - m_reject_pub_count));
+        m_reject_pub_count = m_reject_count;
     } else if (s_last_ms == 0U) {
         s_last_count = m_isr_count;
         s_last_ms = now_ms;
+        m_reject_pub_count = m_reject_count;
     }
 
     if (m_running && (now_ms - m_last_sample_ms) > SAMPLE_TIMEOUT_MS) {
