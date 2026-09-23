@@ -11,15 +11,25 @@ hardware facts.
 - Repo `/home/tliao/Desktop/RTE`, branch `coproc-flash-fixes`.
 - Run motor: `control start` / `control stop`, torque via `var set IqVar <A>`
   (positive = encoder-positive direction). Legacy `foc` command is dead.
-- **Fault latch bug (firmware):** any fault latches; `clearfault` clears
-  FaultManager but `control start` still refuses. Only `reboot` recovers.
+- **Faults (NEW firmware, 2026-09-22 eve):** the old latch bug is FIXED. Faults
+  block `control start` only while Critical/High faults are active; recover
+  with `fault clear high` + `fault clear warning` (or per-source). Validated
+  end-to-end with injected test faults — no reboot needed. **Trap:** bare
+  `fault clear`/`fault clear all`/`clearfault` refuses at IDLE ("stop
+  control/PWM first") because MOE is now always set — the `all` scope hits
+  the gate-reset path's power-stage check. Use scoped clears until fixed.
+  `fault status` / `fault_flags_hex` / `fault_active_names` show live state;
+  `reboot` still works as a sledgehammer.
 - **Config trap:** `config set <key> <val>` is LIVE-ONLY for graph-node keys
   (wiped on reboot) unless followed by `config save <key>`. KV keys persist
   immediately. `var set` values reset on `control stop`.
 - After any reboot, FRAM-loaded config applies automatically (see table).
 - Build/flash: `rte_build(graph="Assets/Examples/foc_demo.json",
   base_source="Images/Gen7FW/MainProcessor")` → flash the ELF from the
-  reported artifacts path, then `reboot`.
+  reported artifacts path, then `reboot`. If the MCP `rte_build`/`rte_flash`
+  actions return a bare "operation failed", use the CLI fallback
+  (`build/bin/rte build ...` / `build/bin/rte flash --firmware <elf> --target
+  main`) — same session, same result.
 - Telemetry is 128 Hz and aliases PWM ripple; trust the 5 kHz spike capture
   (`spikes <A>`) and `enc_trace` for waveform truth. The DC-link power signal
   (`dclink_p_w`) is noisy and its current sensor has ~1.4 A offset —
@@ -66,7 +76,9 @@ Graph defaults match (foc_demo.json): feedforward node wired, cross-terms 0.
    wired to Park I_D/I_Q, RpmElec, PiD/PiQ Feedforward ports, fed by
    CfgLd/CfgLq/CfgLambda/CfgKnee (new Motor.KneeV key).
 4. **CfgLambda default 0.04** (measured). **Loop-gain defaults 0.04/5**.
-5. Known firmware follow-ups still open: fault-latch bug (reboot required);
+5. Known firmware follow-ups still open (as of merged fw, graph hash
+   `d80ff3057ad74897`): `fault clear all` refuses at idle (MOE check — use
+   scoped clears); MAX22530 `clearFilter(3)` reports FAILED during clear;
    flux-cal stage saves nothing; DC-link current sensor offset (~1.4 A).
 
 ## OPEN MYSTERIES (ranked) — and dead theories
@@ -118,8 +130,9 @@ Graph defaults match (foc_demo.json): feedforward node wired, cross-terms 0.
 
 ## Bench facts
 - Real bus ~49-50 V (Sorensen bidir PSU, sinks regen fine). Phase overcurrent
-  trips are software-latched (see fault bug). hwoc/spike recorder available:
-  `spikes <A>`.
+  trips latch as Critical faults — recover with `fault clear critical` (or
+  `high`+`warning`), NOT `fault clear all` (idle-MOE refusal, see above).
+  hwoc/spike recorder available: `spikes <A>`.
 - Motor: 10-pole salient IPM (Zero), R 12.1 mOhm, Ld 93.6 uH, Lq 253 uH,
   lambda ~0.04 Wb. Encoder: 1-cycle sin/cos, rigid mount, bounds
   sin 11354..53904 / cos 11343..53798 (learned, healthy).
@@ -137,6 +150,7 @@ Graph defaults match (foc_demo.json): feedforward node wired, cross-terms 0.
 - Every config change mid-run is a live experiment: prefer set-before-start
   after a reboot for clean comparisons; changing offset at speed kicks the
   loop (frame rotates by delta instantly).
-- Branch needs rebase against origin (colleague pushed fault-clear fixes
-  incl. "fault clear generalization" — may fix the fault-latch bug; review
-  before reflashing from a rebased tree).
+- Tree state: colleague's fault-clear/telemetry-ISR changes merged into
+  `coproc-flash-fixes` (clean merge) and reflashed 2026-09-22 evening. Host
+  tools rebuilt + ctest subset green. Branch is ahead of origin (merge commit
+  + local commits) — user holds push approval.

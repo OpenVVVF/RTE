@@ -107,6 +107,52 @@ remove most reflash-and-pray cycles.
   native-FOC-vs-graph-control interlock (added this session), and the
   cal-writes-KV-but-graph-cache-needs-reboot trap.
 
+## Post-merge validation (same day, after colleague's fault-clear/telemetry fixes)
+
+Re-flashed main MCU from the merged tree (graph hash `d80ff3057ad74897`) and
+exercised the new contracts. Confirmed working:
+
+- Fault-latch bug is FIXED: injected `UartError`(W) + `AdcError`(H), `control
+  start` refused with "active Critical/High faults", `fault clear high` +
+  `fault clear warning` returned supervisor to IDLE, `control start` then
+  succeeded — no reboot. (~12 reboots/session pain is gone.)
+- `rte_control_status` now reports `control_outputs_enabled`,
+  `tim_isr_running`, fault flags/names, MOE, gate state — one call covers
+  what used to need three tools + console parsing.
+- Command count announcement + role labels (`MAIN motor control` vs
+  `INTERNAL TEST native FOC`) work; `MCP_AGENT_SETUP.md` documents the new
+  `fault` command family accurately.
+
+New issues found:
+
+1. `fault clear all` (and bare `fault clear`/`clearfault`) is unusable at
+   idle: it always refuses with "stop control/PWM before clearing gate
+   faults". Cause: the new always-on TIM1 update interrupt leaves MOE=1 at
+   IDLE, and `powerStageActive()` treats `TIM1->BDTR.MOE` as "power stage
+   active". Scoped clears that exclude gate faults (`fault clear high`,
+   `fault clear warning`, per-source) work. Fix `powerStageActive()` to use a
+   signal that is actually false at idle (or drop the MOE term now that the
+   supervisor owns output gating via `control_outputs_enabled`).
+2. `fault clear high` prints `MAX22530 reset: interrupt=cleared
+   filter=FAILED` — `MAX22530::clearFilter(3)` returns false on a live
+   ch4-only part. Either a driver bug or the filter was never configured;
+   check the return path.
+3. `rte_device_commands` count verification never completes on the live
+   link: firmware announces 50 commands, parser captured 43 at the default
+   timeout and 45 at 10 s. Help streams ~10 lines/s interleaved with 128 Hz
+   telemetry, so the full reference needs ~40 s. Either give the tool a much
+   longer default window (and/or auto-retry, cf. §10), or make the firmware
+   emit help in one burst / on a higher-priority channel.
+4. `rte_build` and `rte_flash` MCP actions failed with a bare "operation
+   failed" from the running MCP server while the identical CLI invocations
+   (`build/bin/rte build/flash ...`) succeeded against the same Studio
+   session. Two `rte mcp` server processes were simultaneously running (one
+   stale from an earlier client session), which may or may not be the cause —
+   but the failure carried no diagnostic, which is its own problem: return
+   the underlying error string. Also note the running server binary predates
+   any rebuild, so tool-schema additions (paging params, history export)
+   only appear after the MCP client restarts the server.
+
 ## What already works well
 
 `rte_build_info`'s manifest (graph hash + nodes + signals), signal
