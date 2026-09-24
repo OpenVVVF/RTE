@@ -42,6 +42,24 @@ void platform_pwm_set(float du, float dv, float dw);
  */
 void platform_pwm_set_voltage_vector(float valpha, float vbeta, float vdc);
 
+/* Physical-voltage modulation and coherent generated-current feedback. */
+void platform_modulate(float alpha_v, float beta_v, float bus_v,
+                       float* du, float* dv, float* dw);
+float platform_voltage_limit(float bus_v, float requested_bus_fraction);
+void platform_current_sample_begin(uint32_t callback_cycles);
+void platform_publish_current_frame(float id, float iq, float theta,
+                                    float ia, float ib, float ic);
+void platform_latch_current_frame(float* id, float* iq, float* theta,
+                                  float* age_us, float* valid, float* sequence);
+void platform_vector_pi(float id_ref, float iq_ref, float id, float iq,
+                        float fd, float fq, float kpd, float kid, float kpq, float kiq,
+                        float max_bus_fraction, float valid,
+                        float* vd, float* vq, float* rd, float* rq, float* scale);
+void platform_control_actuation_angle(float angle_rad);
+void platform_control_capture_step(float du, float dv, float dw);
+void platform_control_capture_arm(uint32_t decimation);
+void platform_control_capture_dump(uint32_t offset, uint32_t count);
+
 /* --------------------------------------------------------------------------
  * Sensor inputs
  * -------------------------------------------------------------------------- */

@@ -171,7 +171,7 @@ Codex, ChatGPT desktop, and Kimi Code.
 
 Gen7 current acquisition publishes the completed ADC burst before executing
 the generated `adc_isr` graph, after base-image overcurrent protection. The
-ADC domain uses the PWM-period time step; ADC and TIM1 graph dispatch restore
+ADC domain uses the actual update-period time step; ADC and TIM1 graph dispatch restore
 the interrupted domain's time step. This feedback-timing correction requires
 a **main MCU rebuild and reflash**. Command and telemetry formats are unchanged;
 no coprocessor reflash is needed.
@@ -242,7 +242,7 @@ no coprocessor reflash is needed.
   require a newly generated and flashed Gen7 main image; older images return
   unavailable metadata while ordinary telemetry still works.
 - `rte_spike_capture` sends `spikes` to dump the firmware's existing frozen
-  64-sample, 5 kHz current/encoder capture and re-arm it. It returns compact
+  64-sample current/encoder capture with firmware-reported timing and re-arm it. It returns compact
   current/angle trend analysis by default. Set `include_samples: true` only
   when all 64 parsed samples are needed. It reports no capture if the
   current threshold has not fired. Set that threshold with the ordinary
@@ -368,3 +368,54 @@ built-in trend metrics.
 
 The full CLI and hardware details are in
 [docs/automation-backend.md](docs/automation-backend.md).
+
+## Gen7 current-control capture and voltage units (2026-09-22)
+
+The current-loop repair requires a main MCU rebuild/reflash and a rebuilt `rte`
+for spike timing support. It does not change the binary telemetry protocol or
+require a coprocessor reflash. `spikes` format 2 reports measured sample rate and
+raw cycle timestamps; the MCP parser supports both this and the older 5 kHz
+format. The older header does not prove the actual ADC rate on legacy firmware.
+
+`cg_vd_v` / `cg_vq_v` now report the vector-limited physical-voltage commands;
+`cg_vd_req_v` / `cg_vq_req_v` report the requests before the shared vector limit.
+`cg_vlimit_scale` is 1 when not clipped. `cg_sample_age_us`, `cg_sample_valid` and
+`cg_sample_seq` describe the single current frame latched for each TIM step.
+The existing Kp/Ki/feedforward settings retain their effective actuation through
+an explicit 0.5 legacy-to-volts adapter. `Ctrl.VoltLimitPu` defaults to 1/3 for
+the first comparison, capped by the linear modulation and ADC-window margins.
+
+Use `ctrlcap arm [decimation]` to collect a bounded 512-frame generated-control
+capture; `ctrlcap status` reports progress. Once frozen, `ctrlcap dump [offset]
+[count]` reads at most 16 frames per page without rearming. `ccA` and `ccB` CSV
+lines share an index; headers name every column. Cycles are raw DWT counts:
+subtract as unsigned 32-bit values before dividing by `clock_hz`. The recorder
+runs from TIM control; ADC `seq` identifies repeated feedback samples. Age is
+measured from ADC callback entry, not a claimed analog acquisition timestamp.
+Tracked active duties are software estimates of timer-latched commands, not
+measured gate voltages. Frame storage is approximately 60 KiB in AXI SRAM.
+
+The same commands work in the Studio Runtime console and through
+`rte_device_command_response`. Export pages to a local file for analysis. Keep
+MCP's response guard and bounded pagination; do not dump all 512 frames in one
+response. `control start` runs graph control; native `foc start` remains a
+separate internal diagnostic.
+
+### Final 75 V acquisition update (2026-09-23)
+
+The injected ADC now uses TIM1 TRGO2 update events at both PWM extrema: 5 kHz
+during graph control with 2.5 kHz switching. Raw overcurrent checks remain in
+the ADC path. Each raw sample is Park-transformed at its own angle, then the
+controller uses a coherent 1/4, 1/2, 1/4 full-cycle d/q estimate (200 us delay).
+`cg_id_a` / `cg_iq_a` report this actual controller feedback; `cg_id_raw_a` /
+`cg_iq_raw_a` expose the newest unaveraged d/q sample. `ctrlcap` ccA headers now
+include appended `raw_id,raw_iq` columns; phase currents and theta refer to that
+newest raw frame. Parse columns by the emitted headers. Sample age describes
+the newest ADC callback, not the older estimator center. The recorder rate
+comes from its timestamps. Legacy OC4 scheduling no longer selects the injected
+trigger; both zero-vector windows must satisfy the guard.
+
+The tested FRAM voltage fraction is 0.45; graph fallback remains 1/3. See
+`docs/gen7-current-loop-results.md` for measurements, the flashed image hashes,
+remaining raw ripple and serial/host-reload limitations. No permanent RPM cap
+was introduced. Full voltage utilization and full-speed operation are unvalidated.

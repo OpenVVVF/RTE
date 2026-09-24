@@ -1,0 +1,21 @@
+{
+  "configuration_changes": false,
+  "nominal_bus_v": 100,
+  "variables": [
+    "[SHELL]   IqVar = 0.0000",
+    "[SHELL]   IdVar = 0.0000",
+    "[SHELL]   ThrottleEnable = 1.0000"
+  ],
+  "signals": {
+    "Mech_RPM": 0.03959028050303459,
+    "control_outputs_enabled": 0,
+    "pwm_moe": 0,
+    "temp_inv1_c": 27.294677734375,
+    "temp_inv2_c": 30.50390625,
+    "vdc_v": 99.41571807861328
+  },
+  "strings": {
+    "control_state": "IDLE",
+    "fault_active_names": "none"
+  }
+}

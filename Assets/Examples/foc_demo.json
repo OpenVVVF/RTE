@@ -49,102 +49,6 @@
       }
     },
     {
-      "id": "sample_c7_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
-      "consumer": {
-        "nodeId": "PiD",
-        "portName": "Measurement"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
-      }
-    },
-    {
-      "id": "sample_c9_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
-      "consumer": {
-        "nodeId": "PiQ",
-        "portName": "Measurement"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
-      }
-    },
-    {
-      "id": "sample_c43_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
-      "consumer": {
-        "nodeId": "LogId",
-        "portName": "Value"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
-      }
-    },
-    {
-      "id": "sample_c44_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
-      "consumer": {
-        "nodeId": "LogIq",
-        "portName": "Value"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "dimensionless"
-      }
-    },
-    {
-      "id": "sample_c_ff_id_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_D"
-      },
-      "consumer": {
-        "nodeId": "FocFeedforward",
-        "portName": "I_D"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
-      }
-    },
-    {
-      "id": "sample_c_ff_iq_bridge",
-      "producer": {
-        "nodeId": "Park",
-        "portName": "I_Q"
-      },
-      "consumer": {
-        "nodeId": "FocFeedforward",
-        "portName": "I_Q"
-      },
-      "type": {
-        "dtype": "f32",
-        "frame": "scalar",
-        "quantity": "current"
-      }
-    },
-    {
       "id": "sample_EncoderSign_bridge",
       "producer": {
         "nodeId": "CfgEncSign",
@@ -247,39 +151,6 @@
       "to": {
         "nodeId": "Park",
         "portName": "I_Alpha"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IdVar",
-        "portName": "Value"
-      },
-      "id": "c6",
-      "to": {
-        "nodeId": "PiD",
-        "portName": "Setpoint"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiD",
-        "portName": "Output"
-      },
-      "id": "c10",
-      "to": {
-        "nodeId": "InvPark",
-        "portName": "V_D"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiQ",
-        "portName": "Output"
-      },
-      "id": "c11",
-      "to": {
-        "nodeId": "InvPark",
-        "portName": "V_Q"
       }
     },
     {
@@ -438,28 +309,6 @@
     },
     {
       "from": {
-        "nodeId": "PiD",
-        "portName": "Output"
-      },
-      "id": "c45",
-      "to": {
-        "nodeId": "LogVd",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "PiQ",
-        "portName": "Output"
-      },
-      "id": "c46",
-      "to": {
-        "nodeId": "LogVq",
-        "portName": "Value"
-      }
-    },
-    {
-      "from": {
         "nodeId": "VdcApp",
         "portName": "V_Dc"
       },
@@ -504,17 +353,6 @@
     },
     {
       "from": {
-        "nodeId": "CfgKpQ",
-        "portName": "Value"
-      },
-      "id": "c51",
-      "to": {
-        "nodeId": "PiQ",
-        "portName": "Kp"
-      }
-    },
-    {
-      "from": {
         "nodeId": "CfgEnable",
         "portName": "Value"
       },
@@ -544,17 +382,6 @@
       "to": {
         "nodeId": "IqGate",
         "portName": "Sel"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "IqGate",
-        "portName": "Out"
-      },
-      "id": "c55",
-      "to": {
-        "nodeId": "PiQ",
-        "portName": "Setpoint"
       }
     },
     {
@@ -665,39 +492,6 @@
       "to": {
         "nodeId": "SlewIq",
         "portName": "Rate"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgKpD",
-        "portName": "Value"
-      },
-      "id": "c_kp_d",
-      "to": {
-        "nodeId": "PiD",
-        "portName": "Kp"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgKiD",
-        "portName": "Value"
-      },
-      "id": "c_ki_d",
-      "to": {
-        "nodeId": "PiD",
-        "portName": "Ki"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgKiQ",
-        "portName": "Value"
-      },
-      "id": "c_ki_q",
-      "to": {
-        "nodeId": "PiQ",
-        "portName": "Ki"
       }
     },
     {
@@ -855,28 +649,6 @@
       }
     },
     {
-      "from": {
-        "nodeId": "FocFeedforward",
-        "portName": "V_D"
-      },
-      "id": "c_ff_vd",
-      "to": {
-        "nodeId": "PiD",
-        "portName": "Feedforward"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "FocFeedforward",
-        "portName": "V_Q"
-      },
-      "id": "c_ff_vq",
-      "to": {
-        "nodeId": "PiQ",
-        "portName": "Feedforward"
-      }
-    },
-    {
       "id": "sample_i_a_bridge",
       "from": {
         "nodeId": "Currents",
@@ -918,6 +690,358 @@
       "to": {
         "nodeId": "CurrentSampleElecAngle",
         "portName": "ThetaMech"
+      }
+    },
+    {
+      "id": "hs_Park_I_D_PublishCurrentFrame_Id",
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_D"
+      },
+      "to": {
+        "nodeId": "PublishCurrentFrame",
+        "portName": "Id"
+      }
+    },
+    {
+      "id": "hs_Park_I_Q_PublishCurrentFrame_Iq",
+      "from": {
+        "nodeId": "Park",
+        "portName": "I_Q"
+      },
+      "to": {
+        "nodeId": "PublishCurrentFrame",
+        "portName": "Iq"
+      }
+    },
+    {
+      "id": "hs_CurrentSampleElecAngle_ThetaElec_PublishCurrentFrame_Theta",
+      "from": {
+        "nodeId": "CurrentSampleElecAngle",
+        "portName": "ThetaElec"
+      },
+      "to": {
+        "nodeId": "PublishCurrentFrame",
+        "portName": "Theta"
+      }
+    },
+    {
+      "id": "hs_Currents_I_A_PublishCurrentFrame_Ia",
+      "from": {
+        "nodeId": "Currents",
+        "portName": "I_A"
+      },
+      "to": {
+        "nodeId": "PublishCurrentFrame",
+        "portName": "Ia"
+      }
+    },
+    {
+      "id": "hs_Currents_I_B_PublishCurrentFrame_Ib",
+      "from": {
+        "nodeId": "Currents",
+        "portName": "I_B"
+      },
+      "to": {
+        "nodeId": "PublishCurrentFrame",
+        "portName": "Ib"
+      }
+    },
+    {
+      "id": "hs_Currents_I_C_PublishCurrentFrame_Ic",
+      "from": {
+        "nodeId": "Currents",
+        "portName": "I_C"
+      },
+      "to": {
+        "nodeId": "PublishCurrentFrame",
+        "portName": "Ic"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Id_LogId_Value",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Id"
+      },
+      "to": {
+        "nodeId": "LogId",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Iq_LogIq_Value",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Iq"
+      },
+      "to": {
+        "nodeId": "LogIq",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Id_FocFeedforward_I_D",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Id"
+      },
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_D"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Iq_FocFeedforward_I_Q",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Iq"
+      },
+      "to": {
+        "nodeId": "FocFeedforward",
+        "portName": "I_Q"
+      }
+    },
+    {
+      "id": "hs_IdVar_Value_VectorPi_IdRef",
+      "from": {
+        "nodeId": "IdVar",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "IdRef"
+      }
+    },
+    {
+      "id": "hs_IqGate_Out_VectorPi_IqRef",
+      "from": {
+        "nodeId": "IqGate",
+        "portName": "Out"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "IqRef"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Id_VectorPi_Id",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Id"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Id"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Iq_VectorPi_Iq",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Iq"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Iq"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Valid_VectorPi_Valid",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Valid"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Valid"
+      }
+    },
+    {
+      "id": "hs_FocFeedforward_V_D_VectorPi_Fd",
+      "from": {
+        "nodeId": "FocFeedforward",
+        "portName": "V_D"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Fd"
+      }
+    },
+    {
+      "id": "hs_FocFeedforward_V_Q_VectorPi_Fq",
+      "from": {
+        "nodeId": "FocFeedforward",
+        "portName": "V_Q"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Fq"
+      }
+    },
+    {
+      "id": "hs_CfgKpD_Value_VectorPi_Kpd",
+      "from": {
+        "nodeId": "CfgKpD",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Kpd"
+      }
+    },
+    {
+      "id": "hs_CfgKiD_Value_VectorPi_Kid",
+      "from": {
+        "nodeId": "CfgKiD",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Kid"
+      }
+    },
+    {
+      "id": "hs_CfgKpQ_Value_VectorPi_Kpq",
+      "from": {
+        "nodeId": "CfgKpQ",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Kpq"
+      }
+    },
+    {
+      "id": "hs_CfgKiQ_Value_VectorPi_Kiq",
+      "from": {
+        "nodeId": "CfgKiQ",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "Kiq"
+      }
+    },
+    {
+      "id": "hs_CfgVoltLimit_Value_VectorPi_MaxBusFraction",
+      "from": {
+        "nodeId": "CfgVoltLimit",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "VectorPi",
+        "portName": "MaxBusFraction"
+      }
+    },
+    {
+      "id": "hs_VectorPi_Vd_InvPark_V_D",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "Vd"
+      },
+      "to": {
+        "nodeId": "InvPark",
+        "portName": "V_D"
+      }
+    },
+    {
+      "id": "hs_VectorPi_Vq_InvPark_V_Q",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "Vq"
+      },
+      "to": {
+        "nodeId": "InvPark",
+        "portName": "V_Q"
+      }
+    },
+    {
+      "id": "hs_VectorPi_Vd_LogVd_Value",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "Vd"
+      },
+      "to": {
+        "nodeId": "LogVd",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_VectorPi_Vq_LogVq_Value",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "Vq"
+      },
+      "to": {
+        "nodeId": "LogVq",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_AgeUs_Log_cg_sample_age_us_Value",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "AgeUs"
+      },
+      "to": {
+        "nodeId": "Log_cg_sample_age_us",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Valid_Log_cg_sample_valid_Value",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Valid"
+      },
+      "to": {
+        "nodeId": "Log_cg_sample_valid",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_CurrentFrame_Sequence_Log_cg_sample_seq_Value",
+      "from": {
+        "nodeId": "CurrentFrame",
+        "portName": "Sequence"
+      },
+      "to": {
+        "nodeId": "Log_cg_sample_seq",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_VectorPi_RequestedD_Log_cg_vd_req_v_Value",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "RequestedD"
+      },
+      "to": {
+        "nodeId": "Log_cg_vd_req_v",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_VectorPi_RequestedQ_Log_cg_vq_req_v_Value",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "RequestedQ"
+      },
+      "to": {
+        "nodeId": "Log_cg_vq_req_v",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "hs_VectorPi_Scale_Log_cg_vlimit_scale_Value",
+      "from": {
+        "nodeId": "VectorPi",
+        "portName": "Scale"
+      },
+      "to": {
+        "nodeId": "Log_cg_vlimit_scale",
+        "portName": "Value"
       }
     }
   ],
@@ -1020,7 +1144,7 @@
       "displayName": "PWM Out",
       "domain": "tim_isr",
       "id": "Actuators.PwmOut",
-      "inlineCode": "platform_pwm_set(Duty_A, Duty_B, Duty_C);\n",
+      "inlineCode": "platform_pwm_set(Duty_A, Duty_B, Duty_C);\n\nplatform_control_capture_step(Duty_A,Duty_B,Duty_C);\n",
       "inputPorts": [
         {
           "description": "Phase A PWM duty command in percent.",
@@ -1275,7 +1399,7 @@
       "displayName": "Inverse Park Transform",
       "domain": "",
       "id": "Transforms.InversePark",
-      "inlineCode": "const float cos_theta = cosf(Theta);\nconst float sin_theta = sinf(Theta);\nV_Alpha = V_D * cos_theta - V_Q * sin_theta;\nV_Beta = V_D * sin_theta + V_Q * cos_theta;\n",
+      "inlineCode": "const float cos_theta = cosf(Theta);\nconst float sin_theta = sinf(Theta);\nV_Alpha = V_D * cos_theta - V_Q * sin_theta;\nV_Beta = V_D * sin_theta + V_Q * cos_theta;\n\nplatform_control_actuation_angle(Theta);\n",
       "inputPorts": [
         {
           "description": "Rotating-frame direct-axis voltage.",
@@ -2347,7 +2471,7 @@
       "displayName": "Space Vector PWM",
       "domain": "",
       "id": "Transforms.Svpwm",
-      "inlineCode": "/* Guard against a missing/invalid DC-link measurement (precharge, sensor\n * glitch): mirror Gen6 pwm.cpp PWM_SetVoltageVector and drive the midpoint\n * duty.  The !(x > 1) form also rejects NaN/Inf \u2014 dividing by a ~0 V link\n * would otherwise emit inf/NaN duties that slip past the percent clamps\n * below (NaN fails x<0/x>100 tests) and permanently poison the downstream\n * PWM/plant state.  Structured as if/else (not an early return) so the\n * rest of the domain step still runs: PwmOut must see the 50% duties. */\nconst float vdc = V_Dc.in(au::volts);\nif (!(vdc > 1.0f)) {\n    Duty_A = 50.0f;\n    Duty_B = 50.0f;\n    Duty_C = 50.0f;\n} else {\n    /* Clamp the alpha/beta voltage vector to the six-step boundary.\n     * The maximum line-to-neutral voltage magnitude for linear modulation is\n     * Vdc / sqrt(3); overmodulation is allowed up to 2*Vdc/3. */\n    const float sqrt3 = 1.7320508075688772f;\n    const float v_max_linear = vdc * 2.0f / 3.0f;\n    float valpha = V_Alpha.in(au::volts);\n    float vbeta  = V_Beta.in(au::volts);\n    const float v_albe_sq = valpha * valpha + vbeta * vbeta;\n    if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {\n        const float scale = v_max_linear / sqrtf(v_albe_sq);\n        valpha *= scale;\n        vbeta  *= scale;\n    }\n\n    /* Inverse Clarke: alpha/beta -> A/B/C. */\n    const float v_a = valpha / vdc;\n    const float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / vdc;\n    const float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / vdc;\n\n    float v_min = v_a;\n    if (v_b < v_min) v_min = v_b;\n    if (v_c < v_min) v_min = v_c;\n\n    float v_max = v_a;\n    if (v_b > v_max) v_max = v_b;\n    if (v_c > v_max) v_max = v_c;\n\n    const float v_offset = 0.5f * (v_min + v_max);\n\n    /* Convert to percent duty and clamp.  Linear SVM stays roughly in\n     * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */\n    float duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);\n    float duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);\n    float duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);\n\n    if (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;\n    if (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;\n    if (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;\n\n    Duty_A = duty_a_pct;\n    Duty_B = duty_b_pct;\n    Duty_C = duty_c_pct;\n}\n",
+      "inlineCode": "float du=50,dv=50,dw=50;\nplatform_modulate(V_Alpha.in(au::volts),V_Beta.in(au::volts),V_Dc.in(au::volts),&du,&dv,&dw);\nDuty_A=du; Duty_B=dv; Duty_C=dw;\n",
       "inputPorts": [
         {
           "description": "Requested stationary-frame alpha-axis voltage.",
@@ -2726,7 +2850,7 @@
       "displayName": "Slew Rate Limiter",
       "domain": "",
       "id": "Control.Slew",
-      "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In;\nconst float step = Rate * Dt;\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
+      "inlineCode": "/* Rate-limited reference follower: Out tracks In at max Rate units/sec.\n * On control start Value resets to the graph default, so references ramp\n * smoothly from zero instead of stepping. */\nconst float target = In;\nconst float step = Rate * platform_get_current_domain_dt();\nfloat v = Value;\nif (target > v + step) {\n    v += step;\n} else if (target < v - step) {\n    v -= step;\n} else {\n    v = target;\n}\nValue = v;\nOut = Value;\n",
       "inputPorts": [
         {
           "description": "Target value for the limiter to follow.",
@@ -4565,6 +4689,368 @@
           "quantity": "dimensionless"
         }
       }
+    },
+    {
+      "id": "Custom.PublishCurrentFrame",
+      "displayName": "PublishCurrentFrame",
+      "defaultName": "PublishCurrentFrame",
+      "description": "",
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "Id",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Iq",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Theta",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Ia",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Ib",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Ic",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ],
+      "outputPorts": [],
+      "inlineCode": "platform_publish_current_frame(Id.in(au::amperes), Iq.in(au::amperes), Theta,\n    Ia.in(au::amperes), Ib.in(au::amperes), Ic.in(au::amperes));\n",
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "parameterTypes": {}
+    },
+    {
+      "id": "Custom.CurrentFrame",
+      "displayName": "CurrentFrame",
+      "defaultName": "CurrentFrame",
+      "description": "",
+      "domain": "",
+      "inputPorts": [],
+      "outputPorts": [
+        {
+          "name": "Id",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Iq",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Theta",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "AgeUs",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Valid",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Sequence",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "inlineCode": "float id=0,iq=0,theta=0,age=0,valid=0,seq=0;\nplatform_latch_current_frame(&id,&iq,&theta,&age,&valid,&seq);\nId=rte::Amperes(id); Iq=rte::Amperes(iq); Theta=theta;\nAgeUs=age; Valid=valid; Sequence=seq;\n",
+      "isEntryPoint": true,
+      "maxInstances": 1,
+      "parameterTypes": {}
+    },
+    {
+      "id": "Custom.VectorCurrentPi",
+      "displayName": "VectorCurrentPi",
+      "defaultName": "VectorCurrentPi",
+      "description": "",
+      "domain": "",
+      "inputPorts": [
+        {
+          "name": "IdRef",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "IqRef",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Id",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Iq",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Fd",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "name": "Fq",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "name": "Kpd",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Kid",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Kpq",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Kiq",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "MaxBusFraction",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Valid",
+          "direction": "input",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Vd",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "name": "Vq",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "name": "RequestedD",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "name": "RequestedQ",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "name": "Scale",
+          "direction": "output",
+          "optional": false,
+          "description": "",
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "inlineCode": "float vd=0,vq=0,rd=0,rq=0,scale=1;\nplatform_vector_pi(IdRef.in(au::amperes), IqRef.in(au::amperes),\n    Id.in(au::amperes), Iq.in(au::amperes), Fd.in(au::volts), Fq.in(au::volts),\n    Kpd,Kid,Kpq,Kiq,MaxBusFraction,Valid,&vd,&vq,&rd,&rq,&scale);\nVd=rte::Volts(vd); Vq=rte::Volts(vq);\nRequestedD=rte::Volts(rd); RequestedQ=rte::Volts(rq); Scale=scale;\n",
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "parameterTypes": {}
     }
   ],
   "nodes": [
@@ -4847,54 +5333,6 @@
         "y": 2820.678577777778
       },
       "type": "Transforms.Park"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "PiD",
-      "parameterInputs": [
-        "Kp",
-        "Ki"
-      ],
-      "parameters": {
-        "AwGain": "1.0",
-        "Dt": "0.0002",
-        "Feedforward": "0.0",
-        "Integral": "0.0",
-        "Ki": "5.0",
-        "Kp": "0.04",
-        "OutputMax": "200.0",
-        "OutputMin": "-200.0"
-      },
-      "position": {
-        "x": 1333.8134908839509,
-        "y": 3368.450299101236
-      },
-      "type": "Custom.PiCurrent"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "PiQ",
-      "parameterInputs": [
-        "Kp",
-        "Ki"
-      ],
-      "parameters": {
-        "AwGain": "1.0",
-        "Dt": "0.0002",
-        "Feedforward": "0.0",
-        "Integral": "0.0",
-        "Ki": "5.0",
-        "Kp": "0.04",
-        "OutputMax": "200.0",
-        "OutputMin": "-200.0"
-      },
-      "position": {
-        "x": 1487.211021399177,
-        "y": 2671.8702954732507
-      },
-      "type": "Custom.PiCurrent"
     },
     {
       "displayName": "",
@@ -5543,6 +5981,132 @@
         "y": 2640.222222222222
       },
       "type": "Transforms.ElecAngle"
+    },
+    {
+      "id": "PublishCurrentFrame",
+      "type": "Custom.PublishCurrentFrame",
+      "domain": "adc_isr",
+      "displayName": "",
+      "parameters": {},
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "CurrentFrame",
+      "type": "Custom.CurrentFrame",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {},
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "VectorPi",
+      "type": "Custom.VectorCurrentPi",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {},
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "CfgVoltLimit",
+      "type": "Values.Config",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Cached": "0.0",
+        "DefaultValue": "0.3333333333",
+        "Key": "Ctrl.VoltLimitPu"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "Log_cg_sample_age_us",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_sample_age_us"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "Log_cg_sample_valid",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_sample_valid"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "Log_cg_sample_seq",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_sample_seq"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "Log_cg_vd_req_v",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_vd_req_v"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "Log_cg_vq_req_v",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_vq_req_v"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
+    },
+    {
+      "id": "Log_cg_vlimit_scale",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_vlimit_scale"
+      },
+      "position": {
+        "x": 1600,
+        "y": 3600
+      }
     }
   ],
   "schemaVersion": 1

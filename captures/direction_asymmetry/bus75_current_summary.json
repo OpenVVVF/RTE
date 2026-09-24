@@ -1,0 +1,590 @@
+{
+  "bus75_bottom20_positive_ctrlcap": {
+    "samples": 256,
+    "sample_hz": 2500.0454553719424,
+    "encoder_angle_fit_rpm": 1188.172360794109,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -6.196,
+      "max": 9.102,
+      "mean": 0.31231249999999994,
+      "ac_rms": 2.890275003811272,
+      "third_electrical_sin_cos": [
+        -1.787891220918523,
+        2.0875758716883164
+      ],
+      "third_electrical_amplitude": 2.7485501701611272
+    },
+    "iq": {
+      "min": 15.831,
+      "max": 26.445,
+      "mean": 20.104359374999998,
+      "ac_rms": 1.9207186103707667,
+      "third_electrical_sin_cos": [
+        -0.4012845853094188,
+        0.061078044617026546
+      ],
+      "third_electrical_amplitude": 0.4059062033785536
+    }
+  },
+  "bus75_cycle35_negative_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 4999.818188429495,
+    "encoder_angle_fit_rpm": -2184.6021075561976,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -10.288,
+      "max": 12.528,
+      "mean": 1.0751015625,
+      "ac_rms": 4.17084143908607,
+      "third_electrical_sin_cos": [
+        0.058113297669046014,
+        -0.5953386960608006
+      ],
+      "third_electrical_amplitude": 0.5981683027320533
+    },
+    "iq": {
+      "min": -41.599,
+      "max": -30.023,
+      "mean": -35.14969140625,
+      "ac_rms": 2.2887041235000534,
+      "third_electrical_sin_cos": [
+        0.7476414057320444,
+        0.8314542518337528
+      ],
+      "third_electrical_amplitude": 1.1181609206448833
+    },
+    "raw_id": {
+      "min": -19.838,
+      "max": 25.961,
+      "mean": 1.070564453125,
+      "ac_rms": 10.205669552335642,
+      "third_electrical_sin_cos": [
+        -0.38861928968212617,
+        -0.5355100460427776
+      ],
+      "third_electrical_amplitude": 0.6616615159776017
+    },
+    "raw_iq": {
+      "min": -43.952,
+      "max": -28.873,
+      "mean": -35.155416015625,
+      "ac_rms": 3.0057917557415923,
+      "third_electrical_sin_cos": [
+        1.25822969275447,
+        0.19632473530891248
+      ],
+      "third_electrical_amplitude": 1.2734541065241114
+    }
+  },
+  "bus75_cycle35_positive_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 5000.36366281179,
+    "encoder_angle_fit_rpm": 2160.558376045404,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -9.131,
+      "max": 13.872,
+      "mean": 1.30691796875,
+      "ac_rms": 4.425640283071577,
+      "third_electrical_sin_cos": [
+        -0.01964236847929199,
+        -0.4453135781213045
+      ],
+      "third_electrical_amplitude": 0.4457465709331654
+    },
+    "iq": {
+      "min": 29.248,
+      "max": 41.45,
+      "mean": 35.489726562499996,
+      "ac_rms": 2.2732593313856504,
+      "third_electrical_sin_cos": [
+        1.004776315911406,
+        -0.861833326626875
+      ],
+      "third_electrical_amplitude": 1.323756823552288
+    },
+    "raw_id": {
+      "min": -19.336,
+      "max": 27.966,
+      "mean": 1.2898515625,
+      "ac_rms": 10.331842743008023,
+      "third_electrical_sin_cos": [
+        0.3194226094882105,
+        -0.4237560485932911
+      ],
+      "third_electrical_amplitude": 0.53065995908082
+    },
+    "raw_iq": {
+      "min": 26.556,
+      "max": 47.019,
+      "mean": 35.4861796875,
+      "ac_rms": 4.0369600261668,
+      "third_electrical_sin_cos": [
+        1.4894108022410864,
+        -0.04082833985467316
+      ],
+      "third_electrical_amplitude": 1.489970298753544
+    }
+  },
+  "bus75_cycle_startup_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 4999.818188429583,
+    "encoder_angle_fit_rpm": 0.006001515930914365,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -1.013,
+      "max": 0.812,
+      "mean": 0.008232421875,
+      "ac_rms": 0.2545229197600818
+    },
+    "iq": {
+      "min": -2.037,
+      "max": 0.961,
+      "mean": -0.30975585937500005,
+      "ac_rms": 0.40656574864771905
+    },
+    "raw_id": {
+      "min": -1.712,
+      "max": 2.195,
+      "mean": 0.009503906249999996,
+      "ac_rms": 0.41239652109316005
+    },
+    "raw_iq": {
+      "min": -3.564,
+      "max": 1.802,
+      "mean": -0.3076171875,
+      "ac_rms": 0.6854867154426406
+    }
+  },
+  "bus75_headroom_negative_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 2499.8636438013577,
+    "encoder_angle_fit_rpm": -2259.9989213072877,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -19.172,
+      "max": 26.234,
+      "mean": 0.614453125,
+      "ac_rms": 11.506082390726121,
+      "third_electrical_sin_cos": [
+        2.9910713120195327,
+        14.84312601752392
+      ],
+      "third_electrical_amplitude": 15.1414958826954
+    },
+    "iq": {
+      "min": -42.207,
+      "max": -26.587,
+      "mean": -34.795939453125,
+      "ac_rms": 2.874298499716879,
+      "third_electrical_sin_cos": [
+        -1.0837059622790584,
+        0.9401272627809518
+      ],
+      "third_electrical_amplitude": 1.434662985827398
+    }
+  },
+  "bus75_headroom_positive_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 2500.0454553719424,
+    "encoder_angle_fit_rpm": 2185.2780810870167,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -20.818,
+      "max": 32.978,
+      "mean": 0.8868144531250001,
+      "ac_rms": 11.724797446725646,
+      "third_electrical_sin_cos": [
+        -11.690564405142105,
+        9.577097409190078
+      ],
+      "third_electrical_amplitude": 15.112580550517865
+    },
+    "iq": {
+      "min": 25.764,
+      "max": 51.761,
+      "mean": 34.97417578125,
+      "ac_rms": 3.5850092557247604,
+      "third_electrical_sin_cos": [
+        -3.5098137868612014,
+        0.7500538720498682
+      ],
+      "third_electrical_amplitude": 3.58906305731983
+    }
+  },
+  "bus75_new_negative_ctrlcap": {
+    "samples": 256,
+    "sample_hz": 2499.9090942147477,
+    "encoder_angle_fit_rpm": -2044.8974612616355,
+    "valid_min": 1.0,
+    "voltage_scale_min": 0.91362,
+    "id": {
+      "min": -13.073,
+      "max": 26.137,
+      "mean": 3.9573593750000002,
+      "ac_rms": 9.752658778294748,
+      "third_electrical_sin_cos": [
+        -0.3045460342190586,
+        12.746095806948373
+      ],
+      "third_electrical_amplitude": 12.749733589642783
+    },
+    "iq": {
+      "min": -22.201,
+      "max": -6.951,
+      "mean": -16.18394140625,
+      "ac_rms": 2.791493183904543,
+      "third_electrical_sin_cos": [
+        -1.5720645030640445,
+        1.1131557943128827
+      ],
+      "third_electrical_amplitude": 1.9262664987499383
+    }
+  },
+  "bus75_new_positive_ctrlcap": {
+    "samples": 257,
+    "sample_hz": 2500.113641529161,
+    "encoder_angle_fit_rpm": 2028.887094347826,
+    "valid_min": 1.0,
+    "voltage_scale_min": 0.92094,
+    "id": {
+      "min": -15.04,
+      "max": 30.319,
+      "mean": 7.523848249027238,
+      "ac_rms": 10.505576336766733,
+      "third_electrical_sin_cos": [
+        -8.49102962972168,
+        10.558846767212215
+      ],
+      "third_electrical_amplitude": 13.549421730327804
+    },
+    "iq": {
+      "min": 10.636,
+      "max": 27.336,
+      "mean": 19.00608560311284,
+      "ac_rms": 3.2995479021270264,
+      "third_electrical_sin_cos": [
+        -2.9692426731210766,
+        0.8120197805291555
+      ],
+      "third_electrical_amplitude": 3.0782751949515195
+    }
+  },
+  "bus75_new_startup_ctrlcap": {
+    "samples": 256,
+    "sample_hz": 2499.9999999999936,
+    "encoder_angle_fit_rpm": 0.01941541447544681,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -1.747,
+      "max": 2.744,
+      "mean": 0.15775781249999998,
+      "ac_rms": 0.6384503363380858
+    },
+    "iq": {
+      "min": -1.819,
+      "max": 1.443,
+      "mean": 0.010593749999999999,
+      "ac_rms": 0.3872734809194111
+    }
+  },
+  "bus75_pair20_negative_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 4999.818188429495,
+    "encoder_angle_fit_rpm": -1206.612889229238,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -3.659,
+      "max": 6.065,
+      "mean": 0.169529296875,
+      "ac_rms": 1.7411740199910213,
+      "third_electrical_sin_cos": [
+        -0.0014728536468747021,
+        -0.03525676455183278
+      ],
+      "third_electrical_amplitude": 0.03528751542016644
+    },
+    "iq": {
+      "min": -24.936,
+      "max": -15.334,
+      "mean": -20.037814453125,
+      "ac_rms": 1.696178021785444,
+      "third_electrical_sin_cos": [
+        0.0037188794493736516,
+        -0.03158861395403333
+      ],
+      "third_electrical_amplitude": 0.031806769655152396
+    },
+    "raw_id": {
+      "min": -5.636,
+      "max": 7.143,
+      "mean": 0.16590234374999996,
+      "ac_rms": 2.6594154179938223,
+      "third_electrical_sin_cos": [
+        -0.0006897010366424978,
+        -0.03498587655902772
+      ],
+      "third_electrical_amplitude": 0.03499267417794003
+    },
+    "raw_iq": {
+      "min": -25.149,
+      "max": -14.952,
+      "mean": -20.03759765625,
+      "ac_rms": 1.8565864894496587,
+      "third_electrical_sin_cos": [
+        -0.00487932166216759,
+        -0.03369682897723208
+      ],
+      "third_electrical_amplitude": 0.034048260792641456
+    }
+  },
+  "bus75_pair20_positive_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 5000.181824793619,
+    "encoder_angle_fit_rpm": 1187.5972555425071,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -4.164,
+      "max": 7.81,
+      "mean": 0.3361640625,
+      "ac_rms": 2.0131080177308536,
+      "third_electrical_sin_cos": [
+        -0.014614023714233232,
+        -0.011641078086190736
+      ],
+      "third_electrical_amplitude": 0.018683800152243156
+    },
+    "iq": {
+      "min": 15.46,
+      "max": 25.861,
+      "mean": 20.092953125,
+      "ac_rms": 1.806369313141414,
+      "third_electrical_sin_cos": [
+        -0.008127799508336761,
+        -0.05510470769060365
+      ],
+      "third_electrical_amplitude": 0.0557008970710041
+    },
+    "raw_id": {
+      "min": -6.563,
+      "max": 11.124,
+      "mean": 0.34318750000000003,
+      "ac_rms": 3.001553922423975,
+      "third_electrical_sin_cos": [
+        -0.014863660605558686,
+        -0.010166694514641602
+      ],
+      "third_electrical_amplitude": 0.018008056084743873
+    },
+    "raw_iq": {
+      "min": 14.162,
+      "max": 25.867,
+      "mean": 20.097175781249998,
+      "ac_rms": 1.989455680002624,
+      "third_electrical_sin_cos": [
+        -0.0003106298988511737,
+        -0.05430171630640055
+      ],
+      "third_electrical_amplitude": 0.054302604769521576
+    }
+  },
+  "bus75_pair35_negative_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 4999.818188429495,
+    "encoder_angle_fit_rpm": -2188.689898221719,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -11.457,
+      "max": 11.717,
+      "mean": 1.2048125,
+      "ac_rms": 4.871716800670734,
+      "third_electrical_sin_cos": [
+        0.11156884251297808,
+        -0.5069904563231624
+      ],
+      "third_electrical_amplitude": 0.5191213051132213
+    },
+    "iq": {
+      "min": -42.149,
+      "max": -29.885,
+      "mean": -35.066490234374996,
+      "ac_rms": 2.360707003949957,
+      "third_electrical_sin_cos": [
+        0.9158326640320749,
+        0.6111675314773827
+      ],
+      "third_electrical_amplitude": 1.1010337052244337
+    },
+    "raw_id": {
+      "min": -17.53,
+      "max": 24.352,
+      "mean": 1.215087890625,
+      "ac_rms": 9.87551434509443,
+      "third_electrical_sin_cos": [
+        -0.07921977548521074,
+        -0.5393727416690844
+      ],
+      "third_electrical_amplitude": 0.5451593595303598
+    },
+    "raw_iq": {
+      "min": -43.873,
+      "max": -27.98,
+      "mean": -35.062410156249996,
+      "ac_rms": 2.8723365155103866,
+      "third_electrical_sin_cos": [
+        1.1302375014823771,
+        0.2850918537508478
+      ],
+      "third_electrical_amplitude": 1.165638955608563
+    }
+  },
+  "bus75_pair35_positive_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 5000.36366281179,
+    "encoder_angle_fit_rpm": 2165.3565568226686,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -12.656,
+      "max": 16.732,
+      "mean": 1.576302734375,
+      "ac_rms": 5.123159247948113,
+      "third_electrical_sin_cos": [
+        -0.006621553370237205,
+        -0.566065642837844
+      ],
+      "third_electrical_amplitude": 0.5661043693264136
+    },
+    "iq": {
+      "min": 28.524,
+      "max": 42.639,
+      "mean": 35.380361328125005,
+      "ac_rms": 2.5012352097553943,
+      "third_electrical_sin_cos": [
+        1.446155809347289,
+        -0.6543728953071886
+      ],
+      "third_electrical_amplitude": 1.5873155045615932
+    },
+    "raw_id": {
+      "min": -19.362,
+      "max": 26.109,
+      "mean": 1.5722207031249997,
+      "ac_rms": 10.040557964106727,
+      "third_electrical_sin_cos": [
+        0.21250624560817546,
+        -0.5487760257848597
+      ],
+      "third_electrical_amplitude": 0.5884845205259924
+    },
+    "raw_iq": {
+      "min": 26.686,
+      "max": 46.081,
+      "mean": 35.373136718750004,
+      "ac_rms": 3.9442457955064723,
+      "third_electrical_sin_cos": [
+        1.6787173753105398,
+        -0.14073940686722097
+      ],
+      "third_electrical_amplitude": 1.6846066623443126
+    }
+  },
+  "bus75_single_negative_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 2499.9090942147477,
+    "encoder_angle_fit_rpm": -2025.2821535590201,
+    "valid_min": 1.0,
+    "voltage_scale_min": 0.91438,
+    "id": {
+      "min": -17.479,
+      "max": 20.191,
+      "mean": 0.828029296875,
+      "ac_rms": 8.86008049732414,
+      "third_electrical_sin_cos": [
+        0.6914657027554464,
+        11.201395835950619
+      ],
+      "third_electrical_amplitude": 11.222717740892307
+    },
+    "iq": {
+      "min": -23.149,
+      "max": -5.756,
+      "mean": -15.148111328125001,
+      "ac_rms": 3.138505424266927,
+      "third_electrical_sin_cos": [
+        -2.122042872666426,
+        1.0978626362624975
+      ],
+      "third_electrical_amplitude": 2.3892191865828507
+    }
+  },
+  "bus75_single_positive_ctrlcap": {
+    "samples": 512,
+    "sample_hz": 2500.000000000015,
+    "encoder_angle_fit_rpm": 2011.3304587707403,
+    "valid_min": 1.0,
+    "voltage_scale_min": 0.91499,
+    "id": {
+      "min": -14.178,
+      "max": 27.854,
+      "mean": 5.3016035156250005,
+      "ac_rms": 9.134815918467352,
+      "third_electrical_sin_cos": [
+        -8.068111939070265,
+        8.318192017574411
+      ],
+      "third_electrical_amplitude": 11.588215941317577
+    },
+    "iq": {
+      "min": 9.168,
+      "max": 26.427,
+      "mean": 16.91846875,
+      "ac_rms": 3.270594846119118,
+      "third_electrical_sin_cos": [
+        -2.889935946895841,
+        -0.033450879425574384
+      ],
+      "third_electrical_amplitude": 2.8901295366289563
+    }
+  },
+  "bus75_top20_positive_ctrlcap": {
+    "samples": 256,
+    "sample_hz": 2500.0909123968527,
+    "encoder_angle_fit_rpm": 1198.138331930518,
+    "valid_min": 1.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "min": -5.456,
+      "max": 12.886,
+      "mean": 0.3359375,
+      "ac_rms": 3.108106685422614,
+      "third_electrical_sin_cos": [
+        1.933765682229701,
+        -2.1398865424045344
+      ],
+      "third_electrical_amplitude": 2.884192110129513
+    },
+    "iq": {
+      "min": 15.074,
+      "max": 26.776,
+      "mean": 20.11046875,
+      "ac_rms": 1.9506198912040595,
+      "third_electrical_sin_cos": [
+        0.5194723809800517,
+        -0.1670209963831584
+      ],
+      "third_electrical_amplitude": 0.54566250359898
+    }
+  }
+}

@@ -1,0 +1,24 @@
+      -------------------------------------------------------------------
+                        STM32CubeProgrammer v2.23.0                  
+      -------------------------------------------------------------------
+
+Serial Port /dev/ttyACM0 is successfully opened.
+Port configuration: parity = even, baudrate = 460800, data-bit = 8,                     stop-bit = 1.0, flow-control = off
+Activating device: OK
+Board       : --
+Chip ID: 0x483 
+BootLoader protocol version: 3.1
+Device name : STM32H72x/STM32H73x
+NVM size    : 1 MBytes
+Warning: Available NVM size can be less than displayed value depending on part number
+Device type : MCU
+Revision ID : --  
+Device CPU  : Cortex-M7
+
+Reading 32-bit memory content
+  Size          : 64 Bytes
+  Address:      : 0x2001D000
+0x2001D000 : FA170001 0000000A 00000400 40000000
+0x2001D010 : 00000000 00000000 00000000 00000000
+0x2001D020 : 2001FAFC 241BF9E0 2001FAE0 080144EB
+0x2001D030 : 8801F612 B42D2501 B4907AAB 098C6C64

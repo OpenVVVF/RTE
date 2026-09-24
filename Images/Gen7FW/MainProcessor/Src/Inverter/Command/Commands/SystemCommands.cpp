@@ -6,6 +6,8 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/platform_api.h"
+#include <cstring>
 
 using Inverter::PhaseCurrentADC;
 using Inverter::EncoderADC;
@@ -123,6 +125,25 @@ public:
     }
 };
 
+class ControlCaptureCommand : public CommandInterface {
+public:
+    ControlCaptureCommand() : CommandInterface("ctrlcap",
+        "Bounded graph waveform capture: arm [decimation], status, dump [offset] [count<=16]",
+        {ArgSpec{"action", "", 0,0,0,true,ArgSpec::STRING},
+         ArgSpec{"value", "", 0,511,0,false,ArgSpec::FLOAT},
+         ArgSpec{"count", "", 0,16,16,false,ArgSpec::FLOAT}}) {}
+    void execute(const ArgValue* args, CommandContext&) override {
+        if (std::strcmp(args[0].s_val,"arm")==0)
+            platform_control_capture_arm(args[1].present ? uint32_t(args[1].f_val) : 1U);
+        else if (std::strcmp(args[0].s_val,"status")==0)
+            platform_control_capture_dump(0,0);
+        else if (std::strcmp(args[0].s_val,"dump")==0)
+            platform_control_capture_dump(args[1].present ? uint32_t(args[1].f_val) : 0U,
+                args[2].present ? uint32_t(args[2].f_val) : 16U);
+        else Telemetry::printf("[SHELL] ctrlcap: use arm, status or dump");
+    }
+};
+
 class EncBoundsCommand : public CommandInterface {
 public:
     EncBoundsCommand()
@@ -160,6 +181,7 @@ static RebootCommand       sRebootCmd;
 static EncStatusCommand    sEncStatusCmd;
 static EncTraceCommand     sEncTraceCmd;
 static SpikeDumpCommand    sSpikeDumpCmd;
+static ControlCaptureCommand sControlCaptureCmd;
 static EncBoundsCommand    sEncBoundsCmd;
 
 #include "Inverter/Command/CommandManager.h"
@@ -172,5 +194,6 @@ void registerSystemCommands(CommandManager& mgr) {
     mgr.registerCommand(&sEncStatusCmd);
     mgr.registerCommand(&sEncTraceCmd);
     mgr.registerCommand(&sSpikeDumpCmd);
+    mgr.registerCommand(&sControlCaptureCmd);
     mgr.registerCommand(&sEncBoundsCmd);
 }

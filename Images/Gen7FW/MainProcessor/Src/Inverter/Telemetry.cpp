@@ -406,7 +406,10 @@ static size_t build_define_payload(uint8_t* payload, size_t cap, uint8_t& count)
 
 static void drain_log_queue_to_cache() {
     LogItem it{};
-    while (g_log_q.pop(it)) {
+    while (!g_log_q.empty()) {
+        const LogItem* next = g_log_q.front();
+        if (next && (next->type == VT_STR || next->type == VT_STR_FRAG) && g_str_q.full()) break;
+        if (!g_log_q.pop(it)) break;
         if (it.type == VT_F32) {
             for (int i = 0; i < (int)MAX_DYNAMIC_KEYS; ++i) {
                 if (!g_dyn[i].used) continue;
@@ -428,8 +431,14 @@ static size_t build_data_payload(uint8_t* payload, size_t cap) {
     *w++ = 0;
     uint8_t n_items = 0;
 
-    // Sticky dynamic floats first
-    for (int i = 0; i < (int)MAX_DYNAMIC_KEYS; ++i) {
+    // Reserve room for event fragments and rotate numeric keys so an expanded
+    // graph cannot starve strings or the last numeric keys in the catalog.
+    const size_t numeric_cap = !g_str_q.empty() && cap > 212U ? cap - 212U : cap;
+    static uint16_t numeric_cursor = 0;
+    for (unsigned scanned = 0; scanned < MAX_DYNAMIC_KEYS; ++scanned) {
+        if ((size_t)(w - payload) + 7U > numeric_cap) break;
+        const uint16_t i = numeric_cursor;
+        numeric_cursor = (numeric_cursor + 1U) % MAX_DYNAMIC_KEYS;
         if (!g_dyn[i].used) continue;
         if (g_dyn[i].type != VT_F32) continue;
         if (!g_dyn[i].has_last_f32) continue;
@@ -793,6 +802,17 @@ bool updateSensors() {
     if (!g_define_q.empty()) return wrote;
 
     {
+        // build_data_payload consumes event fragments. Reserve enough UART
+        // space first so a full TX ring cannot silently discard those events.
+        // Only this main-loop dispatcher enqueues UART frames; DMA can only
+        // increase free space while the payload is assembled.
+        constexpr size_t raw_max = sizeof(ivp_header_t) + DATA_PAYLOAD_MAX + 2U;
+        constexpr size_t encoded_max = raw_max + raw_max / 254U + 3U;
+        const uint32_t saved = crit_enter();
+        const size_t used = (g_tx_head + TX_BUF_SIZE - g_tx_tail) % TX_BUF_SIZE;
+        const bool room = TX_BUF_SIZE - 1U - used >= encoded_max;
+        crit_exit(saved);
+        if (!room) return wrote;
         uint8_t payload[DATA_PAYLOAD_MAX];
         const size_t len = build_data_payload(payload, sizeof(payload));
         if (len > 1) {

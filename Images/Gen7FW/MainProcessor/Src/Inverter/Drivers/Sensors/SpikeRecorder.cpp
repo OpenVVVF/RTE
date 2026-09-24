@@ -3,6 +3,7 @@
 #include "Inverter/Telemetry.h"
 
 #include <cmath>
+#include "main.h"
 
 namespace Inverter {
 
@@ -32,6 +33,7 @@ void SpikeRecorder::onSample(uint32_t tick_ms,
 
     Sample& s = m_ring[m_head];
     s.tick_ms   = tick_ms;
+    s.cycles = DWT->CYCCNT;
     s.raw_u_sig = raw_u_sig;
     s.raw_v_sig = raw_v_sig;
     s.raw_u_ref = raw_u_ref;
@@ -75,9 +77,13 @@ void SpikeRecorder::dump() {
         return;
     }
 
-    Telemetry::printf("[SHELL] spikes: capture #%lu (* = trigger), %d samples @ 5 kHz",
-                      static_cast<unsigned long>(m_trigger_count),
-                      static_cast<int>(RING));
+    const size_t oldest = (m_trigger_idx + POST_TRIGGER + 1) % RING;
+    const size_t newest = (oldest + RING - 1) % RING;
+    const uint32_t span = m_ring[newest].cycles - m_ring[oldest].cycles;
+    const double sample_hz = span ? double(SystemCoreClock) * (RING-1) / span : 0.0;
+    Telemetry::printf("[SHELL] spikes: capture #%lu (* = trigger), %d samples @ %.3f Hz clock_hz=%lu format=2",
+                      static_cast<unsigned long>(m_trigger_count), static_cast<int>(RING),
+                      sample_hz, static_cast<unsigned long>(SystemCoreClock));
 
     float prev_angle = NAN;
     for (size_t k = 0; k < RING; ++k) {
@@ -96,7 +102,7 @@ void SpikeRecorder::dump() {
 
         const bool is_trigger = (idx == m_trigger_idx);
         Telemetry::printf("[SHELL] spk%c%02d t=%lu iu=%7.1f iv=%7.1f ang=%6.1f dang=%+5.2f "
-                          "du=%5.1f dv=%5.1f dw=%5.1f sin=%5u cos=%5u",
+                          "du=%5.1f dv=%5.1f dw=%5.1f sin=%5u cos=%5u tc=%lu",
                           is_trigger ? '*' : ' ',
                           static_cast<int>(k),
                           static_cast<unsigned long>(s.tick_ms),
@@ -107,7 +113,7 @@ void SpikeRecorder::dump() {
                           static_cast<double>(s.duty_u),
                           static_cast<double>(s.duty_v),
                           static_cast<double>(s.duty_w),
-                          s.enc_sin, s.enc_cos);
+                          s.enc_sin, s.enc_cos, static_cast<unsigned long>(s.cycles));
     }
 
     m_ready = false;

@@ -1,0 +1,72 @@
+{
+  "positive": {
+    "stop_reason": "Sustained voltage vector limiting",
+    "time_to_1000_s": 3.5410271333201457,
+    "time_to_2000_s": 6.3631390892516,
+    "last_powered_rpm": 2692.188720703125,
+    "peak_abs_rpm": 2704.025634765625,
+    "bus_min_v": 98.975830078125,
+    "bus_max_v": 99.85560607910156,
+    "peak_abs_iq_a": 43.17643737792969,
+    "peak_abs_id_a": 22.42974090576172,
+    "faults": [],
+    "bands": {
+      "400_800": {
+        "acceleration_rpm_s": 399.9023039968852,
+        "samples": 6,
+        "mean_iq_a": 35.28883043924967,
+        "mean_id_a": 2.036282315850258,
+        "peak_abs_id_a": 4.699728488922119
+      },
+      "800_1600": {
+        "acceleration_rpm_s": 372.53517488334364,
+        "samples": 13,
+        "mean_iq_a": 35.83716407189002,
+        "mean_id_a": 1.8497600784668555,
+        "peak_abs_id_a": 7.855340003967285
+      },
+      "1600_2200": {
+        "acceleration_rpm_s": 326.553596500781,
+        "samples": 12,
+        "mean_iq_a": 34.83835236231486,
+        "mean_id_a": -3.469177335500717,
+        "peak_abs_id_a": 13.377105712890625
+      }
+    }
+  },
+  "negative": {
+    "stop_reason": "Sustained voltage vector limiting",
+    "time_to_1000_s": 3.3875994957069167,
+    "time_to_2000_s": 6.006411773281821,
+    "last_powered_rpm": -2703.3681640625,
+    "peak_abs_rpm": 2703.3681640625,
+    "bus_min_v": 98.975830078125,
+    "bus_max_v": 99.85560607910156,
+    "peak_abs_iq_a": 42.05385971069336,
+    "peak_abs_id_a": 19.973527908325195,
+    "faults": [],
+    "bands": {
+      "400_800": {
+        "acceleration_rpm_s": 412.32367361748317,
+        "samples": 6,
+        "mean_iq_a": -34.70241483052572,
+        "mean_id_a": 0.7402455856402715,
+        "peak_abs_id_a": 2.8159236907958984
+      },
+      "800_1600": {
+        "acceleration_rpm_s": 397.38673325944154,
+        "samples": 13,
+        "mean_iq_a": -35.522359994741585,
+        "mean_id_a": 0.06706049149999252,
+        "peak_abs_id_a": 6.542645454406738
+      },
+      "1600_2200": {
+        "acceleration_rpm_s": 351.6250563477966,
+        "samples": 10,
+        "mean_iq_a": -35.26916732788086,
+        "mean_id_a": -1.609566515684128,
+        "peak_abs_id_a": 12.381256103515625
+      }
+    }
+  }
+}

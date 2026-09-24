@@ -241,13 +241,17 @@ def main():
                         ]
                     elif self.server.commands and self.server.commands[-1] == "spikes":
                         lines.append({"seq": 6, "text":
-                                      "[SHELL] spikes: capture #1 (* = trigger), 64 samples @ 5 kHz"})
+                                      ("[SHELL] spikes: capture #1 (* = trigger), 64 samples @ 2500 Hz clock_hz=550000000 format=2"
+                                       if getattr(self.server, "spike_v2", False) else
+                                       "[SHELL] spikes: capture #1 (* = trigger), 64 samples @ 5 kHz")})
                         for index in range(64):
                             marker = "*" if index == 47 else " "
                             lines.append({"seq": index + 7, "text":
                                 f"[SHELL] spk{marker}{index:02d} t=100 iu={index / 10:.1f} "
                                 f"iv={index / 20:.1f} ang={index:.1f} dang=+1.00 "
-                                "du=10.0 dv=20.0 dw=30.0 sin=123 cos=456"})
+                                "du=10.0 dv=20.0 dw=30.0 sin=123 cos=456" +
+                                (f" tc={(0xfff00000 + index * 220000) & 0xffffffff}"
+                                 if getattr(self.server, "spike_v2", False) else "")})
                     elif self.server.commands and self.server.commands[-1] != "silent":
                         lines.append({"seq": 6, "text": "OK: " + self.server.commands[-1]})
                     value = {"lines": lines if self.server.commands else [],
@@ -629,6 +633,13 @@ def main():
                                                   "include_samples": True}})
             assert len(spike_samples["structuredContent"]["samples"]) == 64, spike_samples
             assert spike_samples["structuredContent"]["samples"][47]["trigger"], spike_samples
+            assert spike_samples["structuredContent"]["sample_rate_hz"] == 5000
+            session_server.spike_v2 = True
+            spike_v2 = request(server, 140, "tools/call", {"name": "rte_spike_capture",
+                               "arguments": {"timeout_ms": 1000, "include_samples": True}})
+            assert spike_v2["structuredContent"]["sample_rate_hz"] == 2500, spike_v2
+            assert abs(spike_v2["structuredContent"]["samples"][-1]["time_s"] - 63/2500) < 1e-9, spike_v2
+            session_server.spike_v2 = False
             commands = request(server, 29, "tools/call", {"name": "rte_device_commands",
                                "arguments": {"timeout_ms": 1000}})
             catalog = commands["structuredContent"]

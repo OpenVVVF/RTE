@@ -1,0 +1,63 @@
+{
+  "bundle": "foc",
+  "frame_age_s": 0.435115479,
+  "missing": [],
+  "values": {
+    "Mech_RPM": {
+      "age_s": 0.01157239,
+      "fresh": false,
+      "kind": "number",
+      "last_value": 0.0028473695274442434,
+      "state": "control_stopped",
+      "value": null
+    },
+    "control_outputs_enabled": {
+      "age_s": 0.011524172,
+      "fresh": true,
+      "kind": "number",
+      "last_value": 0,
+      "state": "live",
+      "value": 0
+    },
+    "fault_flags_hex": {
+      "age_s": 0.435276549,
+      "fresh": true,
+      "kind": "string",
+      "last_value": "0x00000000",
+      "state": "live",
+      "value": "0x00000000"
+    },
+    "gate_fault": {
+      "age_s": 0.011516012,
+      "fresh": true,
+      "kind": "number",
+      "last_value": 0,
+      "state": "live",
+      "value": 0
+    },
+    "gate_ready": {
+      "age_s": 0.011518194,
+      "fresh": true,
+      "kind": "number",
+      "last_value": 1,
+      "state": "live",
+      "value": 1
+    },
+    "pwm_moe": {
+      "age_s": 0.011520073,
+      "fresh": true,
+      "kind": "number",
+      "last_value": 0,
+      "state": "live",
+      "value": 0
+    },
+    "vdc_v": {
+      "age_s": 0.011484557,
+      "fresh": true,
+      "kind": "number",
+      "last_value": 74.34184265136719,
+      "state": "live",
+      "value": 74.34184265136719
+    }
+  }
+}

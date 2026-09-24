@@ -271,7 +271,7 @@ their current value for up to 15 seconds while the link stays active.
 it returns a structured `not_in_build`, `configured_not_streaming`, or
 `unknown_signal` code when the catalog can determine the reason.
 `rte_spike_capture` reads and re-arms the firmware's existing 64-sample,
-5 kHz current-spike recorder through the `spikes` inverter command; it returns
+ADC-rate current-spike recorder through the `spikes` inverter command; it returns
 compact phase-current and angle trend analysis. Pass `include_samples: true`
 only when the parsed phase current, encoder, and duty samples are needed.
 Its trigger is the firmware's current threshold, set with `spikes <amps>` in
@@ -371,3 +371,50 @@ Codex, ChatGPT desktop, and Kimi Code on the machine connected to the inverter.
 `cmake --install build --prefix stage` creates the portable layout and deploys
 the required Qt runtime. `.github/workflows/build-artifacts.yml` builds, tests,
 and uploads unsigned x64 archives for Linux, Windows, and macOS.
+
+## Gen7 current-control capture and voltage units (2026-09-22)
+
+The current-loop repair requires a main MCU rebuild/reflash and a rebuilt `rte`
+for spike timing support. It does not change the binary telemetry protocol or
+require a coprocessor reflash. `spikes` format 2 reports measured sample rate and
+raw cycle timestamps; the MCP parser supports both this and the older 5 kHz
+format. The older header does not prove the actual ADC rate on legacy firmware.
+
+`cg_vd_v` / `cg_vq_v` now report the vector-limited physical-voltage commands;
+`cg_vd_req_v` / `cg_vq_req_v` report the requests before the shared vector limit.
+`cg_vlimit_scale` is 1 when not clipped. `cg_sample_age_us`, `cg_sample_valid` and
+`cg_sample_seq` describe the single current frame latched for each TIM step.
+The existing Kp/Ki/feedforward settings retain their effective actuation through
+an explicit 0.5 legacy-to-volts adapter. `Ctrl.VoltLimitPu` defaults to 1/3 for
+the first comparison, capped by the linear modulation and ADC-window margins.
+
+Use `ctrlcap arm [decimation]` to collect a bounded 512-frame generated-control
+capture; `ctrlcap status` reports progress. Once frozen, `ctrlcap dump [offset]
+[count]` reads at most 16 frames per page without rearming. `ccA` and `ccB` CSV
+lines share an index; headers name every column. Cycles are raw DWT counts:
+subtract as unsigned 32-bit values before dividing by `clock_hz`. The recorder
+runs from TIM control; ADC `seq` identifies repeated feedback samples. Age is
+measured from ADC callback entry, not a claimed analog acquisition timestamp.
+Tracked active duties are software estimates of timer-latched commands, not
+measured gate voltages. Frame storage is approximately 60 KiB in AXI SRAM.
+
+The same commands work in the Studio Runtime console and through
+`rte_device_command_response`. Export pages to a local file for analysis. Keep
+MCP's response guard and bounded pagination; do not dump all 512 frames in one
+response. `control start` runs graph control; native `foc start` remains a
+separate internal diagnostic.
+
+### Gen7 full-cycle current feedback (2026-09-23)
+
+Final firmware samples both TIM1 update extrema (5 kHz ADC at 2.5 kHz PWM while
+control runs). The controller uses a coherent 1/4, 1/2, 1/4 d/q cycle estimate;
+`cg_id_raw_a` and `cg_iq_raw_a` retain newest raw measurements. Protection is
+not applied to the smoothed values. `ctrlcap` ccA adds raw_id/raw_iq fields;
+consume the printed column headers. Its theta, phase currents and callback age
+refer to the newest raw sample, whereas the feedback estimate is centered one
+200 us sample earlier. None of this changes binary telemetry framing.
+
+The main MCU needs the new image; no coprocessor update is required. Reload
+the rebuilt host tools to obtain the new spike parser. The Studio console
+supports the same commands. See `docs/gen7-current-loop-results.md` for actual
+bench validation and limitations; raw winding-current ripple was not eliminated.

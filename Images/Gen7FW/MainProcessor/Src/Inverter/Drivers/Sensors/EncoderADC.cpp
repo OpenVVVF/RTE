@@ -273,17 +273,22 @@ void EncoderADC::learnBounds(uint16_t raw_sin, uint16_t raw_cos) {
 }
 
 float EncoderADC::extrapolatedAngleDeg() {
+    const uint32_t saved = __get_PRIMASK();
+    __disable_irq();
     const float angle = m_snapshot.angle;
+    const uint32_t sample_cycles = m_last_sample_cycles;
+    const float rpm = m_rpm_ema;
+    __set_PRIMASK(saved);
     if (!m_running || !m_rpm_init) {
         return angle;
     }
     /* Age of the snapshot in seconds (u32 cycle subtraction wraps cleanly). */
-    const uint32_t age_cycles = DWT->CYCCNT - m_last_sample_cycles;
+    const uint32_t age_cycles = DWT->CYCCNT - sample_cycles;
     const float age_s = static_cast<float>(age_cycles) /
                         static_cast<float>(SystemCoreClock);
     /* Bound the correction to one sample period's rotation: a stalled stream
      * degrades to (near) the raw snapshot instead of extrapolating away. */
-    const float deg_per_s = m_rpm_ema * 6.0f;  /* rpm -> deg/s */
+    const float deg_per_s = rpm * 6.0f;  /* rpm -> deg/s */
     float corr = deg_per_s * age_s;
     const float bound = std::fabs(deg_per_s) * (1.5f / m_sample_hz);
     if (corr > bound) corr = bound;
@@ -374,9 +379,14 @@ void EncoderADC::onDmaComplete() {
         m_prev_angle = angle;
         learnBounds(raw_sin, raw_cos);
 
+        const uint32_t saved = __get_PRIMASK();
+        __disable_irq();
         m_snapshot.angle = angle;
         m_snapshot.raw_sin = raw_sin;
         m_snapshot.raw_cos = raw_cos;
+        m_last_sample_cycles = DWT->CYCCNT;
+        __DMB();
+        __set_PRIMASK(saved);
 
         /* Layer 1 ellipse-fit capture: accumulate every accepted raw sample
          * at the full encoder rate while a calibration routine requests it. */
@@ -394,7 +404,6 @@ void EncoderADC::onDmaComplete() {
 
     m_new_data = true;
     m_last_sample_ms = HAL_GetTick();
-    m_last_sample_cycles = DWT->CYCCNT;
     ++m_isr_count;
 }
 

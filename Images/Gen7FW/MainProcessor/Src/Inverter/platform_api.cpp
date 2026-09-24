@@ -12,6 +12,7 @@
 #include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/CurrentObserver.h"
+#include "Inverter/Control/CurrentLoopMath.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Drivers/Logging/TraceRecorder.h"
 
@@ -24,10 +25,16 @@
  * -------------------------------------------------------------------------- */
 
 static volatile bool s_control_outputs_enabled = false;
+static bool s_sample_window_valid = true;
+static Inverter::CurrentLoopMath::Controller s_vector_pi;
 
 void platform_set_control_outputs_enabled(bool enabled) {
+    const uint32_t saved = __get_PRIMASK();
+    __disable_irq();
     const bool changed = s_control_outputs_enabled != enabled;
+    if (changed) s_vector_pi.reset();
     s_control_outputs_enabled = enabled;
+    __set_PRIMASK(saved);
     if (changed) {
         Telemetry::log("control_outputs_enabled", enabled ? 1.0f : 0.0f);
     }
@@ -132,17 +139,27 @@ uint32_t platform_schedule_adaptive_sample(float duty_u, float duty_v,
     if (!s_control_outputs_enabled) {
         return 0U;
     }
-    /* 6 us at 275 MHz timer clock: deadtime + switching settling + ADC burst. */
-    const uint32_t min_gap_ticks = 1650U;
+    /* 12 us total: 6 us on either side for switching settling and ADC burst. */
+    const uint32_t min_gap_ticks = static_cast<uint32_t>(12e-6f * 275000000.0f / float(TIM1->PSC + 1U));
     uint32_t ccr4 = 10U;
     uint32_t gap_ticks = 0U;
 
     if (PWM_FindSafeSamplePoint(duty_u, duty_v, duty_w, arr,
                                 min_gap_ticks, &ccr4, &gap_ticks)) {
+        // Both extrema are sampled by TIM1 TRGO2. Require both quiet windows.
+        const float min_duty = std::min({duty_u, duty_v, duty_w});
+        const uint32_t top_gap = uint32_t(2.0f * float(arr) * min_duty / 100.0f);
+        gap_ticks = std::min(gap_ticks, top_gap);
+        if (gap_ticks < min_gap_ticks + 20U) {
+            s_sample_window_valid = false;
+            return 0U;
+        }
+        s_sample_window_valid = true;
         Inverter::sampleScheduler().scheduleNextSample(ccr4, arr);
         return gap_ticks;
     }
 
+    s_sample_window_valid = false;
     Inverter::sampleScheduler().scheduleFallback();
     return 0U;
 }
@@ -416,12 +433,20 @@ bool platform_has_critical_fault(void) {
  * Critical sections
  * -------------------------------------------------------------------------- */
 
+static uint32_t s_critical_depth = 0U;
+static uint32_t s_critical_saved_mask = 0U;
+
 void platform_critical_enter(void) {
+    const uint32_t saved = __get_PRIMASK();
     __disable_irq();
+    if (s_critical_depth++ == 0U) s_critical_saved_mask = saved;
+    __DMB();
 }
 
 void platform_critical_exit(void) {
-    __enable_irq();
+    __DMB();
+    if (s_critical_depth != 0U && --s_critical_depth == 0U)
+        __set_PRIMASK(s_critical_saved_mask);
 }
 
 /* --------------------------------------------------------------------------
@@ -495,4 +520,174 @@ void platform_set_current_domain_dt(float dt_s) {
 
 float platform_get_current_domain_dt(void) {
     return s_current_domain_dt;
+}
+
+namespace {
+struct CurrentFrame {
+    float id = 0, iq = 0, theta = 0, ia = 0, ib = 0, ic = 0;
+    uint32_t cycles = 0, sequence = 0;
+    bool valid = false;
+    bool down = false;
+};
+CurrentFrame s_current_frame, s_previous_frame, s_older_frame, s_latched_frame;
+float s_raw_id = 0, s_raw_iq = 0;
+uint32_t s_current_callback_cycles = 0;
+float s_current_age_us = 0, s_actuation_angle = 0;
+float s_id_ref = 0, s_iq_ref = 0, s_control_bus = 0;
+Inverter::CurrentLoopMath::Result s_control_result;
+struct ControlCaptureSample {
+    uint32_t cycles, sequence, timer;
+    float id, iq, id_ref, iq_ref, theta, act_angle, age;
+    float vd_req, vq_req, vd, vq, int_d, int_q, scale, bus;
+    float ia, ib, ic, du, dv, dw, active_u, active_v, active_w;
+    float raw_id, raw_iq;
+    bool valid;
+};
+constexpr uint32_t CONTROL_CAPTURE_COUNT = 512;
+__attribute__((section(".dma_buffers"), aligned(32)))
+ControlCaptureSample s_control_capture[CONTROL_CAPTURE_COUNT];
+volatile uint32_t s_capture_count = 0;
+volatile bool s_capture_armed = false;
+uint32_t s_capture_decimation = 1, s_capture_divider = 0;
+}
+
+void platform_current_sample_begin(uint32_t callback_cycles) {
+    s_current_callback_cycles = callback_cycles;
+}
+void platform_publish_current_frame(float id, float iq, float theta,
+                                    float ia, float ib, float ic) {
+    platform_critical_enter();
+    s_older_frame = s_previous_frame;
+    s_previous_frame = s_current_frame;
+    s_current_frame = {id, iq, theta, ia, ib, ic, s_current_callback_cycles,
+                       s_current_frame.sequence + 1U,
+                       s_sample_window_valid && std::isfinite(id) && std::isfinite(iq),
+                       (TIM1->CR1 & TIM_CR1_DIR) != 0U};
+    platform_critical_exit();
+}
+void platform_latch_current_frame(float* id, float* iq, float* theta,
+                                  float* age_us, float* valid, float* sequence) {
+    platform_critical_enter();
+    s_latched_frame = s_current_frame;
+    const CurrentFrame previous = s_previous_frame;
+    const CurrentFrame older = s_older_frame;
+    platform_critical_exit();
+    s_raw_id = s_latched_frame.id; s_raw_iq = s_latched_frame.iq;
+    const float interval_s = float(uint32_t(s_latched_frame.cycles - previous.cycles)) /
+                             float(SystemCoreClock);
+    // Average d/q AFTER transforming each raw sample at its own rotor angle.
+    // Opposite zero-vector midpoint errors reversed sign in the bench A/B.
+    // Keep raw samples for protection and capture; never average across a gap.
+    auto feedback = Inverter::CurrentLoopMath::midpointPair(
+        {s_raw_id, s_raw_iq}, {previous.id, previous.iq},
+        previous.down != s_latched_frame.down,
+        previous.valid && previous.sequence + 1U == s_latched_frame.sequence,
+        interval_s, 1.0f / PWM_GetFrequency());
+    const float old_interval_s = float(uint32_t(previous.cycles - older.cycles)) / float(SystemCoreClock);
+    const bool full_cycle = previous.valid && older.valid &&
+        older.sequence + 1U == previous.sequence && previous.sequence + 1U == s_latched_frame.sequence &&
+        older.down == s_latched_frame.down && previous.down != s_latched_frame.down &&
+        interval_s > 0 && interval_s < 0.75f / PWM_GetFrequency() &&
+        old_interval_s > 0 && old_interval_s < 0.75f / PWM_GetFrequency();
+    if (full_cycle) feedback = Inverter::CurrentLoopMath::midpointCycle(
+        {s_raw_id,s_raw_iq}, {previous.id,previous.iq}, {older.id,older.iq}, true);
+    s_latched_frame.id = feedback.d; s_latched_frame.iq = feedback.q;
+    Telemetry::log("cg_id_raw_a", s_raw_id);
+    Telemetry::log("cg_iq_raw_a", s_raw_iq);
+    s_current_age_us = float(uint32_t(DWT->CYCCNT - s_latched_frame.cycles)) /
+                       (float(SystemCoreClock) / 1000000.0f);
+    *id = s_latched_frame.id; *iq = s_latched_frame.iq; *theta = s_latched_frame.theta;
+    *age_us = s_current_age_us;
+    *valid = s_latched_frame.valid && s_latched_frame.sequence != 0U &&
+             s_current_age_us < 1500000.0f / PWM_GetFrequency() ? 1.0f : 0.0f;
+    *sequence = float(s_latched_frame.sequence & 0x00ffffffU);
+}
+float platform_voltage_limit(float bus_v, float requested_bus_fraction) {
+    if (!std::isfinite(bus_v) || bus_v <= 1.0f || !std::isfinite(requested_bus_fraction)) return 0;
+    // Reserve at least 6 us on EACH side of the sampling point. At 2.5 kHz
+    // this permits <=94% duty span. Physical ceiling remains <= linear SVPWM.
+    const float span = std::clamp(1.0f - 4.0f * 6e-6f * PWM_GetFrequency(), 0.0f, 0.95f);
+    const float max_fraction = span * 0.57735026919f;
+    return bus_v * std::clamp(requested_bus_fraction, 0.0f, max_fraction);
+}
+void platform_modulate(float alpha_v, float beta_v, float bus_v,
+                       float* du, float* dv, float* dw) {
+    // Shared physical-voltage boundary; the controller uses the identical bound.
+    const auto ab = Inverter::CurrentLoopMath::limit({alpha_v, beta_v},
+                     platform_voltage_limit(bus_v, 1.0f));
+    const auto duty = Inverter::CurrentLoopMath::modulate(ab, bus_v);
+    *du = duty.a; *dv = duty.b; *dw = duty.c;
+}
+void platform_vector_pi(float id_ref, float iq_ref, float id, float iq,
+                        float fd, float fq, float kpd, float kid, float kpq, float kiq,
+                        float max_bus_fraction, float valid,
+                        float* vd, float* vq, float* rd, float* rq, float* scale) {
+    s_id_ref = id_ref; s_iq_ref = iq_ref;
+    s_control_bus = platform_get_dc_link_voltage();
+    s_control_result = s_vector_pi.step({id_ref-id, iq_ref-iq}, {fd,fq},
+        {kpd,kpq}, {kid,kiq}, platform_get_current_domain_dt(),
+        platform_voltage_limit(s_control_bus, max_bus_fraction),
+        s_control_outputs_enabled && valid > 0.5f);
+    *vd=s_control_result.limited.d; *vq=s_control_result.limited.q;
+    *rd=s_control_result.requested.d; *rq=s_control_result.requested.q;
+    *scale=s_control_result.scale;
+}
+void platform_control_actuation_angle(float angle_rad) { s_actuation_angle = angle_rad; }
+void platform_control_capture_step(float du, float dv, float dw) {
+    if (!s_capture_armed || !s_control_outputs_enabled) return;
+    if (++s_capture_divider < s_capture_decimation) return;
+    s_capture_divider=0;
+    const uint32_t n = s_capture_count;
+    if (n >= CONTROL_CAPTURE_COUNT) { s_capture_armed=false; return; }
+    auto& s = s_control_capture[n];
+    s.cycles=DWT->CYCCNT; s.sequence=s_latched_frame.sequence;
+    s.timer=TIM1->CNT | ((TIM1->CR1 & TIM_CR1_DIR) ? 0x80000000U : 0U);
+    s.id=s_latched_frame.id; s.iq=s_latched_frame.iq;
+    s.id_ref=s_id_ref; s.iq_ref=s_iq_ref; s.theta=s_latched_frame.theta;
+    s.act_angle=s_actuation_angle; s.age=s_current_age_us;
+    s.vd_req=s_control_result.requested.d; s.vq_req=s_control_result.requested.q;
+    s.vd=s_control_result.limited.d; s.vq=s_control_result.limited.q;
+    s.int_d=s_control_result.integral.d; s.int_q=s_control_result.integral.q;
+    s.scale=s_control_result.scale; s.bus=s_control_bus;
+    s.ia=s_latched_frame.ia; s.ib=s_latched_frame.ib; s.ic=s_latched_frame.ic;
+    s.du=du; s.dv=dv; s.dw=dw;
+    PWM_GetTrackedActiveDuties(&s.active_u,&s.active_v,&s.active_w);
+    s.valid=s_latched_frame.valid;
+    s.raw_id=s_raw_id; s.raw_iq=s_raw_iq;
+    __DMB(); s_capture_count=n+1U;
+    if (n+1U==CONTROL_CAPTURE_COUNT) s_capture_armed=false;
+}
+void platform_control_capture_arm(uint32_t decimation) {
+    platform_critical_enter();
+    s_capture_armed=false; s_capture_count=0; s_capture_divider=0;
+    s_capture_decimation=std::clamp<uint32_t>(decimation,1U,50U);
+    __DMB(); s_capture_armed=true;
+    platform_critical_exit();
+    Telemetry::printf("[SHELL] ctrlcap armed: max=512 decimation=%lu", (unsigned long)s_capture_decimation);
+}
+void platform_control_capture_dump(uint32_t offset, uint32_t count) {
+    const bool armed=s_capture_armed;
+    const uint32_t available=s_capture_count;
+    Telemetry::printf("[SHELL] ctrlcap v1 armed=%u count=%lu clock_hz=%lu decimation=%lu",
+        unsigned(armed), (unsigned long)available, (unsigned long)SystemCoreClock,
+        (unsigned long)s_capture_decimation);
+    if (armed || count==0 || offset>=available) return;
+    count=std::min<uint32_t>({count,16U,available-offset});
+    // Two bounded CSV lines per frame; timestamps are raw DWT cycles. Subtract
+    // unsigned cycle values before conversion. 'active' duties are software
+    // tracked at timer updates, not measured gate waveforms.
+    Telemetry::printf("[SHELL] ccA:index,cycles,seq,id,iq,idref,iqref,theta,actangle,age_us,vdreq,vqreq,vd,vq,intd,intq,scale,bus,raw_id,raw_iq");
+    Telemetry::printf("[SHELL] ccB:index,timer,valid,ia,ib,ic,du,dv,dw,active_u,active_v,active_w");
+    for(uint32_t i=offset;i<offset+count;++i) {
+        const auto& s=s_control_capture[i];
+        Telemetry::printf("[SHELL] ccA:%lu,%lu,%lu,%.3f,%.3f,%.3f,%.3f,%.5f,%.5f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.5f,%.3f,%.3f,%.3f",
+            (unsigned long)i,(unsigned long)s.cycles,(unsigned long)s.sequence,
+            double(s.id),double(s.iq),double(s.id_ref),double(s.iq_ref),double(s.theta),
+            double(s.act_angle),double(s.age),double(s.vd_req),double(s.vq_req),
+            double(s.vd),double(s.vq),double(s.int_d),double(s.int_q),double(s.scale),double(s.bus),double(s.raw_id),double(s.raw_iq));
+        Telemetry::printf("[SHELL] ccB:%lu,%lu,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f",
+            (unsigned long)i,(unsigned long)s.timer,unsigned(s.valid),double(s.ia),double(s.ib),double(s.ic),
+            double(s.du),double(s.dv),double(s.dw),double(s.active_u),double(s.active_v),double(s.active_w));
+    }
+    Telemetry::printf("[SHELL] ctrlcap page end next=%lu", (unsigned long)(offset+count));
 }

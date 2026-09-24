@@ -117,22 +117,22 @@ bool PhaseCurrentADC::configureAdcChannels() {
         return false;
     }
 
-    /* ADC1 injected master: [U_sig, V_sig, U_sig, V_sig], triggered by TIM1_TRGO.
+    /* ADC1 injected master: [U_sig, V_sig, U_sig, V_sig], triggered at both TIM1_TRGO2 update extrema during control.
      * The reference channels are on ADC2 so each signal/reference pair is
      * sampled simultaneously (true differential measurement).  The 4-rank
      * sequence captures a two-point micro-burst for both phases. */
     ADC_InjectionConfTypeDef inj1_r1 = makeInjectedConfig(
         ADC_CHANNEL_4, ADC_INJECTED_RANK_1,
-        ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
+        ADC_EXTERNALTRIGINJEC_T1_TRGO2, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
     ADC_InjectionConfTypeDef inj1_r2 = makeInjectedConfig(
         ADC_CHANNEL_3, ADC_INJECTED_RANK_2,
-        ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
+        ADC_EXTERNALTRIGINJEC_T1_TRGO2, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
     ADC_InjectionConfTypeDef inj1_r3 = makeInjectedConfig(
         ADC_CHANNEL_4, ADC_INJECTED_RANK_3,
-        ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
+        ADC_EXTERNALTRIGINJEC_T1_TRGO2, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
     ADC_InjectionConfTypeDef inj1_r4 = makeInjectedConfig(
         ADC_CHANNEL_3, ADC_INJECTED_RANK_4,
-        ADC_EXTERNALTRIGINJEC_T1_TRGO, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
+        ADC_EXTERNALTRIGINJEC_T1_TRGO2, ADC_EXTERNALTRIGINJECCONV_EDGE_RISING);
 
     if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &inj1_r1) != HAL_OK) {
         return false;
@@ -189,9 +189,9 @@ bool PhaseCurrentADC::configureAdcChannels() {
 }
 
 bool PhaseCurrentADC::initTrigger() {
-    /* Use TIM1 channel 4 to generate a narrow pulse around the bottom of the
-     * center-aligned PWM triangle.  OC4REF is routed to TRGO and triggers the
-     * ADC1 injected group.  ADC2 injected follows in dual mode. */
+    /* Keep channel 4 / TRGO available for the legacy sampling scheduler.
+     * Current acquisition now uses TRGO2 update events: both zero-vector
+     * midpoints during graph control, with ADC2 injected following ADC1. */
     static constexpr uint32_t PULSE_TICKS = 10U;
 
     TIM_OC_InitTypeDef sConfigOC = {};
@@ -421,6 +421,7 @@ bool PhaseCurrentADC::calibrateOffsets() {
 }
 
 void PhaseCurrentADC::onInjectedConversionComplete() {
+    platform_current_sample_begin(DWT->CYCCNT);
     ++LoopStats::adc_isr;
     /* Read the 4-rank micro-burst:
      *   ADC1 ranks: U_sig, V_sig, U_sig, V_sig
@@ -508,7 +509,7 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
      * previous PWM period's currents, adding a full sample of feedback delay.
      * Keep base-image overcurrent protection ahead of graph execution. */
     const float interrupted_domain_dt = platform_get_current_domain_dt();
-    platform_set_current_domain_dt(1.0f / PWM_GetFrequency());
+    platform_set_current_domain_dt(1.0f / PWM_GetUpdateFrequency());
     // RTE_EMIT: adc_isr step
     /* ADC IRQ can preempt TIM1: do not change the interrupted PI time step. */
     platform_set_current_domain_dt(interrupted_domain_dt);

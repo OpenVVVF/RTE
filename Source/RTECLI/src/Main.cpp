@@ -1070,7 +1070,7 @@ json McpTools() {
              {"output", path},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 12000}}}},
             {"signals", "output"}),
-        ToolDefinition("rte_spike_capture", "Dump and re-arm the firmware's frozen 64-sample, 5 kHz current-spike capture. Returns compact current/angle trend analysis; set include_samples=true only when raw samples are necessary.",
+        ToolDefinition("rte_spike_capture", "Dump and re-arm the firmware's frozen 64-sample current-spike capture with firmware-reported timing. Returns compact current/angle trend analysis; set include_samples=true only when raw samples are necessary.",
             {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}},
              {"include_samples", {{"type", "boolean"}}}}),
         ToolDefinition("rte_device_console", "Read filtered recent console lines from RTE Studio. Defaults to 25 and caps at 100 to protect model context.",
@@ -2064,6 +2064,9 @@ json CallMcpTool(const std::string& name, const json& arguments,
         json samples = json::array();
         std::string header;
         bool complete = false, noCapture = false;
+        double sampleRateHz = 5000.0; // Legacy format only.
+        double cycleClockHz = 0.0;
+        std::optional<std::uint32_t> firstCycle;
         while (std::chrono::steady_clock::now() < deadline && !complete && !noCapture) {
             const auto console = RTEAutomation::RequestSession(*session, "device.console",
                 {{"since", cursor}, {"lines", 1000}}, &error);
@@ -2076,6 +2079,16 @@ json CallMcpTool(const std::string& name, const json& arguments,
                     header = text;
                 } else if (text.find("[SHELL] spikes: capture") != std::string::npos) {
                     header = text;
+                    const auto rateAt = text.find(" samples @ ");
+                    if (rateAt != std::string::npos) {
+                        double rate = 0.0; char unit[8] = {};
+                        if (std::sscanf(text.c_str()+rateAt, " samples @ %lf %7s", &rate, unit)==2 &&
+                            std::isfinite(rate) && rate>0.0 && rate<=1000000.0)
+                            sampleRateHz=rate*(std::string(unit)=="kHz" ? 1000.0 : 1.0);
+                    }
+                    const auto clockAt=text.find("clock_hz=");
+                    if (clockAt!=std::string::npos)
+                        std::sscanf(text.c_str()+clockAt, "clock_hz=%lf", &cycleClockHz);
                 } else if (text.find("[SHELL] spk") != std::string::npos) {
                     char marker = ' ';
                     unsigned index = 0, encSin = 0, encCos = 0;
@@ -2086,8 +2099,18 @@ json CallMcpTool(const std::string& name, const json& arguments,
                         "[SHELL] spk%c%u t=%lu iu=%f iv=%f ang=%f dang=%f du=%f dv=%f dw=%f sin=%u cos=%u",
                         &marker, &index, &tick, &iu, &iv, &angle, &deltaAngle,
                         &du, &dv, &dw, &encSin, &encCos) == 12) {
+                        if (index >= 64 || samples.size() >= 64) continue;
+                        double sampleTime = static_cast<double>(index) / sampleRateHz;
+                        const auto cyclesAt=text.find(" tc=");
+                        unsigned long cycles=0;
+                        if (cyclesAt!=std::string::npos && cycleClockHz>0.0 && std::isfinite(cycleClockHz) &&
+                            std::sscanf(text.c_str()+cyclesAt," tc=%lu",&cycles)==1) {
+                            const auto tickCycles=static_cast<std::uint32_t>(cycles);
+                            if (!firstCycle) firstCycle=tickCycles;
+                            sampleTime=static_cast<double>(static_cast<std::uint32_t>(tickCycles-*firstCycle))/cycleClockHz;
+                        }
                         samples.push_back({{"index", index}, {"trigger", marker == '*'},
-                            {"time_s", static_cast<double>(index) / 5000.0},
+                            {"time_s", sampleTime},
                             {"tick_ms", tick}, {"iu_a", iu}, {"iv_a", iv},
                             {"angle_deg", angle}, {"delta_angle_deg", deltaAngle},
                             {"duty_u_pct", du}, {"duty_v_pct", dv}, {"duty_w_pct", dw},
@@ -2106,10 +2129,10 @@ json CallMcpTool(const std::string& name, const json& arguments,
                 if (sample.contains(key)) series[key].push_back({
                     {"time_s", sample["time_s"]}, {"value", sample[key]}});
         }
-        const json trend = McpTrends({{"series", series}, {"window_end_s", 63.0 / 5000.0},
-                                     {"window_s", 64.0 / 5000.0}, {"missing", json::array()}});
+        const json trend = McpTrends({{"series", series}, {"window_end_s", 63.0 / sampleRateHz},
+                                     {"window_s", 64.0 / sampleRateHz}, {"missing", json::array()}});
         json report = {{"captured", !samples.empty()}, {"complete", complete},
-                       {"sample_rate_hz", 5000}, {"sample_count", samples.size()},
+                       {"sample_rate_hz", sampleRateHz}, {"sample_count", samples.size()},
                        {"header", header}, {"trends", trend["structuredContent"]},
                        {"token_note", "Raw spike samples are omitted by default; request include_samples=true only when the compact trend analysis is insufficient."}};
         if (arguments.value("include_samples", false)) report["samples"] = samples;

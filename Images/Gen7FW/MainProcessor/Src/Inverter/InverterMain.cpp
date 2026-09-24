@@ -94,6 +94,12 @@ extern "C" void CY15B102Q_FaultCallback(CY15B102Q_FaultCode code) {
  */
 static void init()
 {
+    /* FRAM loaders log status. Initialize the NOLOAD telemetry queues before
+     * any of those calls; their RAM contents are undefined after relocation
+     * or reset, even when a previous image happened to leave zeros there. */
+    Telemetry::init();
+    Telemetry::set_period_us(10000);
+
     /* Initialize F-RAM for persistent on-time logging and parameter storage. */
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
         OnTime_Init(&g_fram);
@@ -122,10 +128,6 @@ static void init()
          * code path ever falls back to the debug-default angle/sign. */
         Inverter::CalKvStore::loadMotorCalibration();
     }
-
-    /* Telemetry over the MCP2221A USB-UART bridge (USART3). */
-    Telemetry::init();
-    Telemetry::set_period_us(10000);  /* 100 Hz data frames */
 
     /* Arm command RX before the sensor power-up delay. Commands received
      * during initialization remain queued until the application loop polls

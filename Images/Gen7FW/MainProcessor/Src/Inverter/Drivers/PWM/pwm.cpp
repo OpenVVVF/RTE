@@ -31,6 +31,9 @@ extern "C" void FocControlManager_OnPwmPeriod(void) {}
 /* Phase-to-timer-channel mapping.
  * Index 0 = phase U, 1 = phase V, 2 = phase W.
  */
+static float pending_duty[3] = {50,50,50};
+static float active_duty[3] = {50,50,50};
+
 static const uint32_t pwm_phase_channels[3] = {
     TIM_CHANNEL_1,
     TIM_CHANNEL_2,
@@ -143,6 +146,7 @@ void PWM_SetDutyCycle(uint8_t phase, float duty_percent)
     uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
     uint32_t pulse = arr - (uint32_t)((duty_percent * (float)arr) / 100.0f);
 
+    pending_duty[phase] = duty_percent;
     uint32_t channel = PWM_PhaseToChannel(phase);
     __HAL_TIM_SET_COMPARE(&htim1, channel, pulse);
 }
@@ -219,37 +223,8 @@ void PWM_SetVoltageVector(float valpha_v, float vbeta_v, float vdc_v)
         return;
     }
 
-    /* Clamp the alpha/beta magnitude to the linear modulation limit before
-     * converting to three-phase voltages.  The SVPWM linear limit is
-     * Vdc / sqrt(3). */
-    const float sqrt3 = 1.7320508075688772f;
-    float valpha = valpha_v;
-    float vbeta  = vbeta_v;
-    const float v_max_linear = (vdc_v / sqrt3) * 0.95f;
-    const float v_albe_sq = valpha * valpha + vbeta * vbeta;
-    if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
-        const float scale = v_max_linear / sqrtf(v_albe_sq);
-        valpha *= scale;
-        vbeta  *= scale;
-    }
-
-    /* Inverse Clarke: alpha/beta -> A/B/C. */
-    float va = valpha;
-    float vb = -0.5f * valpha + 0.5f * sqrt3 * vbeta;
-    float vc = -0.5f * valpha - 0.5f * sqrt3 * vbeta;
-
-    /* Min-max SVPWM zero-sequence injection. */
-    float v_max = (va > vb) ? ((va > vc) ? va : vc) : ((vb > vc) ? vb : vc);
-    float v_min = (va < vb) ? ((va < vc) ? va : vc) : ((vb < vc) ? vb : vc);
-    float vcom = 0.5f * (v_max + v_min);
-
-    float du = 50.0f + 50.0f * (va - vcom) / vdc_v;
-    float dv = 50.0f + 50.0f * (vb - vcom) / vdc_v;
-    float dw = 50.0f + 50.0f * (vc - vcom) / vdc_v;
-
-    if (du < 0.0f) du = 0.0f; else if (du > 100.0f) du = 100.0f;
-    if (dv < 0.0f) dv = 0.0f; else if (dv > 100.0f) dv = 100.0f;
-    if (dw < 0.0f) dw = 0.0f; else if (dw > 100.0f) dw = 100.0f;
+    float du, dv, dw;
+    platform_modulate(valpha_v, vbeta_v, vdc_v, &du, &dv, &dw);
 
     PWM_SetThreePhaseDuty(du, dv, dw);
 }
@@ -439,6 +414,7 @@ void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance != TIM1) return;
+    for (unsigned i=0;i<3;++i) active_duty[i]=pending_duty[i];
     ++Inverter::LoopStats::tim_isr;
 
     /* Preserve the interrupted application's domain time step. */
@@ -604,4 +580,8 @@ void PWM_PrintSPWMState(void)
                      (double)spwm_fundamental_freq_hz,
                      (double)spwm_modulation_index,
                      (double)du, (double)dv, (double)dw);
+}
+
+void PWM_GetTrackedActiveDuties(float* u, float* v, float* w) {
+    *u=active_duty[0]; *v=active_duty[1]; *w=active_duty[2];
 }

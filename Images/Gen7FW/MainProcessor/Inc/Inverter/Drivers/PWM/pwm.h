@@ -12,6 +12,8 @@ extern "C" {
 #define PWM_DEFAULT_DEADTIME_NS         1000U   /* 1 us */
 
 void PWM_SetFrequency(uint32_t freq_hz);
+/* Duties latched at the last timer update, tracked in software. */
+void PWM_GetTrackedActiveDuties(float* u, float* v, float* w);
 void PWM_SetDeadTime(uint32_t deadtime_ns);
 void PWM_SetDutyCycle(uint8_t phase, float duty_percent);
 void PWM_SetThreePhaseDuty(float duty_u, float duty_v, float duty_w);
