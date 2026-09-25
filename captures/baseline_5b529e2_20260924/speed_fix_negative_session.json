@@ -1,0 +1,689 @@
+{
+  "opts": {
+    "name": "speed_fix_negative",
+    "iq": -35,
+    "rpm": 2000,
+    "kpd": 0.04,
+    "kpq": 0.04
+  },
+  "log": [
+    {
+      "at": 1790307912416,
+      "command": "var set IqVar 0",
+      "response": {
+        "command": "var set IqVar 0",
+        "console_since": 14964,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14965,
+            "text": "[MCP] > var set IqVar 0"
+          },
+          {
+            "seq": 14966,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 14967,
+            "text": "[SHELL] IqVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307912611,
+      "command": "var set IdVar 0",
+      "response": {
+        "command": "var set IdVar 0",
+        "console_since": 14969,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14970,
+            "text": "[MCP] > var set IdVar 0"
+          },
+          {
+            "seq": 14971,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 14972,
+            "text": "[SHELL] IdVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307912870,
+      "command": "control start",
+      "response": {
+        "command": "control start",
+        "console_since": 14974,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14975,
+            "text": "[MCP] > control start"
+          },
+          {
+            "seq": 14976,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 14977,
+            "text": "[SUP] STARTED f_sw=2500 Hz f_u=5000 Hz"
+          },
+          {
+            "seq": 14978,
+            "text": "[SHELL] control started: MAIN motor control (RTE graph)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307913053,
+      "command": "var set IqVar -35",
+      "response": {
+        "command": "var set IqVar -35",
+        "console_since": 14980,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14981,
+            "text": "[MCP] > var set IqVar -35"
+          },
+          {
+            "seq": 14982,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 14983,
+            "text": "[SHELL] IqVar = -35.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307913210,
+      "signals": {
+        "Mech_RPM": -0.04122466221451759,
+        "cg_id_a": 0.4370096027851105,
+        "cg_iq_a": -5.220380783081055,
+        "cg_rpm_control": -1.2645995616912842,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307913365,
+      "signals": {
+        "Mech_RPM": -1.6044056415557861,
+        "cg_id_a": 2.6258692741394043,
+        "cg_iq_a": -14.98803997039795,
+        "cg_rpm_control": -24.13089370727539,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307913519,
+      "signals": {
+        "Mech_RPM": -6.520445823669434,
+        "cg_id_a": 3.0058250427246094,
+        "cg_iq_a": -20.83985137939453,
+        "cg_rpm_control": -58.766151428222656,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307913672,
+      "signals": {
+        "Mech_RPM": -18.456466674804688,
+        "cg_id_a": -4.093239784240723,
+        "cg_iq_a": -30.090438842773438,
+        "cg_rpm_control": -121.79161071777344,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307913815,
+      "signals": {
+        "Mech_RPM": -33.193790435791016,
+        "cg_id_a": 1.6270543336868286,
+        "cg_iq_a": -36.6727294921875,
+        "cg_rpm_control": -181.99806213378906,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307913971,
+      "signals": {
+        "Mech_RPM": -61.591773986816406,
+        "cg_id_a": 3.6920456886291504,
+        "cg_iq_a": -33.209129333496094,
+        "cg_rpm_control": -263.50262451171875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307914127,
+      "signals": {
+        "Mech_RPM": -98.60163116455078,
+        "cg_id_a": 1.8416986465454102,
+        "cg_iq_a": -34.174842834472656,
+        "cg_rpm_control": -349.0920104980469,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307914297,
+      "signals": {
+        "Mech_RPM": -142.56674194335938,
+        "cg_id_a": 3.898955821990967,
+        "cg_iq_a": -32.33108901977539,
+        "cg_rpm_control": -436.222412109375,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307914451,
+      "signals": {
+        "Mech_RPM": -179.22103881835938,
+        "cg_id_a": 3.030228614807129,
+        "cg_iq_a": -35.068458557128906,
+        "cg_rpm_control": -492.4686279296875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307914601,
+      "signals": {
+        "Mech_RPM": -231.9537811279297,
+        "cg_id_a": 0.016397930681705475,
+        "cg_iq_a": -36.632476806640625,
+        "cg_rpm_control": -570.9423217773438,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307914753,
+      "signals": {
+        "Mech_RPM": -288.7598571777344,
+        "cg_id_a": 2.43599009513855,
+        "cg_iq_a": -34.141082763671875,
+        "cg_rpm_control": -647.8991088867188,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307914907,
+      "signals": {
+        "Mech_RPM": -340.8680725097656,
+        "cg_id_a": 1.6737397909164429,
+        "cg_iq_a": -32.597530364990234,
+        "cg_rpm_control": -714.3943481445312,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915059,
+      "signals": {
+        "Mech_RPM": -409.9866638183594,
+        "cg_id_a": -1.9756197929382324,
+        "cg_iq_a": -35.63133239746094,
+        "cg_rpm_control": -800.074951171875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915211,
+      "signals": {
+        "Mech_RPM": -481.2992248535156,
+        "cg_id_a": -0.11109180003404617,
+        "cg_iq_a": -33.104736328125,
+        "cg_rpm_control": -877.4708862304688,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915366,
+      "signals": {
+        "Mech_RPM": -538.0713500976562,
+        "cg_id_a": 1.2344567775726318,
+        "cg_iq_a": -32.259117126464844,
+        "cg_rpm_control": -942.8510131835938,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915530,
+      "signals": {
+        "Mech_RPM": -603.4276123046875,
+        "cg_id_a": 1.4364404678344727,
+        "cg_iq_a": -36.64417266845703,
+        "cg_rpm_control": -1011.9008178710938,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915684,
+      "signals": {
+        "Mech_RPM": -677.4786376953125,
+        "cg_id_a": -0.5720939636230469,
+        "cg_iq_a": -31.523218154907227,
+        "cg_rpm_control": -1084.45166015625,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915849,
+      "signals": {
+        "Mech_RPM": -735.1522216796875,
+        "cg_id_a": 1.8202989101409912,
+        "cg_iq_a": -33.72657775878906,
+        "cg_rpm_control": -1144.65380859375,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307915997,
+      "signals": {
+        "Mech_RPM": -801.5455322265625,
+        "cg_id_a": 0.8327298760414124,
+        "cg_iq_a": -30.34168815612793,
+        "cg_rpm_control": -1211.6904296875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307916148,
+      "signals": {
+        "Mech_RPM": -859.30322265625,
+        "cg_id_a": -1.1403720378875732,
+        "cg_iq_a": -33.90589904785156,
+        "cg_rpm_control": -1266.0740966796875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307916306,
+      "signals": {
+        "Mech_RPM": -916.3949584960938,
+        "cg_id_a": 5.584375858306885,
+        "cg_iq_a": -35.6431884765625,
+        "cg_rpm_control": -1324.0948486328125,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307916461,
+      "signals": {
+        "Mech_RPM": -982.3486328125,
+        "cg_id_a": 2.1320834159851074,
+        "cg_iq_a": -33.747928619384766,
+        "cg_rpm_control": -1388.015625,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307916618,
+      "signals": {
+        "Mech_RPM": -1055.2818603515625,
+        "cg_id_a": 6.196319580078125,
+        "cg_iq_a": -34.139976501464844,
+        "cg_rpm_control": -1453.6451416015625,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307916774,
+      "signals": {
+        "Mech_RPM": -1119.888427734375,
+        "cg_id_a": 3.8655037879943848,
+        "cg_iq_a": -32.029701232910156,
+        "cg_rpm_control": -1514.918701171875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307916940,
+      "signals": {
+        "Mech_RPM": -1183.825439453125,
+        "cg_id_a": -1.275099277496338,
+        "cg_iq_a": -33.40311050415039,
+        "cg_rpm_control": -1578.16259765625,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307917093,
+      "signals": {
+        "Mech_RPM": -1239.37255859375,
+        "cg_id_a": 1.8444008827209473,
+        "cg_iq_a": -35.951377868652344,
+        "cg_rpm_control": -1634.090576171875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307917306,
+      "signals": {
+        "Mech_RPM": -1325.73779296875,
+        "cg_id_a": 0.1402033567428589,
+        "cg_iq_a": -38.37742233276367,
+        "cg_rpm_control": -1713.9893798828125,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307917459,
+      "signals": {
+        "Mech_RPM": -1380.1405029296875,
+        "cg_id_a": 5.174479007720947,
+        "cg_iq_a": -33.33381652832031,
+        "cg_rpm_control": -1764.4334716796875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307917613,
+      "signals": {
+        "Mech_RPM": -1442.1385498046875,
+        "cg_id_a": 3.0468173027038574,
+        "cg_iq_a": -36.17261505126953,
+        "cg_rpm_control": -1818.8826904296875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307917767,
+      "signals": {
+        "Mech_RPM": -1502.748046875,
+        "cg_id_a": 1.568039894104004,
+        "cg_iq_a": -37.87500762939453,
+        "cg_rpm_control": -1879.505859375,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 73.9019546508789,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307917928,
+      "signals": {
+        "Mech_RPM": -1570.69873046875,
+        "cg_id_a": 1.6686792373657227,
+        "cg_iq_a": -34.495758056640625,
+        "cg_rpm_control": -1941.827880859375,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307918091,
+      "signals": {
+        "Mech_RPM": -1624.2901611328125,
+        "cg_id_a": -0.9254215955734253,
+        "cg_iq_a": -35.02853775024414,
+        "cg_rpm_control": -1994.4215087890625,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.78173828125,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307918249,
+      "signals": {
+        "Mech_RPM": -1689.812255859375,
+        "cg_id_a": -0.4018528461456299,
+        "cg_iq_a": -34.73728942871094,
+        "cg_rpm_control": -2053.2900390625,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 73.9019546508789,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307918456,
+      "command": "ctrlcap arm 1",
+      "response": {
+        "command": "ctrlcap arm 1",
+        "console_since": 14986,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14987,
+            "text": "[MCP] > ctrlcap arm 1"
+          },
+          {
+            "seq": 14988,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 14989,
+            "text": "[SHELL] ctrlcap armed: max=512 decimation=1"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307918844,
+      "command": "control stop",
+      "response": {
+        "command": "control stop",
+        "console_since": 14991,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14992,
+            "text": "[MCP] > control stop"
+          },
+          {
+            "seq": 14993,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 14994,
+            "text": "[SUP] STOPPED"
+          },
+          {
+            "seq": 14995,
+            "text": "[SHELL] control stopped: MAIN motor control (RTE graph)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307919062,
+      "command": "var set IqVar 0",
+      "response": {
+        "command": "var set IqVar 0",
+        "console_since": 14997,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 14998,
+            "text": "[MCP] > var set IqVar 0"
+          },
+          {
+            "seq": 14999,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 15000,
+            "text": "[SHELL] IqVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    }
+  ]
+}

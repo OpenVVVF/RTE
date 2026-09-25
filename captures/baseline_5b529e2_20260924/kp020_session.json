@@ -1,0 +1,289 @@
+{
+  "opts": {
+    "name": "kp020",
+    "iq": 35,
+    "rpm": 2000,
+    "kpd": 0.2,
+    "kpq": 0.2
+  },
+  "log": [
+    {
+      "at": 1790307707701,
+      "command": "var set IqVar 0",
+      "response": {
+        "command": "var set IqVar 0",
+        "console_since": 13366,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 13367,
+            "text": "[MCP] > var set IqVar 0"
+          },
+          {
+            "seq": 13368,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 13369,
+            "text": "[SHELL] IqVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307707938,
+      "command": "var set IdVar 0",
+      "response": {
+        "command": "var set IdVar 0",
+        "console_since": 13371,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 13372,
+            "text": "[MCP] > var set IdVar 0"
+          },
+          {
+            "seq": 13373,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 13374,
+            "text": "[SHELL] IdVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307708182,
+      "command": "control start",
+      "response": {
+        "command": "control start",
+        "console_since": 13376,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 13377,
+            "text": "[MCP] > control start"
+          },
+          {
+            "seq": 13378,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 13379,
+            "text": "[SUP] STARTED f_sw=2500 Hz f_u=5000 Hz"
+          },
+          {
+            "seq": 13380,
+            "text": "[SHELL] control started: MAIN motor control (RTE graph)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307708351,
+      "command": "var set IqVar 35",
+      "response": {
+        "command": "var set IqVar 35",
+        "console_since": 13382,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 13383,
+            "text": "[MCP] > var set IqVar 35"
+          },
+          {
+            "seq": 13384,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 13385,
+            "text": "[SHELL] IqVar = 35.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307708505,
+      "signals": {
+        "Mech_RPM": 0.0710916593670845,
+        "cg_id_a": -0.2558920383453369,
+        "cg_iq_a": 2.6347482204437256,
+        "cg_rpm_control": 0.27008718252182007,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307708656,
+      "signals": {
+        "Mech_RPM": 0.7738901972770691,
+        "cg_id_a": 1.9227949380874634,
+        "cg_iq_a": 14.850664138793945,
+        "cg_rpm_control": 15.531269073486328,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307708812,
+      "signals": {
+        "Mech_RPM": 3.981719493865967,
+        "cg_id_a": 1.9781509637832642,
+        "cg_iq_a": 20.887237548828125,
+        "cg_rpm_control": 47.85232925415039,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307708979,
+      "signals": {
+        "Mech_RPM": 16.66806983947754,
+        "cg_id_a": 3.135012626647949,
+        "cg_iq_a": 30.116159439086914,
+        "cg_rpm_control": 114.61551666259766,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307709134,
+      "signals": {
+        "Mech_RPM": 31.44253921508789,
+        "cg_id_a": 3.479142665863037,
+        "cg_iq_a": 34.584449768066406,
+        "cg_rpm_control": 181.91583251953125,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 73.9019546508789,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307709313,
+      "signals": {
+        "Mech_RPM": 63.936397552490234,
+        "cg_id_a": -1.3358356952667236,
+        "cg_iq_a": 33.57006072998047,
+        "cg_rpm_control": 276.8643493652344,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 74.34184265136719,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307709466,
+      "signals": {
+        "Mech_RPM": 96.58000183105469,
+        "cg_id_a": -0.07268097251653671,
+        "cg_iq_a": 36.54987335205078,
+        "cg_rpm_control": 350.61016845703125,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 73.9019546508789,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307709621,
+      "signals": {
+        "Mech_RPM": 140.0155792236328,
+        "cg_id_a": -349.3519287109375,
+        "cg_iq_a": -69.98529052734375,
+        "cg_rpm_control": 428.55810546875,
+        "cg_sample_valid": 1,
+        "cg_vdc_v": 51.02753448486328,
+        "control_outputs_enabled": 1
+      },
+      "strings": {
+        "fault_flags_hex": "0x00000000"
+      }
+    },
+    {
+      "at": 1790307709851,
+      "command": "control stop",
+      "response": {
+        "command": "control stop",
+        "console_since": 13387,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 13388,
+            "text": "[MCP] > control stop"
+          },
+          {
+            "seq": 13389,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 13390,
+            "text": "[SUP] STOPPED"
+          },
+          {
+            "seq": 13391,
+            "text": "[SHELL] control stopped: MAIN motor control (RTE graph)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    },
+    {
+      "at": 1790307710045,
+      "command": "var set IqVar 0",
+      "response": {
+        "command": "var set IqVar 0",
+        "console_since": 13393,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 13394,
+            "text": "[MCP] > var set IqVar 0"
+          },
+          {
+            "seq": 13395,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 13396,
+            "text": "[SHELL] IqVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    }
+  ]
+}

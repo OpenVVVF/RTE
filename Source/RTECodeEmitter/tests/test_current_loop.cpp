@@ -1,7 +1,59 @@
 #include "../../../Images/Gen7FW/MainProcessor/Inc/Inverter/Control/CurrentLoopMath.h"
 #include <gtest/gtest.h>
 #include <limits>
+#include "../../../Images/Gen7FW/MainProcessor/Inc/Inverter/Control/ControlSpeedEstimator.h"
 using namespace Inverter::CurrentLoopMath;
+TEST(Gen7ControlSpeed, TracksAccelerationAcrossAngleAndTimestampWrap) {
+    for (float direction : {-1.0f, 1.0f}) {
+        Inverter::ControlSpeedEstimator estimator;
+        constexpr uint32_t clock = 550000000U, ticks = 27500U;
+        uint32_t timestamp = 0xffff0000U;
+        double angle = 0;
+        float measured = 0;
+        for (int i=0; i<100000; ++i) {
+            const float rpm = direction * 400.0f * float(i) * .00005f;
+            angle += double(rpm) * 6.0 * .00005;
+            double wrapped = std::fmod(angle,360.0);
+            if (wrapped < 0) wrapped += 360;
+            measured = estimator.update(float(wrapped), timestamp, clock);
+            timestamp += ticks;
+            if (i>10000) { EXPECT_NEAR(measured,rpm,6.0f); }
+        }
+        EXPECT_NEAR(measured,direction*2000.0f,6.0f);
+    }
+}
+TEST(Gen7ControlSpeed, RejectsStationarySampleNoiseWithoutMainLoopUpdates) {
+    Inverter::ControlSpeedEstimator estimator;
+    float largest = 0;
+    for(uint32_t i=0;i<20000;++i) {
+        const float angle = 120.0f + .05f*std::sin(float(i)*1.2345f);
+        const float rpm = estimator.update(angle,i*27500U,550000000U);
+        if(i>1000) largest=std::max(largest,std::abs(rpm));
+    }
+    EXPECT_LT(largest,2.0f);
+}
+TEST(Gen7ControlSpeed, ResetsAfterSampleGapAndInvalidData) {
+    Inverter::ControlSpeedEstimator estimator;
+    for(uint32_t i=0;i<2000;++i) estimator.update(std::fmod(float(i)*.3f,360.0f), i*27500U,550000000U);
+    EXPECT_NEAR(estimator.rpm(),1000.0f,.1f);
+    EXPECT_FLOAT_EQ(estimator.update(120,66000000U,550000000U),0);
+    EXPECT_FLOAT_EQ(estimator.update(std::numeric_limits<float>::quiet_NaN(),66027500U,550000000U),0);
+    EXPECT_FLOAT_EQ(estimator.update(120,66055000U,0),0);
+}
+TEST(Gen7ControlSpeed, UsesMeasuredTimeAtDifferentAndIrregularSampleRates) {
+    for(uint32_t base : {27500U,55000U,110000U}) {
+        Inverter::ControlSpeedEstimator estimator;
+        uint32_t cycles=0;
+        double angle=0;
+        for(uint32_t i=0;i<10000;++i) {
+            const uint32_t ticks=base+(i%5)*100U;
+            cycles+=ticks;
+            angle+=1234.0*6.0*double(ticks)/550000000.0;
+            estimator.update(float(std::fmod(angle,360.0)),cycles,550000000U);
+        }
+        EXPECT_NEAR(estimator.rpm(),1234.0f,.1f);
+    }
+}
 TEST(Gen7CurrentLoop, OppositeMidpointPairRejectsGapsAndCancelsAlternatingError) {
     auto v=midpointPair({12,37},{-12,33},true,true,.0002f,.0004f);
     EXPECT_FLOAT_EQ(v.d,0); EXPECT_FLOAT_EQ(v.q,35);

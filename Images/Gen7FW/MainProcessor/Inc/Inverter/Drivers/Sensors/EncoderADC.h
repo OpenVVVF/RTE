@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "Inverter/Control/ControlSpeedEstimator.h"
 
 namespace Inverter {
 
@@ -186,6 +187,9 @@ public:
      * 20 ms window and 0.02 alpha).
      */
     float rpmMech() const { return m_rpm_ema; }
+
+    /** Timestamped DMA velocity for control; independent of dashboard smoothing. */
+    float controlRpmMech() const { return m_control_rpm; }
 
     /** Cumulative count of rejected outlier samples (see MAX_SAMPLE_DELTA_DEG). */
     uint32_t rejectCount() const { return m_reject_count; }
@@ -390,6 +394,8 @@ private:
     volatile bool     m_new_data = false;
     bool              m_running = false;
     volatile uint32_t m_last_sample_cycles = 0;  /**< DWT->CYCCNT at DMA completion */
+    ControlSpeedEstimator m_control_speed;
+    volatile float m_control_rpm = 0.0f;
 
     /* Angle-linearity trace ring: every 10th DMA sample (~1 kHz), ~1 s of
      * raw sin/cos + decoded angle for offline per-rev analysis. */

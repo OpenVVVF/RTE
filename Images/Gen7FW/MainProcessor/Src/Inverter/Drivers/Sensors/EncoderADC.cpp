@@ -163,6 +163,8 @@ bool EncoderADC::init() {
     m_reject_candidate = 0.0f;
     m_reject_count = 0;
     m_reject_pub_count = 0;
+    m_control_speed.reset();
+    m_control_rpm = 0.0f;
 
     if (!configureAdcChannels()) return false;
     if (!initTimer()) return false;
@@ -277,9 +279,9 @@ float EncoderADC::extrapolatedAngleDeg() {
     __disable_irq();
     const float angle = m_snapshot.angle;
     const uint32_t sample_cycles = m_last_sample_cycles;
-    const float rpm = m_rpm_ema;
+    const float rpm = m_control_rpm;
     __set_PRIMASK(saved);
-    if (!m_running || !m_rpm_init) {
+    if (!m_running) {
         return angle;
     }
     /* Age of the snapshot in seconds (u32 cycle subtraction wraps cleanly). */
@@ -379,12 +381,16 @@ void EncoderADC::onDmaComplete() {
         m_prev_angle = angle;
         learnBounds(raw_sin, raw_cos);
 
+        const uint32_t sample_cycles = DWT->CYCCNT;
+        const float control_rpm = m_control_speed.update(angle, sample_cycles, SystemCoreClock);
+
         const uint32_t saved = __get_PRIMASK();
         __disable_irq();
         m_snapshot.angle = angle;
         m_snapshot.raw_sin = raw_sin;
         m_snapshot.raw_cos = raw_cos;
-        m_last_sample_cycles = DWT->CYCCNT;
+        m_last_sample_cycles = sample_cycles;
+        m_control_rpm = control_rpm;
         __DMB();
         __set_PRIMASK(saved);
 

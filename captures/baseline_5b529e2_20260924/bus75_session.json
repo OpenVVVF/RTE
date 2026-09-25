@@ -1,0 +1,2015 @@
+{
+  "run": {
+    "log": [
+      {
+        "command": "config set Ctrl.VoltLimitPu 0.45",
+        "console_since": 7598,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7599,
+            "text": "[MCP] > config set Ctrl.VoltLimitPu 0.45"
+          },
+          {
+            "seq": 7600,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7601,
+            "text": "[SHELL] Ctrl.VoltLimitPu = 0.4500 (live; 'config save Ctrl.VoltLimitPu' to persist)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      },
+      {
+        "command": "control start",
+        "console_since": 7603,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7604,
+            "text": "[MCP] > control start"
+          },
+          {
+            "seq": 7605,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7606,
+            "text": "[SUP] STARTED f_sw=2500 Hz f_u=5000 Hz"
+          },
+          {
+            "seq": 7607,
+            "text": "[SHELL] control started: MAIN motor control (RTE graph)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      },
+      {
+        "command": "var set IqVar 35",
+        "console_since": 7610,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7611,
+            "text": "[MCP] > var set IqVar 35"
+          },
+          {
+            "seq": 7612,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7613,
+            "text": "[SHELL] IqVar = 35.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      },
+      {
+        "command": "ctrlcap arm",
+        "console_since": 7617,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7618,
+            "text": "[MCP] > ctrlcap arm"
+          },
+          {
+            "seq": 7619,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7620,
+            "text": "[SHELL] ctrlcap armed: max=512 decimation=1"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      },
+      {
+        "command": "control stop",
+        "console_since": 7622,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7623,
+            "text": "[MCP] > control stop"
+          },
+          {
+            "seq": 7624,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7625,
+            "text": "[SUP] STOPPED"
+          },
+          {
+            "seq": 7626,
+            "text": "[SHELL] control stopped: MAIN motor control (RTE graph)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      },
+      {
+        "command": "var set IqVar 0",
+        "console_since": 7628,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7629,
+            "text": "[MCP] > var set IqVar 0"
+          },
+          {
+            "seq": 7630,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7631,
+            "text": "[SHELL] IqVar = 0.0000"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      },
+      {
+        "command": "config set Ctrl.VoltLimitPu 0.54",
+        "console_since": 7633,
+        "correlation": "lines received after command; unrelated output may be included",
+        "observed_lines": [
+          {
+            "seq": 7634,
+            "text": "[MCP] > config set Ctrl.VoltLimitPu 0.54"
+          },
+          {
+            "seq": 7635,
+            "text": "[MCP] sent"
+          },
+          {
+            "seq": 7636,
+            "text": "[SHELL] Ctrl.VoltLimitPu = 0.5400 (live; 'config save Ctrl.VoltLimitPu' to persist)"
+          }
+        ],
+        "response_observed": true,
+        "sent": true
+      }
+    ],
+    "samples": [
+      {
+        "elapsed_ms": 79,
+        "signals": {
+          "Mech_RPM": 0.10289096087217331,
+          "cg_id_a": -0.27069342136383057,
+          "cg_iq_a": 6.1223530769348145,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 73.9019546508789,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.010363235,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.010354131,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.01035206,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.010347514,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.010290759,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.010334104,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.010311482,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.500699277,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 279,
+        "signals": {
+          "Mech_RPM": 1.9002996683120728,
+          "cg_id_a": -3.086791515350342,
+          "cg_iq_a": 14.643562316894531,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.024779971,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.024770974,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.024768913,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.024764185,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.024706048,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.024750804,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.024727208,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.698505818,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 486,
+        "signals": {
+          "Mech_RPM": 11.509428977966309,
+          "cg_id_a": 4.8407158851623535,
+          "cg_iq_a": 24.140918731689453,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.014436723,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.014423455,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.014420474,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.014414084,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.014313608,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.014377789,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.014343899,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.912430672,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 699,
+        "signals": {
+          "Mech_RPM": 22.3603515625,
+          "cg_id_a": -1.7074029445648193,
+          "cg_iq_a": 31.554447174072266,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.018783842,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.018773626,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.018771508,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.018765371,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.018702154,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.01874721,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.018723311,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 1.108574576,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 912,
+        "signals": {
+          "Mech_RPM": 59.11391830444336,
+          "cg_id_a": 5.184050559997559,
+          "cg_iq_a": 36.32525634765625,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.016245632,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.016226365,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.016222413,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.016213579,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.016109338,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.016187723,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.016147297,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 1.329951457,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 1114,
+        "signals": {
+          "Mech_RPM": 103.57295227050781,
+          "cg_id_a": -3.918271780014038,
+          "cg_iq_a": 31.82587432861328,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.025880561,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.025865597,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.025862468,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.025855894,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.025775427,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.025836295,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.025804772,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 1.531683166,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 1311,
+        "signals": {
+          "Mech_RPM": 163.62936401367188,
+          "cg_id_a": 0.4977780878543854,
+          "cg_iq_a": 33.421348571777344,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.010445619,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.010430555,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.010427361,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.010420833,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.010338198,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.010400797,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.010368417,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 1.739728574,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 1512,
+        "signals": {
+          "Mech_RPM": 232.48541259765625,
+          "cg_id_a": -1.4187581539154053,
+          "cg_iq_a": 31.392332077026367,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.78173828125,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.010515618,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.010506538,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.010504476,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.010499858,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.010441675,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.010486385,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.010463135,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.171438276,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 1706,
+        "signals": {
+          "Mech_RPM": 293.6959228515625,
+          "cg_id_a": -2.274254322052002,
+          "cg_iq_a": 33.217803955078125,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.019449426,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.019439946,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.019437873,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.019433221,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.019376835,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.019419855,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.019397651,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.178809806,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 1907,
+        "signals": {
+          "Mech_RPM": 357.46337890625,
+          "cg_id_a": -3.176295757293701,
+          "cg_iq_a": 30.303199768066406,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.019802238,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.019770283,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.019766612,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.019759664,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.019674222,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.019738883,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.019705581,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.37175002,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 2111,
+        "signals": {
+          "Mech_RPM": 439.0488586425781,
+          "cg_id_a": -1.6450295448303223,
+          "cg_iq_a": 31.716060638427734,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.017639472,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.017632501,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.017630935,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.017627433,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.017696783,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.017761744,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.01772844,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.574865123,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 2316,
+        "signals": {
+          "Mech_RPM": 515.2223510742188,
+          "cg_id_a": -0.6668344736099243,
+          "cg_iq_a": 34.364654541015625,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.78173828125,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.01106885,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.011056191,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.011053017,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.011046697,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.01096997,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.01102914,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.010998794,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.778890442,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 2520,
+        "signals": {
+          "Mech_RPM": 592.9645385742188,
+          "cg_id_a": 0.13460949063301086,
+          "cg_iq_a": 36.212913513183594,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.022694939,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.022675835,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.022672124,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.022665048,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.022573418,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.022643482,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.022607268,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.982412319,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 2744,
+        "signals": {
+          "Mech_RPM": 686.365966796875,
+          "cg_id_a": 1.2414524555206299,
+          "cg_iq_a": 35.3311767578125,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.013746179,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.01373824,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.013736457,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.013732394,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.013681018,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.013720569,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.013699258,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.201807474,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 2960,
+        "signals": {
+          "Mech_RPM": 772.3218383789062,
+          "cg_id_a": -2.3333568572998047,
+          "cg_iq_a": 33.10458755493164,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.014627952,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.014618774,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.014616663,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.014612053,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.014554921,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.014598862,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.014575909,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.426161144,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 3161,
+        "signals": {
+          "Mech_RPM": 842.4359741210938,
+          "cg_id_a": -3.668078899383545,
+          "cg_iq_a": 33.6331787109375,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 73.9019546508789,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.025500661,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.02549219,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.025490249,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.025485997,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.025431759,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.025473526,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.025451558,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.628923198,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 3368,
+        "signals": {
+          "Mech_RPM": 935.2224731445312,
+          "cg_id_a": 4.005948543548584,
+          "cg_iq_a": 33.533905029296875,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.015321074,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.01530879,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.015306037,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.015299995,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.015224092,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.015282026,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.015251616,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.842833978,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 3572,
+        "signals": {
+          "Mech_RPM": 1011.5109252929688,
+          "cg_id_a": 3.4408609867095947,
+          "cg_iq_a": 37.796573638916016,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.019589656,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.019580413,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.019578298,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.01957357,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.019517351,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.019560337,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.01953744,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.051641508,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 3774,
+        "signals": {
+          "Mech_RPM": 1079.9737548828125,
+          "cg_id_a": 2.4608330726623535,
+          "cg_iq_a": 34.46233367919922,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.78173828125,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.030295866,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.030286494,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.030284411,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.030279657,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.030221792,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.030266354,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.030242612,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.254065765,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 3971,
+        "signals": {
+          "Mech_RPM": 1162.057373046875,
+          "cg_id_a": 5.042099952697754,
+          "cg_iq_a": 35.262046813964844,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.010580366,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.010571202,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.010569134,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.010564612,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.010506487,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.010551094,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.010527569,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.458570555,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 4164,
+        "signals": {
+          "Mech_RPM": 1235.59130859375,
+          "cg_id_a": 0.8158278465270996,
+          "cg_iq_a": 33.523529052734375,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.010583906,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.010574742,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.010572736,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.010568082,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.010508989,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.010554402,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.010530019,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.650679034,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 4365,
+        "signals": {
+          "Mech_RPM": 1301.586669921875,
+          "cg_id_a": 1.4467374086380005,
+          "cg_iq_a": 36.51640701293945,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.014338221,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.014329615,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.014327723,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.014323449,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.014269771,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.014310977,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.014288871,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.846454845,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 4572,
+        "signals": {
+          "Mech_RPM": 1366.783935546875,
+          "cg_id_a": 0.36796772480010986,
+          "cg_iq_a": 35.0633544921875,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.020599894,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.02059091,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.020588959,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.020584505,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.020530079,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.020571284,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.020549728,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.020731939,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 4788,
+        "signals": {
+          "Mech_RPM": 1459.009765625,
+          "cg_id_a": 5.567561626434326,
+          "cg_iq_a": 35.01587677001953,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.017691529,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.017681632,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.01767943,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.017674459,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.017767702,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.017660132,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.017634477,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.241579156,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 4990,
+        "signals": {
+          "Mech_RPM": 1521.8736572265625,
+          "cg_id_a": -1.8745687007904053,
+          "cg_iq_a": 33.925086975097656,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.030571464,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.030562884,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.030560956,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.030556408,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.030501301,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.030543607,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.030521181,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.445985866,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 5222,
+        "signals": {
+          "Mech_RPM": 1604.483642578125,
+          "cg_id_a": 6.225675106048584,
+          "cg_iq_a": 33.31732940673828,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.78173828125,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.01001315,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.010002451,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.010000099,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.009995039,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.009924474,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.009979997,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.009952216,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.686593931,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      },
+      {
+        "elapsed_ms": 5411,
+        "signals": {
+          "Mech_RPM": 1671.909423828125,
+          "cg_id_a": -2.327310562133789,
+          "cg_iq_a": 36.29657745361328,
+          "cg_sample_valid": 1,
+          "cg_vdc_v": 74.34184265136719,
+          "cg_vlimit_scale": 1,
+          "control_outputs_enabled": 1
+        },
+        "strings": {
+          "fault_flags_hex": "0x00000000"
+        },
+        "status": {
+          "Mech_RPM": {
+            "age_s": 0.016126356,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_id_a": {
+            "age_s": 0.016110898,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_iq_a": {
+            "age_s": 0.016107819,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_sample_valid": {
+            "age_s": 0.016101767,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vdc_v": {
+            "age_s": 0.016020419,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "cg_vlimit_scale": {
+            "age_s": 0.016082373,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "control_outputs_enabled": {
+            "age_s": 0.016051152,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          },
+          "fault_flags_hex": {
+            "age_s": 0.879206904,
+            "fresh": true,
+            "state": "live",
+            "timeout_s": 2
+          }
+        }
+      }
+    ],
+    "captured": true,
+    "reason": "captured"
+  },
+  "final": {
+    "control": {
+      "age_s": {
+        "Elec_RPM": 0.006203169,
+        "EncoderCos": 0.006201275,
+        "EncoderSin": 0.006202122,
+        "GapTicks": 0.006189487,
+        "Mech_RPM": 0.006203934,
+        "cg_du": 0.00619193,
+        "cg_dv": 0.006191118,
+        "cg_dw": 0.006190238,
+        "cg_id_a": 0.006200198,
+        "cg_id_raw_a": 0.006205889,
+        "cg_iq_a": 0.006199308,
+        "cg_iq_raw_a": 0.006204898,
+        "cg_iu_a": 0.006180776,
+        "cg_iv_a": 0.006180049,
+        "cg_iw_a": 0.006179155,
+        "cg_sample_age_us": 0.006198473,
+        "cg_sample_seq": 0.006196596,
+        "cg_sample_valid": 0.006197551,
+        "cg_theta_rad": 0.006178258,
+        "cg_vd_req_v": 0.006194314,
+        "cg_vd_v": 0.006195783,
+        "cg_vdc_v": 0.006177299,
+        "cg_vlimit_scale": 0.006192765,
+        "cg_vq_req_v": 0.006193525,
+        "cg_vq_v": 0.006195033,
+        "cg_vu_v": 0.00617193,
+        "cg_vv_v": 0.006171147,
+        "cg_vw_v": 0.006170362,
+        "control_outputs_enabled": 0.00618479,
+        "control_state": 0.247361404,
+        "dclink_i_a": 0.006165495,
+        "dclink_p_w": 0.006164634,
+        "enc_isr_hz": 0.006163798,
+        "enc_rejects": 0.006162845,
+        "fault_active_names": 0.247347733,
+        "fault_flags_hex": 0.247351351,
+        "foc_running": 0.006183778,
+        "fw_graph": 1.433928269,
+        "fw_graph_hash": 1.433803114,
+        "fw_manifest": 1.433943044,
+        "gate_fault": 0.006181494,
+        "gate_ready": 0.006182221,
+        "hz_adc_isr": 0.006185527,
+        "hz_app_loop": 0.0061878,
+        "hz_tim_isr": 0.006186258,
+        "hz_vsense": 0.006187004,
+        "pwm_moe": 0.006182969,
+        "temp_inv1_c": 0.006175752,
+        "temp_inv2_c": 0.006174935,
+        "temp_inv3_c": 0.006174158,
+        "temp_motor_c": 0.006176536,
+        "thr_a": 0.006167298,
+        "thr_a_norm": 0.006173388,
+        "thr_a_v": 0.006168846,
+        "thr_b": 0.006166352,
+        "thr_b_norm": 0.006172652,
+        "thr_b_v": 0.006168144,
+        "tim_isr_running": 0.006188576,
+        "vdc_v": 0.006169604
+      },
+      "control_outputs_enabled": 0,
+      "fault_flags_hex": "0x00000000",
+      "fault_names": "none",
+      "fresh": true,
+      "gate_fault": 0,
+      "gate_ready": 1,
+      "pwm_moe": 0,
+      "reporting_state": "live",
+      "state": "IDLE",
+      "tim_isr_running": 1
+    },
+    "telemetry": {
+      "signals": {
+        "Mech_RPM": 0.037318650633096695,
+        "cg_vdc_v": 74.34184265136719
+      },
+      "status": {
+        "Mech_RPM": {
+          "age_s": 0.017137454,
+          "fresh": true,
+          "state": "live",
+          "timeout_s": 2
+        },
+        "cg_vdc_v": {
+          "age_s": 0.017091884,
+          "fresh": true,
+          "state": "live",
+          "timeout_s": 2
+        }
+      }
+    }
+  }
+}

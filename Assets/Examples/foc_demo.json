@@ -551,7 +551,7 @@
     },
     {
       "from": {
-        "nodeId": "RPMMechElec1",
+        "nodeId": "ControlSpeed",
         "portName": "RpmMech"
       },
       "id": "c1c",
@@ -639,7 +639,7 @@
     },
     {
       "from": {
-        "nodeId": "RPMMechElec1",
+        "nodeId": "ControlSpeed",
         "portName": "RpmElec"
       },
       "id": "c_ff_rpm",
@@ -1041,6 +1041,17 @@
       },
       "to": {
         "nodeId": "Log_cg_vlimit_scale",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "control_rpm_log",
+      "from": {
+        "nodeId": "ControlSpeed",
+        "portName": "RpmMech"
+      },
+      "to": {
+        "nodeId": "LogControlRpm",
         "portName": "Value"
       }
     }
@@ -5051,6 +5062,44 @@
       "isEntryPoint": false,
       "maxInstances": 1,
       "parameterTypes": {}
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "ControlSpeed",
+      "description": "Timestamped encoder velocity for control; dashboard RPM remains separately smoothed.",
+      "displayName": "Control Speed",
+      "domain": "",
+      "id": "Custom.ControlSpeed",
+      "inlineCode": "RpmMech = platform_get_control_rpm_mech();\nRpmElec = platform_get_control_rpm_elec();\n",
+      "inputPorts": [],
+      "isEntryPoint": true,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "",
+          "direction": "output",
+          "name": "RpmMech",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "RpmElec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
     }
   ],
   "nodes": [
@@ -6106,6 +6155,30 @@
       "position": {
         "x": 1600,
         "y": 3600
+      }
+    },
+    {
+      "id": "ControlSpeed",
+      "type": "Custom.ControlSpeed",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {},
+      "position": {
+        "x": -100,
+        "y": 3400
+      }
+    },
+    {
+      "id": "LogControlRpm",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "",
+      "parameters": {
+        "Key": "cg_rpm_control"
+      },
+      "position": {
+        "x": 300,
+        "y": 3400
       }
     }
   ],

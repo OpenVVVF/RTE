@@ -148,6 +148,9 @@ float platform_get_rpm_mech(void);
  * The simulated encoder counts in the positive rotation direction, so the
  * encoder sign is +1. */
 float platform_get_rpm_elec(void);
+/* Control and display speed both use the exact plant state in HostSim. */
+float platform_get_control_rpm_mech(void);
+float platform_get_control_rpm_elec(void);
 /* Raw encoder sin/cos ADC counts (Gen6 EncoderADC::lastRawSin/lastRawCos).
  * The mechanical angle is rendered as a 16-bit ADC sinusoid: center 32768,
  * amplitude 30000 (one cycle per mechanical revolution, inside the driver's

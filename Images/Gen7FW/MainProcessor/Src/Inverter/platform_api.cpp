@@ -236,6 +236,16 @@ uint32_t platform_get_encoder_raw_sin(void) {
     return Inverter::encoderADC().lastRawSin();
 }
 
+float platform_get_control_rpm_mech(void) {
+    return Inverter::encoderADC().controlRpmMech();
+}
+
+float platform_get_control_rpm_elec(void) {
+    const auto& cal = Inverter::motorCalibration();
+    return platform_get_control_rpm_mech() * cal.pole_count * 0.5f *
+           (cal.encoder_sign >= 0.0f ? 1.0f : -1.0f);
+}
+
 uint32_t platform_get_encoder_raw_cos(void) {
     return Inverter::encoderADC().lastRawCos();
 }

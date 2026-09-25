@@ -184,6 +184,9 @@ float platform_get_rpm_mech(void);
  * @brief Electrical speed [RPM] = mech RPM * pole pairs.
  */
 float platform_get_rpm_elec(void);
+/* Compatibility for shared graphs; Gen6 retains its existing speed estimate. */
+float platform_get_control_rpm_mech(void);
+float platform_get_control_rpm_elec(void);
 
 /**
  * @brief Raw encoder sin/cos ADC counts (for nonlinearity diagnosis).

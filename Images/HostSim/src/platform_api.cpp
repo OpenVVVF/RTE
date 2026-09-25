@@ -629,6 +629,9 @@ float platform_get_rpm_elec(void) {
            static_cast<float>(hostsim::PlantPolePairs());
 }
 
+float platform_get_control_rpm_mech(void) { return platform_get_rpm_mech(); }
+float platform_get_control_rpm_elec(void) { return platform_get_rpm_elec(); }
+
 uint32_t platform_get_encoder_raw_sin(void) {
     const float theta_m_rad =
         hostsim::PlantMechanicalDeg() * (hostsim::kTwoPi / 360.0f);

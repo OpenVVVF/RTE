@@ -213,6 +213,11 @@ float platform_get_rpm_mech(void);
  */
 float platform_get_rpm_elec(void);
 
+/** Fast timestamped encoder velocity for control. Existing RPM APIs retain
+ * dashboard smoothing. Electrical speed includes pole pairs and encoder sign. */
+float platform_get_control_rpm_mech(void);
+float platform_get_control_rpm_elec(void);
+
 /**
  * @brief Raw encoder sin/cos ADC counts (for nonlinearity diagnosis).
  */

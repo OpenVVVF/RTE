@@ -1,0 +1,137 @@
+{
+  "bus75_cycle35_positive_ctrlcap": {
+    "file": "captures/direction_asymmetry/bus75_cycle35_positive_ctrlcap.txt",
+    "sample_hz": 5000.36366281179,
+    "electrical_hz": 180.04653133711702,
+    "rpm": 2160.558376045404,
+    "bus_mean": 74.19934375000001,
+    "seq_step_min": 1.0,
+    "seq_step_max": 1.0,
+    "sample_valid_min": 1.0,
+    "clipped_fraction": 0.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "mean": 1.30691796875,
+      "ac_rms": 4.425640283071577,
+      "peak_to_peak": 23.003,
+      "raw_ac_rms": 10.331842743008023,
+      "raw_peak_to_peak": 47.302,
+      "estimator_max_error": 0.0007500000000009166,
+      "alternating_third_harmonic_amplitude": 12.963214917607669,
+      "alternating_third_variance_fraction": 0.7899698703637118
+    },
+    "iq": {
+      "mean": 35.489726562499996,
+      "ac_rms": 2.2732593313856504,
+      "peak_to_peak": 12.202000000000002,
+      "raw_ac_rms": 4.0369600261668,
+      "raw_peak_to_peak": 20.462999999999997,
+      "estimator_max_error": 0.0007500000000035811,
+      "alternating_third_harmonic_amplitude": 3.970854794826273,
+      "alternating_third_variance_fraction": 0.4859441330387666
+    },
+    "estimated_edge_margin_us": {
+      "min": 36.12937221818218,
+      "p10": 37.19589464727311,
+      "median": 39.35013796363676
+    },
+    "duty_span_percent": {
+      "min": 54.150000000000006,
+      "median": 60.64699999999999,
+      "max": 63.867999999999995
+    },
+    "feedforward_rpm_median": 1819.9421855238884,
+    "estimator_gain_at_pwm_minus_3fe": 0.11080841402747287,
+    "estimator_gain_at_6fe": 0.6058803623672439
+  },
+  "thirtyfive_amp_ctrlcap": {
+    "file": "captures/baseline_5b529e2_20260924/thirtyfive_amp_ctrlcap.txt",
+    "sample_hz": 5000.36366281179,
+    "electrical_hz": 174.31614558468402,
+    "rpm": 2091.7937470162083,
+    "bus_mean": 49.24909375,
+    "seq_step_min": 1.0,
+    "seq_step_max": 1.0,
+    "sample_valid_min": 1.0,
+    "clipped_fraction": 0.26171875,
+    "voltage_scale_min": 0.98077,
+    "id": {
+      "mean": 2.036462890625,
+      "ac_rms": 4.408090996008549,
+      "peak_to_peak": 23.631,
+      "raw_ac_rms": 16.346419294742244,
+      "raw_peak_to_peak": 61.086,
+      "estimator_max_error": 0.0007500000000018048,
+      "alternating_third_harmonic_amplitude": 22.095361652508405,
+      "alternating_third_variance_fraction": 0.9134779157596201
+    },
+    "iq": {
+      "mean": 34.71176171875,
+      "ac_rms": 2.9746067147245774,
+      "peak_to_peak": 18.281999999999996,
+      "raw_ac_rms": 6.276025363098935,
+      "raw_peak_to_peak": 30.606,
+      "estimator_max_error": 0.0007500000000035811,
+      "alternating_third_harmonic_amplitude": 7.378134024665606,
+      "alternating_third_variance_fraction": 0.6906763553744917
+    },
+    "estimated_edge_margin_us": {
+      "min": 6.469529454545519,
+      "p10": 7.3088684072727945,
+      "median": 10.9402042909092
+    },
+    "duty_span_percent": {
+      "min": 78.668,
+      "median": 89.059,
+      "max": 93.53
+    },
+    "feedforward_rpm_median": 1716.13751192072,
+    "estimator_gain_at_pwm_minus_3fe": 0.10411915163603387,
+    "estimator_gain_at_6fe": 0.6268865844054942
+  },
+  "bus75_repeat_ctrlcap": {
+    "file": "captures/baseline_5b529e2_20260924/bus75_repeat_ctrlcap.txt",
+    "sample_hz": 5000.181824793705,
+    "electrical_hz": 173.15673943823816,
+    "rpm": 2077.8808732588577,
+    "bus_mean": 74.4416875,
+    "seq_step_min": 1.0,
+    "seq_step_max": 1.0,
+    "sample_valid_min": 1.0,
+    "clipped_fraction": 0.0,
+    "voltage_scale_min": 1.0,
+    "id": {
+      "mean": 1.298072265625,
+      "ac_rms": 3.5343839296765434,
+      "peak_to_peak": 18.518,
+      "raw_ac_rms": 9.328104410717298,
+      "raw_peak_to_peak": 39.458,
+      "estimator_max_error": 0.0007500000000004725,
+      "alternating_third_harmonic_amplitude": 12.02881878486493,
+      "alternating_third_variance_fraction": 0.8321416055338337
+    },
+    "iq": {
+      "mean": 35.33931640625,
+      "ac_rms": 1.8049355385510546,
+      "peak_to_peak": 11.296999999999997,
+      "raw_ac_rms": 3.3890893889316986,
+      "raw_peak_to_peak": 17.214999999999996,
+      "estimator_max_error": 0.0007500000000035811,
+      "alternating_third_harmonic_amplitude": 3.536318987166916,
+      "alternating_third_variance_fraction": 0.5460284280393135
+    },
+    "estimated_edge_margin_us": {
+      "min": 39.0485799999994,
+      "p10": 39.76955378181757,
+      "median": 41.76648116363572
+    },
+    "duty_span_percent": {
+      "min": 51.982,
+      "median": 58.232,
+      "max": 60.949999999999996
+    },
+    "feedforward_rpm_median": 1745.4834552576624,
+    "estimator_gain_at_pwm_minus_3fe": 0.10279531687390803,
+    "estimator_gain_at_6fe": 0.6310862411891965
+  }
+}

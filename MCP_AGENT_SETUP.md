@@ -419,3 +419,15 @@ The tested FRAM voltage fraction is 0.45; graph fallback remains 1/3. See
 `docs/gen7-current-loop-results.md` for measurements, the flashed image hashes,
 remaining raw ripple and serial/host-reload limitations. No permanent RPM cap
 was introduced. Full voltage utilization and full-speed operation are unvalidated.
+
+### Gen7 control speed (2026-09-24)
+
+Newly generated `foc_demo` images expose `cg_rpm_control`, the DMA-derived
+mechanical speed used by voltage feedforward and angle prediction. Existing
+`Mech_RPM` / `Elec_RPM` remain dashboard estimates and can lag acceleration by
+approximately one second. Request `cg_rpm_control` explicitly in telemetry,
+trends, or Studio's signal plot when examining control timing. This addition
+is discovered through the ordinary runtime signal manifest; no new MCP tool
+or coprocessor flash is needed. A main MCU rebuild/reflash is required.
+Switching remains 2.5 kHz. See `docs/gen7-control-speed-results.md` for bench
+results, residual ripple, rejected gain trials and the latest configuration.

@@ -418,3 +418,15 @@ The main MCU needs the new image; no coprocessor update is required. Reload
 the rebuilt host tools to obtain the new spike parser. The Studio console
 supports the same commands. See `docs/gen7-current-loop-results.md` for actual
 bench validation and limitations; raw winding-current ripple was not eliminated.
+
+### Gen7 control speed (2026-09-24)
+
+`foc_demo` now publishes `cg_rpm_control` from the encoder DMA control-speed
+estimate, separately from the slower `Mech_RPM` / `Elec_RPM` dashboard values.
+The control estimate drives feedforward, angle lead and encoder extrapolation.
+Query it by name through the existing signal/telemetry/trends tools, or select
+it in Studio's Runtime signal plot. The generic manifest path discovers it;
+command syntax and binary telemetry are unchanged. Rebuild/reflash the main
+MCU from the updated graph and Gen7 base; no coprocessor flash is required.
+Frequency remains 2.5 kHz. See `gen7-control-speed-results.md` for measured
+tracking, current ripple and the rejected gain trials.

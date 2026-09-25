@@ -175,6 +175,9 @@ float platform_get_dc_link_voltage(void) {
     return Inverter::dcLinkVoltageSensor().voltage();
 }
 
+float platform_get_control_rpm_mech(void) { return platform_get_rpm_mech(); }
+float platform_get_control_rpm_elec(void) { return platform_get_rpm_elec(); }
+
 float platform_get_rpm_mech(void) {
     return Inverter::encoderADC().rpmMech();
 }
