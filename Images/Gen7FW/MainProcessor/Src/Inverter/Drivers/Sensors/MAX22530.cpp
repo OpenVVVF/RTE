@@ -314,6 +314,52 @@ bool MAX22530::enableCRC(bool enable) {
 }
 
 bool MAX22530::readRegister(uint8_t reg, uint16_t& out) {
+    acquireBus();
+    const bool ok = readRegisterDirect(reg, out);
+    releaseBus();
+    return ok;
+}
+
+bool MAX22530::writeRegister(uint8_t reg, uint16_t value) {
+    acquireBus();
+    const bool ok = writeRegisterDirect(reg, value);
+    releaseBus();
+    return ok;
+}
+
+bool MAX22530::burstTransaction(uint8_t start_reg,
+                                uint16_t out_counts[4],
+                                uint16_t* int_status) {
+    acquireBus();
+    const bool ok = burstTransactionDirect(start_reg, out_counts, int_status);
+    releaseBus();
+    return ok;
+}
+
+/* SPI bus guard.
+ *
+ * The EEOC interrupt fires every ~50 us and starts an SPI-DMA burst read
+ * from ISR context (onInterrupt()).  Without mutual exclusion, a blocking
+ * transaction (shell command, fault-clear, comparator-threshold write)
+ * collides with the burst stream: the SPI handle reports BUSY_TX_RX, or the
+ * ISR raises chip-select in the middle of the blocking frame and corrupts
+ * both.  acquireBus() stops new bursts from starting (EXTI line only — the
+ * DMA/SPI IRQs stay enabled so any in-flight burst finishes and releases
+ * chip-select) and waits a bounded time for the bus to go idle. */
+static constexpr uint32_t BUS_GUARD_TIMEOUT_MS = 2U;
+
+void MAX22530::acquireBus() {
+    HAL_NVIC_DisableIRQ(m_int_irqn);
+    const uint32_t deadline = HAL_GetTick() + BUS_GUARD_TIMEOUT_MS;
+    while (m_dma_busy && HAL_GetTick() < deadline) {
+    }
+}
+
+void MAX22530::releaseBus() {
+    HAL_NVIC_EnableIRQ(m_int_irqn);
+}
+
+bool MAX22530::readRegisterDirect(uint8_t reg, uint16_t& out) {
     const uint8_t cmd = static_cast<uint8_t>(reg << 2);
 
     if (!m_crc_enabled) {
@@ -355,7 +401,7 @@ bool MAX22530::readRegister(uint8_t reg, uint16_t& out) {
     }
 }
 
-bool MAX22530::writeRegister(uint8_t reg, uint16_t value) {
+bool MAX22530::writeRegisterDirect(uint8_t reg, uint16_t value) {
     const uint8_t cmd = static_cast<uint8_t>((reg << 2) | (1U << 1));
 
     if (!m_crc_enabled) {
@@ -423,9 +469,9 @@ bool MAX22530::burstReadFiltered(uint16_t out_counts[4], uint16_t* int_status) {
     return burstTransaction(REG_FADC1, out_counts, int_status);
 }
 
-bool MAX22530::burstTransaction(uint8_t start_reg,
-                                uint16_t out_counts[4],
-                                uint16_t* int_status) {
+bool MAX22530::burstTransactionDirect(uint8_t start_reg,
+                                      uint16_t out_counts[4],
+                                      uint16_t* int_status) {
     if (out_counts == nullptr) {
         return false;
     }

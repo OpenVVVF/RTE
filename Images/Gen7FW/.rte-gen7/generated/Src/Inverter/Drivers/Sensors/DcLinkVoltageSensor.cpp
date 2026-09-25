@@ -35,8 +35,8 @@ DcLinkVoltageSensor::DcLinkVoltageSensor(MAX22530& adc,
       m_scale(scale),
       m_zero_offset_v(DEFAULT_VZERO_OFFSET_SCALED_V / scale),
       m_voltage(0.0f),
-      m_ov_threshold_v(1.9f * scale),   /* raw input > 1.8 V: effectively disabled */
-      m_uv_threshold_v(-0.1f * scale),  /* raw input < 0 V: effectively disabled */
+      m_ov_threshold_v(190.0f),         /* 200 V-class OV trip */
+      m_uv_threshold_v(10.0f),          /* 200 V-class UV trip */
       m_initialized(false),
       m_has_sample(false) {
 }

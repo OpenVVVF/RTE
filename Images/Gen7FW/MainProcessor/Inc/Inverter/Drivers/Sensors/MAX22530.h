@@ -173,6 +173,13 @@ public:
 private:
     bool resetInternal(uint16_t control_bits);
     void updateDmaTxBuffer();
+    /* SPI bus guard: see acquireBus() in MAX22530.cpp.  All blocking
+     * single-register/burst transactions run through these. */
+    void acquireBus();
+    void releaseBus();
+    bool readRegisterDirect(uint8_t reg, uint16_t& out);
+    bool writeRegisterDirect(uint8_t reg, uint16_t value);
+    bool burstTransactionDirect(uint8_t start_reg, uint16_t out_counts[4], uint16_t* int_status);
     bool burstTransaction(uint8_t start_reg, uint16_t out_counts[4], uint16_t* int_status);
     bool parseBurst(const uint8_t* rx, uint8_t len);
     void raiseFaultsFromInterruptStatus(uint16_t status);
