@@ -78,6 +78,7 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::OnboardOvertemperature: return "onboard temp over limit (I2C5)";
         case FaultReason::RailOvervoltage:      return "rail bus overvoltage (I2C4)";
         case FaultReason::RailUndervoltage:     return "rail bus undervoltage (I2C4)";
+        case FaultReason::TorqueLossAbsent:     return "iq near zero with saturated vq request";
         case FaultReason::Count:                break;
     }
     return "unknown";

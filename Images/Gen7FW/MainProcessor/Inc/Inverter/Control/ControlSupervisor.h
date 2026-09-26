@@ -71,9 +71,20 @@ private:
     bool gateDriverStartup();
     void enterFaultState();
 
+    /* SSO-pathway detector debounce windows and thresholds (see service()). */
+    static constexpr uint32_t GATE_POWER_LOSS_DEBOUNCE_MS = 100;
+    static constexpr uint32_t TORQUE_LOSS_DEBOUNCE_MS = 150;
+    static constexpr float    TORQUE_LOSS_IQ_EMA_MAX_A = 4.0f;
+    static constexpr float    TORQUE_LOSS_IQ_REF_MIN_A = 5.0f;
+    static constexpr float    TORQUE_LOSS_VQ_LIMIT_FRAC = 0.9f;
+    static constexpr float    TORQUE_LOSS_IQ_EMA_ALPHA = 0.2f;
+
     State m_state = State::Idle;
     bool m_stop_requested = false;
     uint32_t m_started_ms = 0;
+    uint32_t m_gate_not_ready_since = 0;
+    uint32_t m_torque_loss_since = 0;
+    float    m_iq_abs_ema = 0.0f;
 };
 
 } // namespace Inverter

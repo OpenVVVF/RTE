@@ -276,6 +276,66 @@ void ControlSupervisor::service() {
         return;
     }
 
+    /* SSO-pathway detection, scoped to the generated graph control path
+     * (native FOC / open-loop / calibration do not run through this
+     * supervisor).  Both detectors are gated on actuation, so they cannot
+     * fire at IDLE — gate power may legitimately be off there after a
+     * safety shutdown, and a just-cleared fault must not re-raise while the
+     * rail is still off.  The safety sequence disables outputs before
+     * cutting the rail, so it cannot re-trigger these detectors either. */
+    if ((m_state == State::Running || m_state == State::Starting) &&
+        platform_control_outputs_enabled()) {
+
+        /* Gate-power rail lost: /RDY low with debounce.  The pin drops ~0.1 s
+         * after a rail cut and does not respond to reset assertion, so this
+         * covers exactly the power-cut pathway. */
+        if (!GateDriver_IsReady()) {
+            if (m_gate_not_ready_since == 0) {
+                m_gate_not_ready_since = HAL_GetTick();
+            } else if (HAL_GetTick() - m_gate_not_ready_since >= GATE_POWER_LOSS_DEBOUNCE_MS) {
+                FaultManager::instance().raise(FaultSource::GateDriver,
+                                               FaultReason::GateDriverNotReady);
+            }
+        } else {
+            m_gate_not_ready_since = 0;
+        }
+
+        /* Dead gates / torque loss: commanded torque absent.  The bench's
+         * normal operating point is itself voltage-limited but with real
+         * current (~-10.5 A), and the collapsed-current reading with dead
+         * gates bounces above 2 A in ~50 % of samples, so the discriminator
+         * is a filtered |iq| far below any operating current while the
+         * q-axis request is clamped at the bus limit — never the clamp
+         * alone. */
+        m_iq_abs_ema += TORQUE_LOSS_IQ_EMA_ALPHA *
+                        (std::fabs(appState.tim_isr.CurrentFrame.Iq.in(au::amperes)) - m_iq_abs_ema);
+        const float iq_ref = appState.tim_isr.IqGate.Out;
+        const float vq_req = appState.tim_isr.VectorPi.RequestedQ.in(au::volts);
+        const float vq_limit = platform_voltage_limit(
+            Inverter::dcLinkVoltageSensor().voltage(),
+            appState.tim_isr.CfgVoltLimit.Value);
+        const bool saturated = vq_limit > 1.0f &&
+                               std::fabs(vq_req) >= TORQUE_LOSS_VQ_LIMIT_FRAC * vq_limit;
+        const bool torque_absent =
+            m_iq_abs_ema < TORQUE_LOSS_IQ_EMA_MAX_A &&
+            std::fabs(iq_ref) >= TORQUE_LOSS_IQ_REF_MIN_A &&
+            saturated;
+        if (torque_absent) {
+            if (m_torque_loss_since == 0) {
+                m_torque_loss_since = HAL_GetTick();
+            } else if (HAL_GetTick() - m_torque_loss_since >= TORQUE_LOSS_DEBOUNCE_MS) {
+                FaultManager::instance().raise(FaultSource::TorqueLoss,
+                                               FaultReason::TorqueLossAbsent);
+            }
+        } else {
+            m_torque_loss_since = 0;
+        }
+    } else {
+        m_gate_not_ready_since = 0;
+        m_torque_loss_since = 0;
+        m_iq_abs_ema = 0.0f;
+    }
+
     /* Critical faults force an immediate transition to Fault. */
     if (m_state == State::Running || m_state == State::Starting) {
         if (FaultManager::instance().isSeverityActive(FaultSeverity::Critical)) {

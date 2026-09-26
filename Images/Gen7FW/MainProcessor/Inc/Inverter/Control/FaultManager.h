@@ -54,6 +54,7 @@ enum class FaultSource : uint32_t {
     OnboardOvertemperature = 1u << 28, /**< I2C5 onboard temp sensor over limit */
     RailOvervoltage  = 1u << 29,  /**< I2C4 rail monitor bus overvoltage      */
     RailUndervoltage = 1u << 30,  /**< I2C4 rail monitor bus undervoltage     */
+    TorqueLoss       = 1u << 31,  /**< Commanded torque absent (dead outputs) */
 };
 
 constexpr FaultSource operator|(FaultSource a, FaultSource b) {
@@ -118,6 +119,7 @@ enum class FaultReason : uint8_t {
     OnboardOvertemperature,
     RailOvervoltage,
     RailUndervoltage,
+    TorqueLossAbsent,
     Count
 };
 
@@ -250,6 +252,7 @@ private:
         { FaultSource::OnboardOvertemperature, "OnboardOvertemperature", "Temperature", "I2C5 onboard temp sensor over limit", FaultSeverity::Warning  },
         { FaultSource::RailOvervoltage,  "RailOvervoltage",  "Rail Monitor", "I2C4 rail bus overvoltage",                    FaultSeverity::Warning  },
         { FaultSource::RailUndervoltage, "RailUndervoltage", "Rail Monitor", "I2C4 rail bus undervoltage",                   FaultSeverity::Warning  },
+        { FaultSource::TorqueLoss,       "TorqueLoss",       "Gate Drive",   "commanded torque absent (outputs unresponsive)", FaultSeverity::Critical },
     };
 };
 

@@ -1,5 +1,6 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
+#include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/SpikeRecorder.h"
@@ -174,6 +175,42 @@ public:
     }
 };
 
+class GatePwrCommand : public CommandInterface {
+public:
+    GatePwrCommand()
+      : CommandInterface("gatepwr", "FAULT INJECTION: gate-driver power rail (0=off, 1=on), bypasses fault manager",
+            ArgSpec{"enable", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool on = (args[0].f_val != 0.0f);
+        GateDriver_EnablePower(on);
+        Telemetry::printf("[SHELL] gate power %s: ready=%s fault=%s",
+                          on ? "ON" : "OFF",
+                          GateDriver_IsReady() ? "Y" : "N",
+                          GateDriver_IsFault() ? "Y" : "N");
+    }
+};
+
+class GateRstCommand : public CommandInterface {
+public:
+    GateRstCommand()
+      : CommandInterface("gaterst", "FAULT INJECTION: gate-driver reset line (0=release, 1=assert), bypasses fault manager",
+            ArgSpec{"assert", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool assert_rst = (args[0].f_val != 0.0f);
+        if (assert_rst) {
+            GateDriver_DisableOutputs();  /* /RST low: all gate outputs forced inactive */
+        } else {
+            GateDriver_EnableOutputs();   /* /RST high: release, 10 ms driver wake-up */
+        }
+        Telemetry::printf("[SHELL] gate reset %s: ready=%s fault=%s",
+                          assert_rst ? "ASSERTED" : "RELEASED",
+                          GateDriver_IsReady() ? "Y" : "N",
+                          GateDriver_IsFault() ? "Y" : "N");
+    }
+};
+
 static RawCommand          sRawCmd;
 static VZeroCommand        sVZeroCmd;
 static SupplyStatusCommand sSupplyStatusCmd;
@@ -183,6 +220,8 @@ static EncTraceCommand     sEncTraceCmd;
 static SpikeDumpCommand    sSpikeDumpCmd;
 static ControlCaptureCommand sControlCaptureCmd;
 static EncBoundsCommand    sEncBoundsCmd;
+static GatePwrCommand      sGatePwrCmd;
+static GateRstCommand      sGateRstCmd;
 
 #include "Inverter/Command/CommandManager.h"
 
@@ -196,4 +235,6 @@ void registerSystemCommands(CommandManager& mgr) {
     mgr.registerCommand(&sSpikeDumpCmd);
     mgr.registerCommand(&sControlCaptureCmd);
     mgr.registerCommand(&sEncBoundsCmd);
+    mgr.registerCommand(&sGatePwrCmd);
+    mgr.registerCommand(&sGateRstCmd);
 }
