@@ -1,18 +1,23 @@
 #include "Inverter/Control/ControlSupervisor.h"
 
 #include "Inverter/AppState.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/platform_api.h"
 
 #include "main.h"
 
 #include "../../../generated/domain_tim_isr_generated.h"
+
+#include <cmath>
 
 namespace Inverter {
 
@@ -101,6 +106,40 @@ bool ControlSupervisor::start() {
         return false;
     }
 
+    /* Spinning-rotor guard: while coasting the graph computes no actuation
+     * (the vector PI is gated by control_outputs_enabled), so the first
+     * driven vector at start can only match the back-EMF if that EMF is
+     * within what the bridge can produce.  Above the voltage ceiling any
+     * driven state is uncontrolled rectification into the windings —
+     * measured on this bench as a real >300 A phase spike when start was
+     * issued at ~-2000 RPM on a 50 V bus.  Refuse: the safe state for a
+     * fast-spinning rotor is six-switch-open until it coasts down. */
+    {
+        const float vdc_v = Inverter::dcLinkVoltageSensor().voltage();
+        float lambda_wb = 0.0f;
+        if (RteParamStore::isReady()) {
+            (void)RteParamStore::get("Motor.Lambda", &lambda_wb);
+        }
+        const float pole_pairs = Inverter::MotorCalibration::instance().pole_count * 0.5f;
+        const float rpm_mech = Inverter::encoderADC().rpmMech();
+        constexpr float MAX_BEMF_FRACTION = 0.8f;  /* of SVPWM linear phase peak */
+        float ceiling_rpm = 1000.0f;               /* conservative fallback */
+        if (lambda_wb > 0.0f && vdc_v > 5.0f && pole_pairs > 0.0f) {
+            /* bemf_phase_peak = lambda * |we|, we = rpm * pole_pairs * 2pi/60;
+             * SVPWM linear phase peak = vdc/sqrt(3). */
+            ceiling_rpm = MAX_BEMF_FRACTION * (vdc_v / 1.7320508f) /
+                          (lambda_wb * pole_pairs * 0.10471976f);
+        }
+        if (std::fabs(rpm_mech) > ceiling_rpm) {
+            Telemetry::printf("[SUP] ERROR: rotor spinning too fast to start: rpm=%.0f ceiling=%.0f mech (vdc=%.1f V lambda=%.3f Wb); coast down first",
+                              static_cast<double>(rpm_mech),
+                              static_cast<double>(ceiling_rpm),
+                              static_cast<double>(vdc_v),
+                              static_cast<double>(lambda_wb));
+            return false;
+        }
+    }
+
     platform_set_control_outputs_enabled(false);
     m_state = State::Starting;
 
@@ -117,15 +156,23 @@ bool ControlSupervisor::start() {
 
     /* The timer keeps sampling while idle, but actuator writes are gated.
      * Its CCR preload/active registers can therefore still contain the last
-     * powered voltage vector. Load a neutral vector before enabling phases;
-     * resetting the graph alone does not reset the timer registers. */
+     * powered voltage vector.  Load a neutral vector as a safe default. */
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
     TIM1->EGR = TIM_EGR_UG;
 
     PWM_ClearFault();
     PWM_EnableFocMode();
-    PWM_Start();
+
+    /* Arm graph actuation BEFORE enabling the power stage, then wait one
+     * update period so the CCRs are loaded with the graph's own computed
+     * vector (feed-forward back-EMF match while coasting, zero vector at
+     * standstill).  The previous order (PWM_Start first) drove a blind
+     * 50/50/50 zero vector for up to one update period; into a spinning
+     * motor that is an uncontrolled driven state. */
     platform_set_control_outputs_enabled(true);
+    HAL_Delay(1);
+
+    PWM_Start();
 
     if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
         /* Diagnostics: why is MOE blocked?  Report the live pin states and

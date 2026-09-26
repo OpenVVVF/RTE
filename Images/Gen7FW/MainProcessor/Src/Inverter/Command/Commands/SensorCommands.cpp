@@ -1,5 +1,8 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
+#include "Inverter/Control/ControlSupervisor.h"
+#include "Inverter/Control/FocControlManager.h"
+#include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
@@ -7,6 +10,7 @@
 #include "Inverter/Telemetry.h"
 #include "Inverter/platform_api.h"
 
+using Inverter::ControlSupervisor;
 using Inverter::PhaseCurrentADC;
 using Inverter::DcLinkVoltageSensor;
 using Inverter::DcLinkCurrentSensor;
@@ -14,6 +18,27 @@ using Inverter::MAX22530;
 using Inverter::phaseCurrentADC;
 using Inverter::dcLinkVoltageSensor;
 using Inverter::dcLinkCurrentSensor;
+
+namespace {
+
+/* True while any control path is energizing the motor: generated graph
+ * control (supervisor start/run/stop), the native FOC diagnostic, or
+ * open-loop (which also backs the calibration/induction routines).
+ * The TIM1 MOE bit is NOT a usable actuation indicator here: on Gen7 it
+ * stays set at idle (PWM_ClearFault arms it), so only the software state
+ * of the control paths is checked.  Synchronous pulse diagnostics
+ * (vectorscan, gatefire) block the shell while running, so they cannot
+ * overlap this command. */
+bool powerStageActive() {
+    const ControlSupervisor::State generatedState = ControlSupervisor::instance().state();
+    return generatedState == ControlSupervisor::State::Starting ||
+           generatedState == ControlSupervisor::State::Running ||
+           generatedState == ControlSupervisor::State::Stopping ||
+           Inverter::focControlManager().isRunning() ||
+           Inverter::openLoopController().isRunning();
+}
+
+} // namespace
 
 class DclZeroCommand : public CommandInterface {
 public:
@@ -75,7 +100,7 @@ public:
     void execute(const ArgValue* args, CommandContext&) override {
         float amps = args[0].f_val;
         if (amps < 0.0f) amps = 0.0f;
-        if (phaseCurrentADC().setHardwareOvercurrentThreshold(amps)) {
+        if (!powerStageActive() && phaseCurrentADC().setHardwareOvercurrentThreshold(amps)) {
             Telemetry::printf("[SHELL] hardware overcurrent threshold set to %.3f A", static_cast<double>(amps));
         } else {
             Telemetry::printf("[SHELL] failed to set hardware overcurrent threshold (stop motor first)");

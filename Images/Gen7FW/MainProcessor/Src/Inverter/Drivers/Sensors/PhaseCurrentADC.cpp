@@ -294,48 +294,122 @@ bool PhaseCurrentADC::stop() {
     return true;
 }
 
-bool PhaseCurrentADC::configureAnalogWatchdog() {
-    if (m_hw_oc_threshold_a <= 0.0f) {
-        /* Disabled: configure AWD in "none" mode to clear any previous window. */
-        ADC_AnalogWDGConfTypeDef awd = {};
-        awd.WatchdogNumber = ADC_ANALOGWATCHDOG_1;
-        awd.WatchdogMode   = ADC_ANALOGWATCHDOG_NONE;
-        awd.ITMode         = DISABLE;
-        (void)HAL_ADC_AnalogWDGConfig(&hadc1, &awd);
-        return true;
-    }
-
-    /* Compute the +/- raw ADC code corresponding to the requested current.
-     * The LA37S600 sensor output is ratiometric around VREF/2 at 0 A. */
+uint32_t PhaseCurrentADC::awdHalfWindowCounts() const {
+    /* Raw ADC codes per amp: the LA37S600 output is ratiometric around its
+     * reference at 0 A. */
     constexpr float COUNTS_FULL = static_cast<float>((1U << ADC_BITS) - 1U);
     constexpr float COUNTS_PER_AMP = (DIVIDER * SENSITIVITY_VA * COUNTS_FULL) / ADC_VREF;
-    constexpr float MID = COUNTS_FULL * 0.5f;
+    return static_cast<uint32_t>(m_hw_oc_threshold_a * COUNTS_PER_AMP);
+}
 
-    const float delta = m_hw_oc_threshold_a * COUNTS_PER_AMP;
-    float high_f = MID + delta;
-    float low_f  = MID - delta;
-    if (high_f > COUNTS_FULL) high_f = COUNTS_FULL;
-    if (low_f  < 0.0f)       low_f  = 0.0f;
+void PhaseCurrentADC::awdWindowFromRefs(uint32_t rmin, uint32_t rmax,
+                                        uint32_t& low, uint32_t& high) const {
+    /* The hardware watchdog compares ABSOLUTE codes with one window for both
+     * phase channels, but each LA37S600 rides its own isolated reference and
+     * the references bounce by up to ~200 counts (~14 A equivalent) at idle
+     * on this bench.  Frame the window on the reference extremes so each
+     * channel's sig stays inside as long as its differential sig-ref
+     * excursion is below the requested threshold.  AWD_TRACK_GUARD absorbs
+     * single-sample differential glitches (measured up to ~115 counts =
+     * ~8 A at idle with the bridge off). */
+    constexpr uint32_t COUNTS_FULL = (1U << ADC_BITS) - 1U;
 
-    ADC_AnalogWDGConfTypeDef awd = {};
-    awd.WatchdogNumber = ADC_ANALOGWATCHDOG_1;
-    awd.WatchdogMode   = ADC_ANALOGWATCHDOG_ALL_INJEC;
-    awd.ITMode         = ENABLE;
-    awd.HighThreshold  = static_cast<uint32_t>(high_f);
-    awd.LowThreshold   = static_cast<uint32_t>(low_f);
+    if (rmin == 0U || rmax == 0U) {
+        /* Stream not live yet: center on the ideal mid-scale code. */
+        rmin = rmax = COUNTS_FULL / 2U;
+    }
 
-    return HAL_ADC_AnalogWDGConfig(&hadc1, &awd) == HAL_OK;
+    const uint32_t pad = awdHalfWindowCounts() + AWD_TRACK_GUARD;
+    low  = (rmin > pad) ? rmin - pad : 0U;
+    high = (rmax + pad > COUNTS_FULL) ? COUNTS_FULL : rmax + pad;
+}
+
+void PhaseCurrentADC::writeAwdWindow(uint32_t low, uint32_t high) {
+    /* Widen first: the intermediate window is then a superset of both the old
+     * and the new window, so a conversion that compares against the registers
+     * mid-update can never see a window that excludes a value both the old
+     * and the new window would accept. */
+    const uint32_t cur_low  = READ_BIT(hadc1.Instance->LTR1_TR1, ADC_LTR_LT);
+    const uint32_t cur_high = READ_BIT(hadc1.Instance->HTR1_TR2, ADC_HTR_HT);
+    if (high > cur_high) {
+        MODIFY_REG(hadc1.Instance->HTR1_TR2, ADC_HTR_HT, high);
+    }
+    if (low < cur_low) {
+        MODIFY_REG(hadc1.Instance->LTR1_TR1, ADC_LTR_LT, low);
+    }
+    MODIFY_REG(hadc1.Instance->LTR1_TR1, ADC_LTR_LT, low);
+    MODIFY_REG(hadc1.Instance->HTR1_TR2, ADC_HTR_HT, high);
+}
+
+bool PhaseCurrentADC::configureAnalogWatchdog() {
+    /* A threshold of 0 maps to the full-range window, which can never fire:
+     * AWD1 stays armed and "disabled" is purely a threshold choice (so
+     * runtime changes only ever rewrite the threshold registers).
+     *
+     * The window must track the SAMPLED reference codes, not the ideal
+     * VREF/2 mid-scale: the isolated sensor supplies bounce the absolute
+     * codes by up to +/-200 counts (~+/-14 A equivalent) at idle on this
+     * bench while the differential sig-ref stays within +/-5 A.  Any fixed
+     * absolute window narrow enough to trip at a real 8 A false-trips on
+     * that bounce.  The armed window is therefore framed from the live
+     * per-burst reference extremes and re-tracked in the ISR (see
+     * onInjectedConversionComplete). */
+    constexpr uint32_t COUNTS_FULL = (1U << ADC_BITS) - 1U;
+
+    uint32_t low = 0U, high = COUNTS_FULL;
+    if (m_hw_oc_threshold_a > 0.0f) {
+        uint32_t rmin = m_raw_burst_u_ref[0], rmax = rmin;
+        const uint32_t refs[3] = {m_raw_burst_v_ref[0], m_raw_burst_u_ref[1],
+                                  m_raw_burst_v_ref[1]};
+        for (uint32_t r : refs) {
+            if (r < rmin) rmin = r;
+            if (r > rmax) rmax = r;
+        }
+        awdWindowFromRefs(rmin, rmax, low, high);
+        m_ref_floor = rmin;
+        m_ref_ceil  = rmax;
+    }
+
+    if (!m_running) {
+        /* Init-time full config: conversions are stopped, so the HAL may
+         * touch the mode/channel-select bits (it refuses while any
+         * conversion is ongoing). */
+        ADC_AnalogWDGConfTypeDef awd = {};
+        awd.WatchdogNumber = ADC_ANALOGWATCHDOG_1;
+        awd.WatchdogMode   = ADC_ANALOGWATCHDOG_ALL_INJEC;
+        awd.ITMode         = ENABLE;
+        awd.HighThreshold  = high;
+        awd.LowThreshold   = low;
+        return HAL_ADC_AnalogWDGConfig(&hadc1, &awd) == HAL_OK;
+    }
+
+    /* Runtime: the TIM1/ADC streams run permanently on Gen7, and stopping
+     * them to satisfy the HAL guard corrupts the dual injected-simultaneous
+     * acquisition (measured on the bench: railed currents, encoder
+     * out-of-range).  The AWD1 thresholds are plain data registers
+     * (LTR1_TR1/HTR1_TR2, 16-bit resolution = no shift), written directly
+     * while conversions run; the caller (hwocset) guarantees the power stage
+     * is not actuating. */
+    m_awd_armed = false;
+    writeAwdWindow(low, high);
+    if (m_hw_oc_threshold_a > 0.0f) {
+        m_awd_low   = low;
+        m_awd_high  = high;
+        m_awd_armed = true;
+    }
+
+    return READ_BIT(hadc1.Instance->LTR1_TR1, ADC_LTR_LT) == low &&
+           READ_BIT(hadc1.Instance->HTR1_TR2, ADC_HTR_HT) == high;
 }
 
 bool PhaseCurrentADC::setHardwareOvercurrentThreshold(float amps) {
     if (amps < 0.0f) amps = 0.0f;
 
     /* The ADC watchdog is a safety-critical window: changing it while the
-     * motor is running could create a glitch or a blind spot.  Require stop. */
-    if (m_running) {
-        return false;
-    }
-
+     * power stage is actuating could create a glitch or a blind spot.  The
+     * TIM1/ADC ISR runs permanently for measurement, so "running" here no
+     * longer implies actuation; the hwocset command refuses while the power
+     * stage is active. */
     m_hw_oc_threshold_a = amps;
     return configureAnalogWatchdog();
 }
@@ -438,6 +512,46 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
     m_raw_burst_v_ref[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_4);
 
     m_last_burst_us = DWT->CYCCNT / (SystemCoreClock / 1000000U);
+
+    /* Keep the armed hardware watchdog window framed on the reference
+     * extremes with a leak tracker: the floor/ceiling snap to new reference
+     * extremes instantly and relax one count per burst, so the window hugs
+     * the rolling reference envelope without per-burst lag (the isolated
+     * sensor supplies bounce the absolute codes common-mode far beyond any
+     * usable overcurrent half-window; a fixed or one-burst-lagged window
+     * false-trips at idle).  A genuine overcurrent moves sig away from its
+     * ref and still trips.  Deadband keeps the register write rate low;
+     * widen-first ordering in writeAwdWindow() makes updates safe mid-stream. */
+    if (m_awd_armed) {
+        uint32_t rmin = m_raw_burst_u_ref[0], rmax = rmin;
+        const uint32_t refs[3] = {m_raw_burst_v_ref[0], m_raw_burst_u_ref[1],
+                                  m_raw_burst_v_ref[1]};
+        for (uint32_t r : refs) {
+            if (r < rmin) rmin = r;
+            if (r > rmax) rmax = r;
+        }
+        if (rmin != 0U && rmax != 0U) {
+            uint32_t floor = m_ref_floor;
+            uint32_t ceil  = m_ref_ceil;
+            floor = (rmin < floor) ? rmin : floor + 1U;
+            ceil  = (rmax > ceil) ? rmax : ceil - 1U;
+            m_ref_floor = floor;
+            m_ref_ceil  = ceil;
+
+            uint32_t low = 0U, high = 0U;
+            awdWindowFromRefs(floor, ceil, low, high);
+            int32_t dl = static_cast<int32_t>(low) - static_cast<int32_t>(m_awd_low);
+            int32_t dh = static_cast<int32_t>(high) - static_cast<int32_t>(m_awd_high);
+            if (dl < 0) dl = -dl;
+            if (dh < 0) dh = -dh;
+            if (dl > static_cast<int32_t>(AWD_TRACK_DEADBAND) ||
+                dh > static_cast<int32_t>(AWD_TRACK_DEADBAND)) {
+                m_awd_low  = low;
+                m_awd_high = high;
+                writeAwdWindow(low, high);
+            }
+        }
+    }
 
     /* Keep the single-point legacy interface working: use the first burst
      * point as the canonical raw/current values. */
@@ -658,10 +772,17 @@ extern "C" void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc) {
 
 /* TIME_DOMAIN: ADC_ANALOG_WATCHDOG_ISR
  *   Asynchronous hardware overcurrent trip.  Highest safety priority.
+ *   Asserts the TIM1 break immediately: the 100 Hz safety loop would leave
+ *   the bridge driving for up to 10 ms otherwise, which at full bus voltage
+ *   is enough to run a real current ramp far past the trip level (measured
+ *   >300 A phase on this bench).  The break is hardware-asynchronous
+ *   six-switch-open; the main loop then completes the shutdown
+ *   (gate-driver reset, rail power off) via FaultManager.
  * CODEGEN: Keep as-is; this is a base-image safety hook.
  */
 extern "C" void HAL_ADC_LevelOutOfWindowCallback(ADC_HandleTypeDef* hadc) {
     if (hadc != nullptr && hadc->Instance == ADC1) {
+        TIM1->EGR |= TIM_EGR_BG;
         Inverter::FaultManager::instance().raise(
             Inverter::FaultSource::AdcWatchdog,
             Inverter::FaultReason::AdcWatchdogTrip);

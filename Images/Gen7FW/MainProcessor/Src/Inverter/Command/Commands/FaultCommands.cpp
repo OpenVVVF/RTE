@@ -96,13 +96,16 @@ bool scopeMask(const char* scope, uint32_t& mask) {
 }
 
 bool powerStageActive() {
+    /* TIM1 MOE is NOT an actuation indicator on Gen7: it stays latched for
+     * measurement (PWM_ClearFault arms it, PWM_Stop leaves it set) while the
+     * TIM1/ADC ISR runs permanently.  Only the software state of the control
+     * paths says whether the motor is being driven. */
     const ControlSupervisor::State generatedState = ControlSupervisor::instance().state();
     return generatedState == ControlSupervisor::State::Starting ||
            generatedState == ControlSupervisor::State::Running ||
            generatedState == ControlSupervisor::State::Stopping ||
            Inverter::focControlManager().isRunning() ||
-           Inverter::openLoopController().isRunning() ||
-           (TIM1->BDTR & TIM_BDTR_MOE) != 0U;
+           Inverter::openLoopController().isRunning();
 }
 
 struct GateResetStatus {

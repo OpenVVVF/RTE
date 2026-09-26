@@ -179,10 +179,17 @@ public:
     /**
      * @brief Set the hardware ADC analog-watchdog overcurrent threshold [A].
      *
-     * A value of 0 disables the watchdog.  The watchdog window is centered on
-     * the mid-scale ADC code and watches both injected channels on ADC1.
-     * Reconfiguration requires the ADC to be stopped, so this must be called
-     * while the motor is not running.
+     * A value of 0 disables the watchdog (implemented as a full-range window:
+     * AWD1 stays armed so runtime changes only rewrite the threshold
+     * registers — stopping conversions to reconfigure corrupts the dual
+     * injected-simultaneous acquisition).  The window is centered on the
+     * sampled zero-current reference codes (not the ideal mid-scale: the
+     * reference sits ~480 counts below VREF/2 on this hardware) and watches
+     * both injected channels on ADC1.
+     * The TIM1/ADC ISR runs permanently for measurement, so reconfiguration
+     * is allowed while the drive is idle/stopped/faulted, but the caller must
+     * ensure the power stage is not actuating (the hwocset command enforces
+     * this).
      * @return true on success, false if the ADC could not be reconfigured.
      */
     bool setHardwareOvercurrentThreshold(float amps);
@@ -190,6 +197,9 @@ public:
 
     /**
      * @brief Configure the ADC analog watchdog from the stored threshold.
+     *
+     * Init-time (conversions stopped): full HAL config of mode, thresholds,
+     * and interrupt.  Runtime (streams live): threshold-register writes only.
      */
     bool configureAnalogWatchdog();
 
@@ -198,11 +208,33 @@ private:
     bool initTrigger();
     bool calibrateOffsets();
     float countsToCurrent(uint32_t sig, uint32_t ref) const;
+    uint32_t awdHalfWindowCounts() const;
+    void awdWindowFromRefs(uint32_t rmin, uint32_t rmax,
+                           uint32_t& low, uint32_t& high) const;
+    void writeAwdWindow(uint32_t low, uint32_t high);
 
     static constexpr uint32_t ADC_BITS        = 16;
     static constexpr float    ADC_VREF        = 3.3f;
     static constexpr float    DIVIDER         = 2.0f / 3.0f;
     static constexpr float    SENSITIVITY_VA  = 1.042e-3f; /**< LA37S600. */
+
+    /* Armed-watchdog window tracking: the window is re-framed on the
+     * leak-tracked reference extremes (snap to new extremes, relax one count
+     * per burst) when an edge moves more than AWD_TRACK_DEADBAND counts.
+     * AWD_TRACK_GUARD pads the window beyond the requested half-width.  It is
+     * sized from bench measurement: at idle the raw sig codes plunge up to
+     * ~230 counts (~17 A equivalent) below the previous burst's reference
+     * extremes (isolated-supply/charge-pump noise, single-burst events), so
+     * the effective hardware trip level on this bench is roughly
+     * requested + 17 A.  Precise overcurrent protection remains the filtered
+     * multi-sample software path (setOvercurrentThreshold). */
+    static constexpr uint32_t AWD_TRACK_DEADBAND = 8;
+    static constexpr uint32_t AWD_TRACK_GUARD    = 240;
+    volatile bool    m_awd_armed = false;
+    volatile uint32_t m_awd_low  = 0;
+    volatile uint32_t m_awd_high = 0;
+    volatile uint32_t m_ref_floor = 0;
+    volatile uint32_t m_ref_ceil  = 0;
 
     volatile uint32_t m_raw_u_sig = 0;
     volatile uint32_t m_raw_v_sig = 0;
