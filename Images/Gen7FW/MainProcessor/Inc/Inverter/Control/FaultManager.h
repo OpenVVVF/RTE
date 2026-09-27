@@ -57,6 +57,8 @@ enum class FaultSource : uint16_t {
     TorqueLoss       = 31,  /**< Commanded torque absent (dead outputs) */
     OverTorque       = 32,  /**< Torque current above calibrated max    */
     EncoderLoss      = 33,  /**< Encoder feedback lost while actuating  */
+    DcLinkOvWarning  = 34,  /**< DC-link overvoltage warning (regen off)*/
+    DcLinkUvDerate   = 35,  /**< DC-link undervoltage derate active     */
 };
 
 /**
@@ -170,6 +172,8 @@ enum class FaultReason : uint8_t {
     TorqueLossAbsent,
     OverTorqueLimit,
     EncoderLossWhileDriving,
+    DcLinkOvervoltageWarning,
+    DcLinkUndervoltageDerate,
     Count
 };
 
@@ -315,6 +319,8 @@ private:
         { FaultSource::TorqueLoss,       "TorqueLoss",       "Gate Drive",   "commanded torque absent (outputs unresponsive)", FaultSeverity::Critical },
         { FaultSource::OverTorque,       "OverTorque",       "Current Sense","torque current above 110% of calibrated max", FaultSeverity::Critical },
         { FaultSource::EncoderLoss,      "EncoderLoss",      "Encoder",      "encoder feedback lost while actuating",    FaultSeverity::Critical },
+        { FaultSource::DcLinkOvWarning,  "DcLinkOvWarning",  "Voltage Sense","Vbus above OV warning threshold (regen disabled)", FaultSeverity::Warning },
+        { FaultSource::DcLinkUvDerate,   "DcLinkUvDerate",   "Voltage Sense","Vbus below UV derate threshold (current limited)", FaultSeverity::Warning },
     };
 };
 

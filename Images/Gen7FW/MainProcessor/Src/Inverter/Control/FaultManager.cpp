@@ -81,6 +81,8 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::TorqueLossAbsent:     return "iq near zero with saturated vq request";
         case FaultReason::OverTorqueLimit:      return "iq above 110% of calibrated max torque current";
         case FaultReason::EncoderLossWhileDriving: return "encoder feedback lost while driving";
+        case FaultReason::DcLinkOvervoltageWarning: return "Vbus above OV warning threshold; regen disabled";
+        case FaultReason::DcLinkUndervoltageDerate: return "Vbus below UV derate threshold; current limited";
         case FaultReason::Count:                break;
     }
     return "unknown";

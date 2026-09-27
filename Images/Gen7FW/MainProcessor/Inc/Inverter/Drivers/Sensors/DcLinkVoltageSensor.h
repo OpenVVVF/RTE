@@ -78,11 +78,29 @@ public:
     float overvoltageThreshold() const { return m_ov_threshold_v; }
     float undervoltageThreshold() const { return m_uv_threshold_v; }
 
+    /**
+     * @brief True while the SG-10 OV-warning regen-disable condition persists.
+     *
+     * Engages when vdc rises above Hw.DcLink.OvWarnV (0 = feature off),
+     * releases when vdc falls back below the threshold minus hysteresis.
+     * The DcLinkOvWarning fault latches separately until fault clear.
+     */
+    bool regenDisabled() const { return m_regen_disabled; }
+
+    /**
+     * @brief Current ceiling [A] while the SG-10 UV-derate condition persists.
+     *
+     * 0 means no derate.  Engages when vdc drops below Hw.DcLink.UvDerateV
+     * (0 = feature off), releases above threshold plus hysteresis.
+     */
+    float derateCurrentLimitA() const { return m_derate_active ? m_uv_derate_max_a : 0.0f; }
+
     /** @brief Direct access to the underlying ADC driver for diagnostics. */
     MAX22530& adc() { return m_adc; }
 
 private:
     bool applyComparatorThresholds();
+    void evaluateProtection();
 
     MAX22530&   m_adc;
     const char* m_key;
@@ -93,6 +111,9 @@ private:
     float       m_uv_threshold_v;
     bool        m_initialized;
     bool        m_has_sample;
+    bool        m_regen_disabled = false;
+    bool        m_derate_active = false;
+    float       m_uv_derate_max_a = 10.0f;
 };
 
 /**

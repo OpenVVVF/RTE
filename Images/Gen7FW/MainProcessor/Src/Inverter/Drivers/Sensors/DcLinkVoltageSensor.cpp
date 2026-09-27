@@ -1,5 +1,7 @@
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 
+#include "Inverter/Control/FaultManager.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 #include "main.h"
 
@@ -100,6 +102,58 @@ void DcLinkVoltageSensor::update() {
     }
 
     Telemetry::log(m_key, m_voltage);
+
+    evaluateProtection();
+}
+
+void DcLinkVoltageSensor::evaluateProtection() {
+    /* SG-10 DC-link protection, evaluated on the polled (filtered) bus
+     * voltage at main-loop rate; the fast MAX22530 comparator path handles
+     * the critical OV/UV trips independently.
+     *
+     * OV warning (FSR-11): above Hw.DcLink.OvWarnV, regen is disabled at the
+     * command path while the condition persists (hysteresis on release).
+     * UV derate (FSR-21 candidate): below Hw.DcLink.UvDerateV, the current
+     * ceiling drops to Hw.DcLink.UvDerateMaxA while the condition persists.
+     * Warning-severity faults latch until fault clear; the clamps
+     * auto-recover.  Either threshold <= 0 disables that feature.
+     *
+     * Suppressed while any Critical fault is active: the safety sequence
+     * dumps machine energy into the bus and a UV (or second OV) warning
+     * after a critical trip would only muddy the flag word. */
+    constexpr float OV_WARN_HYST_V   = 2.0f;
+    constexpr float UV_DERATE_HYST_V = 2.0f;
+
+    float ov_warn_v = 55.0f;
+    float uv_derate_v = 40.0f;
+    if (RteParamStore::isReady()) {
+        (void)RteParamStore::get("Hw.DcLink.OvWarnV", &ov_warn_v);
+        (void)RteParamStore::get("Hw.DcLink.UvDerateV", &uv_derate_v);
+        (void)RteParamStore::get("Hw.DcLink.UvDerateMaxA", &m_uv_derate_max_a);
+    }
+
+    if (!m_has_sample ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::Critical)) {
+        return;
+    }
+
+    if (!m_regen_disabled && ov_warn_v > 0.0f && m_voltage > ov_warn_v) {
+        m_regen_disabled = true;
+        FaultManager::instance().raise(FaultSource::DcLinkOvWarning,
+                                       FaultReason::DcLinkOvervoltageWarning);
+    } else if (m_regen_disabled && (ov_warn_v <= 0.0f ||
+                                    m_voltage < ov_warn_v - OV_WARN_HYST_V)) {
+        m_regen_disabled = false;
+    }
+
+    if (!m_derate_active && uv_derate_v > 0.0f && m_voltage < uv_derate_v) {
+        m_derate_active = true;
+        FaultManager::instance().raise(FaultSource::DcLinkUvDerate,
+                                       FaultReason::DcLinkUndervoltageDerate);
+    } else if (m_derate_active && (uv_derate_v <= 0.0f ||
+                                   m_voltage > uv_derate_v + UV_DERATE_HYST_V)) {
+        m_derate_active = false;
+    }
 }
 
 bool DcLinkVoltageSensor::zeroCalibrate() {

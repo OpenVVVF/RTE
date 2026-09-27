@@ -632,6 +632,20 @@ void platform_vector_pi(float id_ref, float iq_ref, float id, float iq,
                         float fd, float fq, float kpd, float kid, float kpq, float kiq,
                         float max_bus_fraction, float valid,
                         float* vd, float* vq, float* rd, float* rq, float* scale) {
+    /* SG-10 command-path clamps (evaluated at 100 Hz by DcLinkVoltageSensor;
+     * cheap flags here):
+     *  - FSR-11 OV warning: regen disabled — no positive (regen) q-current
+     *    while the condition persists.
+     *  - FSR-21 UV derate: |iq| ceiling while the undervoltage condition
+     *    persists.  Both auto-recover; faults latch separately. */
+    if (Inverter::dcLinkVoltageSensor().regenDisabled() && iq_ref > 0.0f) {
+        iq_ref = 0.0f;
+    }
+    const float derate_limit_a = Inverter::dcLinkVoltageSensor().derateCurrentLimitA();
+    if (derate_limit_a > 0.0f) {
+        iq_ref = std::clamp(iq_ref, -derate_limit_a, derate_limit_a);
+    }
+
     s_id_ref = id_ref; s_iq_ref = iq_ref;
     s_control_bus = platform_get_dc_link_voltage();
     s_control_result = s_vector_pi.step({id_ref-id, iq_ref-iq}, {fd,fq},
