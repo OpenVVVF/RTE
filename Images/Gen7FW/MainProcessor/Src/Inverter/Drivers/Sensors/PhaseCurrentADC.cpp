@@ -409,9 +409,33 @@ bool PhaseCurrentADC::setHardwareOvercurrentThreshold(float amps) {
      * power stage is actuating could create a glitch or a blind spot.  The
      * TIM1/ADC ISR runs permanently for measurement, so "running" here no
      * longer implies actuation; the hwocset command refuses while the power
-     * stage is active. */
+     * stage is active.
+     *
+     * hwocset is the manual fault-injection override of the SG-06 derived
+     * arming: amps > 0 pins the threshold, amps == 0 releases back to the
+     * derived default (110% of Motor.MaxTorqueCurrentA, or disabled). */
+    m_hw_oc_manual_override = (amps > 0.0f);
+    if (amps == 0.0f) {
+        amps = derivedHwOcThresholdA();
+    }
     m_hw_oc_threshold_a = amps;
     return configureAnalogWatchdog();
+}
+
+float PhaseCurrentADC::derivedHwOcThresholdA() const {
+    float max_a = 0.0f;
+    if (RteParamStore::isReady()) {
+        (void)RteParamStore::get("Motor.MaxTorqueCurrentA", &max_a);
+    }
+    return (max_a > 0.0f) ? 1.10f * max_a : 0.0f;
+}
+
+void PhaseCurrentADC::setDerivedHardwareOvercurrentThreshold(float amps) {
+    if (m_hw_oc_manual_override) return;
+    if (amps < 0.0f) amps = 0.0f;
+    if (amps == m_hw_oc_threshold_a) return;  /* no register-write churn */
+    m_hw_oc_threshold_a = amps;
+    (void)configureAnalogWatchdog();
 }
 
 bool PhaseCurrentADC::recalibrateOffsets() {
@@ -606,6 +630,27 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
         }
     }
 
+    /* SG-06 over-torque safety chain: filtered multi-sample trip when the
+     * measured torque current exceeds 110% of the calibrated max
+     * (Motor.MaxTorqueCurrentA).  The dq frame is the generated graph's
+     * measurement, live for every actuation path; three consecutive samples
+     * reject single-sample noise.  The immediate TIM1 break makes this the
+     * fast, precise trip — the derived AWD backstop stays armed wider
+     * (110% + the established noise guard) and never pre-empts it. */
+    if (m_over_torque_max_a > 0.0f) {
+        const float iq_a = appState.tim_isr.CurrentFrame.Iq.in(au::amperes);
+        if (std::fabs(iq_a) > 1.10f * m_over_torque_max_a) {
+            if (++m_over_torque_count >= OVER_TORQUE_CONSEC_SAMPLES) {
+                m_over_torque_count = 0;
+                TIM1->EGR |= TIM_EGR_BG;
+                FaultManager::instance().raise(FaultSource::PhaseOvercurrent,
+                                               FaultReason::OverTorqueLimit);
+            }
+        } else {
+            m_over_torque_count = 0;
+        }
+    }
+
     /* Feed the pole estimator at the ADC sample rate.  Pass raw encoder
      * sin/cos so the estimate does not depend on the encoder angle bounds. */
     PoleEstimator::instance().onSample(
@@ -707,6 +752,14 @@ bool PhaseCurrentADC::latestBurst(BurstSample& out) const {
 namespace Inverter {
 
 void PhaseCurrentADC::diagnose() {
+    /* SG-06: track the calibrated max torque current and keep the AWD
+     * backstop armed at the derived 110% default (unless hwocset pinned an
+     * override).  0 = over-torque monitor disabled (safe migration). */
+    if (RteParamStore::isReady()) {
+        (void)RteParamStore::get("Motor.MaxTorqueCurrentA", &m_over_torque_max_a);
+    }
+    setDerivedHardwareOvercurrentThreshold(derivedHwOcThresholdA());
+
     constexpr float COUNTS_TO_V = 3.3f / 65535.0f;
     const float u_ref_v = static_cast<float>(m_raw_u_ref) * COUNTS_TO_V;
     const float v_ref_v = static_cast<float>(m_raw_v_ref) * COUNTS_TO_V;

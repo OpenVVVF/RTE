@@ -79,6 +79,7 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::RailOvervoltage:      return "rail bus overvoltage (I2C4)";
         case FaultReason::RailUndervoltage:     return "rail bus undervoltage (I2C4)";
         case FaultReason::TorqueLossAbsent:     return "iq near zero with saturated vq request";
+        case FaultReason::OverTorqueLimit:      return "iq above 110% of calibrated max torque current";
         case FaultReason::Count:                break;
     }
     return "unknown";

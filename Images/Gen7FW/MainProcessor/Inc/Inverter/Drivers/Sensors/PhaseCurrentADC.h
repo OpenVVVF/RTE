@@ -182,6 +182,16 @@ public:
      * A value of 0 disables the watchdog (implemented as a full-range window:
      * AWD1 stays armed so runtime changes only rewrite the threshold
      * registers — stopping conversions to reconfigure corrupts the dual
+    /**
+     * @brief Set the hardware ADC analog-watchdog overcurrent threshold [A]
+     *        (manual fault-injection override, the hwocset command).
+     *
+     * amps > 0 pins the threshold to that value.  amps == 0 releases the
+     * override: the threshold reverts to the derived default (110 % of the
+     * Motor.MaxTorqueCurrentA config key when set, otherwise disabled).
+     * A value of 0 disables the watchdog (implemented as a full-range window:
+     * AWD1 stays armed so runtime changes only rewrite the threshold
+     * registers — stopping conversions to reconfigure corrupts the dual
      * injected-simultaneous acquisition).  The window is centered on the
      * sampled zero-current reference codes (not the ideal mid-scale: the
      * reference sits ~480 counts below VREF/2 on this hardware) and watches
@@ -194,6 +204,21 @@ public:
      */
     bool setHardwareOvercurrentThreshold(float amps);
     float hardwareOvercurrentThreshold() const { return m_hw_oc_threshold_a; }
+
+    /**
+     * @brief Arm the AWD from the derived default unless manually overridden.
+     *
+     * Called periodically (diagnose path) with 110 % of the calibrated max
+     * torque current (or 0 when unset).  A no-op while a hwocset override is
+     * pinned, and when the derived value is unchanged (avoids register-write
+     * churn).
+     */
+    void setDerivedHardwareOvercurrentThreshold(float amps);
+
+    /**
+     * @brief Derived AWD default [A]: 110 % of Motor.MaxTorqueCurrentA, or 0.
+     */
+    float derivedHwOcThresholdA() const;
 
     /**
      * @brief Configure the ADC analog watchdog from the stored threshold.
@@ -269,6 +294,15 @@ private:
     uint32_t          m_fixed_ref_u = 0;
     uint32_t          m_fixed_ref_v = 0;
     static constexpr uint8_t OC_CONSEC_SAMPLES = 3U;
+
+    /* SG-06 over-torque chain: |iq| above 110% of the calibrated max torque
+     * current (FRAM key Motor.MaxTorqueCurrentA, 0 = disabled).  Filtered
+     * multi-sample software monitor in the ADC ISR; the AWD backstop derives
+     * its threshold from the same key unless hwocset pins an override. */
+    float             m_over_torque_max_a = 0.0f;
+    uint8_t           m_over_torque_count = 0;
+    bool              m_hw_oc_manual_override = false;
+    static constexpr uint8_t OVER_TORQUE_CONSEC_SAMPLES = 3U;
 
     volatile bool     m_new_data = false;
     bool              m_running = false;

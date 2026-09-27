@@ -94,7 +94,7 @@ public:
 class HwOcSetCommand : public CommandInterface {
 public:
     HwOcSetCommand()
-      : CommandInterface("hwocset", "Set hardware overcurrent threshold (0 disables ADC watchdog)",
+      : CommandInterface("hwocset", "Set hardware overcurrent threshold override in A (0 = derive from Motor.MaxTorqueCurrentA)",
             ArgSpec{"amps", "A", 0.0f, 2000.0f, 0.0f, true, ArgSpec::FLOAT}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {

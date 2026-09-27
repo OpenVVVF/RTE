@@ -120,6 +120,7 @@ enum class FaultReason : uint8_t {
     RailOvervoltage,
     RailUndervoltage,
     TorqueLossAbsent,
+    OverTorqueLimit,
     Count
 };
 
