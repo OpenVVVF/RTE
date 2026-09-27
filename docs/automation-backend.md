@@ -219,7 +219,13 @@ does not encode physical ranges. Old images can still send ordinary telemetry,
 but cannot prove which graph is running. `rte_device_snapshot` reads a named
 FOC bundle or custom list; `rte_device_histories` reads up to eight numeric
 signals under one store lock with their individual timestamps and a 400 sample
-total MCP budget. The histories
+total MCP budget. The `fault_flags_hex` string signal carries the widened
+1024-bit fault word (32 x uint32_t): exactly the legacy `0x%08X` format when
+only bits 0-31 are set (wire-identical to pre-widening images), plus
+`,<word_index>:0x%08X` for each nonzero higher word when bits >= 32 are set.
+Legacy bits 0-31 keep their assignments; new fault sources take sequential
+bits from 32. Studio and the MCP path pass the string through unmodified. The
+histories
 are not synchronized MCU samples. `rte_device_trends` analyzes these logged
 time series rather than the graph JSON. It returns sparklines; min/max/mean,
 RMS and standard deviation; a time-based slope and linear-fit strength;

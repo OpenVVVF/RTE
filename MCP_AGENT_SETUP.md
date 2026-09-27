@@ -278,7 +278,13 @@ no coprocessor reflash is needed.
   controller fault state. It refuses the gate reset while control or PWM is
   active. `fault reset`, `clear fault`, and legacy `clearfault` are aliases for
   the same clear routine. A persistent live condition is reported again after
-  the clear.
+  the clear. The `fault_flags_hex` string signal is the widened
+  1024-bit fault word (32 x uint32_t): it is exactly the legacy `0x%08X`
+  format whenever only bits 0-31 are set (identical to the pre-widening wire
+  format), and appends `,<word_index>:0x%08X` for each nonzero higher word
+  when bits >= 32 are set (e.g. `0x00000000,1:0x00000001` for bit 32).
+  Legacy bits 0-31 keep their assignments; new sources take sequential bits
+  from 32. `fault clear <name>` and `fault clear critical` handle all bits.
 - Use `rte_device_command` to send any inverter text command and get a console
   cursor, or `rte_device_command_response` to send and collect subsequent
   lines. The protocol does not associate each console line with a request;

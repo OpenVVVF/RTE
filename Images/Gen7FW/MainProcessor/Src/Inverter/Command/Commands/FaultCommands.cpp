@@ -20,26 +20,24 @@ using Inverter::FaultSource;
 
 namespace {
 
-constexpr uint32_t bit(FaultSource source) {
-    return static_cast<uint32_t>(source);
-}
+using Inverter::FaultBits;
 
-constexpr uint32_t GATE_FAULTS =
-    bit(FaultSource::GateDriver) |
-    bit(FaultSource::PwmBreak) |
-    bit(FaultSource::GateDriverUvlo);
+constexpr FaultBits GATE_FAULTS =
+    FaultBits::bit(FaultSource::GateDriver) |
+    FaultBits::bit(FaultSource::PwmBreak) |
+    FaultBits::bit(FaultSource::GateDriverUvlo);
 
-constexpr uint32_t MAX22530_FAULTS =
-    bit(FaultSource::Max22530Ov) |
-    bit(FaultSource::Max22530Uv) |
-    bit(FaultSource::Max22530Adc) |
-    bit(FaultSource::Max22530Comm) |
-    bit(FaultSource::Max22530Field);
+const FaultBits MAX22530_FAULTS =
+    FaultBits::bit(FaultSource::Max22530Ov) |
+    FaultBits::bit(FaultSource::Max22530Uv) |
+    FaultBits::bit(FaultSource::Max22530Adc) |
+    FaultBits::bit(FaultSource::Max22530Comm) |
+    FaultBits::bit(FaultSource::Max22530Field);
 
-constexpr uint32_t SUPPLY_FAULTS =
-    bit(FaultSource::SupplyPvd) |
-    bit(FaultSource::SupplyAvd) |
-    bit(FaultSource::SupplyVosrdy);
+constexpr FaultBits SUPPLY_FAULTS =
+    FaultBits::bit(FaultSource::SupplyPvd) |
+    FaultBits::bit(FaultSource::SupplyAvd) |
+    FaultBits::bit(FaultSource::SupplyVosrdy);
 
 const char* severityName(FaultSeverity severity) {
     switch (severity) {
@@ -50,26 +48,26 @@ const char* severityName(FaultSeverity severity) {
     return "unknown";
 }
 
-uint32_t allFaultMask() {
-    uint32_t mask = 0U;
+FaultBits allFaultMask() {
+    FaultBits mask;
     for (size_t i = 0; i < FaultManager::metaCount(); ++i) {
-        mask |= bit(FaultManager::metaTable()[i].source);
+        mask.set(FaultManager::metaTable()[i].source);
     }
     return mask;
 }
 
-uint32_t severityMask(FaultSeverity severity) {
-    uint32_t mask = 0U;
+FaultBits severityMask(FaultSeverity severity) {
+    FaultBits mask;
     for (size_t i = 0; i < FaultManager::metaCount(); ++i) {
         const Inverter::FaultMeta& meta = FaultManager::metaTable()[i];
         if (meta.severity == severity) {
-            mask |= bit(meta.source);
+            mask.set(meta.source);
         }
     }
     return mask;
 }
 
-bool scopeMask(const char* scope, uint32_t& mask) {
+bool scopeMask(const char* scope, FaultBits& mask) {
     if (scope == nullptr || scope[0] == '\0' || strcasecmp(scope, "all") == 0) {
         mask = allFaultMask();
         return true;
@@ -89,7 +87,7 @@ bool scopeMask(const char* scope, uint32_t& mask) {
 
     const FaultSource source = FaultManager::sourceFromName(scope);
     if (source != FaultSource::None) {
-        mask = bit(source);
+        mask = FaultBits::bit(source);
         return true;
     }
     return false;
@@ -124,8 +122,8 @@ void printSources() {
     }
 }
 
-bool resetGateHardware(uint32_t mask, GateResetStatus& status) {
-    if ((mask & GATE_FAULTS) == 0U) {
+bool resetGateHardware(const FaultBits& mask, GateResetStatus& status) {
+    if (!mask.intersects(GATE_FAULTS)) {
         return true;
     }
     if (powerStageActive()) {
@@ -157,8 +155,8 @@ bool resetGateHardware(uint32_t mask, GateResetStatus& status) {
     return true;
 }
 
-void resetMax22530Hardware(uint32_t mask) {
-    if ((mask & MAX22530_FAULTS) == 0U) {
+void resetMax22530Hardware(const FaultBits& mask) {
+    if (!mask.intersects(MAX22530_FAULTS)) {
         return;
     }
 
@@ -186,21 +184,21 @@ void recheckGateHardware(const GateResetStatus& status) {
     }
 }
 
-void recheckSupplyHardware(uint32_t mask) {
-    if ((mask & SUPPLY_FAULTS) == 0U) {
+void recheckSupplyHardware(const FaultBits& mask) {
+    if (!mask.intersects(SUPPLY_FAULTS)) {
         return;
     }
-    if ((mask & bit(FaultSource::SupplyVosrdy)) != 0U &&
+    if (mask.test(FaultSource::SupplyVosrdy) &&
         __HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY) == 0U) {
         FaultManager::instance().raise(FaultSource::SupplyVosrdy,
                                        Inverter::FaultReason::VosNotReady);
     }
-    if ((mask & bit(FaultSource::SupplyPvd)) != 0U &&
+    if (mask.test(FaultSource::SupplyPvd) &&
         __HAL_PWR_GET_FLAG(PWR_FLAG_PVDO) != 0U) {
         FaultManager::instance().raise(FaultSource::SupplyPvd,
                                        Inverter::FaultReason::PvdTriggered);
     }
-    if ((mask & bit(FaultSource::SupplyAvd)) != 0U &&
+    if (mask.test(FaultSource::SupplyAvd) &&
         __HAL_PWR_GET_FLAG(PWR_FLAG_AVDO) != 0U) {
         FaultManager::instance().raise(FaultSource::SupplyAvd,
                                        Inverter::FaultReason::AvdTriggered);
@@ -208,7 +206,7 @@ void recheckSupplyHardware(uint32_t mask) {
 }
 
 void clearFaults(const char* scope) {
-    uint32_t mask = 0U;
+    FaultBits mask;
     if (!scopeMask(scope, mask)) {
         Telemetry::printf("[FAULT] unknown clear scope '%s'; run 'fault sources'", scope);
         return;
@@ -219,18 +217,14 @@ void clearFaults(const char* scope) {
         return;
     }
     FaultManager& faults = FaultManager::instance();
-    if (mask == allFaultMask()) {
-        faults.clearAll();
-    } else {
-        faults.clear(static_cast<FaultSource>(mask));
-    }
+    faults.clearMask(mask);
 
     resetMax22530Hardware(mask);
     recheckGateHardware(gateStatus);
     recheckSupplyHardware(mask);
-    const uint32_t blockingMask = severityMask(FaultSeverity::Critical) |
-                                  severityMask(FaultSeverity::High);
-    const bool resetSupervisor = (mask & blockingMask) != 0U;
+    const FaultBits blockingMask = severityMask(FaultSeverity::Critical) |
+                                   severityMask(FaultSeverity::High);
+    const bool resetSupervisor = mask.intersects(blockingMask);
     const bool supervisorReset = !resetSupervisor ||
                                  ControlSupervisor::instance().resetFaultState();
     faults.publishStatus();

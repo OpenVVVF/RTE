@@ -91,9 +91,8 @@ FaultManager& FaultManager::instance() {
 }
 
 const FaultMeta* FaultManager::metaFor(FaultSource src) {
-    const uint32_t bit = static_cast<uint32_t>(src);
     for (size_t i = 0; i < metaCount(); ++i) {
-        if (static_cast<uint32_t>(s_meta[i].source) == bit) {
+        if (s_meta[i].source == src) {
             return &s_meta[i];
         }
     }
@@ -124,45 +123,45 @@ FaultSource FaultManager::sourceFromName(const char* name) {
 }
 
 void FaultManager::raise(FaultSource src, FaultReason reason) {
-    const uint32_t bits = static_cast<uint32_t>(src);
-    if (bits == 0) {
+    if (src == FaultSource::None) {
         return;
     }
 
     const uint32_t primask = irqSave();
-    const uint32_t old = m_active;
-    m_active |= bits;
-    const uint32_t newly = m_active & ~old;
-    m_pending_log |= newly;
-
-    uint32_t b = newly;
-    while (b != 0) {
-        const int idx = __builtin_ctz(b);
-        m_reason[idx] = reason;
-        b &= b - 1U;
+    if (!m_active.test(src)) {
+        m_active.set(src);
+        m_pending_log.set(src);
+        for (size_t i = 0; i < metaCount(); ++i) {
+            if (s_meta[i].source == src && i < REASON_COUNT) {
+                m_reason[i] = reason;
+                break;
+            }
+        }
     }
     irqRestore(primask);
 }
 
 void FaultManager::clear(FaultSource src) {
-    const uint32_t bits = static_cast<uint32_t>(src);
-    if (bits == 0) {
+    if (src == FaultSource::None) {
         return;
     }
+    FaultBits bits = FaultBits::bit(src);
+    clearMask(bits);
+}
 
+void FaultManager::clearMask(const FaultBits& mask) {
     const uint32_t primask = irqSave();
-    m_active &= ~bits;
-    m_pending_log &= ~bits;
-    uint32_t cleared = bits;
-    while (cleared != 0U) {
-        const int idx = __builtin_ctz(cleared);
-        m_reason[idx] = FaultReason::Unspecified;
-        cleared &= cleared - 1U;
+    m_active.clearFrom(mask);
+    m_pending_log.clearFrom(mask);
+    for (size_t i = 0; i < metaCount() && i < REASON_COUNT; ++i) {
+        if (mask.test(s_meta[i].source)) {
+            m_reason[i] = FaultReason::Unspecified;
+        }
     }
     bool criticalRemains = false;
     for (size_t i = 0; i < metaCount(); ++i) {
         if (s_meta[i].severity == FaultSeverity::Critical &&
-            (m_active & static_cast<uint32_t>(s_meta[i].source)) != 0U) {
+            m_active.test(s_meta[i].source)) {
             criticalRemains = true;
             break;
         }
@@ -175,30 +174,43 @@ void FaultManager::clear(FaultSource src) {
 
 void FaultManager::clearAll() {
     const uint32_t primask = irqSave();
-    m_active = 0;
-    m_pending_log = 0;
+    m_active = FaultBits{};
+    m_pending_log = FaultBits{};
     m_safety_executed = false;
-    for (size_t i = 0; i < SOURCE_COUNT; ++i) {
+    for (size_t i = 0; i < REASON_COUNT; ++i) {
         m_reason[i] = FaultReason::Unspecified;
     }
     irqRestore(primask);
 }
 
-bool FaultManager::isActive(FaultSource mask) const {
+bool FaultManager::isActive() const {
     const uint32_t primask = irqSave();
-    const bool active = (m_active & static_cast<uint32_t>(mask)) != 0;
+    const bool active = m_active.any();
+    irqRestore(primask);
+    return active;
+}
+
+bool FaultManager::isActive(FaultSource src) const {
+    const uint32_t primask = irqSave();
+    const bool active = m_active.test(src);
+    irqRestore(primask);
+    return active;
+}
+
+bool FaultManager::isActiveMask(const FaultBits& mask) const {
+    const uint32_t primask = irqSave();
+    const bool active = m_active.intersects(mask);
     irqRestore(primask);
     return active;
 }
 
 bool FaultManager::isSeverityActive(FaultSeverity severity) const {
-    const uint32_t flags = activeFlags();
-    if (flags == 0) {
+    const FaultBits flags = activeBits();
+    if (!flags.any()) {
         return false;
     }
     for (size_t i = 0; i < metaCount(); ++i) {
-        if (s_meta[i].severity == severity &&
-            (flags & static_cast<uint32_t>(s_meta[i].source)) != 0) {
+        if (s_meta[i].severity == severity && flags.test(s_meta[i].source)) {
             return true;
         }
     }
@@ -207,57 +219,81 @@ bool FaultManager::isSeverityActive(FaultSeverity severity) const {
 
 uint32_t FaultManager::activeFlags() const {
     const uint32_t primask = irqSave();
-    const uint32_t flags = m_active;
+    const uint32_t flags = m_active.w[0];
+    irqRestore(primask);
+    return flags;
+}
+
+FaultBits FaultManager::activeBits() const {
+    const uint32_t primask = irqSave();
+    const FaultBits flags = m_active;
     irqRestore(primask);
     return flags;
 }
 
 void FaultManager::publishStatus() {
-    const uint32_t flags = activeFlags();
+    const FaultBits flags = activeBits();
 
-    char fault_flags[16];
-    std::snprintf(fault_flags, sizeof(fault_flags), "0x%08lX",
-                  static_cast<unsigned long>(flags));
-    Telemetry::log("fault_flags_hex", fault_flags);
-
-    char fault_names[512] = {};
-    size_t used = 0;
-    for (size_t i = 0; i < metaCount(); ++i) {
-        const FaultMeta& meta = s_meta[i];
-        if ((flags & static_cast<uint32_t>(meta.source)) == 0U) {
-            continue;
-        }
-        const int written = std::snprintf(fault_names + used,
-                                          sizeof(fault_names) - used,
-                                          "%s%s", used ? "," : "", meta.name);
-        if (written < 0 || static_cast<size_t>(written) >= sizeof(fault_names) - used) {
+    /* Backward-compatible encoding: the familiar single 0x%08X word whenever
+     * only word 0 is nonzero (identical to the pre-1024-bit wire format).
+     * Nonzero higher words append as ",<index>:0x%08X" (compact form; only
+     * nonzero words are listed). */
+    char fault_flags[96] = {};
+    size_t used = static_cast<size_t>(std::snprintf(
+        fault_flags, sizeof(fault_flags), "0x%08lX",
+        static_cast<unsigned long>(flags.w[0])));
+    for (size_t i = 1; i < FaultBits::WORDS; ++i) {
+        if (flags.w[i] == 0U) continue;
+        const int written = std::snprintf(fault_flags + used,
+                                          sizeof(fault_flags) - used,
+                                          ",%lu:0x%08lX",
+                                          static_cast<unsigned long>(i),
+                                          static_cast<unsigned long>(flags.w[i]));
+        if (written < 0 || static_cast<size_t>(written) >= sizeof(fault_flags) - used) {
             break;
         }
         used += static_cast<size_t>(written);
     }
-    Telemetry::log("fault_active_names", used ? fault_names : "none");
+    Telemetry::log("fault_flags_hex", fault_flags);
+
+    char fault_names[512] = {};
+    size_t used_names = 0;
+    for (size_t i = 0; i < metaCount(); ++i) {
+        const FaultMeta& meta = s_meta[i];
+        if (!flags.test(meta.source)) {
+            continue;
+        }
+        const int written = std::snprintf(fault_names + used_names,
+                                          sizeof(fault_names) - used_names,
+                                          "%s%s", used_names ? "," : "", meta.name);
+        if (written < 0 || static_cast<size_t>(written) >= sizeof(fault_names) - used_names) {
+            break;
+        }
+        used_names += static_cast<size_t>(written);
+    }
+    Telemetry::log("fault_active_names", used_names ? fault_names : "none");
 }
 
 void FaultManager::printSummary() {
-    const uint32_t flags = activeFlags();
+    const FaultBits flags = activeBits();
 
-    if (flags == 0) {
+    if (!flags.any()) {
         Telemetry::printf("[FAULT] none active");
         return;
     }
 
     for (size_t i = 0; i < metaCount(); ++i) {
         const auto& m = s_meta[i];
-        if ((flags & static_cast<uint32_t>(m.source)) != 0) {
-            const int idx = __builtin_ctz(static_cast<uint32_t>(m.source));
-            const char* reason = faultReasonString(m_reason[idx]);
+        if (flags.test(m.source)) {
+            const char* reason = (i < REASON_COUNT) ? faultReasonString(m_reason[i])
+                                                    : "unspecified";
             char sev_char = '?';
             switch (m.severity) {
                 case FaultSeverity::Warning:  sev_char = 'W'; break;
                 case FaultSeverity::High:     sev_char = 'H'; break;
                 case FaultSeverity::Critical: sev_char = 'C'; break;
             }
-            if (m_reason[idx] != FaultReason::Unspecified) {
+            if (i < REASON_COUNT && m_reason[i] != FaultReason::Unspecified) {
                 Telemetry::printf("[FAULT][%c][%s] %s: %s (%s)",
                                   sev_char, m.category, m.name, m.description, reason);
             } else {
@@ -270,26 +306,26 @@ void FaultManager::printSummary() {
 
 void FaultManager::service() {
     const uint32_t primask = irqSave();
-    const uint32_t pending = m_pending_log;
-    m_pending_log = 0;
+    const FaultBits pending = m_pending_log;
+    m_pending_log = FaultBits{};
     irqRestore(primask);
 
-    if (pending == 0) {
+    if (!pending.any()) {
         return;
     }
 
     for (size_t i = 0; i < metaCount(); ++i) {
         const auto& m = s_meta[i];
-        if ((pending & static_cast<uint32_t>(m.source)) != 0) {
-            const int idx = __builtin_ctz(static_cast<uint32_t>(m.source));
-            const char* reason = faultReasonString(m_reason[idx]);
+        if (pending.test(m.source)) {
+            const char* reason = (i < REASON_COUNT) ? faultReasonString(m_reason[i])
+                                                    : "unspecified";
             char sev_char = '?';
             switch (m.severity) {
                 case FaultSeverity::Warning:  sev_char = 'W'; break;
                 case FaultSeverity::High:     sev_char = 'H'; break;
                 case FaultSeverity::Critical: sev_char = 'C'; break;
             }
-            if (m_reason[idx] != FaultReason::Unspecified) {
+            if (i < REASON_COUNT && m_reason[i] != FaultReason::Unspecified) {
                 Telemetry::printf("[FAULT][%c][%s] %s triggered: %s",
                                   sev_char, m.category, m.name, reason);
             } else {

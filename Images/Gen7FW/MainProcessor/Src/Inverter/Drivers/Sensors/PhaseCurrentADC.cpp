@@ -643,7 +643,7 @@ void PhaseCurrentADC::onInjectedConversionComplete() {
             if (++m_over_torque_count >= OVER_TORQUE_CONSEC_SAMPLES) {
                 m_over_torque_count = 0;
                 TIM1->EGR |= TIM_EGR_BG;
-                FaultManager::instance().raise(FaultSource::PhaseOvercurrent,
+                FaultManager::instance().raise(FaultSource::OverTorque,
                                                FaultReason::OverTorqueLimit);
             }
         } else {
