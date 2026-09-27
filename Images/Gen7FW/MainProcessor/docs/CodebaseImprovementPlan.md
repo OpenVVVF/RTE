@@ -47,7 +47,7 @@ It checks and faults on:
 - PWM outputs enabled while a Critical fault is active.
 - Gate-driver power enabled but `/RDY` low for >100 ms outside calibration.
 - Current-sensor offset invalid (`!phaseCurrentADC().offsetValid()`).
-- Encoder samples not arriving (`encoderADC()` sample timeout) — re-enable the disabled fault from `EncoderADC::diagnose()`.
+- Encoder samples not arriving (`encoderADC()` sample timeout) — verify the active 50 ms fault path under real scheduling load.
 - Main-loop period exceeded (record `loop_dt_ms` and alarm if >20 ms).
 
 Each check gets a `SafetyCheck` enum, a counter, and a configurable trip threshold. Keep it simple and explicit.
@@ -141,9 +141,9 @@ Other modules request states through `OpenLoopController::requestGateDriverState
 - Report truncation instead of silently cutting input.
 - Add a `"help <command>"` mode that prints per-command usage.
 
-### 4.8 Re-enable encoder timeout fault
+### 4.8 Validate encoder timeout fault
 
-Remove the commented-out code in `EncoderADC::diagnose()` and make the timeout configurable (e.g. 200 ms). If it is too noisy during startup, only enable it after `offsetValid()` is true.
+The timeout is enabled during closed-loop actuation with a 50 ms threshold. Inject a stopped encoder DMA stream and check that it trips without false positives during startup or idle bench setup.
 
 ## 5. Phase 3 — Readability and maintainability
 

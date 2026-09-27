@@ -56,6 +56,10 @@ if(NOT IS_DIRECTORY "${IVP_CORE_DIR}/include")
     message(FATAL_ERROR "InverterProtocol core not found at ${IVP_CORE_DIR} "
                         "(pass -DIVP_CORE_DIR=<path>)")
 endif()
+set(SAFETY_FAULT_LINK_DIR "${IVP_CORE_DIR}/../SafetyFaultLink")
+if(NOT IS_DIRECTORY "${SAFETY_FAULT_LINK_DIR}/include")
+    message(FATAL_ERROR "SafetyFaultLink core not found at ${SAFETY_FAULT_LINK_DIR}")
+endif()
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -63,12 +67,16 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${IVP_CORE_DIR}/src/packet_builder.c
     ${IVP_CORE_DIR}/src/packet_parser.c
     ${IVP_CORE_DIR}/src/trace_protocol.c
+    ${SAFETY_FAULT_LINK_DIR}/src/safety_fault_wire.c
     Src/Inverter/InverterMain.cpp
+    Src/Inverter/SafetyLink.c
+    Src/Inverter/SafetyEcc.c
     Src/Inverter/LoopStats.cpp
     Src/Inverter/platform_api.cpp
     Src/Inverter/Telemetry.cpp
     Src/Inverter/Control/CommandShell.cpp
     Src/Inverter/Control/FaultManager.cpp
+    Src/Inverter/Control/CoprocessorFaults.cpp
     Src/Inverter/Control/FaultCallbacks.cpp
     Src/Inverter/Command/CommandManager.cpp
     Src/Inverter/Command/CommandInitializer.cpp
@@ -155,6 +163,7 @@ endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${SAFETY_FAULT_LINK_DIR}/include
     ${IVP_CORE_DIR}/include
     Inc/Inverter
     Inc/Inverter/Control

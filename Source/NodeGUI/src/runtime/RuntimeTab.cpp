@@ -199,6 +199,18 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
                 ? nlohmann::json(view.latestStr.at("fault_flags_hex")) : nlohmann::json(nullptr)},
             {"fault_active_names", view.latestStr.count("fault_active_names")
                 ? nlohmann::json(view.latestStr.at("fault_active_names")) : nlohmann::json(nullptr)},
+            {"main_fault_flags_hex", view.latestStr.count("main_fault_flags_hex")
+                ? nlohmann::json(view.latestStr.at("main_fault_flags_hex")) : nlohmann::json(nullptr)},
+            {"main_fault_names", view.latestStr.count("main_fault_names")
+                ? nlohmann::json(view.latestStr.at("main_fault_names")) : nlohmann::json(nullptr)},
+            {"coprocessor_fault_flags_hex", view.latestStr.count("coprocessor_fault_flags_hex")
+                ? nlohmann::json(view.latestStr.at("coprocessor_fault_flags_hex")) : nlohmann::json(nullptr)},
+            {"coprocessor_fault_names", view.latestStr.count("coprocessor_fault_names")
+                ? nlohmann::json(view.latestStr.at("coprocessor_fault_names")) : nlohmann::json(nullptr)},
+            {"coprocessor_safety_state", view.latestStr.count("coprocessor_safety_state")
+                ? nlohmann::json(view.latestStr.at("coprocessor_safety_state")) : nlohmann::json(nullptr)},
+            {"coprocessor_clear_result", view.latestStr.count("coprocessor_clear_result")
+                ? nlohmann::json(view.latestStr.at("coprocessor_clear_result")) : nlohmann::json(nullptr)},
             {"pwm_moe", view.latest.count("pwm_moe")
                 ? nlohmann::json(view.latest.at("pwm_moe")) : nlohmann::json(nullptr)},
             {"signal_age_s", view.ageSeconds},

@@ -109,6 +109,8 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
 uint8_t CDC_Transmit_FS(uint8_t port, uint8_t* Buf, uint16_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
+#include "safety_fault_wire.h"
+void CDC_Bridge_QueueSafetyStatus(const SafetyFaultFrame *frame);
 void CDC_Bridge_Process(void);
 uint8_t CDC_IsBridgeMode(void);
 void CDC_DebugReportStartup(void);

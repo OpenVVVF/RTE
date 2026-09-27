@@ -403,7 +403,10 @@ bool PhaseCurrentADC::configureAnalogWatchdog() {
 }
 
 bool PhaseCurrentADC::setHardwareOvercurrentThreshold(float amps) {
-    if (amps < 0.0f) amps = 0.0f;
+    /* The 600 A IGBT module must not be left without the independent ADC
+     * window by a shell command or an invalid calibration. Lower thresholds
+     * are allowed for a more restrictive power stage. */
+    if (!std::isfinite(amps) || amps <= 0.0f || amps > 500.0f) return false;
 
     /* The ADC watchdog is a safety-critical window: changing it while the
      * power stage is actuating could create a glitch or a blind spot.  The

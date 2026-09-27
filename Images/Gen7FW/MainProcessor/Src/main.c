@@ -30,6 +30,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Inverter/InverterMain.h"
+#include "Inverter/SafetyLink.h"
+#include "Inverter/SafetyEcc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -102,9 +104,11 @@ int main(void)
  *   ADC channels, timers, CAN filters, etc., via the .ioc or custom init code.
    */
   MX_GPIO_Init();
+  SafetyLink_Init();
   MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_TIM1_Init();
+  SafetyEcc_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_ADC3_Init();
@@ -229,6 +233,7 @@ void PeriphCommonClock_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+  SafetyLink_EmergencyStop();
   __disable_irq();
   while (1)
   {

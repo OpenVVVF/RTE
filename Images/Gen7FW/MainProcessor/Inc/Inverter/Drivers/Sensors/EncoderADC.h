@@ -439,17 +439,18 @@ private:
     uint32_t m_reject_pub_count = 0;  /**< Value published last diagnose() (1 Hz). */
 
     /* Fault-detection state (evaluated in diagnose() at main-loop cadence). */
-    static constexpr uint32_t SAMPLE_TIMEOUT_MS = 5U;
+    /* Allow scheduling/trigger jitter but stay below the FSR-09 100 ms limit. */
+    static constexpr uint32_t SAMPLE_TIMEOUT_MS = 50U;
     static constexpr uint16_t MIN_AMP_RANGE     = 20000U;
     static constexpr float    AMP_COLLAPSE_THRESHOLD = 500.0f;
     static constexpr float    MAG_EMA_ALPHA     = 0.2f;   /**< per diagnose() call */
-    static constexpr uint16_t AMP_COLLAPSE_COUNT  = 25U;  /**< consecutive calls */
+    static constexpr uint32_t AMP_COLLAPSE_MS     = 80U;
     static constexpr uint16_t RAIL_MARGIN         = 200U;
-    static constexpr uint16_t RAIL_COUNT          = 10U;  /**< consecutive calls */
+    static constexpr uint32_t RAIL_PERSIST_MS     = 50U;
 
     volatile uint32_t m_last_sample_ms = 0;
-    volatile uint16_t m_amp_low_count  = 0;
-    volatile uint16_t m_rail_count     = 0;
+    uint32_t m_amp_low_since_ms = UINT32_MAX; /**< UINT32_MAX means healthy. */
+    uint32_t m_rail_since_ms = UINT32_MAX;
     float             m_mag_ema        = 0.0f;
     bool              m_mag_ema_init   = false;
     volatile uint32_t m_isr_count      = 0;

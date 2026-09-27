@@ -288,7 +288,7 @@ private:
     volatile float    m_current_v = 0.0f;
 
     float             m_oc_threshold_a = 500.0f;  /**< software OC trip [A] */
-    float             m_hw_oc_threshold_a = 0.0f; /**< 0 = ADC watchdog disabled */
+    float             m_hw_oc_threshold_a = 500.0f; /**< ADC hardware trip, below 600 A IGBT rating */
     uint8_t           m_oc_count = 0;
     bool              m_use_fixed_ref = false;
     uint32_t          m_fixed_ref_u = 0;

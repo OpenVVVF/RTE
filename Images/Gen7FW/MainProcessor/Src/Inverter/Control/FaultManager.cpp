@@ -3,6 +3,7 @@
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/platform_api.h"
+#include "Inverter/SafetyLink.h"
 
 #include "main.h"
 #include "tim.h"
@@ -131,6 +132,14 @@ void FaultManager::raise(FaultSource src, FaultReason reason) {
         return;
     }
 
+    /* Critical sources can arrive from ADC/SPI/DMA IRQs. Open all six PWM
+     * switches immediately; the application loop then performs the slower
+     * gate-reset and power-off actions. */
+    const FaultMeta* raised_meta = metaFor(src);
+    if (raised_meta != nullptr && raised_meta->severity == FaultSeverity::Critical) {
+        TIM1->EGR = TIM_EGR_BG;
+    }
+
     const uint32_t primask = irqSave();
     if (!m_active.test(src)) {
         m_active.set(src);
@@ -241,7 +250,8 @@ void FaultManager::publishStatus() {
     /* Backward-compatible encoding: the familiar single 0x%08X word whenever
      * only word 0 is nonzero (identical to the pre-1024-bit wire format).
      * Nonzero higher words append as ",<index>:0x%08X" (compact form; only
-     * nonzero words are listed). */
+     * nonzero words are listed).  The main_fault_* mirrors carry the same
+     * strings so hosts can tell main-MCU and coprocessor fault reports apart. */
     char fault_flags[96] = {};
     size_t used = static_cast<size_t>(std::snprintf(
         fault_flags, sizeof(fault_flags), "0x%08lX",
@@ -259,6 +269,7 @@ void FaultManager::publishStatus() {
         used += static_cast<size_t>(written);
     }
     Telemetry::log("fault_flags_hex", fault_flags);
+    Telemetry::log("main_fault_flags_hex", fault_flags);
 
     char fault_names[512] = {};
     size_t used_names = 0;
@@ -276,13 +287,14 @@ void FaultManager::publishStatus() {
         used_names += static_cast<size_t>(written);
     }
     Telemetry::log("fault_active_names", used_names ? fault_names : "none");
+    Telemetry::log("main_fault_names", used_names ? fault_names : "none");
 }
 
 void FaultManager::printSummary() {
     const FaultBits flags = activeBits();
 
     if (!flags.any()) {
-        Telemetry::printf("[FAULT] none active");
+        Telemetry::printf("[FAULT][MAIN] none active");
         return;
     }
 
@@ -298,10 +310,10 @@ void FaultManager::printSummary() {
                 case FaultSeverity::Critical: sev_char = 'C'; break;
             }
             if (i < REASON_COUNT && m_reason[i] != FaultReason::Unspecified) {
-                Telemetry::printf("[FAULT][%c][%s] %s: %s (%s)",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s: %s (%s)",
                                   sev_char, m.category, m.name, m.description, reason);
             } else {
-                Telemetry::printf("[FAULT][%c][%s] %s: %s",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s: %s",
                                   sev_char, m.category, m.name, m.description);
             }
         }
@@ -352,10 +364,10 @@ void FaultManager::service() {
                 case FaultSeverity::Critical: sev_char = 'C'; break;
             }
             if (i < REASON_COUNT && m_reason[i] != FaultReason::Unspecified) {
-                Telemetry::printf("[FAULT][%c][%s] %s triggered: %s",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s triggered: %s",
                                   sev_char, m.category, m.name, reason);
             } else {
-                Telemetry::printf("[FAULT][%c][%s] %s triggered",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s triggered",
                                   sev_char, m.category, m.name);
             }
         }
@@ -375,6 +387,7 @@ void FaultManager::executeSafetyActions() {
         return;
     }
     m_safety_executed = true;
+    SafetyLink_Stop();
 
     /* Triple-redundant shutdown:
      * 1. Force TIM1 break -> hardware disables all PWM outputs (MOE clear).
