@@ -32,6 +32,12 @@ void HAL_TIMEx_BreakCallback(TIM_HandleTypeDef* htim) {
             Inverter::FaultManager::instance().raise(
                 Inverter::FaultSource::PwmBreak, Inverter::FaultReason::DesatBreak);
         }
+        /* One-shot: the NCx5710y /FLT latch holds the break input active
+         * until the driver is reset, and a level-retriggered break at this
+         * priority starves the main loop (observed on the bench as a full
+         * app hang right after enabling TIM_IT_BREAK).  The fault-clear
+         * gate-reset path and control start re-arm it. */
+        __HAL_TIM_DISABLE_IT(htim, TIM_IT_BREAK);
     }
 }
 

@@ -10,6 +10,7 @@
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
+#include "tim.h"
 
 #include <strings.h>
 
@@ -143,6 +144,12 @@ bool resetGateHardware(const FaultBits& mask, GateResetStatus& status) {
     status.checked = true;
     status.ready = GateDriver_IsReady();
     status.fault = GateDriver_IsFault();
+
+    /* Re-arm the one-shot TIM1 break interrupt: the driver's latched /FLT
+     * has just been reset-pulsed, so the break input is inactive again and
+     * the next genuine DESAT event must be able to fire. */
+    __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_BREAK);
+    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_BREAK);
 
     if (!outputsWereReleased) {
         GateDriver_DisableOutputs();

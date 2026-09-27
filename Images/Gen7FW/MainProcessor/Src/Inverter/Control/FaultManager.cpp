@@ -83,6 +83,7 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::EncoderLossWhileDriving: return "encoder feedback lost while driving";
         case FaultReason::DcLinkOvervoltageWarning: return "Vbus above OV warning threshold; regen disabled";
         case FaultReason::DcLinkUndervoltageDerate: return "Vbus below UV derate threshold; current limited";
+        case FaultReason::GateDriverFaultPin:   return "gate-driver /FLT asserted (GPIO poll)";
         case FaultReason::Count:                break;
     }
     return "unknown";
@@ -308,6 +309,28 @@ void FaultManager::printSummary() {
 }
 
 void FaultManager::service() {
+    /* SG-14 backstop: poll the gate-driver /FLT pin (PC11, active-low).
+     * The TIM1 BKIN hardware path (break IRQ) is the fast route to PwmBreak;
+     * this catches any /FLT the hardware path misses — a BKIN wiring or
+     * polarity mismatch, or an IRQ that never fired — at 100 Hz.  Guards:
+     * only while the gate rail is ON and the driver is out of reset; with
+     * the rail off or reset asserted, /FLT reads low legitimately. */
+    static constexpr uint32_t GATE_FLT_POLL_COUNT = 3U;
+    const bool gate_rail_on =
+        HAL_GPIO_ReadPin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
+                         GATE_DRIVER_POWER_ENABLE_Pin) == GPIO_PIN_SET;
+    const bool gate_in_reset =
+        HAL_GPIO_ReadPin(GATE_DRIVER_RESET_GPIO_Port,
+                         GATE_DRIVER_RESET_Pin) == GPIO_PIN_RESET;
+    if (gate_rail_on && !gate_in_reset && GateDriver_IsFault()) {
+        if (++m_gate_flt_count >= GATE_FLT_POLL_COUNT) {
+            m_gate_flt_count = 0;
+            raise(FaultSource::PwmBreak, FaultReason::GateDriverFaultPin);
+        }
+    } else {
+        m_gate_flt_count = 0;
+    }
+
     const uint32_t primask = irqSave();
     const FaultBits pending = m_pending_log;
     m_pending_log = FaultBits{};

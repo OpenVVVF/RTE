@@ -174,6 +174,7 @@ enum class FaultReason : uint8_t {
     EncoderLossWhileDriving,
     DcLinkOvervoltageWarning,
     DcLinkUndervoltageDerate,
+    GateDriverFaultPin,
     Count
 };
 
@@ -281,6 +282,7 @@ private:
     FaultBits         m_active;
     FaultBits         m_pending_log;
     volatile bool     m_safety_executed = false;
+    uint32_t          m_gate_flt_count = 0;
 
     FaultReason       m_reason[REASON_COUNT] = {};
 

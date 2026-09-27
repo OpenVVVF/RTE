@@ -267,6 +267,14 @@ void PWM_StartUpdateInterrupt(void)
     const bool was_running = PWM_IsUpdateInterruptRunning();
     HAL_NVIC_SetPriority(TIM1_UP_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
+    /* The TIM1 break input (gate-driver /FLT) must preempt the control ISRs:
+     * without this the hardware break drops MOE but PwmBreak is never
+     * raised and the fault manager never learns why outputs died.  The BIE
+     * bit in DIER is also required — without it BIF sets but the NVIC line
+     * never fires, which is exactly the /FLT blindness measured on the bench. */
+    HAL_NVIC_SetPriority(TIM1_BRK_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM1_BRK_IRQn);
+    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_BREAK);
     __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(&htim1);
     if (!was_running) {

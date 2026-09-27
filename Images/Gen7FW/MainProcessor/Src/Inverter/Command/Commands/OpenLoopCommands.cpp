@@ -137,6 +137,14 @@ public:
                           (GPIOD->ODR & GPIO_PIN_5) ? 1 : 0,
                           (GPIOC->ODR & GPIO_PIN_10) ? 1 : 0,
                           (GPIOD->ODR & GPIO_PIN_6) ? 1 : 0);
+        Telemetry::printf("[SHELL] pins: PE15(bkin idr)=%d PC11(/flt idr)=%d PC12(/rdy idr)=%d",
+                          (GPIOE->IDR & GPIO_PIN_15) ? 1 : 0,
+                          (GPIOC->IDR & GPIO_PIN_11) ? 1 : 0,
+                          (GPIOC->IDR & GPIO_PIN_12) ? 1 : 0);
+        Telemetry::printf("[SHELL] TIM1 AF1=0x%08lX BDTR=0x%08lX SR=0x%08lX",
+                          (unsigned long)TIM1->AF1,
+                          (unsigned long)TIM1->BDTR,
+                          (unsigned long)TIM1->SR);
         FaultManager::instance().printSummary();
     }
 };
