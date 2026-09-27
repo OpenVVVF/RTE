@@ -26,7 +26,9 @@ and `InverterGen5/Hardware/Chassis2/Boards/GateDriver/GateDriver.kicad_sch`.
 | PC10 / PC11 | H7 USART3 RX / TX | Fault status to H7 / H7 telemetry to USB bridge. |
 
 The gate-driver netlist connects U5 (PWR1) output to U6 (PWR2) input. Both
-switches must be on for the +12 V gate supply. Main MCU PD5 also connects to
+switches must be on for the +12 V gate supply. Each feedback net is fed from
+its switch output through a 3 kΩ/1 kΩ divider, a 120 Ω series resistor, and
+a 3 V clamp. Main MCU PD5 also connects to
 `DRIVER_RESET`. The current main image drives that net push-pull and the
 KiCad netlist shows no external pull-up. Therefore this milestone does not
 assert coprocessor PA10 low; a board-level reset-net design decision is needed
@@ -84,7 +86,8 @@ before that independent shutdown path can be enabled.
   off behavior must be measured on hardware before claiming fail-safe startup.
 
 From `RTE/Images/Gen7FW/CoProcessor`, run the host policy and heartbeat tests with
-`bash Safety/tests/run.sh`, then build the target with `cmake --preset Debug`
+`bash Safety/tests/run.sh` (including the normal H7 warmup and PWR1/PWR2 arming
+sequence), then build the target with `cmake --preset Debug`
 and `cmake --build --preset Debug`.
 Run `Safety/tests/verify_pinout.py` from this repository when `kicad-cli` and
 the adjacent `InverterGen5` checkout are available.

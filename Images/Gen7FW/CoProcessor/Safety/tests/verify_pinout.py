@@ -23,7 +23,7 @@ def export_nets(schematic: Path) -> dict[str, list[tuple[str, str]]]:
         tree = ET.parse(output)
     return {
         net.attrib["name"]: [
-            (node.attrib["ref"], node.attrib.get("pinfunction", ""))
+            (node.attrib["ref"], node.attrib.get("pinfunction", node.attrib["pin"]))
             for node in net.findall("node")
         ]
         for net in tree.findall(".//nets/net")
@@ -99,7 +99,18 @@ def main() -> None:
     series = [pins for pins in gate.values()
               if ("U5", "OUT_5") in pins and ("U6", "Vbb_3") in pins]
     assert len(series) == 1, "PWR1 and PWR2 gate switches are not in series"
-    print("Chassis2 coprocessor pinout and series gate switches verified")
+    # The feedback pins must actually be driven from the two switch outputs.
+    # R28/R29 and R27/R30 form 3k/1k dividers; R31/R32 feed the MCU nets.
+    assert all(pair in series[0] for pair in (("R28", "1"),))
+    assert all(pair in gate["Net-(Z1-K)"] for pair in
+               (("R28", "2"), ("R31", "1"), ("R27", "1")))
+    assert ("R31", "2") in gate["/GATE_DRIVE_PWR1_FEEDBACK"]
+    assert all(pair in gate["/+12V_A"] for pair in
+               (("U6", "OUT_5"), ("R29", "1")))
+    assert all(pair in gate["Net-(Z2-K)"] for pair in
+               (("R29", "2"), ("R32", "1"), ("R30", "1")))
+    assert ("R32", "2") in gate["/GATE_DRIVE_PWR2_FEEDBACK"]
+    print("Chassis2 coprocessor pinout, power switches, and feedback verified")
 
 
 if __name__ == "__main__":
