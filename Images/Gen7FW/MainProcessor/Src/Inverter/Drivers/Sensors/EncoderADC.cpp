@@ -1,6 +1,8 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/FocControlManager.h"
+#include "Inverter/platform_api.h"
 
 #include "main.h"
 #include "adc.h"
@@ -456,8 +458,8 @@ void EncoderADC::setBounds(uint16_t sin_min, uint16_t sin_max,
     m_obs_cos_max = cos_max;
     m_mag_ema = 0.0f;
     m_mag_ema_init = false;
-    m_amp_low_count = 0;
-    m_rail_count = 0;
+    m_amp_low_since_ms = UINT32_MAX;
+    m_rail_since_ms = UINT32_MAX;
     __enable_irq();
 }
 
@@ -479,8 +481,8 @@ void EncoderADC::resetBounds() {
     m_active_cos_max = COS_MAX_CAP;
     m_mag_ema = 0.0f;
     m_mag_ema_init = false;
-    m_amp_low_count = 0;
-    m_rail_count = 0;
+    m_amp_low_since_ms = UINT32_MAX;
+    m_rail_since_ms = UINT32_MAX;
     __enable_irq();
 }
 
@@ -618,6 +620,10 @@ void EncoderADC::onDmaError() {
 
 void EncoderADC::diagnose() {
     const uint32_t now_ms = HAL_GetTick();
+    /* An idle encoder stream can be disconnected during bench setup. Trip
+     * only when closed-loop actuation depends on position feedback. */
+    const bool encoder_required = platform_control_outputs_enabled() ||
+                                  focControlManager().isRunning();
 
     /* Mechanical speed, evaluated here (main loop) rather than in the DMA
      * ISR: per-sample angle deltas at 10 kHz multiply angle noise by the
@@ -673,14 +679,15 @@ void EncoderADC::diagnose() {
             m_mag_ema += MAG_EMA_ALPHA * (mag - m_mag_ema);
         }
 
-        if (m_mag_ema < AMP_COLLAPSE_THRESHOLD) {
-            if (++m_amp_low_count >= AMP_COLLAPSE_COUNT) {
+        if (encoder_required && m_mag_ema < AMP_COLLAPSE_THRESHOLD) {
+            if (m_amp_low_since_ms == UINT32_MAX) m_amp_low_since_ms = now_ms;
+            if ((now_ms - m_amp_low_since_ms) >= AMP_COLLAPSE_MS) {
                 FaultManager::instance().raise(
                     FaultSource::EncoderAmplitude, FaultReason::EncoderAmplitudeLow);
-                m_amp_low_count = 0;
+                m_amp_low_since_ms = now_ms;
             }
         } else {
-            m_amp_low_count = 0;
+            m_amp_low_since_ms = UINT32_MAX;
         }
 
         const bool at_rail =
@@ -688,14 +695,15 @@ void EncoderADC::diagnose() {
             (raw_sin > SIN_MAX_CAP - RAIL_MARGIN) ||
             (raw_cos < COS_MIN_CAP + RAIL_MARGIN) ||
             (raw_cos > COS_MAX_CAP - RAIL_MARGIN);
-        if (at_rail) {
-            if (++m_rail_count >= RAIL_COUNT) {
+        if (encoder_required && at_rail) {
+            if (m_rail_since_ms == UINT32_MAX) m_rail_since_ms = now_ms;
+            if ((now_ms - m_rail_since_ms) >= RAIL_PERSIST_MS) {
                 FaultManager::instance().raise(
                     FaultSource::EncoderOutOfRange, FaultReason::EncoderAtRail);
-                m_rail_count = 0;
+                m_rail_since_ms = now_ms;
             }
         } else {
-            m_rail_count = 0;
+            m_rail_since_ms = UINT32_MAX;
         }
 
         /* A fitted correction assumes the sensor geometry is stable.  If the
@@ -713,6 +721,27 @@ void EncoderADC::diagnose() {
                 --m_fit_fault_count;
             }
         }
+    }
+
+    /* An unplugged encoder can have no usable calibrated range. Check rails
+     * even when range_ok is false, without double-counting the normal path. */
+    if (!range_ok) {
+        const bool at_rail =
+            (m_snapshot.raw_sin < SIN_MIN_CAP + RAIL_MARGIN) ||
+            (m_snapshot.raw_sin > SIN_MAX_CAP - RAIL_MARGIN) ||
+            (m_snapshot.raw_cos < COS_MIN_CAP + RAIL_MARGIN) ||
+            (m_snapshot.raw_cos > COS_MAX_CAP - RAIL_MARGIN);
+        if (encoder_required && at_rail) {
+            if (m_rail_since_ms == UINT32_MAX) m_rail_since_ms = now_ms;
+            if ((now_ms - m_rail_since_ms) >= RAIL_PERSIST_MS) {
+                FaultManager::instance().raise(
+                    FaultSource::EncoderOutOfRange, FaultReason::EncoderAtRail);
+                m_rail_since_ms = now_ms;
+            }
+        } else {
+            m_rail_since_ms = UINT32_MAX;
+        }
+        m_amp_low_since_ms = UINT32_MAX;
     }
 
     /* Publish the measured trigger/ISR rate once a second so the assumed
@@ -740,11 +769,10 @@ void EncoderADC::diagnose() {
         m_reject_pub_count = m_reject_count;
     }
 
-    if (m_running && (now_ms - m_last_sample_ms) > SAMPLE_TIMEOUT_MS) {
-        /* Temporarily disabled: encoder timeout fault is firing during
-         * bench testing and interfering with other calibration work. */
-        // FaultManager::instance().raise(FaultSource::EncoderTimeout,
-        //                                FaultReason::EncoderSampleTimeout);
+    if (encoder_required &&
+        (now_ms - m_last_sample_ms) > SAMPLE_TIMEOUT_MS) {
+        FaultManager::instance().raise(FaultSource::EncoderTimeout,
+                                       FaultReason::EncoderSampleTimeout);
     }
 }
 

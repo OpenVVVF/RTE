@@ -14,6 +14,7 @@
 #include "Inverter/Calibration/InductionVHzCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Control/ControlSupervisor.h"
@@ -35,6 +36,8 @@
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/platform_api.h"
+#include "Inverter/SafetyLink.h"
+#include "Inverter/SafetyEcc.h"
 #include "Inverter/RteParams.h"
 
 #if __has_include("rte_build_info.h")
@@ -232,6 +235,9 @@ static void loop()
     ++Inverter::LoopStats::app_loop;
 
     const uint32_t now_ms = HAL_GetTick();
+    SafetyEcc_Check();
+    SafetyLink_MainLoop(platform_control_outputs_enabled() ||
+                        Inverter::focControlManager().isRunning());
 
     if ((now_ms - s_last_hz_ms) >= 1000U) {
         Telemetry::log("hz_app_loop", static_cast<float>(Inverter::LoopStats::app_loop));
@@ -339,6 +345,7 @@ static void loop()
     Inverter::ControlSupervisor::instance().service();
     Inverter::FaultManager::instance().service();
     Inverter::commandShell().poll();
+    Inverter::CoprocessorFaults::instance().service();
     Inverter::FaultManager::instance().executeSafetyActions();
 
     /* Flush queued telemetry values over UART. */

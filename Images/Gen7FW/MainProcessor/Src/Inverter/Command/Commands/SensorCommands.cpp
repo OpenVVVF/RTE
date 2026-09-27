@@ -112,7 +112,7 @@ class MaxCfgOvCommand : public CommandInterface {
 public:
     MaxCfgOvCommand()
       : CommandInterface("maxcfg_ov", "Set DC-link overvoltage threshold",
-            ArgSpec{"volts", "V", 0.0f, 1000.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+            ArgSpec{"volts", "V", 0.001f, 190.0f, 0.0f, true, ArgSpec::FLOAT}) {}
 
     void execute(const ArgValue* args, CommandContext&) override {
         DcLinkVoltageSensor& vdc = dcLinkVoltageSensor();

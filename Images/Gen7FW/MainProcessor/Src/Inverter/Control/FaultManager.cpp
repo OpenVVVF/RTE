@@ -3,6 +3,7 @@
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/platform_api.h"
+#include "Inverter/SafetyLink.h"
 
 #include "main.h"
 #include "tim.h"
@@ -128,6 +129,17 @@ void FaultManager::raise(FaultSource src, FaultReason reason) {
         return;
     }
 
+    /* Critical sources can arrive from ADC/SPI/DMA IRQs. Open all six PWM
+     * switches immediately; the application loop then performs the slower
+     * gate-reset and power-off actions. */
+    for (size_t i = 0; i < metaCount(); ++i) {
+        if (s_meta[i].severity == FaultSeverity::Critical &&
+            (bits & static_cast<uint32_t>(s_meta[i].source)) != 0u) {
+            TIM1->EGR = TIM_EGR_BG;
+            break;
+        }
+    }
+
     const uint32_t primask = irqSave();
     const uint32_t old = m_active;
     m_active |= bits;
@@ -218,6 +230,7 @@ void FaultManager::publishStatus() {
     std::snprintf(fault_flags, sizeof(fault_flags), "0x%08lX",
                   static_cast<unsigned long>(flags));
     Telemetry::log("fault_flags_hex", fault_flags);
+    Telemetry::log("main_fault_flags_hex", fault_flags);
 
     char fault_names[512] = {};
     size_t used = 0;
@@ -235,13 +248,14 @@ void FaultManager::publishStatus() {
         used += static_cast<size_t>(written);
     }
     Telemetry::log("fault_active_names", used ? fault_names : "none");
+    Telemetry::log("main_fault_names", used ? fault_names : "none");
 }
 
 void FaultManager::printSummary() {
     const uint32_t flags = activeFlags();
 
     if (flags == 0) {
-        Telemetry::printf("[FAULT] none active");
+        Telemetry::printf("[FAULT][MAIN] none active");
         return;
     }
 
@@ -257,10 +271,10 @@ void FaultManager::printSummary() {
                 case FaultSeverity::Critical: sev_char = 'C'; break;
             }
             if (m_reason[idx] != FaultReason::Unspecified) {
-                Telemetry::printf("[FAULT][%c][%s] %s: %s (%s)",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s: %s (%s)",
                                   sev_char, m.category, m.name, m.description, reason);
             } else {
-                Telemetry::printf("[FAULT][%c][%s] %s: %s",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s: %s",
                                   sev_char, m.category, m.name, m.description);
             }
         }
@@ -289,10 +303,10 @@ void FaultManager::service() {
                 case FaultSeverity::Critical: sev_char = 'C'; break;
             }
             if (m_reason[idx] != FaultReason::Unspecified) {
-                Telemetry::printf("[FAULT][%c][%s] %s triggered: %s",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s triggered: %s",
                                   sev_char, m.category, m.name, reason);
             } else {
-                Telemetry::printf("[FAULT][%c][%s] %s triggered",
+                Telemetry::printf("[FAULT][MAIN][%c][%s] %s triggered",
                                   sev_char, m.category, m.name);
             }
         }
@@ -312,6 +326,7 @@ void FaultManager::executeSafetyActions() {
         return;
     }
     m_safety_executed = true;
+    SafetyLink_Stop();
 
     /* Triple-redundant shutdown:
      * 1. Force TIM1 break -> hardware disables all PWM outputs (MOE clear).

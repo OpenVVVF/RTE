@@ -64,6 +64,15 @@ TEST(RteStudioSession, StoppedSignalIsNotAZeroAndHistoryWindowExpires) {
     EXPECT_EQ((*live)["signal_status"]["isr_current"]["state"], "live");
 
     store.AddString("control_state", "IDLE");
+    store.AddString("fault_flags_hex", "0x00000000");
+    store.AddString("fault_active_names", "none");
+    store.AddString("main_fault_flags_hex", "0x00000000");
+    store.AddString("main_fault_names", "none");
+    store.AddString("coprocessor_fault_flags_hex", "0x00000010");
+    store.AddString("coprocessor_fault_names", "MainHeartbeatLost");
+    store.AddString("coprocessor_safety_state", "FAULT_LATCHED");
+    store.AddString("coprocessor_clear_result", "refused");
+    store.AddF32("coprocessor_status_age_ms", 100.0f, 0.1f);
     store.AddF32("foc_running", 0.0f, 0.1f);
     store.AddF32("tim_isr_running", 1.0f, 0.1f);
     store.AddF32("control_outputs_enabled", 0.0f, 0.1f);
@@ -83,6 +92,11 @@ TEST(RteStudioSession, StoppedSignalIsNotAZeroAndHistoryWindowExpires) {
     EXPECT_EQ((*controlStatus)["state"], "IDLE");
     EXPECT_EQ((*controlStatus)["tim_isr_running"], 1.0);
     EXPECT_EQ((*controlStatus)["control_outputs_enabled"], 0.0);
+    EXPECT_EQ((*controlStatus)["main_fault_names"], "none");
+    EXPECT_EQ((*controlStatus)["main_fault_flags_hex"], "0x00000000");
+    EXPECT_EQ((*controlStatus)["coprocessor_fault_names"], "MainHeartbeatLost");
+    EXPECT_EQ((*controlStatus)["coprocessor_safety_state"], "FAULT_LATCHED");
+    EXPECT_EQ((*controlStatus)["coprocessor_clear_result"], "refused");
 
     const auto stoppedSnapshot = RequestWithEvents(app, *session, "device.snapshot",
         {{"signals", {"isr_current", "foc_id"}}}, error);

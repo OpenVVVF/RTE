@@ -272,13 +272,18 @@ no coprocessor reflash is needed.
   Updating this wording requires a main MCU reflash; it does not require a
   coprocessor reflash.
 - On current Gen7 main firmware, use `fault` as the canonical command for fault
-  operations: `fault status`, `fault sources`, `fault clear [all|warning|high|critical|source]`,
-  and `fault test <source>`. A bare `fault clear` resets all software fault
-  latches, related gate/PWM and MAX22530 hardware latches, and the generated
-  controller fault state. It refuses the gate reset while control or PWM is
+  operations: `fault status`, `fault sources`, `fault clear [all|main|coprocessor|warning|high|critical|source]`,
+  and `fault test <source>`. `fault status` identifies MAIN and COPROCESSOR
+  faults separately. A bare `fault clear` clears main faults and requests a
+  guarded coprocessor clear; the subsequent G474 status reports accepted or
+  refused. The command also resets related gate/PWM and MAX22530 hardware
+  latches and the generated controller fault state. It refuses the gate reset while control or PWM is
   active. `fault reset`, `clear fault`, and legacy `clearfault` are aliases for
   the same clear routine. A persistent live condition is reported again after
   the clear.
+  The G474 status uses the same bridged USART3 line, so both main and
+  coprocessor images must be reflashed for this feature. `rte_control_status`
+  exposes separate `coprocessor_fault_*` and `coprocessor_safety_state` fields.
 - Use `rte_device_command` to send any inverter text command and get a console
   cursor, or `rte_device_command_response` to send and collect subsequent
   lines. The protocol does not associate each console line with a request;

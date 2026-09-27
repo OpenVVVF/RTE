@@ -393,6 +393,15 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                       {"state", stringValue("control_state")},
                       {"fault_flags_hex", stringValue("fault_flags_hex")},
                       {"fault_names", stringValue("fault_active_names")},
+                      {"main_fault_flags_hex", view.latestStr.count("main_fault_flags_hex")
+                          ? stringValue("main_fault_flags_hex") : stringValue("fault_flags_hex")},
+                      {"main_fault_names", view.latestStr.count("main_fault_names")
+                          ? stringValue("main_fault_names") : stringValue("fault_active_names")},
+                      {"coprocessor_fault_flags_hex", stringValue("coprocessor_fault_flags_hex")},
+                      {"coprocessor_fault_names", stringValue("coprocessor_fault_names")},
+                      {"coprocessor_safety_state", stringValue("coprocessor_safety_state")},
+                      {"coprocessor_clear_result", stringValue("coprocessor_clear_result")},
+                      {"coprocessor_status_age_ms", numberValue("coprocessor_status_age_ms")},
                       {"pwm_moe", numberValue("pwm_moe")},
                       {"gate_ready", numberValue("gate_ready")},
                       {"gate_fault", numberValue("gate_fault")},
@@ -415,7 +424,11 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                             "foc_vq", "foc_elec_angle", "foc_speed", "foc_vdc",
                             "foc_iu", "foc_iv", "foc_iw"};
                 keys.insert(keys.end(), {"control_state", "fault_flags_hex",
-                    "fault_active_names", "pwm_moe", "gate_ready", "gate_fault",
+                    "fault_active_names", "main_fault_flags_hex", "main_fault_names",
+                    "coprocessor_fault_flags_hex",
+                    "coprocessor_fault_names", "coprocessor_safety_state",
+                    "coprocessor_clear_result", "coprocessor_status_age_ms",
+                    "pwm_moe", "gate_ready", "gate_fault",
                     "tim_isr_running", "control_outputs_enabled"});
             }
             if (keys.empty() || keys.size() > 32)

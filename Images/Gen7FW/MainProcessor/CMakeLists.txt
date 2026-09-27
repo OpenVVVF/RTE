@@ -63,12 +63,16 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${IVP_CORE_DIR}/src/packet_builder.c
     ${IVP_CORE_DIR}/src/packet_parser.c
     ${IVP_CORE_DIR}/src/trace_protocol.c
+    ../../../Lib/SafetyFaultLink/src/safety_fault_wire.c
     Src/Inverter/InverterMain.cpp
+    Src/Inverter/SafetyLink.c
+    Src/Inverter/SafetyEcc.c
     Src/Inverter/LoopStats.cpp
     Src/Inverter/platform_api.cpp
     Src/Inverter/Telemetry.cpp
     Src/Inverter/Control/CommandShell.cpp
     Src/Inverter/Control/FaultManager.cpp
+    Src/Inverter/Control/CoprocessorFaults.cpp
     Src/Inverter/Control/FaultCallbacks.cpp
     Src/Inverter/Command/CommandManager.cpp
     Src/Inverter/Command/CommandInitializer.cpp
@@ -155,6 +159,7 @@ endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ../../../Lib/SafetyFaultLink/include
     ${IVP_CORE_DIR}/include
     Inc/Inverter
     Inc/Inverter/Control

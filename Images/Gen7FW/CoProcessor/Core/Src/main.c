@@ -34,6 +34,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
+#include "safety_hardware.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -84,6 +85,11 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
+  /* Drive the second series gate-power switch off before clocks, USB, or
+   * generated peripheral initialization can fail. Hardware reset-state
+   * behavior still needs a board-level verification. */
+  SafetyHardware_ForceOff();
+
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
@@ -97,6 +103,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  SafetyHardware_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_FDCAN2_Init();
@@ -132,10 +139,10 @@ int main(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  HAL_GPIO_WritePin(GATE_DRIVER_FAULT_IN_GPIO_Port, GATE_DRIVER_FAULT_IN_Pin, GPIO_PIN_SET);
+  /* PB10 is the gate-driver /FAULT input, not a coprocessor fault output. */
   GPIO_InitStruct.Pin = GATE_DRIVER_FAULT_IN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GATE_DRIVER_FAULT_IN_GPIO_Port, &GPIO_InitStruct);
   /* USER CODE END 2 */
@@ -144,6 +151,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    SafetyHardware_Update();
     CDC_Bridge_Process();
     /* USER CODE END WHILE */
 
@@ -211,6 +219,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  SafetyHardware_ForceOff();
   __disable_irq();
   while (1)
   {

@@ -3,6 +3,8 @@
 #include "Inverter/Telemetry.h"
 #include "main.h"
 
+#include <cmath>
+
 namespace Inverter {
 
 namespace {
@@ -50,6 +52,9 @@ bool DcLinkVoltageSensor::init() {
 }
 
 bool DcLinkVoltageSensor::setOvervoltageThreshold(float v) {
+    /* A 200 V capacitor bank must not lose its 190 V software comparator
+     * limit through a shell command. Lower limits remain available. */
+    if (!std::isfinite(v) || v <= 0.0f || v > 190.0f) return false;
     m_ov_threshold_v = v;
     return applyComparatorThresholds();
 }
@@ -64,10 +69,9 @@ bool DcLinkVoltageSensor::applyComparatorThresholds() {
     const float raw_ov = m_ov_threshold_v / m_scale;
     const float raw_uv = m_uv_threshold_v / m_scale;
 
-    /* Only enable the comparator interrupt direction if the threshold is
-     * actually inside the ADC range.  The default OV/UV thresholds are placed
-     * outside the 0..1.8 V input range to disable them; without this, a
-     * clamped low threshold of 0 counts could falsely trip UV when Vbus sags. */
+    /* Only enable a comparator direction if its threshold is inside the ADC
+     * range. A 0 or out-of-range UV threshold disables that direction; the
+     * 190 V OV default is active on the Gen7 board's 1001:1 divider. */
     constexpr float VREF = 1.8f;
     const bool enable_ov = (raw_ov > 0.0f && raw_ov < VREF);
     const bool enable_uv = (raw_uv > 0.0f && raw_uv < VREF);
