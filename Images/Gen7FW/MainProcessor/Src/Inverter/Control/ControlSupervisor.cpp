@@ -140,6 +140,17 @@ bool ControlSupervisor::start() {
         }
     }
 
+    /* Rotor-feedback guard: never drive blind.  Learned bounds are stale
+     * evidence — a disconnected encoder leaves them valid while the sin/cos
+     * rail — so the live signal must be plausible at start time.  Refusal
+     * leaves everything untouched (no gate startup, no PWM, no state
+     * change), like the spinning-rotor guard.  Warning-latched encoder
+     * faults do not block on their own; the live signal is the gate. */
+    if (!Inverter::encoderADC().feedbackValid()) {
+        Telemetry::printf("[SUP] ERROR: encoder feedback invalid (bounds/raw sin/cos at rail or amplitude collapsed); refusing to drive blind");
+        return false;
+    }
+
     platform_set_control_outputs_enabled(false);
     m_state = State::Starting;
 

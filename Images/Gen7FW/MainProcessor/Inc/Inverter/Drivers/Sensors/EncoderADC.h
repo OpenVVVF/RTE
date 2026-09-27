@@ -180,6 +180,17 @@ public:
     }
 
     /**
+     * @brief Live rotor-feedback validity for start gating.
+     *
+     * Learned bounds are stale evidence: a disconnected encoder leaves them
+     * valid (FRAM-restored) while the sin/cos rail, so this also requires the
+     * latest raw samples off the rails and the tracked amplitude (when
+     * initialized) above the collapse threshold.  Cheap to poll at start
+     * time; diagnosis/debounce stays in diagnose().
+     */
+    bool feedbackValid() const;
+
+    /**
      * @brief Mechanical speed in RPM, signed by direction.
      *
      * Derived in diagnose() (main loop) from unwrapped angle deltas over a

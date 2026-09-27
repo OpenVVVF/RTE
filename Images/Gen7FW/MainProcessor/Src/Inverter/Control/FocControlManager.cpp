@@ -87,6 +87,11 @@ bool FocControlManager::checkSensorReadiness() {
         return false;
     }
 
+    if (!encoderADC().feedbackValid()) {
+        Telemetry::printf("[FOC] ERROR: encoder feedback invalid (raw sin/cos at rail or amplitude collapsed); refusing to drive blind");
+        return false;
+    }
+
     if (!dcLinkVoltageSensor().hasSample()) {
         Telemetry::printf("[FOC] ERROR: no DC-link voltage sample yet");
         return false;

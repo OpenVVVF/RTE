@@ -1,6 +1,7 @@
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/platform_api.h"
 
 #include "main.h"
 #include "adc.h"
@@ -484,6 +485,29 @@ void EncoderADC::resetBounds() {
     __enable_irq();
 }
 
+bool EncoderADC::feedbackValid() const {
+    /* Learned bounds alone are stale evidence: a disconnected encoder leaves
+     * them valid while the sin/cos rail.  Require the latest raw samples off
+     * the rails (same margin as the diagnose() rail detector) and, once the
+     * amplitude tracker is initialized, the tracked amplitude above the
+     * collapse threshold. */
+    if (!boundsValid()) {
+        return false;
+    }
+    const uint16_t raw_sin = m_snapshot.raw_sin;
+    const uint16_t raw_cos = m_snapshot.raw_cos;
+    if (raw_sin < SIN_MIN_CAP + RAIL_MARGIN ||
+        raw_sin > SIN_MAX_CAP - RAIL_MARGIN ||
+        raw_cos < COS_MIN_CAP + RAIL_MARGIN ||
+        raw_cos > COS_MAX_CAP - RAIL_MARGIN) {
+        return false;
+    }
+    if (m_mag_ema_init && m_mag_ema < AMP_COLLAPSE_THRESHOLD) {
+        return false;
+    }
+    return true;
+}
+
 void EncoderADC::startFitCapture() {
     __disable_irq();
     m_fit_capture = false;
@@ -654,7 +678,12 @@ void EncoderADC::diagnose() {
 
     /* Signal-quality faults (main loop now): magnitude collapse and rail
      * sticking, evaluated on the latest snapshot raws.  Fault detection is
-     * slow by nature; per-call EMA replaces the per-sample one. */
+     * slow by nature; per-call EMA replaces the per-sample one.
+     * While actuating (graph control outputs enabled), the same debounced
+     * conditions also raise EncoderLoss as Critical (FSR-09/SG-08): at IDLE
+     * an unplugged encoder stays a bench-appropriate warning, but driving
+     * blind must reach SSO. */
+    const bool actuating = platform_control_outputs_enabled();
     const bool range_ok = (m_active_sin_max - m_active_sin_min > MIN_AMP_RANGE) &&
                           (m_active_cos_max - m_active_cos_min > MIN_AMP_RANGE);
     if (range_ok) {
@@ -677,6 +706,10 @@ void EncoderADC::diagnose() {
             if (++m_amp_low_count >= AMP_COLLAPSE_COUNT) {
                 FaultManager::instance().raise(
                     FaultSource::EncoderAmplitude, FaultReason::EncoderAmplitudeLow);
+                if (actuating) {
+                    FaultManager::instance().raise(
+                        FaultSource::EncoderLoss, FaultReason::EncoderLossWhileDriving);
+                }
                 m_amp_low_count = 0;
             }
         } else {
@@ -692,6 +725,10 @@ void EncoderADC::diagnose() {
             if (++m_rail_count >= RAIL_COUNT) {
                 FaultManager::instance().raise(
                     FaultSource::EncoderOutOfRange, FaultReason::EncoderAtRail);
+                if (actuating) {
+                    FaultManager::instance().raise(
+                        FaultSource::EncoderLoss, FaultReason::EncoderLossWhileDriving);
+                }
                 m_rail_count = 0;
             }
         } else {

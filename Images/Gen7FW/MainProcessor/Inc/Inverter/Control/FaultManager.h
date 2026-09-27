@@ -56,6 +56,7 @@ enum class FaultSource : uint16_t {
     RailUndervoltage = 30,  /**< I2C4 rail monitor bus undervoltage     */
     TorqueLoss       = 31,  /**< Commanded torque absent (dead outputs) */
     OverTorque       = 32,  /**< Torque current above calibrated max    */
+    EncoderLoss      = 33,  /**< Encoder feedback lost while actuating  */
 };
 
 /**
@@ -168,6 +169,7 @@ enum class FaultReason : uint8_t {
     RailUndervoltage,
     TorqueLossAbsent,
     OverTorqueLimit,
+    EncoderLossWhileDriving,
     Count
 };
 
@@ -312,6 +314,7 @@ private:
         { FaultSource::RailUndervoltage, "RailUndervoltage", "Rail Monitor", "I2C4 rail bus undervoltage",                   FaultSeverity::Warning  },
         { FaultSource::TorqueLoss,       "TorqueLoss",       "Gate Drive",   "commanded torque absent (outputs unresponsive)", FaultSeverity::Critical },
         { FaultSource::OverTorque,       "OverTorque",       "Current Sense","torque current above 110% of calibrated max", FaultSeverity::Critical },
+        { FaultSource::EncoderLoss,      "EncoderLoss",      "Encoder",      "encoder feedback lost while actuating",    FaultSeverity::Critical },
     };
 };
 
