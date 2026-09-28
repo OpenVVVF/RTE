@@ -52,7 +52,7 @@
 #define APP_RX_DATA_SIZE  2048
 #define APP_TX_DATA_SIZE  2048
 /* USER CODE BEGIN EXPORTED_DEFINES */
-#define CDC_BRIDGE_BUF_SIZE 512U
+#define CDC_BRIDGE_BUF_SIZE 2048U
 /* USER CODE END EXPORTED_DEFINES */
 
 /**
@@ -115,6 +115,8 @@ void CDC_Bridge_Process(void);
 uint8_t CDC_IsBridgeMode(void);
 void CDC_DebugReportStartup(void);
 void CDC_UartIrqHandler(void);
+void CDC_Bridge_DmaRxIrqHandler(void);
+void CDC_Bridge_DmaTxIrqHandler(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**

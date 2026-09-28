@@ -67,6 +67,16 @@ before that independent shutdown path can be enabled.
   processor's faults. The H7 publishes `main_fault_*` fields alongside its
   existing fault telemetry. A stale or missing G474 status is identified as
   such.
+- USART3 RX uses an 8 KiB circular DMA buffer. The bridge copies bounded
+  chunks to USB, counts overwritten bytes in `RX_DROPPED`, and uses only
+  half/full-buffer DMA interrupts rather than an interrupt per UART byte.
+  USB-to-UART traffic uses DMA1 channel 2 in contiguous blocks, ending app
+  mode blocks at command-line boundaries so `!SF1` can still be inserted
+  between commands. The ROM bootloader's binary stream stays opaque at
+  460800 8E1; application mode remains 921600 8N1. DMA1 channels 1 and 2
+  and DMAMUX requests are configured in `usbd_cdc_if.c`; preserve this setup
+  when regenerating CubeMX files. This coprocessor-only change needs a G474
+  reflash. The safety input polling loop remains active at its prior speed.
 - READY is checked by the main MCU before actuation. The G474 does not require
   it at power-up because the main MCU deliberately holds the driver in reset
   for more than 500 ms during normal startup.
@@ -103,6 +113,7 @@ From `RTE/Images/Gen7FW/CoProcessor`, run the host policy and heartbeat tests wi
 `bash Safety/tests/run.sh` (including the normal H7 warmup and PWR1/PWR2 arming
 sequence), then build the target with `cmake --preset Debug`
 and `cmake --build --preset Debug`.
+Run `bash USB_Device/App/tests/run.sh` for DMA wrap and command-boundary logic.
 Run `Safety/tests/verify_pinout.py` from this repository when `kicad-cli` and
 the adjacent `InverterGen5` checkout are available.
 Run `bash Lib/SafetyFaultLink/tests/run.sh` from RTE for the shared frame codec.

@@ -273,12 +273,25 @@ static void loop()
     }
 
 #if defined(RTE_BUILD_MANIFEST)
-    static uint32_t s_last_manifest_ms = 0;
-    if (s_last_manifest_ms == 0 || (now_ms - s_last_manifest_ms) >= 10000U) {
+    static bool s_initial_manifest_sent = false;
+    static uint32_t s_next_manifest_try_ms = 0;
+    if (!s_initial_manifest_sent) {
+        /* Announce the build promptly after boot, then stream recurring
+         * copies at a steady low rate rather than bursting every 10 s. */
         if (Telemetry::log("fw_manifest", RTE_BUILD_MANIFEST)) {
             Telemetry::log("fw_graph", RTE_GRAPH_NAME);
             Telemetry::log("fw_graph_hash", RTE_GRAPH_HASH);
-            s_last_manifest_ms = now_ms;
+            s_initial_manifest_sent = true;
+            s_next_manifest_try_ms = now_ms + 1000U;
+        }
+    } else if (static_cast<int32_t>(now_ms - s_next_manifest_try_ms) >= 0) {
+        if (Telemetry::logPacedStatic("fw_manifest", RTE_BUILD_MANIFEST,
+                                     10000000U)) {
+            Telemetry::log("fw_graph", RTE_GRAPH_NAME);
+            Telemetry::log("fw_graph_hash", RTE_GRAPH_HASH);
+            s_next_manifest_try_ms = now_ms + 10000U;
+        } else {
+            s_next_manifest_try_ms = now_ms + 100U;
         }
     }
 #endif

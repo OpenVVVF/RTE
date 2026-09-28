@@ -111,11 +111,24 @@ bootloader. Both USART3 receivers use their hardware FIFOs to absorb short
 interrupt delays at this speed. `STATUS` reports the selected bridge speed as
 `UART_BAUD`.
 
+The G474 bridge uses circular DMA for USART3 receive and block DMA for
+transmit. This removes per-byte UART interrupts while keeping the USB port
+identity, bootloader commands, baud rates, and `!SF1` safety framing intact.
+It requires a coprocessor reflash only. `STATUS` retains `UART_ERRORS`,
+`RX_DROPPED`, and `TX_DROPPED` for comparing the link before and after the
+change; those counters do not report CPU utilization.
+
 The Gen7 main image dispatches telemetry data every 5 ms (200 Hz). Periodic
 signal-definition frames add to Studio's total received-frame rate, so that
 counter may read about 205 Hz. This cadence change requires a main MCU reflash;
 the coprocessor image and UART framing are unchanged. Individual sensors may
 produce new measurements more slowly than the telemetry dispatch rate.
+Repeated definition frames are spaced across their one-second cycle, and
+recurring build-manifest fragments are spread across roughly ten seconds.
+Live changed values and event strings use frame space first; repeated metadata
+uses the remaining capacity. Initial definitions and the boot manifest are
+sent promptly for device discovery. This pacing requires a main MCU reflash;
+the wire format and host parser are unchanged.
 
 `rte flash --target coproc --firmware coproc.elf` flashes the coprocessor
 through STM32 USB DFU (`port=usb1`) and starts the ELF entry point afterward.

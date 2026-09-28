@@ -206,6 +206,10 @@ no coprocessor reflash is needed.
   reflash. A detected H7 RAM or flash ECC event keeps the stage off until
   reset and reports a Critical fault through the diagnostic shell; that
   behavior requires a main MCU reflash.
+  The G474 UART bridge uses DMA in both directions while keeping these
+  baud rates, USB ports, control commands, and `!SF1` framing unchanged.
+  This bridge optimization requires only a coprocessor reflash; its DMA
+  half/full-buffer interrupts replace per-byte UART interrupts.
 - For live data, run `RTEStudio` connected to the inverter first. Use
   `rte_device_status`, filtered `rte_signal_info`, `rte_device_signal`, or
   `rte_device_snapshot` first. `rte_device_telemetry` accepts exact `signals`
@@ -228,11 +232,16 @@ no coprocessor reflash is needed.
   `foc_running=0`, marking native FOC controller outputs `foc_stopped`. These
   semantics require a **main MCU reflash**; older images retain the prior
   control-state fallback. Firmware build identity fields
-  (`fw_manifest`, `fw_graph`, `fw_graph_hash`) are normally republished every
-  ten seconds and use a 15-second signal timeout while the link remains live.
-  Current H7 telemetry repeats key definitions once per second. It sends a
-  numeric value when it differs from that signal's last transmitted value,
-  and refreshes unchanged values within one second even if the graph logs
+  (`fw_manifest`, `fw_graph`, `fw_graph_hash`) are normally republished about
+  every ten seconds and use a 15-second signal timeout while the link remains live.
+  Current H7 telemetry repeats key definitions once per second, with the
+  definition frames spread across that second. It streams recurring build
+  manifest fragments across roughly ten seconds. Newly allocated definitions
+  and the initial boot manifest still go promptly; repeated metadata uses
+  remaining UART capacity after live values. This pacing requires a main MCU
+  reflash and does not change the telemetry wire format or host parser.
+  It sends a numeric value when it differs from that signal's last transmitted
+  value, and refreshes unchanged values within one second even if the graph logs
   them on every cycle. It does not compare against every value seen during
   that second: `A → B → A` yields two changes when all states reach separate
   frames. The 200 Hz dispatcher sees only the latest value every 5 ms, so

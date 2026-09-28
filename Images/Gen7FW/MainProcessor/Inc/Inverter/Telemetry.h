@@ -48,6 +48,9 @@ bool vprintf(const char* fmt, va_list ap);
 
 bool log(const char* key, float value);
 bool log(const char* key, const char* value);
+/* Pace one long-lived string across duration_us. The caller must keep value
+ * valid until the final fragment (string literals are suitable). */
+bool logPacedStatic(const char* key, const char* value, uint32_t duration_us);
 
 bool updateSensors();
 

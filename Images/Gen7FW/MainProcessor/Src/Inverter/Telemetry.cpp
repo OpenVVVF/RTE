@@ -257,6 +257,25 @@ static RingQueue<DefineItem, DEFINE_QUEUE_CAP> g_define_q __attribute__((section
 static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_log_q    __attribute__((section(".dma_buffers")));
 static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_str_q    __attribute__((section(".dma_buffers")));
 
+/* Reannouncements read the registry instead of filling the urgent DEFINE
+ * queue, which must stay free to introduce newly allocated IDs immediately. */
+static uint16_t g_reannounce_cursor = 0;
+static uint32_t g_reannounce_next_us = 0;
+static uint32_t g_reannounce_interval_us = 0;
+static bool g_reannounce_active = false;
+
+struct PacedString {
+    const char* value = nullptr;
+    size_t length = 0;
+    size_t offset = 0;
+    uint16_t id = 0;
+    uint32_t interval_us = 0;
+    uint32_t next_us = 0;
+    uint32_t last_sent_us = 0;
+    bool active = false;
+};
+static PacedString g_paced_string;
+
 // ============================================================
 // Runtime state
 // ============================================================
@@ -365,17 +384,76 @@ static void reserve_float_key(const char* key) {
     enqueue_define(g_dyn[idx].id, g_dyn[idx].type, g_dyn[idx].key, g_dyn[idx].key_len);
 }
 
-static void enqueue_all_definitions() {
+static uint16_t reannounce_slots() {
 #if TELEMETRY_HAS_MEASUREMENT_SYSTEM
-    for (uint16_t i = 0; i < g_sensor_count; ++i) {
-        enqueue_define(g_sensors[i].id, VT_F32, g_sensors[i].name, g_sensors[i].name_len);
-    }
+    return g_sensor_count + MAX_DYNAMIC_KEYS;
+#else
+    return MAX_DYNAMIC_KEYS;
 #endif
+}
 
-    for (int i = 0; i < (int)MAX_DYNAMIC_KEYS; ++i) {
-        if (!g_dyn[i].used) continue;
-        enqueue_define(g_dyn[i].id, g_dyn[i].type, g_dyn[i].key, g_dyn[i].key_len);
+static bool reannounce_item(uint16_t slot, DefineItem& item) {
+#if TELEMETRY_HAS_MEASUREMENT_SYSTEM
+    if (slot < g_sensor_count) {
+        const auto& sensor = g_sensors[slot];
+        item.id = sensor.id;
+        item.type = VT_F32;
+        item.key_len = sensor.name_len;
+        std::memcpy(item.key, sensor.name, item.key_len);
+        return true;
     }
+    slot -= g_sensor_count;
+#endif
+    if (slot >= MAX_DYNAMIC_KEYS || !g_dyn[slot].used) return false;
+    const auto& key = g_dyn[slot];
+    item.id = key.id;
+    item.type = key.type;
+    item.key_len = key.key_len;
+    std::memcpy(item.key, key.key, item.key_len);
+    return true;
+}
+
+static uint16_t reannounce_frame_count() {
+    uint16_t frames = 0;
+    size_t used = 1;
+    for (uint16_t slot = 0; slot < reannounce_slots(); ++slot) {
+        DefineItem item{};
+        if (!reannounce_item(slot, item)) continue;
+        const size_t need = 4U + item.key_len;
+        if (used + need > DEFINE_PAYLOAD_MAX) {
+            ++frames;
+            used = 1;
+        }
+        used += need;
+    }
+    if (used > 1) ++frames;
+    return frames;
+}
+
+static size_t build_reannounce_payload(uint8_t* payload, uint16_t& next_slot) {
+    uint8_t* write = payload;
+    *write++ = 0;
+    uint8_t count = 0;
+    uint16_t slot = g_reannounce_cursor;
+    while (slot < reannounce_slots()) {
+        DefineItem item{};
+        if (!reannounce_item(slot, item)) {
+            ++slot;
+            continue;
+        }
+        const size_t need = 4U + item.key_len;
+        if (static_cast<size_t>(write - payload) + need > DEFINE_PAYLOAD_MAX) break;
+        put_u16(write, item.id);
+        *write++ = item.type;
+        *write++ = item.key_len;
+        std::memcpy(write, item.key, item.key_len);
+        write += item.key_len;
+        ++count;
+        ++slot;
+    }
+    payload[0] = count;
+    next_slot = slot;
+    return static_cast<size_t>(write - payload);
 }
 
 // ============================================================
@@ -444,7 +522,10 @@ static size_t build_data_payload(uint8_t* payload, size_t cap, uint32_t now_us) 
 
     // Reserve room for event fragments and rotate numeric keys so an expanded
     // graph cannot starve strings or the last numeric keys in the catalog.
-    const size_t numeric_cap = !g_str_q.empty() && cap > 212U ? cap - 212U : cap;
+    const bool paced_due = g_paced_string.active &&
+        static_cast<int32_t>(now_us - g_paced_string.next_us) >= 0;
+    const size_t reserved = !g_str_q.empty() ? 212U : 0U;
+    const size_t numeric_cap = cap > reserved ? cap - reserved : 1U;
     static uint16_t numeric_cursor = 0;
     for (unsigned scanned = 0; scanned < MAX_DYNAMIC_KEYS; ++scanned) {
         if ((size_t)(w - payload) + 7U > numeric_cap) break;
@@ -497,7 +578,7 @@ static size_t build_data_payload(uint8_t* payload, size_t cap, uint32_t now_us) 
     }
 #endif
 
-    // Event strings last
+    // Event strings precede low-priority periodic metadata.
     while (!g_str_q.empty()) {
         const LogItem* front = g_str_q.front();
         if (!front) break;
@@ -518,6 +599,38 @@ static size_t build_data_payload(uint8_t* payload, size_t cap, uint32_t now_us) 
             w += it.v.str.len;
         }
         ++n_items;
+    }
+
+    /* At most one periodic metadata fragment per data frame. Use spare
+     * payload only; changed values and event strings take priority. */
+    if (paced_due) {
+        /* Host assemblers discard a partial string after two seconds without
+         * a fragment. Restart with SF_START after a long capacity stall. */
+        if (g_paced_string.offset != 0 &&
+            static_cast<uint32_t>(now_us - g_paced_string.last_sent_us) > 1000000U)
+            g_paced_string.offset = 0;
+        const size_t chunk = std::min<size_t>(STR_MAXLEN,
+            g_paced_string.length - g_paced_string.offset);
+        const size_t need = 2U + 1U + 1U + 1U + chunk;
+        if (static_cast<size_t>(w - payload) + need <= cap) {
+            put_u16(w, g_paced_string.id);
+            *w++ = VT_STR_FRAG;
+            uint8_t flags = 0;
+            if (g_paced_string.offset == 0) flags |= SF_START;
+            if (g_paced_string.offset + chunk == g_paced_string.length) flags |= SF_END;
+            *w++ = flags;
+            *w++ = static_cast<uint8_t>(chunk);
+            std::memcpy(w, g_paced_string.value + g_paced_string.offset, chunk);
+            w += chunk;
+            ++n_items;
+            g_paced_string.offset += chunk;
+            g_paced_string.last_sent_us = now_us;
+            if (g_paced_string.offset == g_paced_string.length) {
+                g_paced_string.active = false;
+            } else {
+                g_paced_string.next_us = now_us + g_paced_string.interval_us;
+            }
+        }
     }
 
     payload[0] = n_items;
@@ -590,6 +703,35 @@ static bool flush_defines_now(uint32_t now_us) {
     return wrote;
 }
 
+static bool flush_reannounce_now(uint32_t now_us) {
+    if (!g_reannounce_active) {
+        if (static_cast<uint32_t>(now_us - g_last_define_us) < DEFINE_REANNOUNCE_US)
+            return false;
+        const uint16_t frames = reannounce_frame_count();
+        g_last_define_us = now_us;
+        if (frames == 0) return false;
+        g_reannounce_cursor = 0;
+        g_reannounce_interval_us = std::max<uint32_t>(g_send_period_us,
+            DEFINE_REANNOUNCE_US / frames);
+        g_reannounce_next_us = now_us;
+        g_reannounce_active = true;
+    }
+    if (static_cast<int32_t>(now_us - g_reannounce_next_us) < 0) return false;
+
+    uint8_t payload[DEFINE_PAYLOAD_MAX];
+    uint16_t next_slot = g_reannounce_cursor;
+    const size_t len = build_reannounce_payload(payload, next_slot);
+    if (payload[0] == 0) {
+        g_reannounce_active = false;
+        return false;
+    }
+    if (!send_frame(MSG_DEFINE, payload, len, now_us)) return false;
+    g_reannounce_cursor = next_slot;
+    g_reannounce_next_us = now_us + g_reannounce_interval_us;
+    if (next_slot >= reannounce_slots()) g_reannounce_active = false;
+    return true;
+}
+
 // ============================================================
 // Internal logging
 // ============================================================
@@ -640,7 +782,10 @@ static bool log_core0(const char* key, const char* value) {
         it.v.str.frag = SF_COMPLETE;
         it.v.str.len = (uint8_t)total_len;
         std::memcpy(it.v.str.bytes, value, total_len);
-        return g_log_q.push(it);
+        const bool queued = g_log_q.push(it);
+        if (queued && g_paced_string.active && g_paced_string.id == id)
+            g_paced_string.active = false;
+        return queued;
     }
 
     // Fragment long strings into multiple queued chunks.
@@ -667,6 +812,8 @@ static bool log_core0(const char* key, const char* value) {
         }
         offset += chunk_len;
     }
+    if (ok && g_paced_string.active && g_paced_string.id == id)
+        g_paced_string.active = false;
     return ok;
 }
 
@@ -711,6 +858,11 @@ void init(UART_HandleTypeDef* uart) {
     g_frame_seq = 0;
     g_last_send_us = 0;
     g_last_define_us = 0;
+    g_reannounce_cursor = 0;
+    g_reannounce_next_us = 0;
+    g_reannounce_interval_us = 0;
+    g_reannounce_active = false;
+    g_paced_string = PacedString{};
 
     g_tx_head = 0;
     g_tx_tail = 0;
@@ -733,6 +885,34 @@ bool log(const char* key, float value) {
 
 bool log(const char* key, const char* value) {
     return log_core0(key, value);
+}
+
+bool logPacedStatic(const char* key, const char* value, uint32_t duration_us) {
+    if (!key || !value || g_paced_string.active ||
+        !g_log_q.empty() || !g_str_q.empty()) return false;
+    const size_t length = std::strlen(value);
+    if (length == 0) return false;
+    const uint32_t hash = fnv1a(key);
+    int idx = find_dyn_key(key, hash);
+    if (idx < 0) {
+        idx = alloc_dyn_key(key, hash, VT_STR);
+        if (idx < 0) return false;
+        enqueue_define(g_dyn[idx].id, g_dyn[idx].type,
+                       g_dyn[idx].key, g_dyn[idx].key_len);
+    } else if (g_dyn[idx].type != VT_STR) {
+        return false;
+    }
+    const size_t fragments = (length + STR_MAXLEN - 1U) / STR_MAXLEN;
+    g_paced_string.value = value;
+    g_paced_string.length = length;
+    g_paced_string.offset = 0;
+    g_paced_string.id = g_dyn[idx].id;
+    g_paced_string.interval_us = std::max<uint32_t>(g_send_period_us,
+        duration_us / static_cast<uint32_t>(fragments));
+    g_paced_string.next_us = time_us_32_internal();
+    g_paced_string.last_sent_us = 0;
+    g_paced_string.active = true;
+    return true;
 }
 
 bool vprintf(const char* fmt, va_list ap) {
@@ -809,11 +989,6 @@ bool updateSensors() {
 
     const uint32_t now = time_us_32_internal();
 
-    if ((uint32_t)(now - g_last_define_us) > DEFINE_REANNOUNCE_US) {
-        enqueue_all_definitions();
-        g_last_define_us = now;
-    }
-
     if ((uint32_t)(now - g_last_send_us) < g_send_period_us) {
         return false;
     }
@@ -847,6 +1022,9 @@ bool updateSensors() {
             wrote |= send_frame(MSG_DATA, payload, len, now);
         }
     }
+
+    /* Repeated definitions use the UART capacity left after live values. */
+    wrote |= flush_reannounce_now(now);
 
     return wrote;
 }

@@ -55,6 +55,16 @@
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void DMA1_Channel1_IRQHandler(void)
+{
+  CDC_Bridge_DmaRxIrqHandler();
+}
+
+void DMA1_Channel2_IRQHandler(void)
+{
+  CDC_Bridge_DmaTxIrqHandler();
+}
+
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
