@@ -5,6 +5,7 @@
 #include <deque>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -43,6 +44,11 @@ struct SessionSignalHistory {
     std::vector<float> y;
 };
 
+struct SessionFloatSample {
+    float t = 0.0f;
+    float y = 0.0f;
+};
+
 struct SessionStringSample {
     double tsec = 0.0;
     std::string value;
@@ -62,17 +68,9 @@ struct SessionCommand {
     bool sent = false;
 };
 
-// Bounded session capture used by "Export Session". Without a bound a long
-// run would grow without limit (30 min at 3.5 kHz ≈ 6.3M samples per signal).
-//
-// Per-signal float policy (see TelemetryStore below): the newest
-// kSessionRecentSamples samples are kept at full rate; older samples live in
-// a progressively decimated archive whose resolution halves each time the
-// archive overflows (stride 1, 2, 4, ... starting from the fold). So the
-// archive covers the whole session at roughly logarithmic temporal density
-// while a full-rate window of the most recent samples is always retained.
-// Strings, console, and commands are capped outright (oldest half dropped
-// when the cap is reached).
+// Session metadata and optional numeric histories used by Export Session.
+// The normal export path reads numeric histories in pages to avoid copying a
+// large in-memory archive. Strings, console, and commands remain capped.
 struct RuntimeSessionSnapshot {
     int64_t startedAtUnixMs = 0;
     double durationSeconds = 0.0;
@@ -112,22 +110,24 @@ struct TelemetrySnapshot {
 // thread (from RuntimeController's drain timer) and read by the GUI and the
 // local session endpoint.
 //
-// Retention:
-//   Live path (plots/console views) matches the old client: 30 seconds or
-//   12000 samples per float signal, 6000 console lines.
-//   Session archive (export): bounded as documented on RuntimeSessionSnapshot
-//   — per float signal at most kSessionArchiveSamples decimated samples plus
-//   kSessionRecentSamples full-rate recent samples; strings capped per key,
-//   console and commands capped overall. All trimming happens on the writer
-//   side in small amortized batches so no large reallocation or drop happens
-//   while mtx_ is held.
+// The live plot path keeps a small rolling window. The session archive keeps
+// every received numeric sample until its host-RAM budget is reached, then
+// incrementally decimates its oldest samples in bounded blocks. Numeric
+// export and MCP reads use paginated copies, never a whole-archive clone.
 class TelemetryStore {
 public:
-    static constexpr float kRetainSeconds = 30.0f;
-    static constexpr std::size_t kMaxSamples = 12000;
+    // Zero selects two thirds of the host's available physical RAM. Supplying
+    // a small budget is useful for deterministic compaction tests.
+    explicit TelemetryStore(std::size_t sessionBudgetBytes = 0);
+    struct SignalDisplay {
+        float value = 0.0f;
+        std::optional<double> updateHz;
+    };
+
+    static constexpr float kRetainSeconds = 60.0f;
+    static constexpr std::size_t kMaxSamples = 16000;
     static constexpr std::size_t kConsoleCapLines = 6000;
-    static constexpr std::size_t kSessionArchiveSamples = 12000;
-    static constexpr std::size_t kSessionRecentSamples = 12000;
+    static constexpr std::size_t kSessionCompactionBlock = 4096;
     static constexpr std::size_t kSessionStringSamples = 12000;
     static constexpr std::size_t kSessionConsoleCapLines = 50000;
     static constexpr std::size_t kSessionCommandCap = 10000;
@@ -178,6 +178,21 @@ public:
     // user-triggered consumers (FRAM key export).
     TelemetrySnapshot Snapshot() const;
     RuntimeSessionSnapshot SessionSnapshot() const;
+    RuntimeSessionSnapshot SessionMetadataSnapshot() const;
+
+    struct SessionRetentionStats {
+        std::size_t budgetBytes = 0;
+        std::size_t storedSamples = 0;
+        uint64_t archiveGeneration = 0;
+        uint64_t sessionEpoch = 0;
+    };
+    SessionRetentionStats GetSessionRetentionStats() const;
+    std::vector<std::string> SessionFloatNames() const;
+    bool CopySessionHistoryPage(const std::string& key, std::size_t offset,
+                                std::size_t limit,
+                                std::vector<SessionFloatSample>& samples,
+                                std::size_t& total,
+                                uint64_t& generation) const;
 
     // Copies one signal's history. Returns false if the signal is unknown.
     bool CopyHistory(const std::string& key,
@@ -194,12 +209,23 @@ public:
                          std::vector<float>& t,
                          std::vector<float>& y) const;
 
+    // Visible plot window only, with min/max pairs per pixel bucket so spikes
+    // survive culling and GPU work stays proportional to widget width.
+    bool CopyPlotHistoryInto(const std::string& key, float viewSeconds,
+                             std::size_t maxPoints,
+                             std::vector<float>& t,
+                             std::vector<float>& y) const;
+
     // Copies the newest string telemetry events for one key from the session.
     bool CopyStringHistory(const std::string& key, std::size_t limit,
                            std::vector<SessionStringSample>& samples) const;
 
     // Latest float value of one signal. Returns false if unknown.
     bool LatestValue(const std::string& key, float& value) const;
+
+    // Latest numeric values and measured per-signal value-change rates.
+    // Repeated telemetry values do not count as changes.
+    std::unordered_map<std::string, SignalDisplay> SignalDisplays() const;
 
     // Sorted list of known float signal names (for the signal table).
     std::vector<std::string> SignalNames() const;
@@ -220,23 +246,28 @@ public:
     uint64_t SessionEpoch() const;
 
 private:
-    // Per-signal session capture state: a decimated archive (oldest data,
-    // written one sample per `stride` arrivals) followed by a full-rate
-    // block of the most recent samples. Both vectors stay below their
-    // respective caps; when the recent block overflows, its oldest half is
-    // folded into the archive in one batch.
+    struct SignalRateState {
+        float windowStartSec = 0.0f;
+        float lastSourceSec = 0.0f;
+        float lastValue = 0.0f;
+        uint32_t changesInWindow = 0;
+        double hz = 0.0;
+        bool measured = false;
+        bool initialized = false;
+    };
+
+    // Level 0 has full-rate newest data. Higher levels contain older data
+    // progressively reduced by factors of two. Each deque grows in small
+    // blocks so retention near the RAM budget never reallocates a huge array.
     struct SessionSignalStore {
-        std::vector<float> archiveT;
-        std::vector<float> archiveY;
-        std::vector<float> recentT;
-        std::vector<float> recentY;
-        uint32_t stride = 1;
-        uint32_t phase = 0;  // arrivals since the last archive write
+        std::vector<std::deque<SessionFloatSample>> levels;
     };
 
     void TrimHistoryLocked(SignalHistory& hist) const;
     void AppendSessionF32Locked(SessionSignalStore& store, float t, float y);
-    void AppendSessionArchiveLocked(SessionSignalStore& store, float t, float y);
+    bool CompactOldestSessionBlockLocked();
+    static std::size_t SessionSignalSize(const SessionSignalStore& store);
+    RuntimeSessionSnapshot SessionSnapshotLocked(bool includeFloats) const;
     double SessionElapsedSeconds() const;
 
     static constexpr std::size_t kNoUnmarkedCommand =
@@ -245,7 +276,13 @@ private:
     mutable std::mutex mtx_;
     TelemetrySnapshot snap_;
     std::unordered_map<std::string, SessionSignalStore> sessionFloatSignals_;
+    std::size_t sessionBudgetBytes_ = 0;
+    bool sessionBudgetOverride_ = false;
+    std::size_t sessionSampleCount_ = 0;
+    uint64_t archiveGeneration_ = 0;
+    std::chrono::steady_clock::time_point lastBudgetCheck_{};
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastSignalUpdate_;
+    std::unordered_map<std::string, SignalRateState> signalRates_;
     std::chrono::steady_clock::time_point lastFrameAt_{};
     std::unordered_map<std::string, std::vector<SessionStringSample>>
         sessionStringSignals_;

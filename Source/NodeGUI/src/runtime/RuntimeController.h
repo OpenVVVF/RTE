@@ -73,6 +73,7 @@ public:
     // Drains the last queued device batch, then returns the complete runtime
     // session accumulated since this controller was created.
     RuntimeSessionSnapshot CaptureSession();
+    void FlushPendingTelemetry();
 
     // Discards both rolling UI data and the full export archive, then starts
     // a new session at the current time.
@@ -82,6 +83,7 @@ public:
     void SetPort(const QString& port);
     bool IsSimulating() const { return simulate_; }
     Protocol GetProtocol() const { return protocol_; }
+    int SerialBaud() const { return serialBaud_; }
 
     // True when --tcp host:port was given; the TCP IVP link replaces the
     // serial port for this run.
@@ -131,6 +133,7 @@ private:
     int tcpPort_ = 0;
     bool simulate_ = false;
     Protocol protocol_;
+    int serialBaud_ = 460800;
     bool suspended_ = false;
     bool linkOverride_ = false;
     QString overrideHost_;

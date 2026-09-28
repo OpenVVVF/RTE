@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -440,7 +441,7 @@ bool SameSerialPort(const std::string& left, const std::string& right) {
 
 unsigned CountAppFrames(const std::string& port, int sampleMs, std::string& error) {
     ivp::UartTransport transport;
-    if (!transport.open(port, 460800)) {
+    if (!transport.open(port, ivp::UartTransport::DEFAULT_BAUD)) {
         error = "could not open UART bridge " + port;
         return 0;
     }
@@ -490,13 +491,16 @@ json ProbeMainMode(const std::string& preferredBridge,
     std::string sessionError;
     const auto session = RTEAutomation::DiscoverSession(sessionPath, &sessionError);
     bool studioOwnsBridge = false;
+    bool studioReportsFreshFrame = false;
     if (session) {
         const auto status = RTEAutomation::RequestSession(*session, "device.status",
                                                            json::object(), &sessionError);
         if (status && status->value("transport", "unknown") == "serial"
             && SameSerialPort(status->value("device_port", ""), bridge)
+            && status->value("connected", false)
             && !status->value("suspended", false)) {
             studioOwnsBridge = true;
+            studioReportsFreshFrame = status->value("responding", false);
             report["observation_source"] = "RTE Studio telemetry";
         }
     }
@@ -544,8 +548,10 @@ json ProbeMainMode(const std::string& preferredBridge,
         if (!probeError.empty()) report["notes"].push_back(probeError);
     } else report["notes"].push_back("UART bridge not found; pass --serial PORT.");
     report["app_frames_observed"] = frames;
-    if (frames > 0) {
+    if (frames > 0 || studioReportsFreshFrame) {
         report["state"] = "app_responding";
+        if (frames == 0 && studioReportsFreshFrame)
+            report["notes"].push_back("RTE Studio reports fresh frames; its frame counter did not update during the short probe window.");
     } else if (report["bridge_mode"] == "app") {
         report["state"] = "app_unresponsive_or_silent";
         report["notes"].push_back("No valid app frames were observed. The main MCU may be hung, silent, unpowered, or disconnected; this cannot be distinguished without a main MCU heartbeat or external health signal.");
@@ -930,7 +936,8 @@ json EnforceMcpResponseBudget(const std::string& name, json response) {
         return response;
     }
     std::string guidance = "Narrow the request with filter, signals, offset, or limit.";
-    if (name == "rte_device_history" || name == "rte_device_histories")
+    if (name == "rte_device_history" || name == "rte_device_histories"
+        || name == "rte_device_session_history")
         guidance = "Use rte_device_trends for local analysis, lower the raw sample limit, or use rte_device_history_export to write raw data to CSV.";
     else if (name == "rte_device_telemetry" || name == "rte_signal_info")
         guidance = "Request exact signals or a filter and follow next_offset only when another page is needed.";
@@ -972,6 +979,8 @@ json ToolDefinition(const std::string& name, const std::string& description,
         || name == "rte_device_status" || name == "rte_device_telemetry"
         || name == "rte_device_mode"
         || name == "rte_device_signal" || name == "rte_device_history"
+        || name == "rte_device_session_history"
+        || name == "rte_device_retention"
         || name == "rte_device_string_history"
         || name == "rte_device_console" || name == "rte_build_info"
         || name == "rte_signal_info" || name == "rte_control_status"
@@ -1052,6 +1061,11 @@ json McpTools() {
         ToolDefinition("rte_device_history", "Read a bounded raw history for one numeric signal. Defaults to 200 samples and caps at 400; use rte_device_trends for longer-window analysis or export raw data to a file.",
             {{"signal", {{"type", "string"}}},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 400}}}}, {"signal"}),
+        ToolDefinition("rte_device_session_history", "Read the newest retained numeric samples or page from an absolute oldest-first offset. Defaults to 200 and caps at 400 samples per response; use rte_device_history_export for large local CSV files.",
+            {{"signal", {{"type", "string"}}},
+             {"offset", {{"type", "integer"}, {"minimum", 0}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 400}}}}, {"signal"}),
+        ToolDefinition("rte_device_retention", "Read Studio's dynamic numeric history memory budget, retained sample count, and archive generation.", {}),
         ToolDefinition("rte_device_string_history", "Read bounded recent string telemetry events for one signal. Defaults to 50 and caps at 100.",
             {{"signal", {{"type", "string"}}},
              {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 100}}}}, {"signal"}),
@@ -1064,11 +1078,11 @@ json McpTools() {
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"window_s", {{"type", "number"}, {"minimum", 0.05}, {"maximum", 30.0}}}}),
-        ToolDefinition("rte_device_history_export", "Export up to eight full numeric histories to a local CSV file and return only a compact statistical summary. Use this instead of putting large raw datasets in model context.",
+        ToolDefinition("rte_device_history_export", "Export up to eight full retained numeric histories to a local CSV file and return only a compact statistical summary. Optional limit selects the newest samples per signal. Use this instead of putting large raw datasets in model context.",
             {{"signals", {{"type", "array"}, {"items", {{"type", "string"}}},
                            {"minItems", 1}, {"maxItems", 8}}},
              {"output", path},
-             {"limit", {{"type", "integer"}, {"minimum", 1}, {"maximum", 12000}}}},
+             {"limit", {{"type", "integer"}, {"minimum", 1}}}},
             {"signals", "output"}),
         ToolDefinition("rte_spike_capture", "Dump and re-arm the firmware's frozen 64-sample current-spike capture with firmware-reported timing. Returns compact current/angle trend analysis; set include_samples=true only when raw samples are necessary.",
             {{"timeout_ms", {{"type", "integer"}, {"minimum", 1000}, {"maximum", 10000}}},
@@ -1288,44 +1302,103 @@ json ExportDeviceHistories(const json& arguments, const fs::path& workspace,
     if (ec) return McpText("could not create export directory: " + ec.message(), true);
     std::ofstream file(*output, std::ios::trunc);
     if (!file) return McpText("could not open export file: " + output->string(), true);
+    file << std::setprecision(std::numeric_limits<float>::max_digits10);
     file << "signal,time_s,value\n";
 
     std::string error;
     const auto session = RTEAutomation::DiscoverSession(sessionPath, &error);
     if (!session) return McpText(error, true);
-    const std::size_t limit = arguments.value("limit", std::size_t{12000});
+    // A page is bounded for the local session protocol; only the CSV grows.
+    constexpr std::size_t kPageSamples = 2000;
+    const std::size_t requestedLimit = arguments.value("limit", std::size_t{0});
     json summaries = json::object(), missing = json::array();
     std::size_t totalSamples = 0;
     for (const auto& item : arguments["signals"]) {
         const std::string signal = item.get<std::string>();
-        const auto history = RTEAutomation::RequestSession(*session, "device.history",
-            {{"signal", signal}, {"limit", limit}}, &error);
-        if (!history) {
-            missing.push_back({{"signal", signal}, {"error", error}});
+        auto history = RTEAutomation::RequestSession(*session, "device.session_history_page",
+            {{"signal", signal}, {"offset", 0}, {"limit", kPageSamples}}, &error);
+        if (!history || history->contains("error")) {
+            missing.push_back({{"signal", signal}, {"error", history
+                ? history->at("error") : json(error)}});
             continue;
         }
-        const json samples = history->value("samples", json::array());
+        const std::size_t total = history->value("total", std::size_t{0});
+        const std::size_t first = requestedLimit && total > requestedLimit
+            ? total - requestedLimit : 0;
+        const uint64_t generation = history->value("archive_generation", uint64_t{0});
+        const uint64_t epoch = history->value("session_epoch", uint64_t{0});
+        if (first != 0) {
+            history = RTEAutomation::RequestSession(*session, "device.session_history_page",
+                {{"signal", signal}, {"offset", first}, {"limit", kPageSamples}}, &error);
+            if (!history || history->contains("error")) {
+                fs::remove(*output);
+                return McpText("history changed or became unavailable during export: " + signal, true);
+            }
+        }
         double low = std::numeric_limits<double>::infinity();
         double high = -std::numeric_limits<double>::infinity();
         double sum = 0.0, squareSum = 0.0;
-        for (const auto& sample : samples) {
-            const double time = sample.value("time_s", 0.0);
-            const double value = sample.value("value", 0.0);
-            file << CsvField(signal) << ',' << time << ',' << value << '\n';
-            low = std::min(low, value);
-            high = std::max(high, value);
-            sum += value;
-            squareSum += value * value;
+        std::size_t finiteCount = 0;
+        std::size_t count = 0;
+        double firstTime = 0.0, lastTime = 0.0;
+        std::size_t offset = first;
+        json status = history->value("status", json::object());
+        while (offset < total) {
+            if (!history || history->value("archive_generation", uint64_t{0}) != generation
+                || history->value("session_epoch", uint64_t{0}) != epoch
+                || history->value("total", std::size_t{0}) < total) {
+                file.close();
+                fs::remove(*output);
+                return McpText("history was compacted or reset during export; retry: " + signal, true);
+            }
+            const json samples = history->value("samples", json::array());
+            if (samples.empty()) {
+                file.close();
+                fs::remove(*output);
+                return McpText("missing history page during export: " + signal, true);
+            }
+            for (const auto& sample : samples) {
+                if (offset >= total) break;
+                const double time = sample.value("time_s", 0.0);
+                const auto& encodedValue = sample.at("value");
+                const double value = encodedValue.is_number()
+                    ? encodedValue.get<double>() : std::numeric_limits<double>::quiet_NaN();
+                file << CsvField(signal) << ',' << time << ',';
+                if (std::isfinite(value)) file << value;
+                else file << "nan";
+                file << '\n';
+                if (count == 0) firstTime = time;
+                lastTime = time;
+                if (std::isfinite(value)) {
+                    low = std::min(low, value);
+                    high = std::max(high, value);
+                    sum += value;
+                    squareSum += value * value;
+                    ++finiteCount;
+                }
+                ++count;
+                ++offset;
+            }
+            if (offset < total) {
+                history = RTEAutomation::RequestSession(*session, "device.session_history_page",
+                    {{"signal", signal}, {"offset", offset}, {"limit", kPageSamples}}, &error);
+                if (!history || history->contains("error")) {
+                    file.close();
+                    fs::remove(*output);
+                    return McpText("could not read history page for " + signal + ": " + error, true);
+                }
+            }
         }
-        totalSamples += samples.size();
-        summaries[signal] = {{"samples", samples.size()},
-            {"start_time_s", samples.empty() ? json(nullptr) : json(samples.front().value("time_s", 0.0))},
-            {"end_time_s", samples.empty() ? json(nullptr) : json(samples.back().value("time_s", 0.0))},
-            {"min", samples.empty() ? json(nullptr) : json(low)},
-            {"max", samples.empty() ? json(nullptr) : json(high)},
-            {"mean", samples.empty() ? json(nullptr) : json(sum / samples.size())},
-            {"rms", samples.empty() ? json(nullptr) : json(std::sqrt(squareSum / samples.size()))},
-            {"status", history->value("status", json::object())}};
+        totalSamples += count;
+        summaries[signal] = {{"samples", count},
+            {"start_time_s", count ? json(firstTime) : json(nullptr)},
+            {"end_time_s", count ? json(lastTime) : json(nullptr)},
+            {"finite_samples", finiteCount},
+            {"min", finiteCount ? json(low) : json(nullptr)},
+            {"max", finiteCount ? json(high) : json(nullptr)},
+            {"mean", finiteCount ? json(sum / finiteCount) : json(nullptr)},
+            {"rms", finiteCount ? json(std::sqrt(squareSum / finiteCount)) : json(nullptr)},
+            {"status", std::move(status)}};
     }
     file.close();
     if (!file) return McpText("failed while writing export file: " + output->string(), true);
@@ -1405,6 +1478,8 @@ json ValidateToolArguments(const std::string& name, const json& arguments) {
 bool IsFrequentMcpRead(const std::string& name) {
     return name == "rte_device_status" || name == "rte_device_telemetry"
         || name == "rte_device_signal" || name == "rte_device_history"
+        || name == "rte_device_session_history"
+        || name == "rte_device_retention"
         || name == "rte_device_string_history" || name == "rte_device_console"
         || name == "rte_device_histories" || name == "rte_device_trends"
         || name == "rte_signal_info" || name == "rte_control_status"
@@ -1818,6 +1893,7 @@ json CallMcpTool(const std::string& name, const json& arguments,
     std::string method;
     json params = json::object();
     if (name == "rte_device_status") method = "device.status";
+    else if (name == "rte_device_retention") method = "device.retention";
     else if (name == "rte_device_telemetry" || name == "rte_device_signal") method = "device.telemetry";
     else if (name == "rte_build_info") method = "device.build_info";
     else if (name == "rte_signal_info") {
@@ -1869,6 +1945,12 @@ json CallMcpTool(const std::string& name, const json& arguments,
     else if (name == "rte_device_history") {
         method = "device.history";
         params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 200)}};
+    } else if (name == "rte_device_session_history") {
+        method = "device.session_history_page";
+        params = {{"signal", arguments["signal"]},
+                  {"offset", arguments.value("offset", std::size_t{0})},
+                  {"limit", arguments.value("limit", std::size_t{200})},
+                  {"tail", !arguments.contains("offset")}};
     } else if (name == "rte_device_string_history") {
         method = "device.string_history";
         params = {{"signal", arguments["signal"]}, {"limit", arguments.value("limit", 50)}};
@@ -2040,7 +2122,8 @@ json CallMcpTool(const std::string& name, const json& arguments,
         response["structuredContent"] = std::move(report);
         return response;
     }
-    if (name == "rte_device_history" || name == "rte_device_string_history") {
+    if (name == "rte_device_history" || name == "rte_device_string_history"
+        || name == "rte_device_session_history") {
         json report = *result;
         report["returned_samples"] = report.value("samples", json::array()).size();
         report["token_note"] = "Raw samples are bounded for MCP context. Use rte_device_trends for compact analysis or rte_device_history_export for a full local CSV.";

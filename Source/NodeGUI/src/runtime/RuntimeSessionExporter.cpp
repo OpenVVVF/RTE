@@ -317,6 +317,179 @@ double WriteEvents(QTextStream& stream,
     return lastEventTime;
 }
 
+struct SignalSummary {
+    std::size_t samples = 0;
+    std::size_t finiteSamples = 0;
+    double sum = 0.0;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+
+    void Add(float value) {
+        ++samples;
+        if (!std::isfinite(value)) return;
+        if (finiteSamples == 0) {
+            minimum = maximum = value;
+        } else {
+            minimum = std::min(minimum, value);
+            maximum = std::max(maximum, value);
+        }
+        ++finiteSamples;
+        sum += value;
+    }
+};
+
+void WriteSignalSummaries(QTextStream& stream,
+                          const std::unordered_map<std::string, SignalSummary>& summaries) {
+    stream << '{';
+    const auto keys = SortedKeys(summaries);
+    for (std::size_t i = 0; i < keys.size(); ++i) {
+        if (i) stream << ',';
+        const auto& summary = summaries.at(keys[i]);
+        stream << JsonString(keys[i]) << ":{\"samples\":" << summary.samples
+               << ",\"finite_samples\":" << summary.finiteSamples
+               << ",\"min\":";
+        if (!summary.finiteSamples) {
+            stream << "null,\"max\":null,\"mean\":null}";
+        } else {
+            WriteNumber(stream, summary.minimum);
+            stream << ",\"max\":";
+            WriteNumber(stream, summary.maximum);
+            stream << ",\"mean\":";
+            WriteNumber(stream, summary.sum / summary.finiteSamples);
+            stream << '}';
+        }
+    }
+    stream << '}';
+}
+
+bool WriteEventsPaged(QTextStream& stream, const TelemetryStore& store,
+                      const RuntimeSessionSnapshot& metadata,
+                      const TelemetryStore::SessionRetentionStats& retention,
+                      double& lastEventTime,
+                      std::unordered_map<std::string, SignalSummary>& summaries,
+                      QString& error) {
+    constexpr std::size_t kPageSamples = 2048;
+    struct Page {
+        std::size_t offset = 0;
+        std::size_t end = 0;
+        std::vector<SessionFloatSample> samples;
+    };
+    std::unordered_map<std::string, Page> pages;
+    EventQueue events;
+    PopulateEvents(events, metadata);  // strings, commands, and console
+    for (const auto& key : store.SessionFloatNames()) {
+        Page page;
+        uint64_t generation = 0;
+        if (!store.CopySessionHistoryPage(key, 0, kPageSamples,
+                                           page.samples, page.end, generation)) continue;
+        if (generation != retention.archiveGeneration) {
+            error = QStringLiteral("Session archive changed during export; retry");
+            return false;
+        }
+        if (!page.samples.empty()) {
+            events.push(EventCursor{EventKind::FloatTelemetry, key, 0,
+                                    page.samples.front().t});
+            summaries.emplace(key, SignalSummary{});
+        }
+        pages.emplace(key, std::move(page));
+    }
+    auto loadSample = [&](const std::string& key, std::size_t index,
+                          SessionFloatSample& sample) -> bool {
+        auto& page = pages.at(key);
+        if (index >= page.end) return false;
+        if (index < page.offset || index >= page.offset + page.samples.size()) {
+            uint64_t generation = 0;
+            std::size_t total = 0;
+            if (!store.CopySessionHistoryPage(key, index, kPageSamples,
+                                               page.samples, total, generation)
+                || generation != retention.archiveGeneration
+                || store.SessionEpoch() != retention.sessionEpoch || total < page.end) {
+                error = QStringLiteral("Session archive changed during export; retry");
+                return false;
+            }
+            page.offset = index;
+            if (page.samples.empty()) {
+                error = QStringLiteral("Missing session history page during export");
+                return false;
+            }
+        }
+        sample = page.samples[index - page.offset];
+        return true;
+    };
+    auto pushNext = [&](EventCursor cursor) -> bool {
+        ++cursor.index;
+        if (cursor.kind == EventKind::FloatTelemetry) {
+            if (cursor.index >= pages.at(cursor.key).end) return true;
+            SessionFloatSample sample;
+            if (!loadSample(cursor.key, cursor.index, sample)) return false;
+            cursor.tsec = sample.t;
+            events.push(std::move(cursor));
+        } else {
+            PushNext(events, metadata, std::move(cursor));
+        }
+        return true;
+    };
+    lastEventTime = 0.0;
+    while (!events.empty()) {
+        EventCursor cursor = events.top();
+        events.pop();
+        if (std::isfinite(cursor.tsec))
+            lastEventTime = std::max(lastEventTime, cursor.tsec);
+        if (cursor.kind == EventKind::FloatTelemetry) {
+            const double eventTime = cursor.tsec;
+            std::vector<std::pair<std::string, float>> values;
+            std::set<std::string> includedSignals;
+            while (true) {
+                SessionFloatSample sample;
+                if (!loadSample(cursor.key, cursor.index, sample)) return false;
+                values.emplace_back(cursor.key, sample.y);
+                summaries.at(cursor.key).Add(sample.y);
+                includedSignals.insert(cursor.key);
+                if (!pushNext(cursor)) return false;
+                if (events.empty() || events.top().kind != EventKind::FloatTelemetry
+                    || events.top().tsec != eventTime
+                    || includedSignals.contains(events.top().key)) break;
+                cursor = events.top();
+                events.pop();
+            }
+            stream << "{\"type\":\"telemetry\",\"t\":";
+            WriteTime(stream, eventTime);
+            stream << ",\"values\":{";
+            for (std::size_t i = 0; i < values.size(); ++i) {
+                if (i) stream << ',';
+                stream << JsonString(values[i].first) << ':';
+                WriteNumber(stream, values[i].second);
+            }
+            stream << "}}\n";
+        } else if (cursor.kind == EventKind::StringTelemetry) {
+            const auto& sample = metadata.stringSignals.at(cursor.key)[cursor.index];
+            stream << "{\"type\":\"state\",\"t\":";
+            WriteTime(stream, sample.tsec);
+            stream << ",\"signal\":" << JsonString(cursor.key)
+                   << ",\"value\":" << JsonString(sample.value) << "}\n";
+            if (!pushNext(cursor)) return false;
+        } else if (cursor.kind == EventKind::Command) {
+            const auto& command = metadata.commands[cursor.index];
+            stream << "{\"type\":\"command\",\"t\":";
+            WriteTime(stream, command.tsec);
+            stream << ",\"received_t\":";
+            WriteTime(stream, command.receivedTsec);
+            stream << ",\"source\":" << JsonString(command.source)
+                   << ",\"text\":" << JsonString(command.text)
+                   << ",\"sent\":" << (command.sent ? "true" : "false") << "}\n";
+            if (!pushNext(cursor)) return false;
+        } else {
+            const auto& line = metadata.console[cursor.index];
+            stream << "{\"type\":\"console\",\"t\":";
+            WriteTime(stream, line.tsec);
+            stream << ",\"sequence\":" << line.seq
+                   << ",\"text\":" << JsonString(line.text) << "}\n";
+            if (!pushNext(cursor)) return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 bool ExportRuntimeSession(const QString& path,
@@ -359,6 +532,65 @@ bool ExportRuntimeSession(const QString& path,
     WriteSignalSummaries(stream, session.floatSignals);
     stream << "}\n";
 
+    stream.flush();
+    if (stream.status() != QTextStream::Ok) {
+        error = QStringLiteral("Failed while writing session data");
+        file.cancelWriting();
+        return false;
+    }
+    if (!file.commit()) {
+        error = file.errorString();
+        return false;
+    }
+    error.clear();
+    return true;
+}
+
+bool ExportRuntimeSession(const QString& path,
+                          const TelemetryStore& store,
+                          const RuntimeSessionMetadata& metadata,
+                          QString& error) {
+    const auto retention = store.GetSessionRetentionStats();
+    const RuntimeSessionSnapshot session = store.SessionMetadataSnapshot();
+    const auto afterMetadata = store.GetSessionRetentionStats();
+    if (afterMetadata.archiveGeneration != retention.archiveGeneration ||
+        afterMetadata.sessionEpoch != retention.sessionEpoch) {
+        error = QStringLiteral("Session archive changed during export; retry");
+        return false;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        error = file.errorString();
+        return false;
+    }
+    QTextStream stream(&file);
+    const QDateTime startedAt = QDateTime::fromMSecsSinceEpoch(
+        session.startedAtUnixMs, QTimeZone::UTC);
+    const QDateTime exportedAt = QDateTime::currentDateTimeUtc();
+    stream << "{\"type\":\"session_start\""
+           << ",\"format\":\"rte-runtime-session-jsonl\""
+           << ",\"version\":3,\"t\":0,\"started_at_utc\":"
+           << JsonString(startedAt.toString(Qt::ISODateWithMs))
+           << ",\"exported_at_utc\":"
+           << JsonString(exportedAt.toString(Qt::ISODateWithMs))
+           << ",\"port\":" << JsonString(metadata.port)
+           << ",\"mode\":" << JsonString(metadata.mode)
+           << ",\"protocol\":" << JsonString(metadata.protocol) << "}\n";
+
+    double lastEventTime = 0.0;
+    std::unordered_map<std::string, SignalSummary> summaries;
+    if (!WriteEventsPaged(stream, store, session, retention,
+                          lastEventTime, summaries, error)) {
+        file.cancelWriting();
+        return false;
+    }
+    stream << "{\"type\":\"session_end\",\"t\":";
+    WriteTime(stream, std::max(session.durationSeconds, lastEventTime));
+    stream << ",\"final_stats\":";
+    WriteStatsObject(stream, session.stats);
+    stream << ",\"signal_summaries\":";
+    WriteSignalSummaries(stream, summaries);
+    stream << "}\n";
     stream.flush();
     if (stream.status() != QTextStream::Ok) {
         error = QStringLiteral("Failed while writing session data");

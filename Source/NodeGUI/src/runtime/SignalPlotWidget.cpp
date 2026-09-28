@@ -1,4 +1,5 @@
 #include "SignalPlotWidget.h"
+#include "SignalRateFormat.h"
 
 #include <QColor>
 #include <QMatrix4x4>
@@ -119,13 +120,19 @@ void SignalPlotWidget::Refresh()
         }
     }
     if (store_) {
+        const auto displays = store_->SignalDisplays();
         for (Series& s : series_) {
             // Clear on failure: after Clear Session the signal may be unknown
             // until it streams again, and the old trace must not linger.
-            if (!store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y)) {
+            if (!store_->CopyPlotHistoryInto(
+                    s.name.toStdString(), static_cast<float>(viewSeconds_),
+                    static_cast<std::size_t>(std::max(200, width() * 2)),
+                    s.t, s.y)) {
                 s.t.clear();
                 s.y.clear();
             }
+            const auto it = displays.find(s.name.toStdString());
+            s.updateHz = it == displays.end() ? std::nullopt : it->second.updateHz;
         }
     }
     update();
@@ -295,9 +302,17 @@ void SignalPlotWidget::paintGL()
     QList<StripItem> legend;
     int legendWidth = 0;
     for (int i = 0; i < signals_.size(); ++i) {
-        const QString elided = fm.elidedText(signals_[i], Qt::ElideMiddle, 110);
-        const int itemWidth = fm.horizontalAdvance(elided) + 14;
-        legend.push_back({elided, SignalColor(i), itemWidth});
+        const auto rate = i < static_cast<int>(series_.size())
+                              ? series_[static_cast<std::size_t>(i)].updateHz
+                              : std::nullopt;
+        const QString suffix = QStringLiteral(" (%1)").arg(FormatSignalRate(rate));
+        const int maxTextWidth = std::min(180,
+            std::max(70, available / std::max(1, static_cast<int>(signals_.size())) - 14));
+        const QString elided = fm.elidedText(signals_[i], Qt::ElideMiddle,
+            std::max(20, maxTextWidth - fm.horizontalAdvance(suffix)));
+        const QString label = elided + suffix;
+        const int itemWidth = fm.horizontalAdvance(label) + 14;
+        legend.push_back({label, SignalColor(i), itemWidth});
         legendWidth += itemWidth;
     }
 

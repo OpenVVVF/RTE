@@ -8,6 +8,7 @@
 class QLineEdit;
 class QSlider;
 class QTableWidget;
+class QEvent;
 
 namespace NodeGUI::runtime {
 
@@ -40,7 +41,10 @@ private slots:
     void OnViewSecondsChanged(int value);
 
 private:
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void RebuildSignalTable();
+    void UpdateResponsiveColumns();
+    void UpdateDisplayNames(int signalWidth);
 
     RuntimeController* controller_;
 
@@ -50,6 +54,9 @@ private:
 
     std::array<QStringList, 3> graphSignals_;
     bool rebuildingTable_ = false;
+    bool updatingColumns_ = false;
+    int fullNameWidth_ = 0;
+    int rateColumnWidth_ = 62;
 };
 
 }  // namespace NodeGUI::runtime

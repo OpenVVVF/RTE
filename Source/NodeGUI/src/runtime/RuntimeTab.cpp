@@ -13,14 +13,17 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMetaObject>
 #include <QPushButton>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 
 #include <nlohmann/json.hpp>
@@ -45,6 +48,14 @@ bool LayoutIsEmpty(const std::array<QStringList, 3>& sets) {
 }
 
 }  // namespace
+
+RuntimeTab::~RuntimeTab() {
+    WaitForExport();
+}
+
+void RuntimeTab::WaitForExport() {
+    if (exportThread_.joinable()) exportThread_.join();
+}
 
 std::array<QStringList, 3> RuntimeTab::BuiltinSpwmLayout() {
     return {{
@@ -160,8 +171,14 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     // full-session export that is independent of the rolling plot buffers.
     auto* headerRow = new QHBoxLayout;
     headerLabel_ = new QLabel(this);
+    // The port path and counters change while telemetry streams. They must not
+    // become the central widget's minimum width and squeeze the dock panels.
+    headerLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    headerLabel_->setMinimumWidth(0);
     headerRow->addWidget(headerLabel_, 1);
     exportStatus_ = new QLabel(this);
+    exportStatus_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    exportStatus_->setMinimumWidth(0);
     headerRow->addWidget(exportStatus_);
     auto* clearSessionButton =
         new QPushButton(QStringLiteral("Clear Session"), this);
@@ -242,11 +259,13 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     auto* presetRow = new QHBoxLayout;
     presetNameEdit_ = new QLineEdit(this);
     presetNameEdit_->setPlaceholderText(QStringLiteral("Layout name"));
+    presetNameEdit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     presetRow->addWidget(presetNameEdit_, 1);
     auto* saveButton = new QPushButton(QStringLiteral("Save"), this);
     connect(saveButton, &QPushButton::clicked, this, &RuntimeTab::OnSavePreset);
     presetRow->addWidget(saveButton);
     recentCombo_ = new QComboBox(this);
+    recentCombo_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     presetRow->addWidget(recentCombo_, 1);
     auto* loadButton = new QPushButton(QStringLiteral("Load"), this);
     connect(loadButton, &QPushButton::clicked, this, &RuntimeTab::OnLoadPreset);
@@ -308,11 +327,12 @@ void RuntimeTab::OnStoreChanged() {
     // too expensive for the ~30 Hz header refresh.
     const auto stats = controller_->Store().GetStatsLine();
 
-    // Same bandwidth estimate as the old app: fraction of the 460800 8N1 link.
+    // Fraction of the selected serial protocol's 8N1 capacity.
+    const int baud = controller_->SerialBaud();
     const double bandwidthPct =
-        static_cast<double>(stats.rxBytesPerSec) * 10.0 / 460800.0 * 100.0;
+        static_cast<double>(stats.rxBytesPerSec) * 10.0 / baud * 100.0;
 
-    headerLabel_->setText(
+    const QString statusText =
         QStringLiteral("Port: %1 | RX: %2 Hz | Bandwidth: %3% | Seq: %4 | "
                        "Good: %5 | Bad: %6 | Reject: crc %7 / hdr %8 / len %9 / "
                        "parse %10 / unknown_id %11")
@@ -326,7 +346,10 @@ void RuntimeTab::OnStoreChanged() {
             .arg(stats.rejectHdr)
             .arg(stats.rejectLen)
             .arg(stats.rejectPayloadParse)
-            .arg(stats.rejectUnknownId));
+            .arg(stats.rejectUnknownId);
+    headerLabel_->setToolTip(statusText);
+    headerLabel_->setText(headerLabel_->fontMetrics().elidedText(
+        statusText, Qt::ElideRight, headerLabel_->width()));
 }
 
 void RuntimeTab::OnSavePreset() {
@@ -398,6 +421,7 @@ void RuntimeTab::OnLoadPreset() {
 }
 
 void RuntimeTab::OnExportSession() {
+    if (exportRunning_.load()) return;
     const QString timestamp =
         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
     const QString suggestedPath =
@@ -434,20 +458,28 @@ void RuntimeTab::OnExportSession() {
     }
 
     exportStatus_->setText(QStringLiteral("exporting\u2026"));
-    const RuntimeSessionSnapshot session = controller_->CaptureSession();
-    QString error;
-    if (!ExportRuntimeSession(path, session, metadata, error)) {
-        exportStatus_->setText(QStringLiteral("export failed"));
-        QMessageBox::critical(
-            this,
-            QStringLiteral("Export Runtime Session"),
-            QStringLiteral("Could not export the runtime session:\n%1")
-                .arg(error));
-        return;
-    }
-
-    exportStatus_->setText(
-        QStringLiteral("exported %1").arg(QFileInfo(path).fileName()));
+    controller_->FlushPendingTelemetry();
+    if (exportThread_.joinable()) exportThread_.join();
+    exportRunning_.store(true);
+    const TelemetryStore* store = &controller_->Store();
+    exportThread_ = std::jthread([this, store, path, metadata] {
+        QString error;
+        const bool ok = ExportRuntimeSession(path, *store, metadata, error);
+        QMetaObject::invokeMethod(this, [this, path, ok, error] {
+            exportRunning_.store(false);
+            if (!ok) {
+                exportStatus_->setText(QStringLiteral("export failed"));
+                QMessageBox::critical(
+                    this,
+                    QStringLiteral("Export Runtime Session"),
+                    QStringLiteral("Could not export the runtime session:\n%1")
+                        .arg(error));
+                return;
+            }
+            exportStatus_->setText(
+                QStringLiteral("exported %1").arg(QFileInfo(path).fileName()));
+        }, Qt::QueuedConnection);
+    });
 }
 
 void RuntimeTab::OnClearSession() {

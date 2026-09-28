@@ -61,6 +61,8 @@ def main():
                     if command == "STATUS":
                         response = ("STATUS BOOTSEL=0 RESET=1 UART_MODE="
                                     + bridge_mode[0]
+                                    + (" UART_BAUD=460800" if bridge_mode[0] == "BOOT_8E1"
+                                       else " UART_BAUD=921600")
                                     + " UART_ERRORS=0 RX_DROPPED=0 TX_DROPPED=0\r\n")
                     else:
                         if command == "BOOTLOADER":
@@ -102,7 +104,8 @@ def main():
                 assert message["token"] == "test-token"
                 method = message["method"]
                 if method == "device.telemetry":
-                    self.server.good_frames += 10
+                    if not self.server.freeze_frames:
+                        self.server.good_frames += 10
                     bulk = {f"zz_bulk_{index:03d}": float(index) for index in range(120)}
                     bulk_status = {name: {"state": "live", "fresh": True, "age_s": 0.1}
                                    for name in bulk}
@@ -216,8 +219,33 @@ def main():
                                                if key in ("analysis_stopped",
                                                           "analysis_stopped_recent")}}
                 elif method == "device.status":
-                    value = {"connected": True, "device_port": str(bridge),
-                             "transport": self.server.transport, "suspended": False}
+                    value = {"connected": self.server.connected, "device_port": str(bridge),
+                             "transport": self.server.transport, "suspended": False,
+                             "responding": self.server.connected}
+                elif method == "device.retention":
+                    value = {"numeric_budget_bytes": 1000000,
+                             "retained_numeric_samples": 6,
+                             "estimated_numeric_bytes": 48,
+                             "archive_generation": 0, "session_epoch": 1}
+                elif method == "device.session_history_page":
+                    params = message["params"]
+                    offset = params.get("offset", 0)
+                    limit = params.get("limit", 200)
+                    if params["signal"] == "long_signal":
+                        samples = [{"time_s": i * 0.005, "value": i * 0.125}
+                                   for i in range(2505)]
+                    else:
+                        samples = [{"time_s": t, "value": v}
+                                   for t, v in ((0.0, 0.0), (0.5, 1.25), (1.0, 0.5))]
+                    if params.get("tail"):
+                        offset = max(0, len(samples) - limit)
+                    page = samples[offset:offset + limit]
+                    value = {"signal": params["signal"], "samples": page,
+                             "offset": offset, "total": len(samples),
+                             "next_offset": offset + len(page)
+                                            if offset + len(page) < len(samples) else None,
+                             "archive_generation": 0, "session_epoch": 1,
+                             "status": {"state": "live", "fresh": True}}
                 elif method in ("device.history", "device.string_history"):
                     value = {"signal": message["params"]["signal"],
                              "samples": [{"time_s": 0.1,
@@ -269,6 +297,8 @@ def main():
         session_server.command_sources = []
         session_server.activities = []
         session_server.good_frames = 100
+        session_server.freeze_frames = False
+        session_server.connected = True
         session_server.transport = "serial"
         session_server.incomplete_help = False
         session_worker = threading.Thread(target=session_server.serve_forever, daemon=True)
@@ -297,6 +327,7 @@ def main():
                          "rte_device_command_response", "rte_device_mode",
                          "rte_build_info", "rte_signal_info", "rte_control_status",
                          "rte_device_histories", "rte_device_trends",
+                         "rte_device_session_history", "rte_device_retention",
                          "rte_device_snapshot", "rte_device_history_export",
                          "rte_spike_capture",
                          "rte_device_commands"):
@@ -402,6 +433,14 @@ def main():
             history = request(server, 8, "tools/call", {"name": "rte_device_history",
                               "arguments": {"signal": "phase_current_a", "limit": 10}})
             assert '"time_s": 0.1' in history["content"][0]["text"], history
+            session_history = request(server, 48, "tools/call", {
+                "name": "rte_device_session_history",
+                "arguments": {"signal": "phase_current_a", "offset": 1, "limit": 1}})
+            assert session_history["structuredContent"]["samples"][0]["value"] == 1.25
+            assert session_history["structuredContent"]["next_offset"] == 2
+            retention = request(server, 49, "tools/call", {
+                "name": "rte_device_retention", "arguments": {}})
+            assert retention["structuredContent"]["numeric_budget_bytes"] == 1000000
             strings = request(server, 10, "tools/call", {"name": "rte_device_string_history",
                               "arguments": {"signal": "state", "limit": 10}})
             assert '"idle"' in strings["content"][0]["text"], strings
@@ -437,10 +476,18 @@ def main():
                 "arguments": {"signals": ["phase_current_a", "dc_bus_v"],
                               "output": "build/mcp-test-history.csv", "limit": 100}})
             assert exported["structuredContent"]["success"], exported
-            assert exported["structuredContent"]["total_samples"] == 2, exported
+            assert exported["structuredContent"]["total_samples"] == 6, exported
             assert "samples" not in exported["structuredContent"], exported
             assert export_path.read_text().splitlines()[0] == "signal,time_s,value"
             assert len(json.dumps(exported)) < 4096, exported
+            paged_export = request(server, 50, "tools/call", {
+                "name": "rte_device_history_export",
+                "arguments": {"signals": ["long_signal"],
+                              "output": "build/mcp-test-long-history.csv"}})
+            assert paged_export["structuredContent"]["total_samples"] == 2505
+            long_lines = (workspace / "build" / "mcp-test-long-history.csv").read_text().splitlines()
+            assert len(long_lines) == 2506, len(long_lines)
+            assert long_lines[-1].endswith(",313"), long_lines[-1]
             trends = request(server, 24, "tools/call", {"name": "rte_device_trends",
                              "arguments": {"signals": ["phase_current_a"],
                                            "window_s": 1.0}})
@@ -570,10 +617,24 @@ def main():
             mode = request(server, 15, "tools/call", {"name": "rte_device_mode",
                            "arguments": {}})["structuredContent"]
             assert mode["state"] == "app_responding", mode
+            assert "UART_BAUD=921600" in mode["control_status"], mode
+            session_server.freeze_frames = True
+            mode = request(server, 150, "tools/call", {"name": "rte_device_mode",
+                           "arguments": {}})["structuredContent"]
+            assert mode["state"] == "app_responding", mode
+            assert mode["app_frames_observed"] == 0, mode
+            session_server.freeze_frames = False
+            session_server.connected = False
+            mode = request(server, 151, "tools/call", {"name": "rte_device_mode",
+                           "arguments": {}})["structuredContent"]
+            assert mode["observation_source"] == "passive UART frame sample", mode
+            assert mode["state"] == "app_unresponsive_or_silent", mode
+            session_server.connected = True
             bridge_mode[0] = "BOOT_8E1"
             mode = request(server, 16, "tools/call", {"name": "rte_device_mode",
                            "arguments": {}})["structuredContent"]
             assert mode["state"] == "bootloader_selected", mode
+            assert "UART_BAUD=460800" in mode["control_status"], mode
             session_server.transport = "tcp"
             mode = request(server, 18, "tools/call", {"name": "rte_device_mode",
                            "arguments": {"serial": str(bridge), "control_port": str(control),

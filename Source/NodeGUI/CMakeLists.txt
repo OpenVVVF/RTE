@@ -133,6 +133,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(RTEStudio_session_tests
         tests/test_local_session_stale.cpp
         src/runtime/LocalSessionServer.cpp
+        src/runtime/RuntimeSessionExporter.cpp
         src/runtime/TelemetryStore.cpp
     )
     target_include_directories(RTEStudio_session_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

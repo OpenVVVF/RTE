@@ -498,6 +498,44 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                       {"window_end_s", endTime}, {"window_s", window},
                       {"time_basis", "host seconds since runtime start"},
                       {"sample_alignment", "individual timestamps; do not assume exact simultaneity"}};
+        } else if (method == "device.retention") {
+            const auto retention = store_.GetSessionRetentionStats();
+            result = {{"numeric_budget_bytes", retention.budgetBytes},
+                      {"retained_numeric_samples", retention.storedSamples},
+                      {"estimated_numeric_bytes",
+                       retention.storedSamples * sizeof(SessionFloatSample)},
+                      {"archive_generation", retention.archiveGeneration},
+                      {"session_epoch", retention.sessionEpoch},
+                      {"numeric_signals", store_.SessionFloatNames().size()},
+                      {"policy", "full resolution until dynamic host memory budget; oldest samples progressively decimated afterward"}};
+        } else if (method == "device.session_history_page") {
+            const std::string signal = params.value("signal", "");
+            std::size_t offset = params.value("offset", std::size_t{0});
+            const std::size_t limit = std::clamp(params.value("limit", std::size_t{200}),
+                                                 std::size_t{1}, std::size_t{2000});
+            std::vector<SessionFloatSample> page;
+            std::size_t total = 0;
+            uint64_t generation = 0;
+            if (signal.empty() || !store_.CopySessionHistoryPage(
+                    signal, offset, limit, page, total, generation)) {
+                return json{{"ok", false}, {"error", "unknown numeric signal: " + signal}}.dump();
+            }
+            if (params.value("tail", false) && total > limit) {
+                offset = total - limit;
+                store_.CopySessionHistoryPage(signal, offset, limit, page, total, generation);
+            }
+            json samples = json::array();
+            for (const auto& sample : page)
+                samples.push_back({{"time_s", sample.t}, {"value", sample.y}});
+            const auto view = store_.GetDeviceView();
+            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
+            result = {{"signal", signal}, {"samples", std::move(samples)},
+                      {"offset", offset}, {"total", total},
+                      {"next_offset", offset + page.size() < total
+                          ? json(offset + page.size()) : json(nullptr)},
+                      {"archive_generation", generation},
+                      {"session_epoch", store_.SessionEpoch()},
+                      {"status", SignalStatus(view, reporting, signal)}};
         } else if (method == "device.history") {
             const std::string signal = params.value("signal", "");
             const std::size_t limit = std::clamp(params.value("limit", std::size_t{1000}),

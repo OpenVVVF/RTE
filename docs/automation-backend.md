@@ -102,6 +102,21 @@ then sends `APP` on `if02`. It retries the programmer up to three times. Pass
 to change retries, or `--manual-boot` when the main MCU is already in its ROM
 bootloader. `--programmer` selects `STM32_Programmer_CLI` explicitly.
 
+The Gen7 application UART on `if00` runs at 921600 8N1. Its main firmware,
+coprocessor bridge firmware, and current `RTEStudio` or `rte` host build must
+all use that speed. The main MCU ROM bootloader remains at 460800 8E1, and
+the `if02` control port remains at 115200 8N1. For this UART change, reflash
+the coprocessor in DFU mode first, then the main MCU through its ROM
+bootloader. Both USART3 receivers use their hardware FIFOs to absorb short
+interrupt delays at this speed. `STATUS` reports the selected bridge speed as
+`UART_BAUD`.
+
+The Gen7 main image dispatches telemetry data every 5 ms (200 Hz). Periodic
+signal-definition frames add to Studio's total received-frame rate, so that
+counter may read about 205 Hz. This cadence change requires a main MCU reflash;
+the coprocessor image and UART framing are unchanged. Individual sensors may
+produce new measurements more slowly than the telemetry dispatch rate.
+
 `rte flash --target coproc --firmware coproc.elf` flashes the coprocessor
 through STM32 USB DFU (`port=usb1`) and starts the ELF entry point afterward.
 The coprocessor must already be in DFU mode. A `.bin` image uses flash address
@@ -246,10 +261,23 @@ use `rte_device_histories` to inspect individual values and timestamps. Means,
 RMS values, and regression use received samples without interpolation, so
 gaps can bias them; `quality: limited` flags poor window coverage or large
 gaps. For larger or custom analysis, `rte_device_history_export` writes up to
-eight histories to a long-form CSV (`signal,time_s,value`) inside the MCP
-workspace and returns only file and statistical metadata. This lets a person
-or agent use local Python and numeric libraries without placing every sample
-in the model context.
+eight full retained histories to a long-form CSV (`signal,time_s,value`)
+inside the MCP workspace and returns only file and statistical metadata. Its
+optional `limit` selects the newest samples per signal; omitting it exports
+the retained session. `rte_device_session_history` returns bounded pages of
+one numeric signal from any retained offset (newest 200 by default), while
+`rte_device_retention` reports the dynamic budget and retained count. Raw MCP
+responses remain capped and the 32 KiB response guard remains active.
+
+Studio bases the numeric archive budget on the smaller of host physical RAM
+and any container limit, then accounts for currently available memory. It
+targets at most two thirds of usable RAM before progressively decimating older
+samples in small blocks. Live plots use a
+separate 60-second window and min/max culling per horizontal pixel; rendering
+does not decimate the archive. Session JSONL export and MCP CSV export read
+the archive in pages to avoid a full-size memory copy; Studio's JSONL export
+runs on a worker thread so the live UI remains responsive. Rebuild and restart
+RTE Studio and `rte` for these host changes; neither MCU needs a reflash.
 Studio treats a signal as stopped reporting after two seconds without a new
 sample. `rte_device_telemetry`, `rte_device_signal`, and snapshots return
 `null` for its current value and keep the old measurement separately as a
@@ -312,10 +340,41 @@ its clear was accepted. Gate-related resets are refused while control or PWM is
 active, and a live condition that persists is reported again. `fault reset`,
 `clear fault`, and legacy `clearfault` are aliases that invoke the same clear
 routine.
+If the G474 has latched PWR2 off, run `fault clear all` once to hold gate
+outputs in reset and request its guarded clear. Wait until the G474 reports
+`ARMED` with no faults, then run `fault clear all` again to reset/recheck the
+gate driver and re-arm the TIM1 break interrupt. The first command returns
+before the H7 command shell can parse the G474's response.
+An ECC fault is Critical and cannot be cleared without an H7 reset. Its
+diagnostic loop leaves the shell and fault telemetry available while keeping
+PWM and gate power off. Reset startup initializes all RAM banks used by this
+image with full-word stores before clearing startup ECC status. The unused
+ITCM monitor is not armed; subsequent ECC events in used RAM remain latched.
+An unavailable G474 status defers the coprocessor part
+of `fault clear all` but does not prevent a safe main fault clear.
+If injected ADC samples stop during startup offset calibration, the H7 now
+times out after 100 ms, reports `AdcError`, and continues to its diagnostic
+shell with motor starts blocked instead of waiting forever for an interrupt.
 The G474 sends framed status over the existing bridge UART between host
 command lines. `rte_control_status` exposes separate main and coprocessor fault
 flags and names, plus the G474 safety state, clear result, and status age. Both MCU images must be
 reflashed for this exchange.
+The H7 repeats signal definitions once per second and sends numeric values
+when they differ from the last transmitted value for that signal, with a
+one-second refresh for unchanged signals. There is no search across all values
+seen in the previous second: `A → B → A` produces two changes if `B` and the
+return to `A` reach separate frames. Repeated graph log calls with the same
+value do not consume another numeric telemetry item. The 200 Hz dispatcher
+uses the latest value every 5 ms, so faster changes can be coalesced. Studio's
+Rate column and graph suffix count changes between consecutive received
+numeric values over roughly one second; equal refreshes do not count. This is
+a value-change rate, not an ADC sampling rate. The refresh stays below the
+host's two-second stale-signal timeout. The wire format is unchanged, and
+only the main MCU needs a reflash.
+The G474 control-port `STATUS` also includes `SAFETY_TRIP`,
+`SAFETY_TRIP_INPUTS`, and `PWR2_EN`. Trip reasons 4, 5, and 6 distinguish PWR1
+feedback loss, PWR2 feedback loss, and PWR2 startup timeout. These diagnostics
+require a coprocessor reflash; the `!SF1` status frame remains unchanged.
 
 ### Firmware changes and MCP compatibility
 

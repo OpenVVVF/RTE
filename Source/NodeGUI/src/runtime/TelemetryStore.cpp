@@ -2,12 +2,130 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <limits>
+
+#ifdef _WIN32
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <mach/mach.h>
+#endif
 
 namespace NodeGUI::runtime {
+
+namespace {
+
+struct MachineMemory {
+    uint64_t total = 0;
+    uint64_t available = 0;
+};
+
+uint64_t ReadNumberFile(const char* path) {
+    std::ifstream input(path);
+    uint64_t value = 0;
+    input >> value;
+    return input ? value : 0;
+}
+
+MachineMemory ReadMachineMemory() {
+    MachineMemory memory;
+    bool haveAvailable = false;
+#ifdef __linux__
+    std::ifstream input("/proc/meminfo");
+    std::string name, unit;
+    uint64_t kib = 0;
+    while (input >> name >> kib >> unit) {
+        if (name == "MemTotal:") memory.total = kib * 1024U;
+        else if (name == "MemAvailable:") {
+            memory.available = kib * 1024U;
+            haveAvailable = true;
+        }
+    }
+    uint64_t cgroupLimit = ReadNumberFile("/sys/fs/cgroup/memory.max");
+    uint64_t cgroupUsed = ReadNumberFile("/sys/fs/cgroup/memory.current");
+    if (!cgroupLimit) {
+        cgroupLimit = ReadNumberFile("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+        cgroupUsed = ReadNumberFile("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+    }
+    if (cgroupLimit && cgroupLimit < memory.total) {
+        memory.total = cgroupLimit;
+        memory.available = std::min(memory.available,
+            cgroupLimit > cgroupUsed ? cgroupLimit - cgroupUsed : uint64_t{0});
+        haveAvailable = true;
+    }
+#elif defined(_WIN32)
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    if (GlobalMemoryStatusEx(&status)) {
+        memory.total = status.ullTotalPhys;
+        memory.available = status.ullAvailPhys;
+        haveAvailable = true;
+    }
+#elif defined(__APPLE__)
+    uint64_t total = 0;
+    size_t length = sizeof(total);
+    if (sysctlbyname("hw.memsize", &total, &length, nullptr, 0) == 0)
+        memory.total = total;
+    mach_port_t host = mach_host_self();
+    vm_size_t pageSize = 0;
+    vm_statistics64_data_t stats{};
+    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+    if (host_page_size(host, &pageSize) == KERN_SUCCESS &&
+        host_statistics64(host, HOST_VM_INFO64,
+            reinterpret_cast<host_info64_t>(&stats), &count) == KERN_SUCCESS) {
+        memory.available = uint64_t(stats.free_count + stats.inactive_count) * pageSize;
+        haveAvailable = true;
+    }
+#endif
+    if (!memory.total) memory.total = 512ULL * 1024ULL * 1024ULL;
+    if (!haveAvailable) memory.available = memory.total / 2U;
+    memory.available = std::min(memory.available, memory.total);
+    return memory;
+}
+
+std::size_t MemoryBudget(std::size_t archiveBytes) {
+    const MachineMemory memory = ReadMachineMemory();
+    // Include our archive in the available-memory estimate so normal writes
+    // do not lower their own budget. Other applications can still lower it.
+    const uint64_t usable = std::min<uint64_t>(memory.total,
+        memory.available + std::min<uint64_t>(archiveBytes,
+            memory.total - memory.available));
+    return static_cast<std::size_t>(std::min(memory.total, usable) / 3U * 2U);
+}
+
+}  // namespace
+
+TelemetryStore::TelemetryStore(std::size_t sessionBudgetBytes)
+    : sessionBudgetBytes_(sessionBudgetBytes ? sessionBudgetBytes : MemoryBudget(0)),
+      sessionBudgetOverride_(sessionBudgetBytes != 0),
+      lastBudgetCheck_(std::chrono::steady_clock::now()) {}
 
 void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     std::lock_guard lock(mtx_);
     lastSignalUpdate_[key] = std::chrono::steady_clock::now();
+    auto& rate = signalRates_[key];
+    if (!rate.initialized || tsec < rate.lastSourceSec) {
+        rate = SignalRateState{};
+        rate.windowStartSec = tsec;
+        rate.lastSourceSec = tsec;
+        rate.lastValue = value;
+        rate.initialized = true;
+    } else if (tsec > rate.lastSourceSec) {
+        if (value != rate.lastValue &&
+            !(std::isnan(value) && std::isnan(rate.lastValue))) {
+            ++rate.changesInWindow;
+        }
+        rate.lastValue = value;
+        rate.lastSourceSec = tsec;
+        const double elapsed = static_cast<double>(tsec - rate.windowStartSec);
+        if (elapsed >= 1.0) {
+            rate.hz = static_cast<double>(rate.changesInWindow) / elapsed;
+            rate.measured = true;
+            rate.windowStartSec = tsec;
+            rate.changesInWindow = 0;
+        }
+    }
     auto& hist = snap_.hist[key];
     hist.t.push_back(tsec);
     hist.y.push_back(value);
@@ -129,7 +247,10 @@ void TelemetryStore::ClearSession() {
     snap_ = TelemetrySnapshot{};
     snap_.suspended = suspended;
     sessionFloatSignals_.clear();
+    sessionSampleCount_ = 0;
+    ++archiveGeneration_;
     lastSignalUpdate_.clear();
+    signalRates_.clear();
     lastFrameAt_ = {};
     sessionStringSignals_.clear();
     sessionConsole_.clear();
@@ -144,6 +265,10 @@ void TelemetryStore::ClearSession() {
     ++sessionEpoch_;
     sessionStartSteady_ = std::chrono::steady_clock::now();
     sessionStartWall_ = std::chrono::system_clock::now();
+    if (!sessionBudgetOverride_) {
+        sessionBudgetBytes_ = MemoryBudget(0);
+        lastBudgetCheck_ = std::chrono::steady_clock::now();
+    }
 }
 
 void TelemetryStore::SetStats(float rxHz,
@@ -239,27 +364,35 @@ TelemetrySnapshot TelemetryStore::Snapshot() const {
 
 RuntimeSessionSnapshot TelemetryStore::SessionSnapshot() const {
     std::lock_guard lock(mtx_);
+    return SessionSnapshotLocked(true);
+}
+
+RuntimeSessionSnapshot TelemetryStore::SessionMetadataSnapshot() const {
+    std::lock_guard lock(mtx_);
+    return SessionSnapshotLocked(false);
+}
+
+RuntimeSessionSnapshot TelemetryStore::SessionSnapshotLocked(bool includeFloats) const {
     RuntimeSessionSnapshot result;
     result.startedAtUnixMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             sessionStartWall_.time_since_epoch())
             .count();
     result.durationSeconds = SessionElapsedSeconds();
-    // Export layout: decimated older samples first, then the full-rate
-    // recent block — monotonic in time, matching the pre-cap format.
-    for (const auto& [key, store] : sessionFloatSignals_) {
-        SessionSignalHistory history;
-        history.t.reserve(store.archiveT.size() + store.recentT.size());
-        history.y.reserve(store.archiveY.size() + store.recentY.size());
-        history.t.insert(history.t.end(),
-                         store.archiveT.begin(), store.archiveT.end());
-        history.t.insert(history.t.end(),
-                         store.recentT.begin(), store.recentT.end());
-        history.y.insert(history.y.end(),
-                         store.archiveY.begin(), store.archiveY.end());
-        history.y.insert(history.y.end(),
-                         store.recentY.begin(), store.recentY.end());
-        result.floatSignals.emplace(key, std::move(history));
+    if (includeFloats) {
+        for (const auto& [key, store] : sessionFloatSignals_) {
+            SessionSignalHistory history;
+            const std::size_t count = SessionSignalSize(store);
+            history.t.reserve(count);
+            history.y.reserve(count);
+            for (auto level = store.levels.rbegin(); level != store.levels.rend(); ++level) {
+                for (const auto& sample : *level) {
+                    history.t.push_back(sample.t);
+                    history.y.push_back(sample.y);
+                }
+            }
+            result.floatSignals.emplace(key, std::move(history));
+        }
     }
     result.stringSignals = sessionStringSignals_;
     result.console = sessionConsole_;
@@ -276,6 +409,58 @@ RuntimeSessionSnapshot TelemetryStore::SessionSnapshot() const {
     result.stats.lastSeq = snap_.lastSeq;
     result.stats.suspended = snap_.suspended;
     return result;
+}
+
+TelemetryStore::SessionRetentionStats TelemetryStore::GetSessionRetentionStats() const {
+    std::lock_guard lock(mtx_);
+    return {sessionBudgetBytes_, sessionSampleCount_, archiveGeneration_, sessionEpoch_};
+}
+
+std::vector<std::string> TelemetryStore::SessionFloatNames() const {
+    std::lock_guard lock(mtx_);
+    std::vector<std::string> names;
+    names.reserve(sessionFloatSignals_.size());
+    for (const auto& [name, store] : sessionFloatSignals_) {
+        (void)store;
+        names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+std::size_t TelemetryStore::SessionSignalSize(const SessionSignalStore& store) {
+    std::size_t total = 0;
+    for (const auto& level : store.levels) total += level.size();
+    return total;
+}
+
+bool TelemetryStore::CopySessionHistoryPage(
+    const std::string& key, std::size_t offset, std::size_t limit,
+    std::vector<SessionFloatSample>& samples, std::size_t& total,
+    uint64_t& generation) const {
+    std::lock_guard lock(mtx_);
+    const auto it = sessionFloatSignals_.find(key);
+    if (it == sessionFloatSignals_.end()) return false;
+    const auto& store = it->second;
+    total = SessionSignalSize(store);
+    generation = archiveGeneration_;
+    samples.clear();
+    if (offset >= total || limit == 0) return true;
+    samples.reserve(std::min(limit, total - offset));
+    for (auto level = store.levels.rbegin(); level != store.levels.rend(); ++level) {
+        if (offset >= level->size()) {
+            offset -= level->size();
+            continue;
+        }
+        const std::size_t take = std::min({limit - samples.size(),
+                                           level->size() - offset,
+                                           total - samples.size()});
+        for (std::size_t i = 0; i < take; ++i)
+            samples.push_back((*level)[offset + i]);
+        offset = 0;
+        if (samples.size() == limit) break;
+    }
+    return true;
 }
 
 bool TelemetryStore::CopyHistory(const std::string& key,
@@ -304,6 +489,61 @@ bool TelemetryStore::CopyHistoryInto(const std::string& key,
     return true;
 }
 
+bool TelemetryStore::CopyPlotHistoryInto(
+    const std::string& key, float viewSeconds, std::size_t maxPoints,
+    std::vector<float>& t, std::vector<float>& y) const {
+    std::lock_guard lock(mtx_);
+    const auto it = snap_.hist.find(key);
+    if (it == snap_.hist.end()) return false;
+    const auto& history = it->second;
+    t.clear();
+    y.clear();
+    if (history.t.empty()) return true;
+    const float cutoff = history.t.back() - viewSeconds;
+    const auto firstIt = std::lower_bound(history.t.begin(), history.t.end(), cutoff);
+    const std::size_t first = static_cast<std::size_t>(firstIt - history.t.begin());
+    const std::size_t count = history.t.size() - first;
+    if (count <= maxPoints) {
+        t.assign(firstIt, history.t.end());
+        y.assign(history.y.begin() + static_cast<std::ptrdiff_t>(first), history.y.end());
+        return true;
+    }
+    const std::size_t buckets = std::max<std::size_t>(1, maxPoints / 2);
+    const std::size_t bucketSize = (count + buckets - 1) / buckets;
+    t.reserve(maxPoints + 2);
+    y.reserve(maxPoints + 2);
+    auto append = [&](std::size_t index) {
+        if (!t.empty() && t.back() == history.t[index]) return;
+        t.push_back(history.t[index]);
+        y.push_back(history.y[index]);
+    };
+    append(first);
+    for (std::size_t begin = first; begin < history.t.size(); begin += bucketSize) {
+        const std::size_t end = std::min(history.t.size(), begin + bucketSize);
+        std::size_t minIndex = begin, maxIndex = begin;
+        bool finiteFound = false;
+        for (std::size_t i = begin; i < end; ++i) {
+            if (!std::isfinite(history.y[i])) continue;
+            if (!finiteFound) {
+                minIndex = maxIndex = i;
+                finiteFound = true;
+            } else {
+                if (history.y[i] < history.y[minIndex]) minIndex = i;
+                if (history.y[i] > history.y[maxIndex]) maxIndex = i;
+            }
+        }
+        if (minIndex < maxIndex) {
+            append(minIndex);
+            append(maxIndex);
+        } else {
+            append(maxIndex);
+            append(minIndex);
+        }
+    }
+    append(history.t.size() - 1);
+    return true;
+}
+
 bool TelemetryStore::CopyStringHistory(const std::string& key, std::size_t limit,
                                        std::vector<SessionStringSample>& samples) const {
     std::lock_guard lock(mtx_);
@@ -323,6 +563,28 @@ bool TelemetryStore::LatestValue(const std::string& key, float& value) const {
     }
     value = it->second;
     return true;
+}
+
+std::unordered_map<std::string, TelemetryStore::SignalDisplay>
+TelemetryStore::SignalDisplays() const {
+    std::lock_guard lock(mtx_);
+    std::unordered_map<std::string, SignalDisplay> displays;
+    displays.reserve(snap_.latest.size());
+    const auto now = std::chrono::steady_clock::now();
+    for (const auto& [key, value] : snap_.latest) {
+        SignalDisplay display;
+        display.value = value;
+        const auto rateIt = signalRates_.find(key);
+        const auto timeIt = lastSignalUpdate_.find(key);
+        if (rateIt != signalRates_.end() && timeIt != lastSignalUpdate_.end() &&
+            rateIt->second.measured) {
+            const double hz = rateIt->second.hz;
+            const double age = std::chrono::duration<double>(now - timeIt->second).count();
+            display.updateHz = (snap_.suspended || age > 2.0) ? 0.0 : hz;
+        }
+        displays.emplace(key, display);
+    }
+    return displays;
 }
 
 std::vector<std::string> TelemetryStore::SignalNames() const {
@@ -361,54 +623,55 @@ uint64_t TelemetryStore::SessionEpoch() const {
 void TelemetryStore::AppendSessionF32Locked(SessionSignalStore& store,
                                             float t,
                                             float y) {
-    if (store.recentT.capacity() < kSessionRecentSamples + 1) {
-        store.recentT.reserve(kSessionRecentSamples + 1);
-        store.recentY.reserve(kSessionRecentSamples + 1);
+    if (store.levels.empty()) store.levels.emplace_back();
+    store.levels[0].push_back({t, y});
+    ++sessionSampleCount_;
+    const auto now = std::chrono::steady_clock::now();
+    if (!sessionBudgetOverride_ &&
+        now - lastBudgetCheck_ >= std::chrono::seconds(1)) {
+        sessionBudgetBytes_ = MemoryBudget(sessionSampleCount_ * sizeof(SessionFloatSample));
+        lastBudgetCheck_ = now;
     }
-    store.recentT.push_back(t);
-    store.recentY.push_back(y);
-    if (store.recentT.size() <= kSessionRecentSamples) {
-        return;
+    // A sudden drop in available RAM may require many compactions. Spread
+    // that work across incoming samples so the GUI drain stays responsive.
+    std::size_t compactedBlocks = 0;
+    while (sessionSampleCount_ * sizeof(SessionFloatSample) > sessionBudgetBytes_
+           && compactedBlocks++ < 4) {
+        if (!CompactOldestSessionBlockLocked()) break;
     }
-    // Fold the oldest half of the recent block into the decimated archive.
-    const std::size_t fold = kSessionRecentSamples / 2;
-    for (std::size_t i = 0; i < fold; ++i) {
-        AppendSessionArchiveLocked(store, store.recentT[i], store.recentY[i]);
-    }
-    store.recentT.erase(store.recentT.begin(),
-                        store.recentT.begin() + static_cast<std::ptrdiff_t>(fold));
-    store.recentY.erase(store.recentY.begin(),
-                        store.recentY.begin() + static_cast<std::ptrdiff_t>(fold));
 }
 
-void TelemetryStore::AppendSessionArchiveLocked(SessionSignalStore& store,
-                                                float t,
-                                                float y) {
-    // Counter-based decimation: keep one sample per `stride` arrivals.
-    if (++store.phase < store.stride) {
-        return;
-    }
-    store.phase = 0;
-    if (store.archiveT.capacity() < kSessionArchiveSamples + 1) {
-        store.archiveT.reserve(kSessionArchiveSamples + 1);
-        store.archiveY.reserve(kSessionArchiveSamples + 1);
-    }
-    store.archiveT.push_back(t);
-    store.archiveY.push_back(y);
-    if (store.archiveT.size() > kSessionArchiveSamples) {
-        // Progressive halving (oscilloscope-style): keep every second
-        // sample and double the stride, so archive density decays with age
-        // while recent samples retain the finest current resolution.
-        std::size_t w = 0;
-        for (std::size_t r = 1; r < store.archiveT.size(); r += 2) {
-            store.archiveT[w] = store.archiveT[r];
-            store.archiveY[w] = store.archiveY[r];
-            ++w;
+bool TelemetryStore::CompactOldestSessionBlockLocked() {
+    SessionSignalStore* selected = nullptr;
+    std::size_t selectedLevel = 0;
+    float oldest = std::numeric_limits<float>::infinity();
+    for (auto& [name, store] : sessionFloatSignals_) {
+        (void)name;
+        for (std::size_t level = 0; level < store.levels.size(); ++level) {
+            if (store.levels[level].size() < 2) continue;
+            const float t = store.levels[level].front().t;
+            if (t < oldest) {
+                oldest = t;
+                selected = &store;
+                selectedLevel = level;
+            }
         }
-        store.archiveT.resize(w);
-        store.archiveY.resize(w);
-        store.stride *= 2;
     }
+    if (!selected) return false;
+    if (selected->levels.size() <= selectedLevel + 1)
+        selected->levels.resize(selectedLevel + 2);
+    auto& source = selected->levels[selectedLevel];
+    auto& target = selected->levels[selectedLevel + 1];
+    const std::size_t pairs = std::min(kSessionCompactionBlock / 2,
+                                       source.size() / 2);
+    for (std::size_t i = 0; i < pairs; ++i) {
+        source.pop_front();
+        target.push_back(source.front());
+        source.pop_front();
+    }
+    sessionSampleCount_ -= pairs;
+    ++archiveGeneration_;
+    return true;
 }
 
 void TelemetryStore::TrimHistoryLocked(SignalHistory& hist) const {

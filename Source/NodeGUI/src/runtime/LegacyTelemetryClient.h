@@ -42,7 +42,7 @@ public:
     LegacyTelemetryClient(const LegacyTelemetryClient&) = delete;
     LegacyTelemetryClient& operator=(const LegacyTelemetryClient&) = delete;
 
-    bool start(const std::string& port);            // spawns reader thread
+    bool start(const std::string& port, int baud);  // spawns reader thread
     void stop();                                    // joins thread, closes port
     void suspend();                                 // close port, idle reader (for flashing)
     void resume();                                  // clear suspend, reader reconnects
@@ -56,7 +56,7 @@ public:
     std::function<void(const Stats&)> onStats;      // ~1 Hz
 
 private:
-    void threadMain(const std::string& port);
+    void threadMain(const std::string& port, int baud);
 
     // Ingest helpers (reader thread only; the original appended "Locked" because
     // they ran under mtx_ protecting the snapshot state -- there is no shared

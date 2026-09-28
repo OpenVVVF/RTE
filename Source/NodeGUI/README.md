@@ -52,6 +52,42 @@ command box sends HostSim text shell commands (`throttle a 0.5`, `duty u 60`,
 Other modes: `--simulate` feeds synthetic 100 Hz telemetry instead of a link,
 and `--serial <port>` + `--protocol legacy|ivp` attach to a real device.
 
+### Signal rates on the Gen7 inverter
+
+The main firmware checks each numeric signal against the **last value it sent**.
+It sends a value when that value changes, and sends an unchanged value about
+once per second to keep the signal live. It does not search all values seen in
+the preceding second: `A → B → A` produces two changes if all three states
+reach separate telemetry frames. Repeated `A → A` values produce no new item
+until the refresh. The Gen7 telemetry dispatcher runs every 5 ms (200 Hz) and
+uses the latest value at each dispatch, so a change that reverses between
+dispatches may never be sent.
+
+The Runtime table's **Rate** column and plot legend count changes between
+consecutive *received* numeric values over roughly one second. An identical
+refresh does not raise that rate. The displayed rate is therefore a value
+change rate, not the ADC sampling rate or total telemetry frame rate. A 0 Hz
+rate can mean the value is steady; check signal freshness to distinguish that
+from a signal that stopped reporting.
+
+### History retention and export
+
+Studio keeps every received numeric sample in its session archive until the
+archive approaches a dynamic memory budget. The target is at most two thirds
+of usable physical RAM, using current available memory and any container
+memory limit. Studio checks it again as memory usage changes. Only after the
+budget is reached does it progressively decimate the oldest samples in small
+blocks, spreading the work across incoming telemetry; the newest data stays at
+full received resolution. This replaces the
+old 12,000-sample-per-signal archive limit. No host can recover changes that
+the firmware did not transmit.
+
+`Export Session…` reads the archive in pages on a worker thread instead of
+copying it all into memory or blocking the live UI. Live plots keep a separate
+60-second window and draw at most about two
+points per horizontal pixel, selecting local minima and maxima so brief peaks
+remain visible. Plot culling does not change the archive or exported data.
+
 ## Build & Run Simulation
 
 `Simulation → Build & Run Simulation (Live)` (`F6`) is the graph-mode HostSim
@@ -92,7 +128,7 @@ publishes `duty_u` or `cg_id_a`.
 - Double-click a domain label or empty area inside its outline to select the
   domain, then drag its background to move every node in that domain together.
 - The Runtime screen's `Export Session…` button writes a chronological JSONL
-  event stream with all float and string telemetry samples, console output,
+  event stream with retained float and string telemetry samples, console output,
   sent console commands (with both send and first-response timestamps),
   connection statistics, and session metadata captured since the runtime
   started. Its final record includes per-signal sample count, minimum, maximum,

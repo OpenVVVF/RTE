@@ -3,7 +3,9 @@
 #include <QWidget>
 
 #include <array>
+#include <atomic>
 #include <QStringList>
+#include <thread>
 
 class QComboBox;
 class QLabel;
@@ -28,6 +30,8 @@ class RuntimeTab : public QWidget {
 public:
     RuntimeTab(RuntimeController* controller,
                QWidget* parent = nullptr);
+    ~RuntimeTab() override;
+    void WaitForExport();
 
     // Dockable panels owned by this tab; the main window places them.
     SignalTablePanel* GetSignalTable() const { return signalTablePanel_; }
@@ -75,6 +79,8 @@ private:
     TelemetryPanel* telemetryPanel_ = nullptr;
     SignalTablePanel* signalTablePanel_ = nullptr;
     ConsolePanel* consolePanel_ = nullptr;
+    std::atomic_bool exportRunning_{false};
+    std::jthread exportThread_;
 };
 
 }  // namespace NodeGUI::runtime

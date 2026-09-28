@@ -43,7 +43,7 @@ private:
  */
 class UartTransport {
 public:
-    static constexpr int DEFAULT_BAUD = 460800;
+    static constexpr int DEFAULT_BAUD = 921600;
     static constexpr size_t RX_FRAME_CAP = 4096;
     static constexpr size_t RX_RAW_CAP = 512;
 

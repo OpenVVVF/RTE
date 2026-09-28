@@ -292,6 +292,10 @@ MainWindow::MainWindow(QWidget* parent)
     addToolBar(Qt::TopToolBarArea, switcherBar);
 
     screens_ = new QStackedWidget(this);
+    // The stack otherwise inherits the largest minimum width of every page,
+    // including hidden pages. That stops the runtime dock splitter early.
+    screens_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    screens_->setMinimumWidth(400);
     screens_->addWidget(central);
     setCentralWidget(screens_);
 
@@ -445,6 +449,9 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    // The export worker reads RuntimeController's store. Join it before the
+    // controller member is destroyed (Qt destroys child widgets later).
+    if (runtimeTab_) runtimeTab_->WaitForExport();
     // Stack-destroyed (e.g. after --sim-smoke exits) without a closeEvent:
     // make sure the sim child tree is dead before member teardown starts.
     ShutdownSimRunner();
@@ -1122,7 +1129,8 @@ void MainWindow::OnTabChanged(int index) {
     }
     previousTab_ = index;
 
-    if (index >= 0 && index < 3 && !screenStates_[index].isEmpty()) {
+    const bool firstVisit = index >= 0 && index < 3 && screenStates_[index].isEmpty();
+    if (index >= 0 && index < 3 && !firstVisit) {
         restoreState(screenStates_[index]);
     } else {
         // Defaults: node screen shows toolbox + inspector, runtime shows the
@@ -1136,6 +1144,16 @@ void MainWindow::OnTabChanged(int index) {
         if (editorConsoleDock_) editorConsoleDock_->setVisible(false);
         if (signalTableDock_) signalTableDock_->setVisible(runtimeTab);
         if (telemetryConsoleDock_) telemetryConsoleDock_->setVisible(runtimeTab);
+    }
+
+    if (index == 1 && firstVisit) {
+        // Apply the runtime default after Qt has laid out the newly visible
+        // docks. Later tab visits restore the user's own dock widths.
+        QTimer::singleShot(0, this, [this] {
+            if (appSwitcher_->currentIndex() == 1 && signalTableDock_) {
+                resizeDocks({signalTableDock_}, {600}, Qt::Horizontal);
+            }
+        });
     }
 
     RebuildViewMenu();

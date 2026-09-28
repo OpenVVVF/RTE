@@ -11,7 +11,6 @@ namespace {
 // ---------------- Protocol constants (unchanged from the original) ----------------
 constexpr uint32_t MAGIC   = 0x544C4D31u; // "TLM1"
 constexpr uint8_t  VERSION = 1;
-constexpr int      BAUD_RATE = 460800;    // fixed serial baud
 
 enum MsgType : uint8_t {
     MSG_DATA   = 1,
@@ -96,10 +95,10 @@ inline float rd_f32(const uint8_t*& p, const uint8_t* end) {
 // ---------------- LegacyTelemetryClient ----------------
 LegacyTelemetryClient::~LegacyTelemetryClient() { stop(); }
 
-bool LegacyTelemetryClient::start(const std::string& port) {
+bool LegacyTelemetryClient::start(const std::string& port, int baud) {
     stop();
     run_.store(true);
-    thr_ = std::thread(&LegacyTelemetryClient::threadMain, this, port);
+    thr_ = std::thread(&LegacyTelemetryClient::threadMain, this, port, baud);
     return true;
 }
 
@@ -280,7 +279,7 @@ void LegacyTelemetryClient::parseDataPayload(const uint8_t* payload, size_t len,
     }
 }
 
-void LegacyTelemetryClient::threadMain(const std::string& port) {
+void LegacyTelemetryClient::threadMain(const std::string& port, int baud) {
     auto reopen_and_settle = [&](bool first_time) {
         {
             std::lock_guard<std::mutex> lk(serial_mtx_);
@@ -293,7 +292,7 @@ void LegacyTelemetryClient::threadMain(const std::string& port) {
             bool ok = false;
             {
                 std::lock_guard<std::mutex> lk(serial_mtx_);
-                ok = serial_.open(port, BAUD_RATE);
+                ok = serial_.open(port, baud);
             }
             if (ok) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(200));

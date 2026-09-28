@@ -1,10 +1,13 @@
 #include "runtime/LocalSessionServer.h"
 #include "runtime/TelemetryStore.h"
+#include "runtime/RuntimeSessionExporter.h"
 
 #include <RTEAutomation/Session.h>
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QFile>
+#include <QTemporaryDir>
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -18,6 +21,93 @@
 using namespace std::chrono_literals;
 
 namespace {
+
+TEST(TelemetryStore, MeasuresEachSignalsValueChangeRate) {
+    NodeGUI::runtime::TelemetryStore store;
+    for (int i = 0; i <= 200; ++i) {
+        const float t = static_cast<float>(i) / 200.0f;
+        store.AddF32("fast", static_cast<float>(i), t);
+        store.AddF32("rpm", static_cast<float>(i / 4), t);
+        store.AddF32("constant", 7.0f, t);
+    }
+
+    auto displays = store.SignalDisplays();
+    ASSERT_TRUE(displays.at("fast").updateHz.has_value());
+    ASSERT_TRUE(displays.at("rpm").updateHz.has_value());
+    ASSERT_TRUE(displays.at("constant").updateHz.has_value());
+    EXPECT_NEAR(*displays.at("fast").updateHz, 200.0, 0.1);
+    EXPECT_NEAR(*displays.at("rpm").updateHz, 50.0, 0.1);
+    EXPECT_EQ(*displays.at("constant").updateHz, 0.0);
+
+    // A second report at the same source timestamp cannot add a change.
+    store.AddF32("fast", 999.0f, 1.0f);
+    EXPECT_NEAR(*store.SignalDisplays().at("fast").updateHz, 200.0, 0.1);
+
+    // A signal can keep arriving while its value stops changing.
+    for (int i = 201; i <= 400; ++i)
+        store.AddF32("rpm", 50.0f, static_cast<float>(i) / 200.0f);
+    EXPECT_EQ(*store.SignalDisplays().at("rpm").updateHz, 0.0);
+
+    store.SetSuspended(true);
+    EXPECT_EQ(*store.SignalDisplays().at("fast").updateHz, 0.0);
+    store.ClearSession();
+    EXPECT_TRUE(store.SignalDisplays().empty());
+}
+
+TEST(TelemetryStore, RetainsFullResolutionUntilBudgetThenCompactsOldest) {
+    NodeGUI::runtime::TelemetryStore store(800);  // 100 float time/value pairs
+    for (int i = 0; i < 80; ++i)
+        store.AddF32("signal", static_cast<float>(i), static_cast<float>(i) * 0.01f);
+    auto retention = store.GetSessionRetentionStats();
+    EXPECT_EQ(retention.storedSamples, 80);
+    EXPECT_EQ(retention.archiveGeneration, 0);
+    std::vector<NodeGUI::runtime::SessionFloatSample> page;
+    std::size_t total = 0;
+    uint64_t generation = 0;
+    ASSERT_TRUE(store.CopySessionHistoryPage("signal", 0, 100, page, total, generation));
+    ASSERT_EQ(total, 80);
+    for (int i = 0; i < 80; ++i) EXPECT_FLOAT_EQ(page[i].y, static_cast<float>(i));
+
+    for (int i = 80; i < 160; ++i)
+        store.AddF32("signal", static_cast<float>(i), static_cast<float>(i) * 0.01f);
+    retention = store.GetSessionRetentionStats();
+    EXPECT_LE(retention.storedSamples, 100);
+    EXPECT_GT(retention.archiveGeneration, 0);
+    ASSERT_TRUE(store.CopySessionHistoryPage("signal", 0, 200, page, total, generation));
+    ASSERT_EQ(total, retention.storedSamples);
+    EXPECT_FLOAT_EQ(page.back().y, 159.0f);
+    for (std::size_t i = 1; i < page.size(); ++i) EXPECT_LT(page[i - 1].t, page[i].t);
+}
+
+TEST(TelemetryStore, ExportsBeyondOldTwelveThousandSampleLimitWithoutCopyingArchive) {
+    NodeGUI::runtime::TelemetryStore store(200000);
+    for (int i = 0; i < 13000; ++i)
+        store.AddF32("signal", static_cast<float>(i), static_cast<float>(i) * 0.005f);
+    EXPECT_EQ(store.GetSessionRetentionStats().storedSamples, 13000);
+
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("session.jsonl"));
+    QString error;
+    ASSERT_TRUE(NodeGUI::runtime::ExportRuntimeSession(
+        path, store, NodeGUI::runtime::RuntimeSessionMetadata{}, error))
+        << error.toStdString();
+    QFile file(path);
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    std::size_t numericEvents = 0;
+    double lastTime = -1.0;
+    while (!file.atEnd()) {
+        const auto line = nlohmann::json::parse(file.readLine().toStdString());
+        if (line.value("type", "") == "telemetry") {
+            ++numericEvents;
+            EXPECT_GE(line["t"].get<double>(), lastTime);
+            lastTime = line["t"].get<double>();
+        } else if (line.value("type", "") == "session_end") {
+            EXPECT_EQ(line["signal_summaries"]["signal"]["samples"], 13000);
+        }
+    }
+    EXPECT_EQ(numericEvents, 13000);
+}
 
 std::optional<nlohmann::json> RequestWithEvents(
     QCoreApplication& app, const RTEAutomation::SessionDescriptor& session,
@@ -62,6 +152,15 @@ TEST(RteStudioSession, StoppedSignalIsNotAZeroAndHistoryWindowExpires) {
     ASSERT_TRUE(live.has_value()) << error;
     EXPECT_EQ((*live)["signals"]["isr_current"], 7.0);
     EXPECT_EQ((*live)["signal_status"]["isr_current"]["state"], "live");
+    const auto retention = RequestWithEvents(app, *session, "device.retention", {}, error);
+    ASSERT_TRUE(retention.has_value()) << error;
+    EXPECT_GE((*retention)["retained_numeric_samples"].get<std::size_t>(), 5);
+    EXPECT_GT((*retention)["numeric_budget_bytes"].get<std::size_t>(), 0);
+    const auto page = RequestWithEvents(app, *session, "device.session_history_page",
+        {{"signal", "isr_current"}, {"offset", 0}, {"limit", 10}}, error);
+    ASSERT_TRUE(page.has_value()) << error;
+    ASSERT_EQ((*page)["samples"].size(), 1);
+    EXPECT_EQ((*page)["samples"][0]["value"], 7.0);
 
     store.AddString("control_state", "IDLE");
     store.AddString("fault_flags_hex", "0x00000000");

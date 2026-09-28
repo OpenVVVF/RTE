@@ -98,13 +98,21 @@ bool SerialPort::open(const std::string& port, int baud) {
     cfsetispeed(&tty, B9600);
     cfsetospeed(&tty, B9600);
 #else
-    speed_t speed = B460800;
-    if (baud == 230400) speed = B230400;
+    speed_t speed;
+#ifdef B921600
+    if (baud == 921600) speed = B921600;
+    else
+#endif
+    if (baud == 460800) speed = B460800;
+    else if (baud == 230400) speed = B230400;
 #ifdef B115200
     else if (baud == 115200) speed = B115200;
 #endif
-    cfsetispeed(&tty, speed);
-    cfsetospeed(&tty, speed);
+    else { ::close(fd); return false; }
+    if (cfsetispeed(&tty, speed) != 0 || cfsetospeed(&tty, speed) != 0) {
+        ::close(fd);
+        return false;
+    }
 #endif
     cfmakeraw(&tty);
 

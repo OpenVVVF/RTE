@@ -1,5 +1,8 @@
 #include "RuntimeController.h"
 
+#include <RTEAutomation/Flasher.h>
+#include <inverter_protocol/host/uart_transport.h>
+
 #include <QTimer>
 
 #include <cmath>
@@ -31,6 +34,14 @@ constexpr SimWave kSimWaves[] = {
     {"temp_c", 0.05, 1.5, 35.0},
 };
 
+int SerialBaudForPort(const QString& port, Protocol protocol) {
+    if (protocol == Protocol::Inverter ||
+        !RTEAutomation::DiscoverGen7BridgePorts(port.toStdString()).bridge.empty()) {
+        return ivp::UartTransport::DEFAULT_BAUD;
+    }
+    return 460800;
+}
+
 std::string ConsoleSafe(const std::string& value) {
     std::string safe;
     safe.reserve(value.size());
@@ -59,6 +70,7 @@ RuntimeController::RuntimeController(QString port,
     , simulate_(simulate)
     , protocol_(protocol)
     , startTime_(std::chrono::steady_clock::now()) {
+    serialBaud_ = SerialBaudForPort(port_, protocol_);
     legacyClient_.onF32 = [this](const std::string& key, float value, float tsec) {
         Push(QueuedF32{key, value, tsec});
     };
@@ -150,7 +162,7 @@ void RuntimeController::StartActiveLink() {
     if (UsingTcp()) {
         tcpClient_.Start(tcpHost_, tcpPort_);
     } else if (protocol_ == Protocol::Legacy) {
-        legacyClient_.start(port_.toStdString());
+        legacyClient_.start(port_.toStdString(), serialBaud_);
     } else {
         ivpClient_.start(port_.toStdString());
     }
@@ -216,6 +228,7 @@ void RuntimeController::SetPort(const QString& port) {
         StopActiveLink();
     }
     port_ = normalized;
+    serialBaud_ = SerialBaudForPort(port_, protocol_);
     if (restartSerial) {
         StartActiveLink();
     }
@@ -264,6 +277,10 @@ void RuntimeController::AddAutomationLine(const std::string& line) {
 RuntimeSessionSnapshot RuntimeController::CaptureSession() {
     DrainQueue();
     return store_.SessionSnapshot();
+}
+
+void RuntimeController::FlushPendingTelemetry() {
+    DrainQueue();
 }
 
 void RuntimeController::ClearSession() {

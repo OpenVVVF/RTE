@@ -6,6 +6,7 @@
 #include <QOpenGLWidget>
 #include <QStringList>
 
+#include <optional>
 #include <vector>
 
 class QColor;
@@ -48,6 +49,7 @@ private:
         QString name;
         std::vector<float> t;
         std::vector<float> y;
+        std::optional<double> updateHz;
     };
 
     void DrawVertices(const std::vector<float>& xy, unsigned int mode, const QColor& color);

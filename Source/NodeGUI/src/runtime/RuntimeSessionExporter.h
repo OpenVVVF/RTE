@@ -19,4 +19,11 @@ bool ExportRuntimeSession(const QString& path,
                           const RuntimeSessionMetadata& metadata,
                           QString& error);
 
+// Reads numeric telemetry in bounded pages, so export does not duplicate a
+// potentially large in-memory session archive.
+bool ExportRuntimeSession(const QString& path,
+                          const TelemetryStore& store,
+                          const RuntimeSessionMetadata& metadata,
+                          QString& error);
+
 }  // namespace NodeGUI::runtime

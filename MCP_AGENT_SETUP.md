@@ -97,7 +97,8 @@ try:
         if method == "tools/list":
             names = {tool["name"] for tool in answer["result"]["tools"]}
             assert {"rte_device_mode", "rte_device_telemetry", "rte_device_trends",
-                    "rte_device_history_export",
+                    "rte_device_history_export", "rte_device_session_history",
+                    "rte_device_retention",
                     "rte_device_snapshot", "rte_build_info", "rte_signal_info",
                     "rte_control_status", "rte_device_commands", "rte_spike_capture",
                     "rte_device_command_response", "rte_flash"} <= names, names
@@ -187,9 +188,24 @@ no coprocessor reflash is needed.
   firmware artifacts and return a bounded result instead of compiler progress.
 - Use `rte_bridge_ports` to find the Gen7 `if00` UART bridge and `if02`
   coprocessor control port. Use `rte_device_mode` for a read only mode check.
+  The Gen7 application UART is 921600 8N1; the main MCU ROM bootloader uses
+  460800 8E1, and the control port uses 115200 8N1. The coprocessor `STATUS`
+  reports the selected bridge speed in `UART_BAUD`. This speed change requires
+  both MCU images to be reflashed and the current `rte` and `RTEStudio` builds.
+  The current Gen7 main image dispatches telemetry at 200 Hz; periodic
+  definition frames make the observed total frame rate slightly higher.
   `app_responding` and `bootloader_responding` confirm replies; an
   `app_unresponsive_or_silent` result does **not** prove a hung MCU. The
   optional `probe_bootloader` argument makes a connect only programmer probe.
+  A disconnected Studio session does not own the bridge for this probe; the
+  CLI samples the UART directly. The G474 control-port `STATUS` includes a
+  latched `SAFETY_TRIP` reason and `SAFETY_TRIP_INPUTS` (PWR2 feedback bit 0,
+  PWR1 feedback bit 1, asserted /FAULT bit 2, live H7 heartbeat bit 3), plus
+  `PWR2_EN`. Reasons 4, 5, and 6 distinguish PWR1 loss, PWR2 loss after
+  arming, and PWR2 startup timeout. These fields require a coprocessor
+  reflash. A detected H7 RAM or flash ECC event keeps the stage off until
+  reset and reports a Critical fault through the diagnostic shell; that
+  behavior requires a main MCU reflash.
 - For live data, run `RTEStudio` connected to the inverter first. Use
   `rte_device_status`, filtered `rte_signal_info`, `rte_device_signal`, or
   `rte_device_snapshot` first. `rte_device_telemetry` accepts exact `signals`
@@ -214,6 +230,17 @@ no coprocessor reflash is needed.
   control-state fallback. Firmware build identity fields
   (`fw_manifest`, `fw_graph`, `fw_graph_hash`) are normally republished every
   ten seconds and use a 15-second signal timeout while the link remains live.
+  Current H7 telemetry repeats key definitions once per second. It sends a
+  numeric value when it differs from that signal's last transmitted value,
+  and refreshes unchanged values within one second even if the graph logs
+  them on every cycle. It does not compare against every value seen during
+  that second: `A → B → A` yields two changes when all states reach separate
+  frames. The 200 Hz dispatcher sees only the latest value every 5 ms, so
+  changes that reverse between frames are not transmitted. Studio's Rate
+  column and plot suffix count changes between consecutive received numeric
+  values, excluding identical refreshes; they do not report ADC sample rate.
+  This reduces UART load without changing the frame format and requires only
+  a main MCU reflash.
   `rte_device_histories` reads up to eight signals from one Studio store
   snapshot, with a total MCP budget of 400 raw samples; each sample retains
   its own timestamp, and its window continues advancing after reports stop.
@@ -227,8 +254,16 @@ no coprocessor reflash is needed.
   it before and after a motor adjustment with the same signals and window
   to compare behavior. Correlation is a timing clue, not proof that one signal
   caused another. Use `rte_device_histories` for a small raw sample inspection,
-  or `rte_device_history_export` to write up to eight longer histories to a
-  local long-form CSV without feeding those samples to the model. A `limited`
+  or `rte_device_history_export` to write up to eight full retained histories
+  to a local long-form CSV without feeding those samples to the model. Use
+  `rte_device_session_history` with `offset` and `limit` for bounded pages from
+  any retained point in the session; without `offset` it returns the newest
+  samples. `rte_device_retention` reports the active budget and sample count.
+  Studio keeps full received resolution until its estimated numeric archive
+  reaches at most two thirds of usable host RAM, adjusted for current
+  availability and container limits. It then decimates older blocks. This is
+  a host-only change: rebuild and restart `rte` and RTE Studio; neither MCU
+  needs a reflash. A `limited`
   quality flag means the
   observed samples or window coverage do not support a strong conclusion;
   mean and RMS are sample based and do not interpolate gaps. Use
@@ -280,7 +315,12 @@ no coprocessor reflash is needed.
   latches and the generated controller fault state. It refuses the gate reset while control or PWM is
   active. `fault reset`, `clear fault`, and legacy `clearfault` are aliases for
   the same clear routine. A persistent live condition is reported again after
-  the clear. The `fault_flags_hex` string signal is the widened
+  the clear. When the G474 has latched PWR2 off, issue `fault clear all`, wait
+  for `coprocessor_safety_state=ARMED` and no coprocessor faults, then issue
+  `fault clear all` again to recheck gate hardware and re-arm TIM1 break.
+  The H7 initializes its used RAM banks before clearing startup ECC flags;
+  later ECC events remain Critical and require an H7 reset. The
+  `fault_flags_hex` string signal is the widened
   1024-bit fault word (32 x uint32_t): it is exactly the legacy `0x%08X`
   format whenever only bits 0-31 are set (identical to the pre-widening wire
   format), and appends `,<word_index>:0x%08X` for each nonzero higher word
@@ -337,7 +377,7 @@ device histories --signal cg_id_a --signal cg_iq_a --window-s 5
 device ports
 tool rte_device_trends --arguments '{"signals":["cg_id_a","cg_iq_a"],"window_s":5}'
 tool rte_device_telemetry --arguments '{"filter":"current","limit":25}'
-tool rte_device_history_export --arguments '{"signals":["cg_id_a","cg_iq_a"],"output":"captures/foc.csv","limit":12000}'
+tool rte_device_history_export --arguments '{"signals":["cg_id_a","cg_iq_a"],"output":"captures/foc.csv"}'
 tool rte_device_commands
 tool rte_spike_capture
 flash --firmware /absolute/path/to/main.elf
