@@ -9,7 +9,7 @@ namespace Inverter {
  * @brief Spike event recorder for current-sense / encoder glitch hunting.
  *
  * A rolling ring of synchronized samples captured at the injected-ADC rate
- * (5 kHz): raw current ADC quads, computed phase currents, and raw encoder
+ * (twice PWM frequency during graph control): raw current ADC quads, computed phase currents, and raw encoder
  * sin/cos + decoded angle.  When |iu| or |iv| exceeds the threshold the
  * recorder keeps POST_TRIGGER more samples, then freezes for inspection via
  * the `spikes` shell command.  Pre-trigger history shows which signal moved
@@ -25,6 +25,7 @@ public:
 
     struct Sample {
         uint32_t tick_ms;
+        uint32_t cycles;
         uint16_t raw_u_sig;
         uint16_t raw_v_sig;
         uint16_t raw_u_ref;
@@ -65,7 +66,7 @@ private:
     uint32_t m_holdoff_until_ms = 0;
     int      m_post_remaining = -1; /**< <0 = armed (pre-trigger) */
     size_t   m_trigger_idx = 0;
-    bool     m_ready = false;
+    volatile bool m_ready = false;
 };
 
 /** @brief Global spike recorder instance. */

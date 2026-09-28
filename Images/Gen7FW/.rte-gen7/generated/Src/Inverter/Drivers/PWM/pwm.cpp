@@ -32,6 +32,9 @@ extern "C" void FocControlManager_OnPwmPeriod(void) {}
 /* Phase-to-timer-channel mapping.
  * Index 0 = phase U, 1 = phase V, 2 = phase W.
  */
+static float pending_duty[3] = {50,50,50};
+static float active_duty[3] = {50,50,50};
+
 static const uint32_t pwm_phase_channels[3] = {
     TIM_CHANNEL_1,
     TIM_CHANNEL_2,
@@ -144,6 +147,7 @@ void PWM_SetDutyCycle(uint8_t phase, float duty_percent)
     uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
     uint32_t pulse = arr - (uint32_t)((duty_percent * (float)arr) / 100.0f);
 
+    pending_duty[phase] = duty_percent;
     uint32_t channel = PWM_PhaseToChannel(phase);
     __HAL_TIM_SET_COMPARE(&htim1, channel, pulse);
 }
@@ -220,37 +224,8 @@ void PWM_SetVoltageVector(float valpha_v, float vbeta_v, float vdc_v)
         return;
     }
 
-    /* Clamp the alpha/beta magnitude to the linear modulation limit before
-     * converting to three-phase voltages.  The SVPWM linear limit is
-     * Vdc / sqrt(3). */
-    const float sqrt3 = 1.7320508075688772f;
-    float valpha = valpha_v;
-    float vbeta  = vbeta_v;
-    const float v_max_linear = (vdc_v / sqrt3) * 0.95f;
-    const float v_albe_sq = valpha * valpha + vbeta * vbeta;
-    if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
-        const float scale = v_max_linear / sqrtf(v_albe_sq);
-        valpha *= scale;
-        vbeta  *= scale;
-    }
-
-    /* Inverse Clarke: alpha/beta -> A/B/C. */
-    float va = valpha;
-    float vb = -0.5f * valpha + 0.5f * sqrt3 * vbeta;
-    float vc = -0.5f * valpha - 0.5f * sqrt3 * vbeta;
-
-    /* Min-max SVPWM zero-sequence injection. */
-    float v_max = (va > vb) ? ((va > vc) ? va : vc) : ((vb > vc) ? vb : vc);
-    float v_min = (va < vb) ? ((va < vc) ? va : vc) : ((vb < vc) ? vb : vc);
-    float vcom = 0.5f * (v_max + v_min);
-
-    float du = 50.0f + 50.0f * (va - vcom) / vdc_v;
-    float dv = 50.0f + 50.0f * (vb - vcom) / vdc_v;
-    float dw = 50.0f + 50.0f * (vc - vcom) / vdc_v;
-
-    if (du < 0.0f) du = 0.0f; else if (du > 100.0f) du = 100.0f;
-    if (dv < 0.0f) dv = 0.0f; else if (dv > 100.0f) dv = 100.0f;
-    if (dw < 0.0f) dw = 0.0f; else if (dw > 100.0f) dw = 100.0f;
+    float du, dv, dw;
+    platform_modulate(valpha_v, vbeta_v, vdc_v, &du, &dv, &dw);
 
     PWM_SetThreePhaseDuty(du, dv, dw);
 }
@@ -293,6 +268,14 @@ void PWM_StartUpdateInterrupt(void)
     const bool was_running = PWM_IsUpdateInterruptRunning();
     HAL_NVIC_SetPriority(TIM1_UP_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
+    /* The TIM1 break input (gate-driver /FLT) must preempt the control ISRs:
+     * without this the hardware break drops MOE but PwmBreak is never
+     * raised and the fault manager never learns why outputs died.  The BIE
+     * bit in DIER is also required — without it BIF sets but the NVIC line
+     * never fires, which is exactly the /FLT blindness measured on the bench. */
+    HAL_NVIC_SetPriority(TIM1_BRK_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM1_BRK_IRQn);
+    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_BREAK);
     __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(&htim1);
     if (!was_running) {
@@ -355,7 +338,9 @@ bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
      * The quiet windows for three-shunt sampling are:
      *   - All-low:  max_ccr .. ARR  (up) + ARR .. max_ccr (down)
      *   - All-high: 0 .. min_ccr    (up) + min_ccr .. 0    (down)
-     * Choose the larger of the two windows. */
+     * Sample at the center of a complete symmetric window, not halfway
+     * through one of its up/down-count halves. Off-center samples include
+     * PWM ripple and do not represent the cycle-average phase current. */
     uint32_t min_ccr = ccr_u;
     if (ccr_v < min_ccr) min_ccr = ccr_v;
     if (ccr_w < min_ccr) min_ccr = ccr_w;
@@ -367,28 +352,25 @@ bool PWM_FindSafeSamplePoint(float duty_u, float duty_v, float duty_w,
     const uint32_t gap_all_high = 2U * min_ccr;
     const uint32_t gap_all_low  = 2U * (arr - max_ccr);
 
-    uint32_t best_gap = 0;
-    uint32_t best_mid = 0;
-    if (gap_all_low >= gap_all_high) {
-        /* Sample in the middle of the all-low window.  The window spans
-         * max_ccr..ARR on up-count and ARR..max_ccr on down-count, so the
-         * midpoint is near the top of the triangle. */
-        best_gap = gap_all_low;
-        best_mid = (max_ccr + arr) / 2U;
-    } else {
-        /* Sample in the middle of the all-high window, near the bottom. */
-        best_gap = gap_all_high;
-        best_mid = min_ccr / 2U;
+    /* OC4REF must have a nonzero pulse width. Prefer the bottom whenever
+     * its window is valid: min-max SVPWM has nearly equal zero windows,
+     * so choosing the larger one toggles the sample phase on rounding alone.
+     * Ten timer ticks puts the rising edge immediately before CNT=0. */
+    constexpr uint32_t center_margin = 10U;
+    if (arr > 2U * center_margin &&
+        gap_all_high >= min_gap_ticks + 2U * center_margin) {
+        *out_ccr4 = center_margin;
+        *out_gap_ticks = gap_all_high;
+        return true;
     }
-
-    if (best_gap < min_gap_ticks) {
-        *out_gap_ticks = best_gap;
-        return false;
+    if (arr > 2U * center_margin &&
+        gap_all_low >= min_gap_ticks + 2U * center_margin) {
+        *out_ccr4 = arr - center_margin;
+        *out_gap_ticks = gap_all_low;
+        return true;
     }
-
-    *out_ccr4 = best_mid;
-    *out_gap_ticks = best_gap;
-    return true;
+    *out_gap_ticks = (gap_all_high > gap_all_low) ? gap_all_high : gap_all_low;
+    return false;
 }
 
 /* TIME_DOMAIN: OPEN_LOOP_MODULATION_START
@@ -441,9 +423,11 @@ void PWM_SetSPWMParams(float fundamental_freq_hz, float modulation_index)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance != TIM1) return;
+    for (unsigned i=0;i<3;++i) active_duty[i]=pending_duty[i];
     ++Inverter::LoopStats::tim_isr;
 
-    /* Set the domain time step for generated code that needs it. */
+    /* Preserve the interrupted application's domain time step. */
+    const float interrupted_domain_dt = platform_get_current_domain_dt();
     platform_set_current_domain_dt(1.0f / pwm_update_freq_hz);
 
     /* RTE codegen: PWM-synchronous measurement, telemetry, control, and
@@ -453,6 +437,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
      * generated outputs. This ISR is shared with base-image open-loop and
      * native FOC users, whose direct PWM writes remain independent. */
     app::TimIsrStep(appState.tim_isr);
+    platform_set_current_domain_dt(interrupted_domain_dt);
 
     if (foc_active) {
         FocControlManager_OnPwmPeriod();
@@ -534,9 +519,27 @@ void PWM_StopPhase(uint8_t phase)
 
 void PWM_Start(void)
 {
-    PWM_StartPhase(0);
-    PWM_StartPhase(1);
-    PWM_StartPhase(2);
+    /* The per-channel HAL start calls each assert MOE immediately. That
+     * briefly powers an incomplete bridge, even with neutral CCR values.
+     * Arm all three complementary pairs with MOE clear, then enable them
+     * together. Keep HAL's channel bookkeeping compatible with stop and
+     * the independent per-phase diagnostic functions. */
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    CLEAR_BIT(htim1.Instance->BDTR, TIM_BDTR_MOE);
+    for (uint8_t phase = 0; phase < 3; ++phase) {
+        const uint32_t channel = PWM_PhaseToChannel(phase);
+        TIM_CHANNEL_STATE_SET(&htim1, channel, HAL_TIM_CHANNEL_STATE_BUSY);
+        TIM_CHANNEL_N_STATE_SET(&htim1, channel, HAL_TIM_CHANNEL_STATE_BUSY);
+    }
+    SET_BIT(htim1.Instance->CCER,
+            TIM_CCER_CC1E | TIM_CCER_CC1NE |
+            TIM_CCER_CC2E | TIM_CCER_CC2NE |
+            TIM_CCER_CC3E | TIM_CCER_CC3NE);
+    __HAL_TIM_ENABLE(&htim1);
+    __HAL_TIM_MOE_ENABLE(&htim1);
+    __DMB();
+    __set_PRIMASK(primask);
 }
 
 void PWM_Stop(void)
@@ -586,4 +589,8 @@ void PWM_PrintSPWMState(void)
                      (double)spwm_fundamental_freq_hz,
                      (double)spwm_modulation_index,
                      (double)du, (double)dv, (double)dw);
+}
+
+void PWM_GetTrackedActiveDuties(float* u, float* v, float* w) {
+    *u=active_duty[0]; *v=active_duty[1]; *w=active_duty[2];
 }

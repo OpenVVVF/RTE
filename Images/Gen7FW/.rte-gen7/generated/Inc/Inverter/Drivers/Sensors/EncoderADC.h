@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "Inverter/Control/ControlSpeedEstimator.h"
 
 namespace Inverter {
 
@@ -179,12 +180,30 @@ public:
     }
 
     /**
+     * @brief Live rotor-feedback validity for start gating.
+     *
+     * Learned bounds are stale evidence: a disconnected encoder leaves them
+     * valid (FRAM-restored) while the sin/cos rail, so this also requires the
+     * latest raw samples off the rails and the tracked amplitude (when
+     * initialized) above the collapse threshold.  Cheap to poll at start
+     * time; diagnosis/debounce stays in diagnose().
+     */
+    bool feedbackValid() const;
+
+    /**
      * @brief Mechanical speed in RPM, signed by direction.
      *
-     * Derived in the DMA ISR from unwrapped angle deltas at the 10 kHz
-     * sample rate, low-passed with an EMA (~100 ms settling).
+     * Derived in diagnose() (main loop) from unwrapped angle deltas over a
+     * time-based window, low-passed with an EMA (~1 s settling at the default
+     * 20 ms window and 0.02 alpha).
      */
     float rpmMech() const { return m_rpm_ema; }
+
+    /** Timestamped DMA velocity for control; independent of dashboard smoothing. */
+    float controlRpmMech() const { return m_control_rpm; }
+
+    /** Cumulative count of rejected outlier samples (see MAX_SAMPLE_DELTA_DEG). */
+    uint32_t rejectCount() const { return m_reject_count; }
 
     /**
      * @brief DMA completion callback, called from DMA2_Stream0_IRQHandler.
@@ -257,7 +276,8 @@ public:
     /**
      * @brief No-op kept for API compatibility with existing calibrators.
      *
-     * Dynamic bounds are always updated inside computeAngle().
+     * Dynamic bounds are updated in learnBounds(), which is only called for
+     * samples that pass single-sample outlier rejection in the DMA ISR.
      */
     void learnBounds(bool enable) { (void)enable; }
 
@@ -266,6 +286,22 @@ private:
     bool initTimer();
     bool initDma();
     float computeAngle(uint16_t raw_sin, uint16_t raw_cos);
+    void  learnBounds(uint16_t raw_sin, uint16_t raw_cos);
+
+    /* Single-sample outlier rejection for the decoded angle.
+     *
+     * Bench captures at 300+ RPM showed single DMA samples decoding 22-127 deg
+     * away from the true position (EMI bursts landing in the ADC conversion),
+     * each kicking the FOC current loops; dual-channel bursts also permanently
+     * biased the decoder by poisoning the learned min/max bounds.  A real
+     * rotor cannot move more than a few degrees per sample at the 5-10 kHz
+     * trigger rates, so anything beyond MAX_SAMPLE_DELTA_DEG is held (last
+     * good angle kept, bounds not updated).  A position that persists for
+     * SAMPLE_REJECT_HOLDOFF consecutive samples is accepted as genuine motion
+     * (e.g. backlash take-up) so the decoder cannot get stuck after a real
+     * step. */
+    static constexpr float MAX_SAMPLE_DELTA_DEG   = 10.0f;
+    static constexpr uint8_t SAMPLE_REJECT_HOLDOFF = 3U;
 
     /**
      * @brief One-pass accumulator for the ellipse fit.
@@ -369,6 +405,8 @@ private:
     volatile bool     m_new_data = false;
     bool              m_running = false;
     volatile uint32_t m_last_sample_cycles = 0;  /**< DWT->CYCCNT at DMA completion */
+    ControlSpeedEstimator m_control_speed;
+    volatile float m_control_rpm = 0.0f;
 
     /* Angle-linearity trace ring: every 10th DMA sample (~1 kHz), ~1 s of
      * raw sin/cos + decoded angle for offline per-rev analysis. */
@@ -385,21 +423,34 @@ private:
      * by the C runtime (NOLOAD), but m_trace_head/m_trace_decim are reset in
      * init() and the ring contents are overwritten before any read. */
     static TraceEntry m_trace[TRACE_LEN];
+    /* Static copy of the ring taken under IRQ lock by traceDump(); without it
+     * the ~3 s UART dump races the ~1 kHz ring writer and prints a mix of old
+     * and freshly overwritten entries (observed as phantom 44-164 deg jumps). */
+    static TraceEntry s_trace_snapshot[TRACE_LEN];
     size_t     m_trace_head = 0;
     uint8_t    m_trace_decim = 0;
 
+    /* Single-sample outlier-rejection state (DMA ISR only). */
+    float    m_prev_angle = 0.0f;   /**< Last accepted angle [deg]. */
+    bool     m_prev_valid = false;  /**< False until the first accepted sample. */
+    uint8_t  m_reject_holdoff = 0;  /**< Consecutive consistent rejects. */
+    float    m_reject_candidate = 0.0f; /**< Position carried across rejects. */
+    volatile uint32_t m_reject_count = 0; /**< Cumulative rejected samples. */
+    uint32_t m_reject_pub_count = 0;  /**< Value published last diagnose() (1 Hz). */
+
     /* Fault-detection state (evaluated in diagnose() at main-loop cadence). */
-    static constexpr uint32_t SAMPLE_TIMEOUT_MS = 5U;
+    /* Allow scheduling/trigger jitter but stay below the FSR-09 100 ms limit. */
+    static constexpr uint32_t SAMPLE_TIMEOUT_MS = 50U;
     static constexpr uint16_t MIN_AMP_RANGE     = 20000U;
     static constexpr float    AMP_COLLAPSE_THRESHOLD = 500.0f;
     static constexpr float    MAG_EMA_ALPHA     = 0.2f;   /**< per diagnose() call */
-    static constexpr uint16_t AMP_COLLAPSE_COUNT  = 25U;  /**< consecutive calls */
+    static constexpr uint32_t AMP_COLLAPSE_MS     = 80U;
     static constexpr uint16_t RAIL_MARGIN         = 200U;
-    static constexpr uint16_t RAIL_COUNT          = 10U;  /**< consecutive calls */
+    static constexpr uint32_t RAIL_PERSIST_MS     = 50U;
 
     volatile uint32_t m_last_sample_ms = 0;
-    volatile uint16_t m_amp_low_count  = 0;
-    volatile uint16_t m_rail_count     = 0;
+    uint32_t m_amp_low_since_ms = UINT32_MAX; /**< UINT32_MAX means healthy. */
+    uint32_t m_rail_since_ms = UINT32_MAX;
     float             m_mag_ema        = 0.0f;
     bool              m_mag_ema_init   = false;
     volatile uint32_t m_isr_count      = 0;

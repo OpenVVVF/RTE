@@ -59,6 +59,8 @@ enum class FaultSource : uint16_t {
     EncoderLoss      = 33,  /**< Encoder feedback lost while actuating  */
     DcLinkOvWarning  = 34,  /**< DC-link overvoltage warning (regen off)*/
     DcLinkUvDerate   = 35,  /**< DC-link undervoltage derate active     */
+    RamEcc           = 36,  /**< RAM ECC event; reset required          */
+    FlashEcc         = 37,  /**< Flash ECC event; reset required        */
 };
 
 /**
@@ -129,6 +131,7 @@ enum class FaultReason : uint8_t {
     PhaseOvercurrentSoftware,
     AdcWatchdogTrip,
     AdcHalError,
+    AdcSampleTimeout,
     UartHalError,
     EncoderAmplitudeLow,
     EncoderAtRail,
@@ -175,6 +178,8 @@ enum class FaultReason : uint8_t {
     DcLinkOvervoltageWarning,
     DcLinkUndervoltageDerate,
     GateDriverFaultPin,
+    RamEccDetected,
+    FlashEccDetected,
     Count
 };
 
@@ -323,6 +328,8 @@ private:
         { FaultSource::EncoderLoss,      "EncoderLoss",      "Encoder",      "encoder feedback lost while actuating",    FaultSeverity::Critical },
         { FaultSource::DcLinkOvWarning,  "DcLinkOvWarning",  "Voltage Sense","Vbus above OV warning threshold (regen disabled)", FaultSeverity::Warning },
         { FaultSource::DcLinkUvDerate,   "DcLinkUvDerate",   "Voltage Sense","Vbus below UV derate threshold (current limited)", FaultSeverity::Warning },
+        { FaultSource::RamEcc,           "RamEcc",           "Memory",       "RAM ECC event; reset required",               FaultSeverity::Critical },
+        { FaultSource::FlashEcc,         "FlashEcc",         "Memory",       "flash ECC event; reset required",             FaultSeverity::Critical },
     };
 };
 

@@ -12,6 +12,24 @@ void AdcIsrInit(AdcIsrState& state) {
         state.Currents.OffsetU = rte::Amperes(0.0f);
         state.Currents.OffsetV = rte::Amperes(0.0f);
     }
+    // Init node: CurrentSampleEncoder
+    {
+    }
+    // Init node: Clarke
+    {
+    }
+    // Init node: CurrentSampleElecAngle
+    {
+        state.CurrentSampleElecAngle.EncoderSign = 1.0f;
+        state.CurrentSampleElecAngle.OffsetDeg = 150.0f;
+        state.CurrentSampleElecAngle.Poles = 10.0f;
+    }
+    // Init node: Park
+    {
+    }
+    // Init node: PublishCurrentFrame
+    {
+    }
 }
 
 void AdcIsrStep(AdcIsrState& state) {
@@ -38,20 +56,85 @@ if (platform_adc_get_burst_sample(&iu0, &iv0, &iu1, &iv1, &burst_time_us)) {
     /* W is computed from the two measured phases (three-wire balanced load). */
     const float iw_avg = -(iu_avg + iv_avg);
 
-    /* The phase-current sensors on this hardware are wired with inverted
-     * polarity relative to the FOC convention.  Negate all three so
-     * downstream transforms see the correct sign. */
-    I_A = rte::Amperes(-iu_avg);
-    I_B = rte::Amperes(-iv_avg);
-    I_C = rte::Amperes(-iw_avg);
+    /* Bench-verified current-to-PWM phase mapping: the first measured
+     * channel is PWM phase C, the second is PWM phase A; phase B is the
+     * reconstructed channel. A stationary positive d-current at 0/60/120
+     * degrees exposed the former negate-all mapping as a +60-degree
+     * voltage/current rotation. Keep currents in the PWM A/B/C frame. */
+    I_A = rte::Amperes(iv_avg);
+    I_B = rte::Amperes(iw_avg);
+    I_C = rte::Amperes(iu_avg);
 }
 
         BridgeIAAppBridge.store(I_A.in(au::amperes));
-        BridgeIABridge.store(I_A);
         BridgeIBAppBridge.store(I_B.in(au::amperes));
-        BridgeIBBridge.store(I_B);
         BridgeICAppBridge.store(I_C.in(au::amperes));
-        BridgeICBridge.store(I_C);
+    }
+    // Step node: CurrentSampleEncoder (Custom.EncoderAngle)
+    {
+        rte::Dimensionless& Theta = state.CurrentSampleEncoder.Theta;
+        Theta = platform_get_encoder_angle_latest() * 0.01745329251f;  // deg -> rad
+
+    }
+    // Step node: Clarke (Transforms.Clarke)
+    {
+        const rte::Current I_A = state.Currents.I_A;
+        const rte::Current I_B = state.Currents.I_B;
+        const rte::Current I_C = state.Currents.I_C;
+        rte::Current& I_Alpha = state.Clarke.I_Alpha;
+        rte::Current& I_Beta = state.Clarke.I_Beta;
+        I_Alpha = I_A;
+I_Beta = (I_B - I_C) * 0.57735026919f;
+
+    }
+    // Step node: CurrentSampleElecAngle (Transforms.ElecAngle)
+    {
+        const rte::Dimensionless ThetaMech = state.CurrentSampleEncoder.Theta;
+        const rte::Dimensionless OffsetDeg = BridgeSampleOffsetDegBridge.load();
+        const rte::Dimensionless EncoderSign = BridgeSampleEncoderSignBridge.load();
+        const rte::Dimensionless Poles = BridgeSamplePolesBridge.load();
+        rte::Dimensionless& ThetaElec = state.CurrentSampleElecAngle.ThetaElec;
+        /* Wrap the mechanical encoder angle to [0, 2*pi). */
+const float two_pi = 6.28318530718f;
+float theta = fmodf(ThetaMech, two_pi);
+if (theta < 0.0f) theta += two_pi;
+
+/* Electrical angle = offset (elec deg) + sign * encoder_angle * (Poles / 2).
+ * Matches the base-image FocController convention. */
+constexpr float DEG_TO_RAD = 0.01745329251f;
+float elec = OffsetDeg * DEG_TO_RAD + EncoderSign * theta * Poles * 0.5f;
+
+/* Wrap the electrical angle to [0, 2*pi). */
+elec = fmodf(elec, two_pi);
+if (elec < 0.0f) elec += two_pi;
+
+ThetaElec = elec;
+
+    }
+    // Step node: Park (Transforms.Park)
+    {
+        const rte::Current I_Alpha = state.Clarke.I_Alpha;
+        const rte::Current I_Beta = state.Clarke.I_Beta;
+        const rte::Dimensionless Theta = state.CurrentSampleElecAngle.ThetaElec;
+        rte::Current& I_D = state.Park.I_D;
+        rte::Current& I_Q = state.Park.I_Q;
+        const float cos_theta = cosf(Theta);
+const float sin_theta = sinf(Theta);
+I_D = I_Alpha * cos_theta + I_Beta * sin_theta;
+I_Q = -I_Alpha * sin_theta + I_Beta * cos_theta;
+
+    }
+    // Step node: PublishCurrentFrame (Custom.PublishCurrentFrame)
+    {
+        const rte::Current Id = state.Park.I_D;
+        const rte::Current Iq = state.Park.I_Q;
+        const rte::Dimensionless Theta = state.CurrentSampleElecAngle.ThetaElec;
+        const rte::Current Ia = state.Currents.I_A;
+        const rte::Current Ib = state.Currents.I_B;
+        const rte::Current Ic = state.Currents.I_C;
+        platform_publish_current_frame(Id.in(au::amperes), Iq.in(au::amperes), Theta,
+    Ia.in(au::amperes), Ib.in(au::amperes), Ic.in(au::amperes));
+
     }
 }
 
@@ -60,6 +143,24 @@ void AdcIsrStart(AdcIsrState& state) {
     {
         state.Currents.OffsetU = rte::Amperes(0.0f);
         state.Currents.OffsetV = rte::Amperes(0.0f);
+    }
+    // Reset node: CurrentSampleEncoder
+    {
+    }
+    // Reset node: Clarke
+    {
+    }
+    // Reset node: CurrentSampleElecAngle
+    {
+        state.CurrentSampleElecAngle.EncoderSign = 1.0f;
+        state.CurrentSampleElecAngle.OffsetDeg = 150.0f;
+        state.CurrentSampleElecAngle.Poles = 10.0f;
+    }
+    // Reset node: Park
+    {
+    }
+    // Reset node: PublishCurrentFrame
+    {
     }
 }
 
@@ -72,6 +173,27 @@ void AdcIsrStop(AdcIsrState& state) {
         state.Currents.Diudt = rte::Dimensionless{};
         state.Currents.Divdt = rte::Dimensionless{};
         state.Currents.BurstTimeUs = rte::Dimensionless{};
+    }
+    // Zero node: CurrentSampleEncoder
+    {
+        state.CurrentSampleEncoder.Theta = rte::Dimensionless{};
+    }
+    // Zero node: Clarke
+    {
+        state.Clarke.I_Alpha = rte::Current{};
+        state.Clarke.I_Beta = rte::Current{};
+    }
+    // Zero node: CurrentSampleElecAngle
+    {
+        state.CurrentSampleElecAngle.ThetaElec = rte::Dimensionless{};
+    }
+    // Zero node: Park
+    {
+        state.Park.I_D = rte::Current{};
+        state.Park.I_Q = rte::Current{};
+    }
+    // Zero node: PublishCurrentFrame
+    {
     }
 }
 

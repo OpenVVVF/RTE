@@ -108,7 +108,8 @@ int main(void)
   MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_TIM1_Init();
-  SafetyEcc_Init();
+  /* ECC monitoring is armed after the diagnostic shell is initialized in
+   * InverterMain_Run(), so a startup ECC trip remains observable. */
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_ADC3_Init();

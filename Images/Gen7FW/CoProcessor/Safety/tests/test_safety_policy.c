@@ -54,6 +54,7 @@ static void test_arm_requires_independent_conditions(void)
     assert(!SafetyPolicy_RequestArm(&policy, inputs, 1));
     assert(policy.state == SAFETY_FAULT_LATCHED);
     assert(policy.faults & SAFETY_FAULT_POWER_STUCK_ON);
+    assert(policy.trip_reason == SAFETY_TRIP_POWER_STUCK_ON);
 }
 
 static void test_power_up_and_loss_of_feedback(void)
@@ -69,6 +70,8 @@ static void test_power_up_and_loss_of_feedback(void)
     SafetyPolicy_Update(&policy, inputs, 161);
     assert(policy.state == SAFETY_FAULT_LATCHED);
     assert(policy.faults & SAFETY_FAULT_POWER_NO_FEEDBACK);
+    assert(policy.trip_reason == SAFETY_TRIP_OWN_POWER_FEEDBACK_LOST);
+    assert(policy.trip_inputs == 0x0au);
     assert(!SafetyPolicy_PowerEnabled(&policy));
 }
 
@@ -80,6 +83,7 @@ static void test_startup_timeout_and_wrap(void)
     SafetyPolicy_Update(&policy, healthy(), 139u);
     assert(policy.state == SAFETY_FAULT_LATCHED);
     assert(policy.faults & SAFETY_FAULT_POWER_NO_FEEDBACK);
+    assert(policy.trip_reason == SAFETY_TRIP_OWN_POWER_START_TIMEOUT);
 
     policy = powering(0);
     SafetyInputs inputs = healthy();
@@ -95,6 +99,7 @@ static void test_faults_latch_and_disarm(void)
     inputs.gate_fault = true;
     SafetyPolicy_Update(&policy, inputs, 1);
     assert(policy.faults & SAFETY_FAULT_GATE_DRIVER);
+    assert(policy.trip_reason == SAFETY_TRIP_GATE_DRIVER);
     SafetyPolicy_Update(&policy, healthy(), 2);
     SafetyPolicy_Disarm(&policy);
     SafetyPolicy_PostPassed(&policy);
@@ -105,12 +110,14 @@ static void test_faults_latch_and_disarm(void)
     inputs.main_alive = false;
     SafetyPolicy_Update(&policy, inputs, 1);
     assert(policy.faults & SAFETY_FAULT_MAIN_LOST);
+    assert(policy.trip_reason == SAFETY_TRIP_MAIN_HEARTBEAT_LOST);
 
     policy = powering(0);
     inputs = healthy();
     inputs.main_power_feedback = false;
     SafetyPolicy_Update(&policy, inputs, 1);
     assert(policy.faults & SAFETY_FAULT_POWER_NO_FEEDBACK);
+    assert(policy.trip_reason == SAFETY_TRIP_MAIN_POWER_FEEDBACK_LOST);
 
     policy = powering(0);
     inputs = healthy();

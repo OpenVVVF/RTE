@@ -179,17 +179,52 @@ public:
     /**
      * @brief Set the hardware ADC analog-watchdog overcurrent threshold [A].
      *
-     * A value of 0 disables the watchdog.  The watchdog window is centered on
-     * the mid-scale ADC code and watches both injected channels on ADC1.
-     * Reconfiguration requires the ADC to be stopped, so this must be called
-     * while the motor is not running.
+     * A value of 0 disables the watchdog (implemented as a full-range window:
+     * AWD1 stays armed so runtime changes only rewrite the threshold
+     * registers — stopping conversions to reconfigure corrupts the dual
+    /**
+     * @brief Set the hardware ADC analog-watchdog overcurrent threshold [A]
+     *        (manual fault-injection override, the hwocset command).
+     *
+     * amps > 0 pins the threshold to that value.  amps == 0 releases the
+     * override: the threshold reverts to the derived default (110 % of the
+     * Motor.MaxTorqueCurrentA config key when set, otherwise disabled).
+     * A value of 0 disables the watchdog (implemented as a full-range window:
+     * AWD1 stays armed so runtime changes only rewrite the threshold
+     * registers — stopping conversions to reconfigure corrupts the dual
+     * injected-simultaneous acquisition).  The window is centered on the
+     * sampled zero-current reference codes (not the ideal mid-scale: the
+     * reference sits ~480 counts below VREF/2 on this hardware) and watches
+     * both injected channels on ADC1.
+     * The TIM1/ADC ISR runs permanently for measurement, so reconfiguration
+     * is allowed while the drive is idle/stopped/faulted, but the caller must
+     * ensure the power stage is not actuating (the hwocset command enforces
+     * this).
      * @return true on success, false if the ADC could not be reconfigured.
      */
     bool setHardwareOvercurrentThreshold(float amps);
     float hardwareOvercurrentThreshold() const { return m_hw_oc_threshold_a; }
 
     /**
+     * @brief Arm the AWD from the derived default unless manually overridden.
+     *
+     * Called periodically (diagnose path) with 110 % of the calibrated max
+     * torque current (or 0 when unset).  A no-op while a hwocset override is
+     * pinned, and when the derived value is unchanged (avoids register-write
+     * churn).
+     */
+    void setDerivedHardwareOvercurrentThreshold(float amps);
+
+    /**
+     * @brief Derived AWD default [A]: 110 % of Motor.MaxTorqueCurrentA, or 0.
+     */
+    float derivedHwOcThresholdA() const;
+
+    /**
      * @brief Configure the ADC analog watchdog from the stored threshold.
+     *
+     * Init-time (conversions stopped): full HAL config of mode, thresholds,
+     * and interrupt.  Runtime (streams live): threshold-register writes only.
      */
     bool configureAnalogWatchdog();
 
@@ -198,11 +233,33 @@ private:
     bool initTrigger();
     bool calibrateOffsets();
     float countsToCurrent(uint32_t sig, uint32_t ref) const;
+    uint32_t awdHalfWindowCounts() const;
+    void awdWindowFromRefs(uint32_t rmin, uint32_t rmax,
+                           uint32_t& low, uint32_t& high) const;
+    void writeAwdWindow(uint32_t low, uint32_t high);
 
     static constexpr uint32_t ADC_BITS        = 16;
     static constexpr float    ADC_VREF        = 3.3f;
     static constexpr float    DIVIDER         = 2.0f / 3.0f;
     static constexpr float    SENSITIVITY_VA  = 1.042e-3f; /**< LA37S600. */
+
+    /* Armed-watchdog window tracking: the window is re-framed on the
+     * leak-tracked reference extremes (snap to new extremes, relax one count
+     * per burst) when an edge moves more than AWD_TRACK_DEADBAND counts.
+     * AWD_TRACK_GUARD pads the window beyond the requested half-width.  It is
+     * sized from bench measurement: at idle the raw sig codes plunge up to
+     * ~230 counts (~17 A equivalent) below the previous burst's reference
+     * extremes (isolated-supply/charge-pump noise, single-burst events), so
+     * the effective hardware trip level on this bench is roughly
+     * requested + 17 A.  Precise overcurrent protection remains the filtered
+     * multi-sample software path (setOvercurrentThreshold). */
+    static constexpr uint32_t AWD_TRACK_DEADBAND = 8;
+    static constexpr uint32_t AWD_TRACK_GUARD    = 240;
+    volatile bool    m_awd_armed = false;
+    volatile uint32_t m_awd_low  = 0;
+    volatile uint32_t m_awd_high = 0;
+    volatile uint32_t m_ref_floor = 0;
+    volatile uint32_t m_ref_ceil  = 0;
 
     volatile uint32_t m_raw_u_sig = 0;
     volatile uint32_t m_raw_v_sig = 0;
@@ -231,12 +288,21 @@ private:
     volatile float    m_current_v = 0.0f;
 
     float             m_oc_threshold_a = 500.0f;  /**< software OC trip [A] */
-    float             m_hw_oc_threshold_a = 0.0f; /**< 0 = ADC watchdog disabled */
+    float             m_hw_oc_threshold_a = 500.0f; /**< ADC hardware trip, below 600 A IGBT rating */
     uint8_t           m_oc_count = 0;
     bool              m_use_fixed_ref = false;
     uint32_t          m_fixed_ref_u = 0;
     uint32_t          m_fixed_ref_v = 0;
     static constexpr uint8_t OC_CONSEC_SAMPLES = 3U;
+
+    /* SG-06 over-torque chain: |iq| above 110% of the calibrated max torque
+     * current (FRAM key Motor.MaxTorqueCurrentA, 0 = disabled).  Filtered
+     * multi-sample software monitor in the ADC ISR; the AWD backstop derives
+     * its threshold from the same key unless hwocset pins an override. */
+    float             m_over_torque_max_a = 0.0f;
+    uint8_t           m_over_torque_count = 0;
+    bool              m_hw_oc_manual_override = false;
+    static constexpr uint8_t OVER_TORQUE_CONSEC_SAMPLES = 3U;
 
     volatile bool     m_new_data = false;
     bool              m_running = false;

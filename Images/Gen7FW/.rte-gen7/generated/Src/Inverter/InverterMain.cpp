@@ -14,6 +14,7 @@
 #include "Inverter/Calibration/InductionVHzCalibrator.h"
 #include "Inverter/Calibration/FluxLinkageCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Control/ControlSupervisor.h"
@@ -35,6 +36,8 @@
 #include "Inverter/Drivers/PWM/pwm.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/platform_api.h"
+#include "Inverter/SafetyLink.h"
+#include "Inverter/SafetyEcc.h"
 #include "Inverter/RteParams.h"
 
 #if __has_include("rte_build_info.h")
@@ -98,6 +101,12 @@ extern "C" void CY15B102Q_FaultCallback(CY15B102Q_FaultCode code) {
  */
 static void init()
 {
+    /* FRAM loaders log status. Initialize the NOLOAD telemetry queues before
+     * any of those calls; their RAM contents are undefined after relocation
+     * or reset, even when a previous image happened to leave zeros there. */
+    Telemetry::init();
+    Telemetry::set_period_us(Telemetry::DEFAULT_PERIOD_US);
+
     /* Initialize F-RAM for persistent on-time logging and parameter storage. */
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
         OnTime_Init(&g_fram);
@@ -126,10 +135,6 @@ static void init()
          * code path ever falls back to the debug-default angle/sign. */
         Inverter::CalKvStore::loadMotorCalibration();
     }
-
-    /* Telemetry over the MCP2221A USB-UART bridge (USART3). */
-    Telemetry::init();
-    Telemetry::set_period_us(10000);  /* 100 Hz data frames */
 
     /* Arm command RX before the sensor power-up delay. Commands received
      * during initialization remain queued until the application loop polls
@@ -234,6 +239,18 @@ static void loop()
     ++Inverter::LoopStats::app_loop;
 
     const uint32_t now_ms = HAL_GetTick();
+    if (!SafetyEcc_Check()) {
+        /* Preserve a diagnostic path while every actuation path stays off.
+         * ECC faults are latched until an MCU reset. */
+        Inverter::commandShell().poll();
+        Inverter::CoprocessorFaults::instance().service();
+        Inverter::FaultManager::instance().service();
+        Inverter::FaultManager::instance().executeSafetyActions();
+        Telemetry::updateSensors();
+        return;
+    }
+    SafetyLink_MainLoop(platform_control_outputs_enabled() ||
+                        Inverter::focControlManager().isRunning());
 
     if ((now_ms - s_last_hz_ms) >= 1000U) {
         Telemetry::log("hz_app_loop", static_cast<float>(Inverter::LoopStats::app_loop));
@@ -341,6 +358,7 @@ static void loop()
     Inverter::ControlSupervisor::instance().service();
     Inverter::FaultManager::instance().service();
     Inverter::commandShell().poll();
+    Inverter::CoprocessorFaults::instance().service();
     Inverter::FaultManager::instance().executeSafetyActions();
 
     /* Flush queued telemetry values over UART. */
@@ -352,6 +370,7 @@ static void loop()
 extern "C" void InverterMain_Run(void)
 {
     InverterMain::init();
+    SafetyEcc_Init();
     while (1) {
         InverterMain::loop();
     }

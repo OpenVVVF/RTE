@@ -39,7 +39,7 @@ void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 460800;
+  huart3.Init.BaudRate = 921600;
   /* Safe default: the main application telemetry/shell uses 8N1. The USB CDC
      bridge switches temporarily to 8E1 only while the ROM bootloader is active. */
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
@@ -63,7 +63,8 @@ void MX_USART3_UART_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
+  /* Buffer telemetry bursts before the USB bridge drains them. */
+  if (HAL_UARTEx_EnableFifoMode(&huart3) != HAL_OK)
   {
     Error_Handler();
   }

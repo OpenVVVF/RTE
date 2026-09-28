@@ -101,7 +101,7 @@ static void init()
      * any of those calls; their RAM contents are undefined after relocation
      * or reset, even when a previous image happened to leave zeros there. */
     Telemetry::init();
-    Telemetry::set_period_us(10000);
+    Telemetry::set_period_us(Telemetry::DEFAULT_PERIOD_US);
 
     /* Initialize F-RAM for persistent on-time logging and parameter storage. */
     if (CY15B102Q_Init(&g_fram) == HAL_OK) {
@@ -235,7 +235,16 @@ static void loop()
     ++Inverter::LoopStats::app_loop;
 
     const uint32_t now_ms = HAL_GetTick();
-    SafetyEcc_Check();
+    if (!SafetyEcc_Check()) {
+        /* Preserve a diagnostic path while every actuation path stays off.
+         * ECC faults are latched until an MCU reset. */
+        Inverter::commandShell().poll();
+        Inverter::CoprocessorFaults::instance().service();
+        Inverter::FaultManager::instance().service();
+        Inverter::FaultManager::instance().executeSafetyActions();
+        Telemetry::updateSensors();
+        return;
+    }
     SafetyLink_MainLoop(platform_control_outputs_enabled() ||
                         Inverter::focControlManager().isRunning());
 
@@ -357,6 +366,7 @@ static void loop()
 extern "C" void InverterMain_Run(void)
 {
     InverterMain::init();
+    SafetyEcc_Init();
     while (1) {
         InverterMain::loop();
     }

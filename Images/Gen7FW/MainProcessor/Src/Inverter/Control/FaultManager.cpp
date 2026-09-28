@@ -39,6 +39,7 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::PhaseOvercurrentSoftware: return "software overcurrent";
         case FaultReason::AdcWatchdogTrip:      return "ADC1 injected out of window";
         case FaultReason::AdcHalError:          return "ADC HAL error";
+        case FaultReason::AdcSampleTimeout:     return "ADC samples stopped during offset calibration";
         case FaultReason::UartHalError:         return "UART error";
         case FaultReason::EncoderAmplitudeLow:  return "encoder magnitude collapsed";
         case FaultReason::EncoderAtRail:        return "encoder signal at rail";
@@ -85,6 +86,8 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::DcLinkOvervoltageWarning: return "Vbus above OV warning threshold; regen disabled";
         case FaultReason::DcLinkUndervoltageDerate: return "Vbus below UV derate threshold; current limited";
         case FaultReason::GateDriverFaultPin:   return "gate-driver /FLT asserted (GPIO poll)";
+        case FaultReason::RamEccDetected:      return "RAM ECC status or IRQ";
+        case FaultReason::FlashEccDetected:    return "flash ECC status";
         case FaultReason::Count:                break;
     }
     return "unknown";

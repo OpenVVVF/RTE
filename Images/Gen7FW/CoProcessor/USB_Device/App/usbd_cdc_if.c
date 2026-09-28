@@ -41,7 +41,14 @@ USBD_CDC_ItfTypeDef USBD_Interface_fops_FS = {cdc_init,cdc_deinit,cdc_control,cd
 
 static int8_t cdc_init(uint8_t p){usb_tx_busy[p]=0;USBD_CDC_SetTxBuffer(&hUsbDeviceFS,p,UserTxBufferFS[p],0);USBD_CDC_SetRxBuffer(&hUsbDeviceFS,p,UserRxBufferFS[p]);if(p==CDC_PORT_BRIDGE){bridge_out_armed=1;USART3->CR1|=USART_CR1_RXNEIE_RXFNEIE|USART_CR1_PEIE;USART3->CR3|=USART_CR3_EIE;HAL_NVIC_SetPriority(USART3_IRQn,5,0);HAL_NVIC_EnableIRQ(USART3_IRQn);}return USBD_OK;}
 static int8_t cdc_deinit(uint8_t p){usb_tx_busy[p]=0;return USBD_OK;}
-static int8_t cdc_control(uint8_t p,uint8_t cmd,uint8_t*b,uint16_t n){(void)p;if(cmd==CDC_GET_LINE_CODING&&n>=7){b[0]=0x00;b[1]=0x08;b[2]=0x07;b[3]=0x00;b[4]=0;b[5]=0;b[6]=8;}return USBD_OK;}
+static int8_t cdc_control(uint8_t p,uint8_t cmd,uint8_t*b,uint16_t n){
+ if(cmd==CDC_GET_LINE_CODING&&n>=7){
+  const uint32_t baud=p==CDC_PORT_CONTROL?115200U:(uart_bootloader_mode?460800U:921600U);
+  b[0]=(uint8_t)baud;b[1]=(uint8_t)(baud>>8);b[2]=(uint8_t)(baud>>16);b[3]=(uint8_t)(baud>>24);
+  b[4]=0;b[5]=uart_bootloader_mode&&p==CDC_PORT_BRIDGE?2:0;b[6]=8;
+ }
+ return USBD_OK;
+}
 
 static int8_t cdc_receive(uint8_t p,uint8_t*b,uint32_t*n){
  if(p==CDC_PORT_BRIDGE){bridge_out_armed=0;for(uint32_t i=0;i<*n;i++){uint16_t x=(uart_tx_head+1U)%CDC_BRIDGE_BUF_SIZE;if(x==uart_tx_tail){uart_tx_dropped++;break;}uart_tx_ring[uart_tx_head]=b[i];uart_tx_head=x;}uart_tx_start();bridge_out_arm_if_ready();return USBD_OK;}
@@ -79,7 +86,7 @@ void CDC_Bridge_QueueSafetyStatus(const SafetyFaultFrame *frame){
 
 /* Switch framing only from the main loop. USB callbacks may preempt this code,
  * so bridge_paused prevents them from touching USART3 while HAL tears it down.
- * Application mode is 460800 8N1; the STM32 ROM bootloader requires 8E1. */
+ * Application mode is 921600 8N1; the STM32 ROM bootloader stays 460800 8E1. */
 static uint8_t uart_set_bootloader_mode(uint8_t bootloader){
  uint32_t irq_state=__get_PRIMASK();
  __disable_irq();
@@ -97,7 +104,7 @@ static uint8_t uart_set_bootloader_mode(uint8_t bootloader){
 
  if(HAL_UART_DeInit(&huart3)!=HAL_OK)goto fail;
  huart3.Instance=USART3;
- huart3.Init.BaudRate=460800;
+ huart3.Init.BaudRate=bootloader?460800U:921600U;
  huart3.Init.WordLength=bootloader?UART_WORDLENGTH_9B:UART_WORDLENGTH_8B;
  huart3.Init.StopBits=UART_STOPBITS_1;
  huart3.Init.Parity=bootloader?UART_PARITY_EVEN:UART_PARITY_NONE;
@@ -110,7 +117,7 @@ static uint8_t uart_set_bootloader_mode(uint8_t bootloader){
  if(HAL_UART_Init(&huart3)!=HAL_OK)goto fail;
  if(HAL_UARTEx_SetTxFifoThreshold(&huart3,UART_TXFIFO_THRESHOLD_1_8)!=HAL_OK)goto fail;
  if(HAL_UARTEx_SetRxFifoThreshold(&huart3,UART_RXFIFO_THRESHOLD_1_8)!=HAL_OK)goto fail;
- if(HAL_UARTEx_DisableFifoMode(&huart3)!=HAL_OK)goto fail;
+ if(HAL_UARTEx_EnableFifoMode(&huart3)!=HAL_OK)goto fail;
 
  USART3->RQR=USART_RQR_RXFRQ;
  USART3->ICR=USART_ICR_PECF|USART_ICR_FECF|USART_ICR_NECF|USART_ICR_ORECF;
@@ -205,17 +212,21 @@ void CDC_Bridge_Process(void){
    }else send_control("ERROR UART CONFIG\r\n");
   }else{
    const SafetyPolicy *safety=SafetyHardware_Status();
-   char response[224];
+   char response[256];
    snprintf(response,sizeof(response),
-    "STATUS BOOTSEL=%u RESET=%u UART_MODE=%s APP_WAIT=%u "
+    "STATUS BOOTSEL=%u RESET=%u UART_MODE=%s UART_BAUD=%lu APP_WAIT=%u "
     "UART_ERRORS=%lu RX_DROPPED=%lu TX_DROPPED=%lu "
-    "SAFETY_STATE=%u SAFETY_FAULTS=%08lX\r\n",
+    "SAFETY_STATE=%u SAFETY_FAULTS=%08lX "
+    "SAFETY_TRIP=%u SAFETY_TRIP_INPUTS=%02X PWR2_EN=%u\r\n",
     HAL_GPIO_ReadPin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin),
     HAL_GPIO_ReadPin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin),
-    uart_bootloader_mode?"BOOT_8E1":"APP_8N1",bridge_waiting_for_app,
+    uart_bootloader_mode?"BOOT_8E1":"APP_8N1",
+    (unsigned long)(uart_bootloader_mode?460800U:921600U),bridge_waiting_for_app,
     (unsigned long)uart_errors,(unsigned long)uart_rx_dropped,
     (unsigned long)uart_tx_dropped,(unsigned)safety->state,
-    (unsigned long)safety->faults);
+    (unsigned long)safety->faults,
+    (unsigned)safety->trip_reason, (unsigned)safety->trip_inputs,
+    SafetyPolicy_PowerEnabled(safety) ? 1u : 0u);
    send_control(response);
   }
  }

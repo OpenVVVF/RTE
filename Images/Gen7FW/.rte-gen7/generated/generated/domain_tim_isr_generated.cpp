@@ -7,9 +7,6 @@
 namespace app {
 
 void TimIsrInit(TimIsrState& state) {
-    // Init node: Clarke
-    {
-    }
     // Init node: Encoder
     {
     }
@@ -38,7 +35,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgEncOffset
     {
         state.CfgEncOffset.Cached = 0.0f;
-        state.CfgEncOffset.DefaultValue = 6.445f;
+        state.CfgEncOffset.DefaultValue = 150.0f;
         state.CfgEncOffset.Key = "Motor.Encoder.SinCos.OffsetDeg";
         rte::Dimensionless& Cached = state.CfgEncOffset.Cached;
         rte::Dimensionless& DefaultValue = state.CfgEncOffset.DefaultValue;
@@ -60,7 +57,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgKpQ
     {
         state.CfgKpQ.Cached = 0.0f;
-        state.CfgKpQ.DefaultValue = 0.16f;
+        state.CfgKpQ.DefaultValue = 0.04f;
         state.CfgKpQ.Key = "Ctrl.PiQ.Kp";
         rte::Dimensionless& Cached = state.CfgKpQ.Cached;
         rte::Dimensionless& DefaultValue = state.CfgKpQ.DefaultValue;
@@ -105,7 +102,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgKpD
     {
         state.CfgKpD.Cached = 0.0f;
-        state.CfgKpD.DefaultValue = 0.08f;
+        state.CfgKpD.DefaultValue = 0.04f;
         state.CfgKpD.Key = "Ctrl.PiD.Kp";
         rte::Dimensionless& Cached = state.CfgKpD.Cached;
         rte::Dimensionless& DefaultValue = state.CfgKpD.DefaultValue;
@@ -116,7 +113,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgKiD
     {
         state.CfgKiD.Cached = 0.0f;
-        state.CfgKiD.DefaultValue = 10.0f;
+        state.CfgKiD.DefaultValue = 5.0f;
         state.CfgKiD.Key = "Ctrl.PiD.Ki";
         rte::Dimensionless& Cached = state.CfgKiD.Cached;
         rte::Dimensionless& DefaultValue = state.CfgKiD.DefaultValue;
@@ -127,7 +124,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgKiQ
     {
         state.CfgKiQ.Cached = 0.0f;
-        state.CfgKiQ.DefaultValue = 10.0f;
+        state.CfgKiQ.DefaultValue = 5.0f;
         state.CfgKiQ.Key = "Ctrl.PiQ.Ki";
         rte::Dimensionless& Cached = state.CfgKiQ.Cached;
         rte::Dimensionless& DefaultValue = state.CfgKiQ.DefaultValue;
@@ -144,7 +141,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgLd
     {
         state.CfgLd.Cached = 0.0f;
-        state.CfgLd.DefaultValue = 0.0001f;
+        state.CfgLd.DefaultValue = 0.0f;
         state.CfgLd.Key = "Motor.Ld";
         rte::Dimensionless& Cached = state.CfgLd.Cached;
         rte::Dimensionless& DefaultValue = state.CfgLd.DefaultValue;
@@ -155,7 +152,7 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgLq
     {
         state.CfgLq.Cached = 0.0f;
-        state.CfgLq.DefaultValue = 0.0001f;
+        state.CfgLq.DefaultValue = 0.0f;
         state.CfgLq.Key = "Motor.Lq";
         rte::Dimensionless& Cached = state.CfgLq.Cached;
         rte::Dimensionless& DefaultValue = state.CfgLq.DefaultValue;
@@ -166,13 +163,41 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: CfgLambda
     {
         state.CfgLambda.Cached = 0.0f;
-        state.CfgLambda.DefaultValue = 0.01f;
+        state.CfgLambda.DefaultValue = 0.04f;
         state.CfgLambda.Key = "Motor.Lambda";
         rte::Dimensionless& Cached = state.CfgLambda.Cached;
         rte::Dimensionless& DefaultValue = state.CfgLambda.DefaultValue;
         const char*& Key = state.CfgLambda.Key;
         Cached = platform_config_load(Key, DefaultValue);
 
+    }
+    // Init node: CfgKnee
+    {
+        state.CfgKnee.Cached = 0.0f;
+        state.CfgKnee.DefaultValue = 0.0f;
+        state.CfgKnee.Key = "Motor.KneeV";
+        rte::Dimensionless& Cached = state.CfgKnee.Cached;
+        rte::Dimensionless& DefaultValue = state.CfgKnee.DefaultValue;
+        const char*& Key = state.CfgKnee.Key;
+        Cached = platform_config_load(Key, DefaultValue);
+
+    }
+    // Init node: CurrentFrame
+    {
+    }
+    // Init node: CfgVoltLimit
+    {
+        state.CfgVoltLimit.Cached = 0.0f;
+        state.CfgVoltLimit.DefaultValue = 0.3333333333f;
+        state.CfgVoltLimit.Key = "Ctrl.VoltLimitPu";
+        rte::Dimensionless& Cached = state.CfgVoltLimit.Cached;
+        rte::Dimensionless& DefaultValue = state.CfgVoltLimit.DefaultValue;
+        const char*& Key = state.CfgVoltLimit.Key;
+        Cached = platform_config_load(Key, DefaultValue);
+
+    }
+    // Init node: ControlSpeed
+    {
     }
     // Init node: EnableCmp
     {
@@ -187,11 +212,6 @@ void TimIsrInit(TimIsrState& state) {
     {
         state.Mech_RPM.Key = "Mech_RPM";
     }
-    // Init node: EncoderLeadComp
-    {
-        state.EncoderLeadComp.DelayScale = 1.0f;
-        state.EncoderLeadComp.MaxLeadRad = 0.35f;
-    }
     // Init node: Elec_RPM
     {
         state.Elec_RPM.Key = "Elec_RPM";
@@ -204,6 +224,38 @@ void TimIsrInit(TimIsrState& state) {
     {
         state.EncoderCos.Key = "EncoderCos";
     }
+    // Init node: LogId
+    {
+        state.LogId.Key = "cg_id_a";
+    }
+    // Init node: LogIq
+    {
+        state.LogIq.Key = "cg_iq_a";
+    }
+    // Init node: Log_cg_sample_age_us
+    {
+        state.Log_cg_sample_age_us.Key = "cg_sample_age_us";
+    }
+    // Init node: Log_cg_sample_valid
+    {
+        state.Log_cg_sample_valid.Key = "cg_sample_valid";
+    }
+    // Init node: Log_cg_sample_seq
+    {
+        state.Log_cg_sample_seq.Key = "cg_sample_seq";
+    }
+    // Init node: EncoderLeadComp
+    {
+        state.EncoderLeadComp.DelayScale = 1.0f;
+        state.EncoderLeadComp.MaxLeadRad = 0.35f;
+    }
+    // Init node: FocFeedforward
+    {
+    }
+    // Init node: LogControlRpm
+    {
+        state.LogControlRpm.Key = "cg_rpm_control";
+    }
     // Init node: ThrottleEnable
     {
         state.ThrottleEnable.In = 0.0f;
@@ -213,51 +265,37 @@ void TimIsrInit(TimIsrState& state) {
     // Init node: ElecAngle
     {
         state.ElecAngle.EncoderSign = 1.0f;
-        state.ElecAngle.OffsetDeg = 6.445f;
+        state.ElecAngle.OffsetDeg = 150.0f;
         state.ElecAngle.Poles = 10.0f;
     }
     // Init node: IqGate
     {
     }
-    // Init node: Park
+    // Init node: VectorPi
     {
     }
-    // Init node: PiD
+    // Init node: InvPark
     {
-        state.PiD.AwGain = 1.0f;
-        state.PiD.Dt = 0.0002f;
-        state.PiD.Feedforward = rte::Volts(0.0f);
-        state.PiD.Integral = 0.0f;
-        state.PiD.OutputMax = 200.0f;
-        state.PiD.OutputMin = -200.0f;
-    }
-    // Init node: PiQ
-    {
-        state.PiQ.AwGain = 1.0f;
-        state.PiQ.Dt = 0.0002f;
-        state.PiQ.Feedforward = rte::Volts(0.0f);
-        state.PiQ.Integral = 0.0f;
-        state.PiQ.OutputMax = 200.0f;
-        state.PiQ.OutputMin = -200.0f;
-    }
-    // Init node: LogId
-    {
-        state.LogId.Key = "cg_id_a";
-    }
-    // Init node: LogIq
-    {
-        state.LogIq.Key = "cg_iq_a";
     }
     // Init node: LogVd
     {
         state.LogVd.Key = "cg_vd_v";
     }
-    // Init node: InvPark
-    {
-    }
     // Init node: LogVq
     {
         state.LogVq.Key = "cg_vq_v";
+    }
+    // Init node: Log_cg_vd_req_v
+    {
+        state.Log_cg_vd_req_v.Key = "cg_vd_req_v";
+    }
+    // Init node: Log_cg_vq_req_v
+    {
+        state.Log_cg_vq_req_v.Key = "cg_vq_req_v";
+    }
+    // Init node: Log_cg_vlimit_scale
+    {
+        state.Log_cg_vlimit_scale.Key = "cg_vlimit_scale";
     }
     // Init node: Svpwm
     {
@@ -287,17 +325,6 @@ void TimIsrInit(TimIsrState& state) {
 }
 
 void TimIsrStep(TimIsrState& state) {
-    // Step node: Clarke (Transforms.Clarke)
-    {
-        const rte::Current I_A = BridgeIABridge.load();
-        const rte::Current I_B = BridgeIBBridge.load();
-        const rte::Current I_C = BridgeICBridge.load();
-        rte::Current& I_Alpha = state.Clarke.I_Alpha;
-        rte::Current& I_Beta = state.Clarke.I_Beta;
-        I_Alpha = I_A;
-I_Beta = (I_B - I_C) * 0.57735026919f;
-
-    }
     // Step node: Encoder (Custom.EncoderAngle)
     {
         rte::Dimensionless& Theta = state.Encoder.Theta;
@@ -332,6 +359,7 @@ I_Beta = (I_B - I_C) * 0.57735026919f;
         const char*& Key = state.CfgEncSign.Key;
         Value = Cached;
 
+        BridgeSampleEncoderSignBridge.store(Value);
     }
     // Step node: CfgEncOffset (Values.Config)
     {
@@ -341,6 +369,7 @@ I_Beta = (I_B - I_C) * 0.57735026919f;
         const char*& Key = state.CfgEncOffset.Key;
         Value = Cached;
 
+        BridgeSampleOffsetDegBridge.store(Value);
     }
     // Step node: CfgPoles (Values.Config)
     {
@@ -350,6 +379,7 @@ I_Beta = (I_B - I_C) * 0.57735026919f;
         const char*& Key = state.CfgPoles.Key;
         Value = Cached;
 
+        BridgeSamplePolesBridge.store(Value);
     }
     // Step node: CfgKpQ (Values.Config)
     {
@@ -468,6 +498,46 @@ CosRaw = rte::Dimensionless(static_cast<float>(platform_get_encoder_raw_cos()));
         Value = Cached;
 
     }
+    // Step node: CfgKnee (Values.Config)
+    {
+        rte::Dimensionless& Value = state.CfgKnee.Value;
+        rte::Dimensionless& Cached = state.CfgKnee.Cached;
+        rte::Dimensionless& DefaultValue = state.CfgKnee.DefaultValue;
+        const char*& Key = state.CfgKnee.Key;
+        Value = Cached;
+
+    }
+    // Step node: CurrentFrame (Custom.CurrentFrame)
+    {
+        rte::Current& Id = state.CurrentFrame.Id;
+        rte::Current& Iq = state.CurrentFrame.Iq;
+        rte::Dimensionless& Theta = state.CurrentFrame.Theta;
+        rte::Dimensionless& AgeUs = state.CurrentFrame.AgeUs;
+        rte::Dimensionless& Valid = state.CurrentFrame.Valid;
+        rte::Dimensionless& Sequence = state.CurrentFrame.Sequence;
+        float id=0,iq=0,theta=0,age=0,valid=0,seq=0;
+platform_latch_current_frame(&id,&iq,&theta,&age,&valid,&seq);
+Id=rte::Amperes(id); Iq=rte::Amperes(iq); Theta=theta;
+AgeUs=age; Valid=valid; Sequence=seq;
+
+    }
+    // Step node: CfgVoltLimit (Values.Config)
+    {
+        rte::Dimensionless& Value = state.CfgVoltLimit.Value;
+        rte::Dimensionless& Cached = state.CfgVoltLimit.Cached;
+        rte::Dimensionless& DefaultValue = state.CfgVoltLimit.DefaultValue;
+        const char*& Key = state.CfgVoltLimit.Key;
+        Value = Cached;
+
+    }
+    // Step node: ControlSpeed (Custom.ControlSpeed)
+    {
+        rte::Dimensionless& RpmMech = state.ControlSpeed.RpmMech;
+        rte::Dimensionless& RpmElec = state.ControlSpeed.RpmElec;
+        RpmMech = platform_get_control_rpm_mech();
+RpmElec = platform_get_control_rpm_elec();
+
+    }
     // Step node: EnableCmp (Logic.Greater)
     {
         const rte::Dimensionless A = state.CfgEnable.Value;
@@ -487,7 +557,7 @@ CosRaw = rte::Dimensionless(static_cast<float>(platform_get_encoder_raw_cos()));
  * On control start Value resets to the graph default, so references ramp
  * smoothly from zero instead of stepping. */
 const float target = In;
-const float step = Rate * Dt;
+const float step = Rate * platform_get_current_domain_dt();
 float v = Value;
 if (target > v + step) {
     v += step;
@@ -505,26 +575,6 @@ Out = Value;
         const rte::Dimensionless Value = state.RPMMechElec1.RpmMech;
         const char*& Key = state.Mech_RPM.Key;
         platform_telemetry_log_f32(Key, Value);
-
-    }
-    // Step node: EncoderLeadComp (Custom.EncoderLeadComp)
-    {
-        const rte::Dimensionless Theta = state.Encoder.Theta;
-        const rte::Dimensionless RpmMech = state.RPMMechElec1.RpmMech;
-        rte::Dimensionless& ThetaOut = state.EncoderLeadComp.ThetaOut;
-        rte::Dimensionless& DelayScale = state.EncoderLeadComp.DelayScale;
-        rte::Dimensionless& MaxLeadRad = state.EncoderLeadComp.MaxLeadRad;
-        const float dt = platform_get_current_domain_dt();
-const float delay_s = (dt > 0.0f && DelayScale > 0.0f) ? (dt * DelayScale) : 0.0f;
-const float omega_mech = RpmMech * 0.104719755f;  /* rpm -> rad/s */
-float lead = omega_mech * delay_s;
-if (lead > MaxLeadRad) lead = MaxLeadRad;
-if (lead < -MaxLeadRad) lead = -MaxLeadRad;
-float theta = Theta + lead;
-const float two_pi = 6.28318530718f;
-theta = fmodf(theta, two_pi);
-if (theta < 0.0f) theta += two_pi;
-ThetaOut = theta;
 
     }
     // Step node: Elec_RPM (Debug.TelemetryLog)
@@ -545,6 +595,106 @@ ThetaOut = theta;
     {
         const rte::Dimensionless Value = state.EncoderRawSinCos1.CosRaw;
         const char*& Key = state.EncoderCos.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: LogId (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.CurrentFrame.Id.in(au::amperes);
+        const char*& Key = state.LogId.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: LogIq (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.CurrentFrame.Iq.in(au::amperes);
+        const char*& Key = state.LogIq.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: Log_cg_sample_age_us (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.CurrentFrame.AgeUs;
+        const char*& Key = state.Log_cg_sample_age_us.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: Log_cg_sample_valid (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.CurrentFrame.Valid;
+        const char*& Key = state.Log_cg_sample_valid.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: Log_cg_sample_seq (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.CurrentFrame.Sequence;
+        const char*& Key = state.Log_cg_sample_seq.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: EncoderLeadComp (Custom.EncoderLeadComp)
+    {
+        const rte::Dimensionless Theta = state.Encoder.Theta;
+        const rte::Dimensionless RpmMech = state.ControlSpeed.RpmMech;
+        rte::Dimensionless& ThetaOut = state.EncoderLeadComp.ThetaOut;
+        rte::Dimensionless& DelayScale = state.EncoderLeadComp.DelayScale;
+        rte::Dimensionless& MaxLeadRad = state.EncoderLeadComp.MaxLeadRad;
+        const float dt = platform_get_current_domain_dt();
+const float delay_s = (dt > 0.0f && DelayScale > 0.0f) ? (dt * DelayScale) : 0.0f;
+const float omega_mech = RpmMech * 0.104719755f;  /* rpm -> rad/s */
+float lead = omega_mech * delay_s;
+if (lead > MaxLeadRad) lead = MaxLeadRad;
+if (lead < -MaxLeadRad) lead = -MaxLeadRad;
+float theta = Theta + lead;
+const float two_pi = 6.28318530718f;
+theta = fmodf(theta, two_pi);
+if (theta < 0.0f) theta += two_pi;
+ThetaOut = theta;
+
+    }
+    // Step node: FocFeedforward (Control.FocFeedforward)
+    {
+        const rte::Current I_D = state.CurrentFrame.Id;
+        const rte::Current I_Q = state.CurrentFrame.Iq;
+        const rte::Dimensionless RpmElec = state.ControlSpeed.RpmElec;
+        const rte::Dimensionless Ld = state.CfgLd.Value;
+        const rte::Dimensionless Lq = state.CfgLq.Value;
+        const rte::Dimensionless Lambda = state.CfgLambda.Value;
+        const rte::Dimensionless Knee = state.CfgKnee.Value;
+        rte::Voltage& V_D = state.FocFeedforward.V_D;
+        rte::Voltage& V_Q = state.FocFeedforward.V_Q;
+        /* PMSM voltage feed-forward: cross-coupling, back-EMF, and conduction-knee terms.
+ * Electrical speed is supplied in RPM and converted to rad/s internally.
+ *
+ *   Vd_ff = -we*Lq*Iq
+ *   Vq_ff =  we*Ld*Id + we*Lambda + Knee*sign(Iq)
+ *
+ * The knee term pre-compensates the IGBT/diode conduction drop that opposes
+ * the current vector. It is applied on the q-axis only: id sits at ~0 A, so
+ * a d-axis sign() would relay-chatter on measurement noise and inject a
+ * +/-Knee V square wave into the d-loop (measured: id spikes past -75 A).
+ * The 0.5 A deadband keeps iq sign() quiet near zero torque.
+ */
+constexpr float RPM_TO_RAD_S = 2.0f * 3.14159265358979323846f / 60.0f;
+const float omega_e = RpmElec * RPM_TO_RAD_S;
+
+const float id_a = I_D.in(au::amperes);
+const float iq_a = I_Q.in(au::amperes);
+
+const float vd_ff = -(omega_e * Lq * iq_a);
+const float vq_ff = (omega_e * Ld * id_a) + (omega_e * Lambda);
+
+const float iq_sign = (iq_a > 0.5f) ? 1.0f : ((iq_a < -0.5f) ? -1.0f : 0.0f);
+
+V_D = rte::Volts(vd_ff);
+V_Q = rte::Volts(vq_ff + Knee * iq_sign);
+
+    }
+    // Step node: LogControlRpm (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.ControlSpeed.RpmMech;
+        const char*& Key = state.LogControlRpm.Key;
         platform_telemetry_log_f32(Key, Value);
 
     }
@@ -591,126 +741,37 @@ ThetaElec = elec;
 Out = Sel ? Val : 0.0f;
 
     }
-    // Step node: Park (Transforms.Park)
+    // Step node: VectorPi (Custom.VectorCurrentPi)
     {
-        const rte::Current I_Alpha = state.Clarke.I_Alpha;
-        const rte::Current I_Beta = state.Clarke.I_Beta;
-        const rte::Dimensionless Theta = state.ElecAngle.ThetaElec;
-        rte::Current& I_D = state.Park.I_D;
-        rte::Current& I_Q = state.Park.I_Q;
-        const float cos_theta = cosf(Theta);
-const float sin_theta = sinf(Theta);
-I_D = I_Alpha * cos_theta + I_Beta * sin_theta;
-I_Q = -I_Alpha * sin_theta + I_Beta * cos_theta;
-
-    }
-    // Step node: PiD (Custom.PiCurrent)
-    {
-        const rte::Current Setpoint = state.IdVar.Value;
-        const rte::Current Measurement = state.Park.I_D;
-        const rte::Voltage& Feedforward = state.PiD.Feedforward;
-        const rte::Dimensionless Kp = state.CfgKpD.Value;
-        const rte::Dimensionless Ki = state.CfgKiD.Value;
-        rte::Voltage& Output = state.PiD.Output;
-        rte::Dimensionless& AwGain = state.PiD.AwGain;
-        rte::Dimensionless& Dt = state.PiD.Dt;
-        rte::Dimensionless& Integral = state.PiD.Integral;
-        rte::Dimensionless& OutputMax = state.PiD.OutputMax;
-        rte::Dimensionless& OutputMin = state.PiD.OutputMin;
-        float dt = platform_get_current_domain_dt();
-if (dt <= 0.0f) dt = 0.0002f;
-const float error = (Setpoint - Measurement).in(au::amperes);
-Integral += error * dt;
-
-float raw_output = Kp * error + Ki * Integral + Feedforward.in(au::volts);
-
-/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation
- * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */
-const float vdc = platform_get_dc_link_voltage();
-const float dynamic_max = vdc * 2.0f / 3.0f;
-const float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;
-const float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;
-
-float limited_output = raw_output;
-if (limited_output > max_limit) limited_output = max_limit;
-if (limited_output < min_limit) limited_output = min_limit;
-
-/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches
- * the base-image VectorPIController). */
-if (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {
-    const float excess = raw_output - limited_output;
-    Integral -= excess * dt * AwGain / (Kp * Ki);
-}
-
-Output = rte::Volts(limited_output);
-
-    }
-    // Step node: PiQ (Custom.PiCurrent)
-    {
-        const rte::Current Setpoint = rte::Amperes(state.IqGate.Out);
-        const rte::Current Measurement = state.Park.I_Q;
-        const rte::Voltage& Feedforward = state.PiQ.Feedforward;
-        const rte::Dimensionless Kp = state.CfgKpQ.Value;
-        const rte::Dimensionless Ki = state.CfgKiQ.Value;
-        rte::Voltage& Output = state.PiQ.Output;
-        rte::Dimensionless& AwGain = state.PiQ.AwGain;
-        rte::Dimensionless& Dt = state.PiQ.Dt;
-        rte::Dimensionless& Integral = state.PiQ.Integral;
-        rte::Dimensionless& OutputMax = state.PiQ.OutputMax;
-        rte::Dimensionless& OutputMin = state.PiQ.OutputMin;
-        float dt = platform_get_current_domain_dt();
-if (dt <= 0.0f) dt = 0.0002f;
-const float error = (Setpoint - Measurement).in(au::amperes);
-Integral += error * dt;
-
-float raw_output = Kp * error + Ki * Integral + Feedforward.in(au::volts);
-
-/* Dynamic voltage limit derived from DC-link voltage.  Allow overmodulation
- * up to the six-step boundary (2*Vdc/3).  Linear SVPWM limit is Vdc/sqrt(3). */
-const float vdc = platform_get_dc_link_voltage();
-const float dynamic_max = vdc * 2.0f / 3.0f;
-const float max_limit = (dynamic_max < OutputMax) ? dynamic_max : OutputMax;
-const float min_limit = (-dynamic_max > OutputMin) ? -dynamic_max : OutputMin;
-
-float limited_output = raw_output;
-if (limited_output > max_limit) limited_output = max_limit;
-if (limited_output < min_limit) limited_output = min_limit;
-
-/* Back-calculation anti-windup, scaled by AwGain (0 disables; 1.0 matches
- * the base-image VectorPIController). */
-if (Ki > 0.0001f && Kp > 0.0001f && AwGain > 0.0f) {
-    const float excess = raw_output - limited_output;
-    Integral -= excess * dt * AwGain / (Kp * Ki);
-}
-
-Output = rte::Volts(limited_output);
-
-    }
-    // Step node: LogId (Debug.TelemetryLog)
-    {
-        const rte::Dimensionless Value = state.Park.I_D.in(au::amperes);
-        const char*& Key = state.LogId.Key;
-        platform_telemetry_log_f32(Key, Value);
-
-    }
-    // Step node: LogIq (Debug.TelemetryLog)
-    {
-        const rte::Dimensionless Value = state.Park.I_Q.in(au::amperes);
-        const char*& Key = state.LogIq.Key;
-        platform_telemetry_log_f32(Key, Value);
-
-    }
-    // Step node: LogVd (Debug.TelemetryLog)
-    {
-        const rte::Dimensionless Value = state.PiD.Output.in(au::volts);
-        const char*& Key = state.LogVd.Key;
-        platform_telemetry_log_f32(Key, Value);
+        const rte::Current IdRef = state.IdVar.Value;
+        const rte::Current IqRef = rte::Amperes(state.IqGate.Out);
+        const rte::Current Id = state.CurrentFrame.Id;
+        const rte::Current Iq = state.CurrentFrame.Iq;
+        const rte::Voltage Fd = state.FocFeedforward.V_D;
+        const rte::Voltage Fq = state.FocFeedforward.V_Q;
+        const rte::Dimensionless Kpd = state.CfgKpD.Value;
+        const rte::Dimensionless Kid = state.CfgKiD.Value;
+        const rte::Dimensionless Kpq = state.CfgKpQ.Value;
+        const rte::Dimensionless Kiq = state.CfgKiQ.Value;
+        const rte::Dimensionless MaxBusFraction = state.CfgVoltLimit.Value;
+        const rte::Dimensionless Valid = state.CurrentFrame.Valid;
+        rte::Voltage& Vd = state.VectorPi.Vd;
+        rte::Voltage& Vq = state.VectorPi.Vq;
+        rte::Voltage& RequestedD = state.VectorPi.RequestedD;
+        rte::Voltage& RequestedQ = state.VectorPi.RequestedQ;
+        rte::Dimensionless& Scale = state.VectorPi.Scale;
+        float vd=0,vq=0,rd=0,rq=0,scale=1;
+platform_vector_pi(IdRef.in(au::amperes), IqRef.in(au::amperes),
+    Id.in(au::amperes), Iq.in(au::amperes), Fd.in(au::volts), Fq.in(au::volts),
+    Kpd,Kid,Kpq,Kiq,MaxBusFraction,Valid,&vd,&vq,&rd,&rq,&scale);
+Vd=rte::Volts(vd); Vq=rte::Volts(vq);
+RequestedD=rte::Volts(rd); RequestedQ=rte::Volts(rq); Scale=scale;
 
     }
     // Step node: InvPark (Transforms.InversePark)
     {
-        const rte::Voltage V_D = state.PiD.Output;
-        const rte::Voltage V_Q = state.PiQ.Output;
+        const rte::Voltage V_D = state.VectorPi.Vd;
+        const rte::Voltage V_Q = state.VectorPi.Vq;
         const rte::Dimensionless Theta = state.ElecAngle.ThetaElec;
         rte::Voltage& V_Alpha = state.InvPark.V_Alpha;
         rte::Voltage& V_Beta = state.InvPark.V_Beta;
@@ -719,11 +780,41 @@ const float sin_theta = sinf(Theta);
 V_Alpha = V_D * cos_theta - V_Q * sin_theta;
 V_Beta = V_D * sin_theta + V_Q * cos_theta;
 
+platform_control_actuation_angle(Theta);
+
+    }
+    // Step node: LogVd (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.VectorPi.Vd.in(au::volts);
+        const char*& Key = state.LogVd.Key;
+        platform_telemetry_log_f32(Key, Value);
+
     }
     // Step node: LogVq (Debug.TelemetryLog)
     {
-        const rte::Dimensionless Value = state.PiQ.Output.in(au::volts);
+        const rte::Dimensionless Value = state.VectorPi.Vq.in(au::volts);
         const char*& Key = state.LogVq.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: Log_cg_vd_req_v (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.VectorPi.RequestedD.in(au::volts);
+        const char*& Key = state.Log_cg_vd_req_v.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: Log_cg_vq_req_v (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.VectorPi.RequestedQ.in(au::volts);
+        const char*& Key = state.Log_cg_vq_req_v.Key;
+        platform_telemetry_log_f32(Key, Value);
+
+    }
+    // Step node: Log_cg_vlimit_scale (Debug.TelemetryLog)
+    {
+        const rte::Dimensionless Value = state.VectorPi.Scale;
+        const char*& Key = state.Log_cg_vlimit_scale.Key;
         platform_telemetry_log_f32(Key, Value);
 
     }
@@ -735,48 +826,9 @@ V_Beta = V_D * sin_theta + V_Q * cos_theta;
         rte::Dimensionless& Duty_A = state.Svpwm.Duty_A;
         rte::Dimensionless& Duty_B = state.Svpwm.Duty_B;
         rte::Dimensionless& Duty_C = state.Svpwm.Duty_C;
-        /* Clamp the alpha/beta voltage vector to the six-step boundary.
- * The maximum line-to-neutral voltage magnitude for linear modulation is
- * Vdc / sqrt(3); overmodulation is allowed up to 2*Vdc/3. */
-const float sqrt3 = 1.7320508075688772f;
-const float v_max_linear = V_Dc.in(au::volts) * 2.0f / 3.0f;
-float valpha = V_Alpha.in(au::volts);
-float vbeta  = V_Beta.in(au::volts);
-const float v_albe_sq = valpha * valpha + vbeta * vbeta;
-if (v_albe_sq > v_max_linear * v_max_linear && v_albe_sq > 1e-12f) {
-    const float scale = v_max_linear / sqrtf(v_albe_sq);
-    valpha *= scale;
-    vbeta  *= scale;
-}
-
-/* Inverse Clarke: alpha/beta -> A/B/C. */
-const float v_a = valpha / V_Dc.in(au::volts);
-const float v_b = (-0.5f * valpha + 0.86602540378f * vbeta) / V_Dc.in(au::volts);
-const float v_c = (-0.5f * valpha - 0.86602540378f * vbeta) / V_Dc.in(au::volts);
-
-float v_min = v_a;
-if (v_b < v_min) v_min = v_b;
-if (v_c < v_min) v_min = v_c;
-
-float v_max = v_a;
-if (v_b > v_max) v_max = v_b;
-if (v_c > v_max) v_max = v_c;
-
-const float v_offset = 0.5f * (v_min + v_max);
-
-/* Convert to percent duty and clamp.  Linear SVM stays roughly in
- * [21%, 79%]; clamping to [0,100] only catches numerical edge cases. */
-float duty_a_pct = 50.0f + 50.0f * (v_a - v_offset);
-float duty_b_pct = 50.0f + 50.0f * (v_b - v_offset);
-float duty_c_pct = 50.0f + 50.0f * (v_c - v_offset);
-
-if (duty_a_pct < 0.0f) duty_a_pct = 0.0f; else if (duty_a_pct > 100.0f) duty_a_pct = 100.0f;
-if (duty_b_pct < 0.0f) duty_b_pct = 0.0f; else if (duty_b_pct > 100.0f) duty_b_pct = 100.0f;
-if (duty_c_pct < 0.0f) duty_c_pct = 0.0f; else if (duty_c_pct > 100.0f) duty_c_pct = 100.0f;
-
-Duty_A = duty_a_pct;
-Duty_B = duty_b_pct;
-Duty_C = duty_c_pct;
+        float du=50,dv=50,dw=50;
+platform_modulate(V_Alpha.in(au::volts),V_Beta.in(au::volts),V_Dc.in(au::volts),&du,&dv,&dw);
+Duty_A=du; Duty_B=dv; Duty_C=dw;
 
     }
     // Step node: PwmOut (Actuators.PwmOut)
@@ -785,6 +837,8 @@ Duty_C = duty_c_pct;
         const rte::Dimensionless Duty_B = state.Svpwm.Duty_B;
         const rte::Dimensionless Duty_C = state.Svpwm.Duty_C;
         platform_pwm_set(Duty_A, Duty_B, Duty_C);
+
+platform_control_capture_step(Duty_A,Duty_B,Duty_C);
 
     }
     // Step node: LogDu (Debug.TelemetryLog)
@@ -838,9 +892,6 @@ GapTicks = rte::Dimensionless(static_cast<float>(gap));
 }
 
 void TimIsrStart(TimIsrState& state) {
-    // Reset node: Clarke
-    {
-    }
     // Reset node: Encoder
     {
     }
@@ -873,6 +924,12 @@ void TimIsrStart(TimIsrState& state) {
     // Reset node: EncoderRawSinCos1
     {
     }
+    // Reset node: CurrentFrame
+    {
+    }
+    // Reset node: ControlSpeed
+    {
+    }
     // Reset node: EnableCmp
     {
         state.EnableCmp.B = 0.5f;
@@ -886,11 +943,6 @@ void TimIsrStart(TimIsrState& state) {
     {
         state.Mech_RPM.Key = "Mech_RPM";
     }
-    // Reset node: EncoderLeadComp
-    {
-        state.EncoderLeadComp.DelayScale = 1.0f;
-        state.EncoderLeadComp.MaxLeadRad = 0.35f;
-    }
     // Reset node: Elec_RPM
     {
         state.Elec_RPM.Key = "Elec_RPM";
@@ -903,6 +955,38 @@ void TimIsrStart(TimIsrState& state) {
     {
         state.EncoderCos.Key = "EncoderCos";
     }
+    // Reset node: LogId
+    {
+        state.LogId.Key = "cg_id_a";
+    }
+    // Reset node: LogIq
+    {
+        state.LogIq.Key = "cg_iq_a";
+    }
+    // Reset node: Log_cg_sample_age_us
+    {
+        state.Log_cg_sample_age_us.Key = "cg_sample_age_us";
+    }
+    // Reset node: Log_cg_sample_valid
+    {
+        state.Log_cg_sample_valid.Key = "cg_sample_valid";
+    }
+    // Reset node: Log_cg_sample_seq
+    {
+        state.Log_cg_sample_seq.Key = "cg_sample_seq";
+    }
+    // Reset node: EncoderLeadComp
+    {
+        state.EncoderLeadComp.DelayScale = 1.0f;
+        state.EncoderLeadComp.MaxLeadRad = 0.35f;
+    }
+    // Reset node: FocFeedforward
+    {
+    }
+    // Reset node: LogControlRpm
+    {
+        state.LogControlRpm.Key = "cg_rpm_control";
+    }
     // Reset node: ThrottleEnable
     {
         state.ThrottleEnable.In = 0.0f;
@@ -912,51 +996,37 @@ void TimIsrStart(TimIsrState& state) {
     // Reset node: ElecAngle
     {
         state.ElecAngle.EncoderSign = 1.0f;
-        state.ElecAngle.OffsetDeg = 6.445f;
+        state.ElecAngle.OffsetDeg = 150.0f;
         state.ElecAngle.Poles = 10.0f;
     }
     // Reset node: IqGate
     {
     }
-    // Reset node: Park
+    // Reset node: VectorPi
     {
     }
-    // Reset node: PiD
+    // Reset node: InvPark
     {
-        state.PiD.AwGain = 1.0f;
-        state.PiD.Dt = 0.0002f;
-        state.PiD.Feedforward = rte::Volts(0.0f);
-        state.PiD.Integral = 0.0f;
-        state.PiD.OutputMax = 200.0f;
-        state.PiD.OutputMin = -200.0f;
-    }
-    // Reset node: PiQ
-    {
-        state.PiQ.AwGain = 1.0f;
-        state.PiQ.Dt = 0.0002f;
-        state.PiQ.Feedforward = rte::Volts(0.0f);
-        state.PiQ.Integral = 0.0f;
-        state.PiQ.OutputMax = 200.0f;
-        state.PiQ.OutputMin = -200.0f;
-    }
-    // Reset node: LogId
-    {
-        state.LogId.Key = "cg_id_a";
-    }
-    // Reset node: LogIq
-    {
-        state.LogIq.Key = "cg_iq_a";
     }
     // Reset node: LogVd
     {
         state.LogVd.Key = "cg_vd_v";
     }
-    // Reset node: InvPark
-    {
-    }
     // Reset node: LogVq
     {
         state.LogVq.Key = "cg_vq_v";
+    }
+    // Reset node: Log_cg_vd_req_v
+    {
+        state.Log_cg_vd_req_v.Key = "cg_vd_req_v";
+    }
+    // Reset node: Log_cg_vq_req_v
+    {
+        state.Log_cg_vq_req_v.Key = "cg_vq_req_v";
+    }
+    // Reset node: Log_cg_vlimit_scale
+    {
+        state.Log_cg_vlimit_scale.Key = "cg_vlimit_scale";
     }
     // Reset node: Svpwm
     {
@@ -986,11 +1056,6 @@ void TimIsrStart(TimIsrState& state) {
 }
 
 void TimIsrStop(TimIsrState& state) {
-    // Zero node: Clarke
-    {
-        state.Clarke.I_Alpha = rte::Current{};
-        state.Clarke.I_Beta = rte::Current{};
-    }
     // Zero node: Encoder
     {
         state.Encoder.Theta = rte::Dimensionless{};
@@ -1073,6 +1138,28 @@ void TimIsrStop(TimIsrState& state) {
     {
         state.CfgLambda.Value = rte::Dimensionless{};
     }
+    // Zero node: CfgKnee
+    {
+        state.CfgKnee.Value = rte::Dimensionless{};
+    }
+    // Zero node: CurrentFrame
+    {
+        state.CurrentFrame.Id = rte::Current{};
+        state.CurrentFrame.Iq = rte::Current{};
+        state.CurrentFrame.Theta = rte::Dimensionless{};
+        state.CurrentFrame.AgeUs = rte::Dimensionless{};
+        state.CurrentFrame.Valid = rte::Dimensionless{};
+        state.CurrentFrame.Sequence = rte::Dimensionless{};
+    }
+    // Zero node: CfgVoltLimit
+    {
+        state.CfgVoltLimit.Value = rte::Dimensionless{};
+    }
+    // Zero node: ControlSpeed
+    {
+        state.ControlSpeed.RpmMech = rte::Dimensionless{};
+        state.ControlSpeed.RpmElec = rte::Dimensionless{};
+    }
     // Zero node: EnableCmp
     {
         state.EnableCmp.Out = rte::Boolean{};
@@ -1084,10 +1171,6 @@ void TimIsrStop(TimIsrState& state) {
     // Zero node: Mech_RPM
     {
     }
-    // Zero node: EncoderLeadComp
-    {
-        state.EncoderLeadComp.ThetaOut = rte::Dimensionless{};
-    }
     // Zero node: Elec_RPM
     {
     }
@@ -1095,6 +1178,33 @@ void TimIsrStop(TimIsrState& state) {
     {
     }
     // Zero node: EncoderCos
+    {
+    }
+    // Zero node: LogId
+    {
+    }
+    // Zero node: LogIq
+    {
+    }
+    // Zero node: Log_cg_sample_age_us
+    {
+    }
+    // Zero node: Log_cg_sample_valid
+    {
+    }
+    // Zero node: Log_cg_sample_seq
+    {
+    }
+    // Zero node: EncoderLeadComp
+    {
+        state.EncoderLeadComp.ThetaOut = rte::Dimensionless{};
+    }
+    // Zero node: FocFeedforward
+    {
+        state.FocFeedforward.V_D = rte::Voltage{};
+        state.FocFeedforward.V_Q = rte::Voltage{};
+    }
+    // Zero node: LogControlRpm
     {
     }
     // Zero node: ThrottleEnable
@@ -1109,34 +1219,32 @@ void TimIsrStop(TimIsrState& state) {
     {
         state.IqGate.Out = rte::Dimensionless{};
     }
-    // Zero node: Park
+    // Zero node: VectorPi
     {
-        state.Park.I_D = rte::Current{};
-        state.Park.I_Q = rte::Current{};
-    }
-    // Zero node: PiD
-    {
-        state.PiD.Output = rte::Voltage{};
-    }
-    // Zero node: PiQ
-    {
-        state.PiQ.Output = rte::Voltage{};
-    }
-    // Zero node: LogId
-    {
-    }
-    // Zero node: LogIq
-    {
-    }
-    // Zero node: LogVd
-    {
+        state.VectorPi.Vd = rte::Voltage{};
+        state.VectorPi.Vq = rte::Voltage{};
+        state.VectorPi.RequestedD = rte::Voltage{};
+        state.VectorPi.RequestedQ = rte::Voltage{};
+        state.VectorPi.Scale = rte::Dimensionless{};
     }
     // Zero node: InvPark
     {
         state.InvPark.V_Alpha = rte::Voltage{};
         state.InvPark.V_Beta = rte::Voltage{};
     }
+    // Zero node: LogVd
+    {
+    }
     // Zero node: LogVq
+    {
+    }
+    // Zero node: Log_cg_vd_req_v
+    {
+    }
+    // Zero node: Log_cg_vq_req_v
+    {
+    }
+    // Zero node: Log_cg_vlimit_scale
     {
     }
     // Zero node: Svpwm
@@ -1286,6 +1394,26 @@ static float get_CfgLambda_cached(const void* state) {
     return s->CfgLambda.Cached;
 }
 
+static void set_CfgKnee_cached(void* state, float value) {
+    auto* s = static_cast<TimIsrState*>(state);
+    s->CfgKnee.Cached = value;
+}
+
+static float get_CfgKnee_cached(const void* state) {
+    const auto* s = static_cast<const TimIsrState*>(state);
+    return s->CfgKnee.Cached;
+}
+
+static void set_CfgVoltLimit_cached(void* state, float value) {
+    auto* s = static_cast<TimIsrState*>(state);
+    s->CfgVoltLimit.Cached = value;
+}
+
+static float get_CfgVoltLimit_cached(const void* state) {
+    const auto* s = static_cast<const TimIsrState*>(state);
+    return s->CfgVoltLimit.Cached;
+}
+
 const RteParamDesc g_tim_isr_configs[] = {
     {"Motor.Encoder.SinCos.Sign", set_CfgEncSign_cached, get_CfgEncSign_cached},
     {"Motor.Encoder.SinCos.OffsetDeg", set_CfgEncOffset_cached, get_CfgEncOffset_cached},
@@ -1299,9 +1427,11 @@ const RteParamDesc g_tim_isr_configs[] = {
     {"Motor.Ld", set_CfgLd_cached, get_CfgLd_cached},
     {"Motor.Lq", set_CfgLq_cached, get_CfgLq_cached},
     {"Motor.Lambda", set_CfgLambda_cached, get_CfgLambda_cached},
+    {"Motor.KneeV", set_CfgKnee_cached, get_CfgKnee_cached},
+    {"Ctrl.VoltLimitPu", set_CfgVoltLimit_cached, get_CfgVoltLimit_cached},
 };
 
-const size_t g_tim_isr_config_count = 12;
+const size_t g_tim_isr_config_count = 14;
 
 static void set_IqVar_stored(void* state, float value) {
     auto* s = static_cast<TimIsrState*>(state);

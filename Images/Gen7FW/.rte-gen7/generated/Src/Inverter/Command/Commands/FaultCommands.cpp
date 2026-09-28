@@ -2,6 +2,9 @@
 #include "Inverter/Command/CommandContext.h"
 #include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
+#include "Inverter/SafetyLink.h"
+#include "Inverter/SafetyEcc.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
@@ -10,6 +13,7 @@
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
+#include "tim.h"
 
 #include <strings.h>
 
@@ -20,26 +24,24 @@ using Inverter::FaultSource;
 
 namespace {
 
-constexpr uint32_t bit(FaultSource source) {
-    return static_cast<uint32_t>(source);
-}
+using Inverter::FaultBits;
 
-constexpr uint32_t GATE_FAULTS =
-    bit(FaultSource::GateDriver) |
-    bit(FaultSource::PwmBreak) |
-    bit(FaultSource::GateDriverUvlo);
+constexpr FaultBits GATE_FAULTS =
+    FaultBits::bit(FaultSource::GateDriver) |
+    FaultBits::bit(FaultSource::PwmBreak) |
+    FaultBits::bit(FaultSource::GateDriverUvlo);
 
-constexpr uint32_t MAX22530_FAULTS =
-    bit(FaultSource::Max22530Ov) |
-    bit(FaultSource::Max22530Uv) |
-    bit(FaultSource::Max22530Adc) |
-    bit(FaultSource::Max22530Comm) |
-    bit(FaultSource::Max22530Field);
+const FaultBits MAX22530_FAULTS =
+    FaultBits::bit(FaultSource::Max22530Ov) |
+    FaultBits::bit(FaultSource::Max22530Uv) |
+    FaultBits::bit(FaultSource::Max22530Adc) |
+    FaultBits::bit(FaultSource::Max22530Comm) |
+    FaultBits::bit(FaultSource::Max22530Field);
 
-constexpr uint32_t SUPPLY_FAULTS =
-    bit(FaultSource::SupplyPvd) |
-    bit(FaultSource::SupplyAvd) |
-    bit(FaultSource::SupplyVosrdy);
+constexpr FaultBits SUPPLY_FAULTS =
+    FaultBits::bit(FaultSource::SupplyPvd) |
+    FaultBits::bit(FaultSource::SupplyAvd) |
+    FaultBits::bit(FaultSource::SupplyVosrdy);
 
 const char* severityName(FaultSeverity severity) {
     switch (severity) {
@@ -50,32 +52,36 @@ const char* severityName(FaultSeverity severity) {
     return "unknown";
 }
 
-uint32_t allFaultMask() {
-    uint32_t mask = 0U;
+FaultBits allFaultMask() {
+    FaultBits mask;
     for (size_t i = 0; i < FaultManager::metaCount(); ++i) {
-        mask |= bit(FaultManager::metaTable()[i].source);
+        mask.set(FaultManager::metaTable()[i].source);
     }
     return mask;
 }
 
-uint32_t severityMask(FaultSeverity severity) {
-    uint32_t mask = 0U;
+FaultBits severityMask(FaultSeverity severity) {
+    FaultBits mask;
     for (size_t i = 0; i < FaultManager::metaCount(); ++i) {
         const Inverter::FaultMeta& meta = FaultManager::metaTable()[i];
         if (meta.severity == severity) {
-            mask |= bit(meta.source);
+            mask.set(meta.source);
         }
     }
     return mask;
 }
 
-bool scopeMask(const char* scope, uint32_t& mask) {
+bool scopeMask(const char* scope, FaultBits& mask) {
     if (scope == nullptr || scope[0] == '\0' || strcasecmp(scope, "all") == 0) {
         mask = allFaultMask();
         return true;
     }
     if (strcasecmp(scope, "warning") == 0 || strcasecmp(scope, "warnings") == 0) {
         mask = severityMask(FaultSeverity::Warning);
+        return true;
+    }
+    if (strcasecmp(scope, "main") == 0) {
+        mask = allFaultMask();
         return true;
     }
     if (strcasecmp(scope, "high") == 0) {
@@ -89,20 +95,23 @@ bool scopeMask(const char* scope, uint32_t& mask) {
 
     const FaultSource source = FaultManager::sourceFromName(scope);
     if (source != FaultSource::None) {
-        mask = bit(source);
+        mask = FaultBits::bit(source);
         return true;
     }
     return false;
 }
 
 bool powerStageActive() {
+    /* TIM1 MOE is NOT an actuation indicator on Gen7: it stays latched for
+     * measurement (PWM_ClearFault arms it, PWM_Stop leaves it set) while the
+     * TIM1/ADC ISR runs permanently.  Only the software state of the control
+     * paths says whether the motor is being driven. */
     const ControlSupervisor::State generatedState = ControlSupervisor::instance().state();
     return generatedState == ControlSupervisor::State::Starting ||
            generatedState == ControlSupervisor::State::Running ||
            generatedState == ControlSupervisor::State::Stopping ||
            Inverter::focControlManager().isRunning() ||
-           Inverter::openLoopController().isRunning() ||
-           (TIM1->BDTR & TIM_BDTR_MOE) != 0U;
+           Inverter::openLoopController().isRunning();
 }
 
 struct GateResetStatus {
@@ -112,17 +121,18 @@ struct GateResetStatus {
 };
 
 void printSources() {
-    Telemetry::printf("[FAULT] clear scopes: all, warning, high, critical, or one source:");
+    Telemetry::printf("[FAULT] clear scopes: all, main, coprocessor, warning, high, critical, or one main source:");
     for (size_t i = 0; i < FaultManager::metaCount(); ++i) {
         const Inverter::FaultMeta& meta = FaultManager::metaTable()[i];
-        Telemetry::printf("[FAULT][%s][%s] %s - %s",
+        Telemetry::printf("[FAULT][MAIN][%s][%s] %s - %s",
                           severityName(meta.severity), meta.category,
                           meta.name, meta.description);
     }
+    Telemetry::printf("[FAULT][COPROCESSOR] GateDriver, PowerStuckOn, PowerFeedbackLost, MainHeartbeatLost, Internal");
 }
 
-bool resetGateHardware(uint32_t mask, GateResetStatus& status) {
-    if ((mask & GATE_FAULTS) == 0U) {
+bool resetGateHardware(const FaultBits& mask, GateResetStatus& status) {
+    if (!mask.intersects(GATE_FAULTS)) {
         return true;
     }
     if (powerStageActive()) {
@@ -143,6 +153,12 @@ bool resetGateHardware(uint32_t mask, GateResetStatus& status) {
     status.ready = GateDriver_IsReady();
     status.fault = GateDriver_IsFault();
 
+    /* Re-arm the one-shot TIM1 break interrupt: the driver's latched /FLT
+     * has just been reset-pulsed, so the break input is inactive again and
+     * the next genuine DESAT event must be able to fire. */
+    __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_BREAK);
+    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_BREAK);
+
     if (!outputsWereReleased) {
         GateDriver_DisableOutputs();
     }
@@ -154,8 +170,8 @@ bool resetGateHardware(uint32_t mask, GateResetStatus& status) {
     return true;
 }
 
-void resetMax22530Hardware(uint32_t mask) {
-    if ((mask & MAX22530_FAULTS) == 0U) {
+void resetMax22530Hardware(const FaultBits& mask) {
+    if (!mask.intersects(MAX22530_FAULTS)) {
         return;
     }
 
@@ -183,21 +199,21 @@ void recheckGateHardware(const GateResetStatus& status) {
     }
 }
 
-void recheckSupplyHardware(uint32_t mask) {
-    if ((mask & SUPPLY_FAULTS) == 0U) {
+void recheckSupplyHardware(const FaultBits& mask) {
+    if (!mask.intersects(SUPPLY_FAULTS)) {
         return;
     }
-    if ((mask & bit(FaultSource::SupplyVosrdy)) != 0U &&
+    if (mask.test(FaultSource::SupplyVosrdy) &&
         __HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY) == 0U) {
         FaultManager::instance().raise(FaultSource::SupplyVosrdy,
                                        Inverter::FaultReason::VosNotReady);
     }
-    if ((mask & bit(FaultSource::SupplyPvd)) != 0U &&
+    if (mask.test(FaultSource::SupplyPvd) &&
         __HAL_PWR_GET_FLAG(PWR_FLAG_PVDO) != 0U) {
         FaultManager::instance().raise(FaultSource::SupplyPvd,
                                        Inverter::FaultReason::PvdTriggered);
     }
-    if ((mask & bit(FaultSource::SupplyAvd)) != 0U &&
+    if (mask.test(FaultSource::SupplyAvd) &&
         __HAL_PWR_GET_FLAG(PWR_FLAG_AVDO) != 0U) {
         FaultManager::instance().raise(FaultSource::SupplyAvd,
                                        Inverter::FaultReason::AvdTriggered);
@@ -205,36 +221,130 @@ void recheckSupplyHardware(uint32_t mask) {
 }
 
 void clearFaults(const char* scope) {
-    uint32_t mask = 0U;
-    if (!scopeMask(scope, mask)) {
+    const bool coprocessor_only = scope != nullptr &&
+                                  strcasecmp(scope, "coprocessor") == 0;
+    const bool main_only = scope != nullptr && strcasecmp(scope, "main") == 0;
+    FaultBits mask;
+    if (!coprocessor_only && !scopeMask(scope, mask)) {
         Telemetry::printf("[FAULT] unknown clear scope '%s'; run 'fault sources'", scope);
         return;
     }
 
-    GateResetStatus gateStatus;
-    if (!resetGateHardware(mask, gateStatus)) {
+    const bool clear_coprocessor = coprocessor_only ||
+        (!main_only && (scope == nullptr || strcasecmp(scope, "all") == 0 ||
+                        strcasecmp(scope, "critical") == 0 ||
+                        mask.intersects(GATE_FAULTS)));
+    if (clear_coprocessor && powerStageActive()) {
+        Telemetry::printf("[FAULT] clear refused: stop control before clearing coprocessor faults");
+        return;
+    }
+    auto& coprocessor = Inverter::CoprocessorFaults::instance();
+    if (coprocessor_only && !coprocessor.fresh()) {
+        Telemetry::printf("[FAULT][COPROCESSOR] clear refused: status unavailable or stale");
+        return;
+    }
+
+    const FaultBits ecc_faults = FaultBits::bit(FaultSource::RamEcc) |
+                                FaultBits::bit(FaultSource::FlashEcc);
+    if (!coprocessor_only && mask.intersects(ecc_faults) &&
+        SafetyEcc_HasLatchedFault()) {
+        Telemetry::printf("[FAULT] ECC fault cannot be cleared before MCU reset");
+        return;
+    }
+
+    if (coprocessor_only) {
+        if (FaultManager::instance().isSeverityActive(FaultSeverity::Critical)) {
+            Telemetry::printf("[FAULT][COPROCESSOR] clear refused: main Critical fault remains");
+            return;
+        }
+        SafetyLink_Resume();
+        HAL_Delay(60); /* Two fresh PD8 edges before the G474 clear check. */
+        if (coprocessor.requestClear()) {
+            Telemetry::printf("[FAULT][COPROCESSOR] clear requested; check 'fault status' for result");
+        }
+        return;
+    }
+
+    if (mask.intersects(GATE_FAULTS) && powerStageActive()) {
+        Telemetry::printf("[FAULT] clear refused: stop control/PWM before clearing gate faults");
         return;
     }
     FaultManager& faults = FaultManager::instance();
-    if (mask == allFaultMask()) {
-        faults.clearAll();
+    bool coprocessor_requested = false;
+    const bool recover_power = clear_coprocessor && coprocessor.fresh() &&
+                               coprocessor.hasFault() && mask.intersects(GATE_FAULTS);
+    if (recover_power) {
+        /* PWR2 is open while the G474 is latched, so /RDY cannot pass a gate
+         * reset yet. Clear selected main latches with outputs held in reset,
+         * restore the heartbeat and PWR1, then ask the G474 to restore PWR2.
+         * Recheck the actual gate hardware after both switches are closed. */
+        GateDriver_DisableOutputs();
+        /* /FLT can pulse while PWR2 rises. Hardware break still protects PWM;
+         * re-arm its one-shot interrupt only after the gate reset below. */
+        __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_BREAK);
+        __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_BREAK);
+        faults.clearMask(mask);
+        recheckSupplyHardware(mask);
+        if (faults.isSeverityActive(FaultSeverity::Critical)) {
+            faults.executeSafetyActions();
+            Telemetry::printf("[FAULT][COPROCESSOR] clear deferred: other main Critical fault remains");
+            return;
+        }
+        GateDriver_EnablePower(true);
+        SafetyLink_Resume();
+        HAL_Delay(60);
+        coprocessor_requested = coprocessor.requestClear();
+        if (!coprocessor_requested) {
+            faults.raise(FaultSource::GateDriverUvlo,
+                         Inverter::FaultReason::GateDriverNotReady);
+            faults.executeSafetyActions();
+            Telemetry::printf("[FAULT][COPROCESSOR] clear failed; power remains off");
+            return;
+        }
+        /* The command shell parses incoming !SF1 frames on its next poll.
+         * Return so it can observe the G474's answer. A second clear after
+         * ARMED rechecks /RDY and re-arms the break interrupt. */
+        Telemetry::printf("[FAULT][COPROCESSOR] clear requested; wait for ARMED, then run 'fault clear all' again");
+        return;
     } else {
-        faults.clear(static_cast<FaultSource>(mask));
+        GateResetStatus gateStatus;
+        if (!resetGateHardware(mask, gateStatus)) return;
+        faults.clearMask(mask);
+        resetMax22530Hardware(mask);
+        recheckGateHardware(gateStatus);
+        recheckSupplyHardware(mask);
     }
 
-    resetMax22530Hardware(mask);
-    recheckGateHardware(gateStatus);
-    recheckSupplyHardware(mask);
-    const uint32_t blockingMask = severityMask(FaultSeverity::Critical) |
-                                  severityMask(FaultSeverity::High);
-    const bool resetSupervisor = (mask & blockingMask) != 0U;
+    if (clear_coprocessor && !recover_power && coprocessor.hasFault()) {
+        if (!coprocessor.fresh()) {
+            Telemetry::printf("[FAULT][COPROCESSOR] clear deferred: status unavailable or stale");
+        } else if (faults.isSeverityActive(FaultSeverity::Critical)) {
+            Telemetry::printf("[FAULT][COPROCESSOR] clear deferred: main Critical fault remains");
+        } else {
+            SafetyLink_Resume();
+            HAL_Delay(60); /* Allow the G474 to see two fresh heartbeat edges. */
+            if (coprocessor.requestClear()) {
+                coprocessor_requested = true;
+                HAL_Delay(120); /* G474 processes the high level in its loop. */
+                coprocessor.service(); /* Release PD9 before another request. */
+                Telemetry::printf("[FAULT][COPROCESSOR] clear requested; check 'fault status' for result");
+            }
+        }
+    }
+
+    const FaultBits blockingMask = severityMask(FaultSeverity::Critical) |
+                                   severityMask(FaultSeverity::High);
+    const bool resetSupervisor = mask.intersects(blockingMask);
     const bool supervisorReset = !resetSupervisor ||
                                  ControlSupervisor::instance().resetFaultState();
     faults.publishStatus();
 
     const char* scopeName = (scope == nullptr || scope[0] == '\0') ? "all" : scope;
-    Telemetry::printf("[FAULT] clear '%s' complete; active=0x%08lX supervisor=%s",
+    Telemetry::printf("[FAULT] main clear '%s' complete; coprocessor=%s active=0x%08lX supervisor=%s",
                       scopeName,
+                      coprocessor_requested ? "pending" :
+                      (!coprocessor.hasFault() ? "none" :
+                       (clear_coprocessor ? "not cleared" : "unchanged")),
                       static_cast<unsigned long>(faults.activeFlags()),
                       supervisorReset ? ControlSupervisor::instance().stateName()
                                       : "FAULT (blocking fault remains)");
@@ -266,6 +376,7 @@ public:
             }
             FaultManager::instance().publishStatus();
             FaultManager::instance().printSummary();
+            Inverter::CoprocessorFaults::instance().printStatus();
             return;
         }
         if (strcasecmp(action, "sources") == 0) {

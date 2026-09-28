@@ -46,6 +46,16 @@ before that independent shutdown path can be enabled.
   20 ms; absence of an edge
   for over 250 ms revokes power. The H7 stops sending edges on a critical
   fault and after 500 ms of stalled application loop while actuating.
+  When this latch has opened PWR2, the H7 `fault clear all` path requests the
+  G474 clear with gate outputs held in reset. After the G474 reports `ARMED`,
+  a second `fault clear all` rechecks gate hardware and re-arms TIM1 break.
+- Control-port `STATUS` retains `SAFETY_TRIP` and `SAFETY_TRIP_INPUTS` when a
+  fault latches, plus the current `PWR2_EN` command. Trip values 4, 5, and 6
+  distinguish loss of the main switch feedback, loss of the second switch
+  feedback after arming, and second-switch startup timeout. Input bits are
+  PWR2 feedback (1), PWR1 feedback (2), /FAULT asserted (4), and live H7
+  heartbeat (8). These fields diagnose a feedback fault without changing the
+  existing `!SF1` UART frame or the power-off policy.
 - A USB bridge `BOOTLOADER`, `APP`, or `RESET` command first opens PWR2 and
   waits for its feedback to fall. This planned H7 reset does not clear a
   pre-existing latched coprocessor fault.
@@ -75,7 +85,11 @@ before that independent shutdown path can be enabled.
   during closed-loop actuation,
   ADC overcurrent, DC-link overvoltage, detected RAM or flash ECC, and
   heartbeat/power faults shut down. RAM ECC is interrupt driven; flash ECC
-  status is polled from the H7 application loop. The present defaults are
+  status is polled from the H7 application loop. The H7 initializes its used
+  RAM banks at reset before clearing startup ECC flags; the unused ITCM
+  monitor is excluded. An ECC trip after startup latches the H7
+  power stage off until reset while leaving a diagnostic shell and telemetry
+  path available; `fault clear` refuses to clear it. The present defaults are
   500 A and 190 V. Neither threshold alone
   proves protection of 600 A IGBTs or 200 V capacitors without response-time,
   calibration, and transient testing.

@@ -65,6 +65,33 @@ Reset_Handler:
 /* Call the clock system initialization function.*/
   bl  SystemInit
 
+/* Initialize the ECC check bits for every RAM bank used by this image before
+ * the C runtime or any NOLOAD buffer can read or partially write it. No stack
+ * frame is live here; the stores include the stack bank. Keep these bounds in
+ * sync with STM32H723XG_FLASH.ld. ITCM is not used by this image. */
+  movs r2, #0
+  ldr r0, =0x20000000       /* DTCM: 128 KiB */
+  ldr r1, =0x20020000
+1: str r2, [r0], #4
+  cmp r0, r1
+  bcc 1b
+  ldr r0, =0x24000000       /* AXI SRAM: 320 KiB */
+  ldr r1, =0x24050000
+2: str r2, [r0], #4
+  cmp r0, r1
+  bcc 2b
+  ldr r0, =0x30000000       /* SRAM1 + SRAM2: 32 KiB */
+  ldr r1, =0x30008000
+3: str r2, [r0], #4
+  cmp r0, r1
+  bcc 3b
+  ldr r0, =0x38000000       /* SRAM4: 16 KiB */
+  ldr r1, =0x38004000
+4: str r2, [r0], #4
+  cmp r0, r1
+  bcc 4b
+  bl  SafetyEcc_ClearStartupStatus
+
 /* Copy the data segment initializers from flash to SRAM */
   ldr r0, =_sdata
   ldr r1, =_edata
@@ -757,5 +784,4 @@ g_pfnVectors:
 
    .weak      TIM24_IRQHandler
    .thumb_set TIM24_IRQHandler,Default_Handler
-
 

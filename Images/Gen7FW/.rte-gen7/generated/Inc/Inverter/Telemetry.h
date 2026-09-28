@@ -27,6 +27,7 @@ namespace Telemetry {
 
 static constexpr uint32_t MAGIC   = 0x544C4D31u; // "TLM1"
 static constexpr uint8_t  VERSION = 1;
+static constexpr uint32_t DEFAULT_PERIOD_US = 5000U; // 200 Hz frames
 
 enum MsgType : uint8_t {
     MSG_DATA   = 1,

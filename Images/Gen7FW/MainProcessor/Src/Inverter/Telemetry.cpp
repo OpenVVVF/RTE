@@ -51,8 +51,7 @@ static constexpr uint16_t DEFINE_QUEUE_CAP      = 512;
 static constexpr uint8_t  KEY_MAXLEN            = 32;
 static constexpr uint8_t  STR_MAXLEN            = 48;
 
-static constexpr uint32_t DEFAULT_PERIOD_US     = 10000;  // 100 Hz
-static constexpr uint32_t DEFINE_REANNOUNCE_US  = 100000; // 10 Hz
+static constexpr uint32_t DEFINE_REANNOUNCE_US  = 1000000; // 1 Hz; leave UART headroom for live data
 
 static constexpr size_t   DEFINE_PAYLOAD_MAX    = 240;
 static constexpr size_t   DATA_PAYLOAD_MAX      = 600;
@@ -224,6 +223,11 @@ struct DynamicKey {
 
     bool     has_last_f32 = false;
     float    last_f32 = 0.0f;
+    volatile uint32_t update_seq = 0;
+    uint32_t sent_seq = 0;
+    bool     has_sent_f32 = false;
+    float    last_sent_f32 = 0.0f;
+    uint32_t last_sent_us = 0;
 };
 
 struct DefineItem {
@@ -256,7 +260,7 @@ static RingQueue<LogItem,    LOG_QUEUE_CAP>    g_str_q    __attribute__((section
 // ============================================================
 // Runtime state
 // ============================================================
-static uint32_t g_send_period_us = DEFAULT_PERIOD_US;
+static uint32_t g_send_period_us = Telemetry::DEFAULT_PERIOD_US;
 static uint16_t g_sensor_chunk_limit = 0;
 static uint32_t g_last_send_us   = 0;
 static uint32_t g_last_define_us = 0;
@@ -416,6 +420,8 @@ static void drain_log_queue_to_cache() {
                 if (g_dyn[i].id != it.id) continue;
                 g_dyn[i].last_f32 = it.v.f32;
                 g_dyn[i].has_last_f32 = true;
+                __DMB();
+                ++g_dyn[i].update_seq;
                 break;
             }
         } else if (it.type == VT_STR || it.type == VT_STR_FRAG) {
@@ -424,7 +430,12 @@ static void drain_log_queue_to_cache() {
     }
 }
 
-static size_t build_data_payload(uint8_t* payload, size_t cap) {
+static bool same_numeric_value(float a, float b) {
+    // Treat signed zero and repeated NaNs as unchanged, like Studio's rate display.
+    return a == b || (a != a && b != b);
+}
+
+static size_t build_data_payload(uint8_t* payload, size_t cap, uint32_t now_us) {
     if (cap < 1) return 0;
 
     uint8_t* w = payload;
@@ -442,13 +453,28 @@ static size_t build_data_payload(uint8_t* payload, size_t cap) {
         if (!g_dyn[i].used) continue;
         if (g_dyn[i].type != VT_F32) continue;
         if (!g_dyn[i].has_last_f32) continue;
+        const uint32_t observed_seq = g_dyn[i].update_seq;
+        const float observed_value = g_dyn[i].last_f32;
+        /* Quiet signals still refresh before the host's two-second stale
+         * timeout. High-rate signals keep their normal frame cadence. */
+        if (g_dyn[i].has_sent_f32 &&
+            (uint32_t)(now_us - g_dyn[i].last_sent_us) < 1000000U &&
+            (observed_seq == g_dyn[i].sent_seq ||
+             same_numeric_value(observed_value, g_dyn[i].last_sent_f32))) {
+            g_dyn[i].sent_seq = observed_seq;
+            continue;
+        }
 
         const size_t need = 2 + 1 + 4;
         if ((size_t)(w - payload) + need > cap) break;
 
         put_u16(w, g_dyn[i].id);
         *w++ = VT_F32;
-        put_f32(w, g_dyn[i].last_f32);
+        put_f32(w, observed_value);
+        g_dyn[i].sent_seq = observed_seq;
+        g_dyn[i].last_sent_f32 = observed_value;
+        g_dyn[i].has_sent_f32 = true;
+        g_dyn[i].last_sent_us = now_us;
         ++n_items;
     }
 
@@ -583,6 +609,8 @@ static bool log_core0(const char* key, float value) {
 
     g_dyn[idx].last_f32 = value;
     g_dyn[idx].has_last_f32 = true;
+    __DMB();
+    ++g_dyn[idx].update_seq;
     return true;
 }
 
@@ -767,7 +795,7 @@ bool updateSensors(const MeasurementSystem& ms) {
 }
 #endif
 
-/* TIME_DOMAIN: TELEMETRY_FRAME_DISPATCH_100HZ
+/* TIME_DOMAIN: TELEMETRY_FRAME_DISPATCH_200HZ
  *   Builds and sends telemetry frames at g_send_period_us cadence.
  * CODEGEN: Keep wire protocol; codegen may add new logged variables by calling
  *   Telemetry::log() from application code.
@@ -814,7 +842,7 @@ bool updateSensors() {
         crit_exit(saved);
         if (!room) return wrote;
         uint8_t payload[DATA_PAYLOAD_MAX];
-        const size_t len = build_data_payload(payload, sizeof(payload));
+        const size_t len = build_data_payload(payload, sizeof(payload), now);
         if (len > 1) {
             wrote |= send_frame(MSG_DATA, payload, len, now);
         }

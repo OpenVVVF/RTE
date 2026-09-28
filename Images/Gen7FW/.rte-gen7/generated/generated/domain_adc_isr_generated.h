@@ -22,6 +22,40 @@ struct AdcIsrState {
 
     CurrentsState Currents;
 
+    struct CurrentSampleEncoderState {
+        rte::Dimensionless Theta;
+    };
+
+    CurrentSampleEncoderState CurrentSampleEncoder;
+
+    struct ClarkeState {
+        rte::Current I_Alpha;
+        rte::Current I_Beta;
+    };
+
+    ClarkeState Clarke;
+
+    struct CurrentSampleElecAngleState {
+        rte::Dimensionless ThetaElec;
+        rte::Dimensionless EncoderSign;
+        rte::Dimensionless OffsetDeg;
+        rte::Dimensionless Poles;
+    };
+
+    CurrentSampleElecAngleState CurrentSampleElecAngle;
+
+    struct ParkState {
+        rte::Current I_D;
+        rte::Current I_Q;
+    };
+
+    ParkState Park;
+
+    struct PublishCurrentFrameState {
+    };
+
+    PublishCurrentFrameState PublishCurrentFrame;
+
 };
 
 

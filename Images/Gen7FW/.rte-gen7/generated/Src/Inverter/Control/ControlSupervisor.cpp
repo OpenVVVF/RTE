@@ -1,18 +1,23 @@
 #include "Inverter/Control/ControlSupervisor.h"
 
 #include "Inverter/AppState.h"
+#include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
+#include "Inverter/Drivers/Storage/RteParamStore.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/platform_api.h"
 
 #include "main.h"
 
 #include "../../../generated/domain_tim_isr_generated.h"
+
+#include <cmath>
 
 namespace Inverter {
 
@@ -101,6 +106,51 @@ bool ControlSupervisor::start() {
         return false;
     }
 
+    /* Spinning-rotor guard: while coasting the graph computes no actuation
+     * (the vector PI is gated by control_outputs_enabled), so the first
+     * driven vector at start can only match the back-EMF if that EMF is
+     * within what the bridge can produce.  Above the voltage ceiling any
+     * driven state is uncontrolled rectification into the windings —
+     * measured on this bench as a real >300 A phase spike when start was
+     * issued at ~-2000 RPM on a 50 V bus.  Refuse: the safe state for a
+     * fast-spinning rotor is six-switch-open until it coasts down. */
+    {
+        const float vdc_v = Inverter::dcLinkVoltageSensor().voltage();
+        float lambda_wb = 0.0f;
+        if (RteParamStore::isReady()) {
+            (void)RteParamStore::get("Motor.Lambda", &lambda_wb);
+        }
+        const float pole_pairs = Inverter::MotorCalibration::instance().pole_count * 0.5f;
+        const float rpm_mech = Inverter::encoderADC().rpmMech();
+        constexpr float MAX_BEMF_FRACTION = 0.8f;  /* of SVPWM linear phase peak */
+        float ceiling_rpm = 1000.0f;               /* conservative fallback */
+        if (lambda_wb > 0.0f && vdc_v > 5.0f && pole_pairs > 0.0f) {
+            /* bemf_phase_peak = lambda * |we|, we = rpm * pole_pairs * 2pi/60;
+             * SVPWM linear phase peak = vdc/sqrt(3). */
+            ceiling_rpm = MAX_BEMF_FRACTION * (vdc_v / 1.7320508f) /
+                          (lambda_wb * pole_pairs * 0.10471976f);
+        }
+        if (std::fabs(rpm_mech) > ceiling_rpm) {
+            Telemetry::printf("[SUP] ERROR: rotor spinning too fast to start: rpm=%.0f ceiling=%.0f mech (vdc=%.1f V lambda=%.3f Wb); coast down first",
+                              static_cast<double>(rpm_mech),
+                              static_cast<double>(ceiling_rpm),
+                              static_cast<double>(vdc_v),
+                              static_cast<double>(lambda_wb));
+            return false;
+        }
+    }
+
+    /* Rotor-feedback guard: never drive blind.  Learned bounds are stale
+     * evidence — a disconnected encoder leaves them valid while the sin/cos
+     * rail — so the live signal must be plausible at start time.  Refusal
+     * leaves everything untouched (no gate startup, no PWM, no state
+     * change), like the spinning-rotor guard.  Warning-latched encoder
+     * faults do not block on their own; the live signal is the gate. */
+    if (!Inverter::encoderADC().feedbackValid()) {
+        Telemetry::printf("[SUP] ERROR: encoder feedback invalid (bounds/raw sin/cos at rail or amplitude collapsed); refusing to drive blind");
+        return false;
+    }
+
     platform_set_control_outputs_enabled(false);
     m_state = State::Starting;
 
@@ -115,9 +165,24 @@ bool ControlSupervisor::start() {
     platform_set_control_outputs_enabled(false);
     resetGeneratedState();
 
+    /* The timer keeps sampling while idle, but actuator writes are gated.
+     * Its CCR preload/active registers can therefore still contain the last
+     * powered voltage vector.  Load a neutral vector as a safe default. */
+    PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+    TIM1->EGR = TIM_EGR_UG;
+
     PWM_ClearFault();
     PWM_EnableFocMode();
+
+    /* Arm graph actuation BEFORE enabling the power stage, then wait one
+     * update period so the CCRs are loaded with the graph's own computed
+     * vector (feed-forward back-EMF match while coasting, zero vector at
+     * standstill).  The previous order (PWM_Start first) drove a blind
+     * 50/50/50 zero vector for up to one update period; into a spinning
+     * motor that is an uncontrolled driven state. */
     platform_set_control_outputs_enabled(true);
+    HAL_Delay(1);
+
     PWM_Start();
 
     if ((TIM1->BDTR & TIM_BDTR_MOE) == 0U) {
@@ -220,6 +285,66 @@ void ControlSupervisor::service() {
         m_stop_requested = false;
         stop();
         return;
+    }
+
+    /* SSO-pathway detection, scoped to the generated graph control path
+     * (native FOC / open-loop / calibration do not run through this
+     * supervisor).  Both detectors are gated on actuation, so they cannot
+     * fire at IDLE — gate power may legitimately be off there after a
+     * safety shutdown, and a just-cleared fault must not re-raise while the
+     * rail is still off.  The safety sequence disables outputs before
+     * cutting the rail, so it cannot re-trigger these detectors either. */
+    if ((m_state == State::Running || m_state == State::Starting) &&
+        platform_control_outputs_enabled()) {
+
+        /* Gate-power rail lost: /RDY low with debounce.  The pin drops ~0.1 s
+         * after a rail cut and does not respond to reset assertion, so this
+         * covers exactly the power-cut pathway. */
+        if (!GateDriver_IsReady()) {
+            if (m_gate_not_ready_since == 0) {
+                m_gate_not_ready_since = HAL_GetTick();
+            } else if (HAL_GetTick() - m_gate_not_ready_since >= GATE_POWER_LOSS_DEBOUNCE_MS) {
+                FaultManager::instance().raise(FaultSource::GateDriver,
+                                               FaultReason::GateDriverNotReady);
+            }
+        } else {
+            m_gate_not_ready_since = 0;
+        }
+
+        /* Dead gates / torque loss: commanded torque absent.  The bench's
+         * normal operating point is itself voltage-limited but with real
+         * current (~-10.5 A), and the collapsed-current reading with dead
+         * gates bounces above 2 A in ~50 % of samples, so the discriminator
+         * is a filtered |iq| far below any operating current while the
+         * q-axis request is clamped at the bus limit — never the clamp
+         * alone. */
+        m_iq_abs_ema += TORQUE_LOSS_IQ_EMA_ALPHA *
+                        (std::fabs(appState.tim_isr.CurrentFrame.Iq.in(au::amperes)) - m_iq_abs_ema);
+        const float iq_ref = appState.tim_isr.IqGate.Out;
+        const float vq_req = appState.tim_isr.VectorPi.RequestedQ.in(au::volts);
+        const float vq_limit = platform_voltage_limit(
+            Inverter::dcLinkVoltageSensor().voltage(),
+            appState.tim_isr.CfgVoltLimit.Value);
+        const bool saturated = vq_limit > 1.0f &&
+                               std::fabs(vq_req) >= TORQUE_LOSS_VQ_LIMIT_FRAC * vq_limit;
+        const bool torque_absent =
+            m_iq_abs_ema < TORQUE_LOSS_IQ_EMA_MAX_A &&
+            std::fabs(iq_ref) >= TORQUE_LOSS_IQ_REF_MIN_A &&
+            saturated;
+        if (torque_absent) {
+            if (m_torque_loss_since == 0) {
+                m_torque_loss_since = HAL_GetTick();
+            } else if (HAL_GetTick() - m_torque_loss_since >= TORQUE_LOSS_DEBOUNCE_MS) {
+                FaultManager::instance().raise(FaultSource::TorqueLoss,
+                                               FaultReason::TorqueLossAbsent);
+            }
+        } else {
+            m_torque_loss_since = 0;
+        }
+    } else {
+        m_gate_not_ready_since = 0;
+        m_torque_loss_since = 0;
+        m_iq_abs_ema = 0.0f;
     }
 
     /* Critical faults force an immediate transition to Fault. */

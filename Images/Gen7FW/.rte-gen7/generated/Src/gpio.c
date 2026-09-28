@@ -83,6 +83,10 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, SPI2_CS_Pin|GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(COPROCESSOR_SYNC_GPIO_Port, COPROCESSOR_SYNC_Pin,
+                    GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(COPROCESSOR_WAKEUP_GPIO_Port, COPROCESSOR_WAKEUP_Pin,
+                    GPIO_PIN_RESET);
 
   /* Safety critical: preload the open-drain coprocessor reset latch high
      before changing PD10 from its reset-default high-impedance input mode.
@@ -123,6 +127,21 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* PD8 is the H7-to-G474 liveness line. It starts at a defined low level. */
+  GPIO_InitStruct.Pin = COPROCESSOR_SYNC_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(COPROCESSOR_SYNC_GPIO_Port, &GPIO_InitStruct);
+
+  /* PD9 requests a guarded clear of the G474's fault latch. Keep low until
+   * the main fault command intentionally raises it. */
+  GPIO_InitStruct.Pin = COPROCESSOR_WAKEUP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(COPROCESSOR_WAKEUP_GPIO_Port, &GPIO_InitStruct);
 
   /* COPROCESSOR_RESET must never be grouped with push-pull outputs. */
   GPIO_InitStruct.Pin = COPROCESSOR_RESET_Pin;

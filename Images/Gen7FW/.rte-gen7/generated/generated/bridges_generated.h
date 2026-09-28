@@ -33,31 +33,31 @@ struct BridgeICAppBridgeType {
 
 extern BridgeICAppBridgeType BridgeICAppBridge;
 
-struct BridgeIABridgeType {
-    rte::Current data;
+struct BridgeSampleEncoderSignBridgeType {
+    rte::Dimensionless data;
 
-    void store(const rte::Current& value);
-    rte::Current load() const;
+    void store(const rte::Dimensionless& value);
+    rte::Dimensionless load() const;
 };
 
-extern BridgeIABridgeType BridgeIABridge;
+extern BridgeSampleEncoderSignBridgeType BridgeSampleEncoderSignBridge;
 
-struct BridgeIBBridgeType {
-    rte::Current data;
+struct BridgeSampleOffsetDegBridgeType {
+    rte::Dimensionless data;
 
-    void store(const rte::Current& value);
-    rte::Current load() const;
+    void store(const rte::Dimensionless& value);
+    rte::Dimensionless load() const;
 };
 
-extern BridgeIBBridgeType BridgeIBBridge;
+extern BridgeSampleOffsetDegBridgeType BridgeSampleOffsetDegBridge;
 
-struct BridgeICBridgeType {
-    rte::Current data;
+struct BridgeSamplePolesBridgeType {
+    rte::Dimensionless data;
 
-    void store(const rte::Current& value);
-    rte::Current load() const;
+    void store(const rte::Dimensionless& value);
+    rte::Dimensionless load() const;
 };
 
-extern BridgeICBridgeType BridgeICBridge;
+extern BridgeSamplePolesBridgeType BridgeSamplePolesBridge;
 
 } // namespace app

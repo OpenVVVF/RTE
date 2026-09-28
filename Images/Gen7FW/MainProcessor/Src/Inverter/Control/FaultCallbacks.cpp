@@ -1,6 +1,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/CommandShell.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
+#include "Inverter/Telemetry.h"
 
 #include "main.h"
 #include "tim.h"
@@ -15,6 +16,23 @@ namespace Inverter {
 } // namespace Inverter
 
 extern "C" {
+
+void SafetyEcc_ReportFault(bool ram, bool flash, uint32_t monitor,
+                           uint32_t ram_status, uint32_t flash_status) {
+    if (ram) {
+        Inverter::FaultManager::instance().raise(
+            Inverter::FaultSource::RamEcc, Inverter::FaultReason::RamEccDetected);
+    }
+    if (flash) {
+        Inverter::FaultManager::instance().raise(
+            Inverter::FaultSource::FlashEcc, Inverter::FaultReason::FlashEccDetected);
+    }
+    Telemetry::printf(
+        "[FAULT][ECC] ram_monitor=%lu ram_status=0x%08lX flash_status=0x%08lX; reset required",
+        static_cast<unsigned long>(monitor),
+        static_cast<unsigned long>(ram_status),
+        static_cast<unsigned long>(flash_status));
+}
 
 /* TIM1 break input (PE15).  The hardware break already disables TIM1 outputs;
  * this callback latches the event so the control loop can shut down cleanly. */

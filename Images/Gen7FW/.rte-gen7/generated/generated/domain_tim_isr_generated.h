@@ -9,13 +9,6 @@
 namespace app {
 
 struct TimIsrState {
-    struct ClarkeState {
-        rte::Current I_Alpha;
-        rte::Current I_Beta;
-    };
-
-    ClarkeState Clarke;
-
     struct EncoderState {
         rte::Dimensionless Theta;
     };
@@ -182,6 +175,42 @@ struct TimIsrState {
 
     CfgLambdaState CfgLambda;
 
+    struct CfgKneeState {
+        rte::Dimensionless Value;
+        rte::Dimensionless Cached;
+        rte::Dimensionless DefaultValue;
+        const char* Key;
+    };
+
+    CfgKneeState CfgKnee;
+
+    struct CurrentFrameState {
+        rte::Current Id;
+        rte::Current Iq;
+        rte::Dimensionless Theta;
+        rte::Dimensionless AgeUs;
+        rte::Dimensionless Valid;
+        rte::Dimensionless Sequence;
+    };
+
+    CurrentFrameState CurrentFrame;
+
+    struct CfgVoltLimitState {
+        rte::Dimensionless Value;
+        rte::Dimensionless Cached;
+        rte::Dimensionless DefaultValue;
+        const char* Key;
+    };
+
+    CfgVoltLimitState CfgVoltLimit;
+
+    struct ControlSpeedState {
+        rte::Dimensionless RpmMech;
+        rte::Dimensionless RpmElec;
+    };
+
+    ControlSpeedState ControlSpeed;
+
     struct EnableCmpState {
         rte::Boolean Out;
         rte::Dimensionless B;
@@ -203,14 +232,6 @@ struct TimIsrState {
 
     MechRPMState Mech_RPM;
 
-    struct EncoderLeadCompState {
-        rte::Dimensionless ThetaOut;
-        rte::Dimensionless DelayScale;
-        rte::Dimensionless MaxLeadRad;
-    };
-
-    EncoderLeadCompState EncoderLeadComp;
-
     struct ElecRPMState {
         const char* Key;
     };
@@ -228,6 +249,57 @@ struct TimIsrState {
     };
 
     EncoderCosState EncoderCos;
+
+    struct LogIdState {
+        const char* Key;
+    };
+
+    LogIdState LogId;
+
+    struct LogIqState {
+        const char* Key;
+    };
+
+    LogIqState LogIq;
+
+    struct LogCgSampleAgeUsState {
+        const char* Key;
+    };
+
+    LogCgSampleAgeUsState Log_cg_sample_age_us;
+
+    struct LogCgSampleValidState {
+        const char* Key;
+    };
+
+    LogCgSampleValidState Log_cg_sample_valid;
+
+    struct LogCgSampleSeqState {
+        const char* Key;
+    };
+
+    LogCgSampleSeqState Log_cg_sample_seq;
+
+    struct EncoderLeadCompState {
+        rte::Dimensionless ThetaOut;
+        rte::Dimensionless DelayScale;
+        rte::Dimensionless MaxLeadRad;
+    };
+
+    EncoderLeadCompState EncoderLeadComp;
+
+    struct FocFeedforwardState {
+        rte::Voltage V_D;
+        rte::Voltage V_Q;
+    };
+
+    FocFeedforwardState FocFeedforward;
+
+    struct LogControlRpmState {
+        const char* Key;
+    };
+
+    LogControlRpmState LogControlRpm;
 
     struct ThrottleEnableState {
         rte::Boolean Value;
@@ -253,54 +325,15 @@ struct TimIsrState {
 
     IqGateState IqGate;
 
-    struct ParkState {
-        rte::Current I_D;
-        rte::Current I_Q;
+    struct VectorPiState {
+        rte::Voltage Vd;
+        rte::Voltage Vq;
+        rte::Voltage RequestedD;
+        rte::Voltage RequestedQ;
+        rte::Dimensionless Scale;
     };
 
-    ParkState Park;
-
-    struct PiDState {
-        rte::Voltage Output;
-        rte::Dimensionless AwGain;
-        rte::Dimensionless Dt;
-        rte::Voltage Feedforward;
-        rte::Dimensionless Integral;
-        rte::Dimensionless OutputMax;
-        rte::Dimensionless OutputMin;
-    };
-
-    PiDState PiD;
-
-    struct PiQState {
-        rte::Voltage Output;
-        rte::Dimensionless AwGain;
-        rte::Dimensionless Dt;
-        rte::Voltage Feedforward;
-        rte::Dimensionless Integral;
-        rte::Dimensionless OutputMax;
-        rte::Dimensionless OutputMin;
-    };
-
-    PiQState PiQ;
-
-    struct LogIdState {
-        const char* Key;
-    };
-
-    LogIdState LogId;
-
-    struct LogIqState {
-        const char* Key;
-    };
-
-    LogIqState LogIq;
-
-    struct LogVdState {
-        const char* Key;
-    };
-
-    LogVdState LogVd;
+    VectorPiState VectorPi;
 
     struct InvParkState {
         rte::Voltage V_Alpha;
@@ -309,11 +342,35 @@ struct TimIsrState {
 
     InvParkState InvPark;
 
+    struct LogVdState {
+        const char* Key;
+    };
+
+    LogVdState LogVd;
+
     struct LogVqState {
         const char* Key;
     };
 
     LogVqState LogVq;
+
+    struct LogCgVdReqVState {
+        const char* Key;
+    };
+
+    LogCgVdReqVState Log_cg_vd_req_v;
+
+    struct LogCgVqReqVState {
+        const char* Key;
+    };
+
+    LogCgVqReqVState Log_cg_vq_req_v;
+
+    struct LogCgVlimitScaleState {
+        const char* Key;
+    };
+
+    LogCgVlimitScaleState Log_cg_vlimit_scale;
 
     struct SvpwmState {
         rte::Dimensionless Duty_A;

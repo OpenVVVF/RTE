@@ -10,6 +10,16 @@ cc -std=c11 -Wall -Wextra -Werror -pedantic \
     "$script_dir/test_safety_link.c" -o "$build_dir/test_safety_link"
 "$build_dir/test_safety_link"
 cc -std=c11 -Wall -Wextra -Werror -pedantic \
+    -I"$script_dir/mock_ecc" -I"$firmware_dir/Inc" \
+    "$firmware_dir/Src/Inverter/SafetyEcc.c" \
+    "$script_dir/test_safety_ecc.c" -o "$build_dir/test_safety_ecc"
+"$build_dir/test_safety_ecc" 0
+"$build_dir/test_safety_ecc" 1
+"$build_dir/test_safety_ecc" 2
+"$build_dir/test_safety_ecc" 3
+"$build_dir/test_safety_ecc" 4
+"$build_dir/test_safety_ecc" 5
+cc -std=c11 -Wall -Wextra -Werror -pedantic \
     -I"$firmware_dir/../../../Lib/SafetyFaultLink/include" \
     -c "$firmware_dir/../../../Lib/SafetyFaultLink/src/safety_fault_wire.c" \
     -o "$build_dir/safety_fault_wire.o"

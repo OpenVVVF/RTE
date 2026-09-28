@@ -1,5 +1,6 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
+#include "Inverter/Control/ControlSupervisor.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Control/FaultManager.h"
@@ -13,6 +14,7 @@
 #include "Inverter/platform_api.h"
 
 #include "main.h"
+#include "tim.h"
 
 #include <cmath>
 
@@ -26,17 +28,22 @@ using Inverter::encoderADC;
 using Inverter::FocControlManager;
 using Inverter::OpenLoopController;
 using Inverter::FaultManager;
+using Inverter::ControlSupervisor;
 using Inverter::focControlManager;
 using Inverter::openLoopController;
 using Inverter::phaseCurrentADC;
 
-/* Enable gate-driver outputs with the proven OpenLoopController::start
- * timing: a 1 ms RESET assert clears any latched /FLT (stays under the
- * NCx5710y 8-10 ms DSCHK window), then 100 ms for the charge pump before
- * /RDY+/FLT are meaningful.  Must run unconditionally: after a stop, RESET
- * is asserted while /RDY can still read high, so a conditional "is it
- * healthy?" enable silently leaves the outputs off. */
+/* Enable the gate-driver rail and outputs with the proven
+ * OpenLoopController::start timing: a 1 ms RESET assert clears any latched
+ * /FLT (stays under the NCx5710y 8-10 ms DSCHK window), then 100 ms for the
+ * isolated DC-DC before /RDY+/FLT are meaningful.  Must re-power the rail
+ * unconditionally: after a safety sequence the rail is OFF
+ * (EnablePower(false)) and RESET is asserted while /RDY can still read high
+ * through its pull-up, so a reset-only "enable" silently leaves the drivers
+ * unpowered. */
 static bool gateDriverEnableForPulseTest() {
+    GateDriver_EnablePower(true);
+    HAL_Delay(50);
     GateDriver_DisableOutputs();
     HAL_Delay(1);
     GateDriver_EnableOutputs();
@@ -130,6 +137,14 @@ public:
                           (GPIOD->ODR & GPIO_PIN_5) ? 1 : 0,
                           (GPIOC->ODR & GPIO_PIN_10) ? 1 : 0,
                           (GPIOD->ODR & GPIO_PIN_6) ? 1 : 0);
+        Telemetry::printf("[SHELL] pins: PE15(bkin idr)=%d PC11(/flt idr)=%d PC12(/rdy idr)=%d",
+                          (GPIOE->IDR & GPIO_PIN_15) ? 1 : 0,
+                          (GPIOC->IDR & GPIO_PIN_11) ? 1 : 0,
+                          (GPIOC->IDR & GPIO_PIN_12) ? 1 : 0);
+        Telemetry::printf("[SHELL] TIM1 AF1=0x%08lX BDTR=0x%08lX SR=0x%08lX",
+                          (unsigned long)TIM1->AF1,
+                          (unsigned long)TIM1->BDTR,
+                          (unsigned long)TIM1->SR);
         FaultManager::instance().printSummary();
     }
 };
@@ -358,6 +373,10 @@ public:
         const float duty = args[1].f_val;
         const uint32_t ms = static_cast<uint32_t>(args[2].f_val + 0.5f);
 
+        if (ControlSupervisor::instance().isRunning()) {
+            Telemetry::printf("[GF] ERROR: graph control is running; stop it first (control stop)");
+            return;
+        }
         if (focControlManager().isRunning()) {
             focControlManager().stop();
             Telemetry::printf("[SHELL] stopped FOC first");
@@ -377,7 +396,8 @@ public:
         float du = 50.0f, dv = 50.0f, dw = 50.0f;
         float* duties[3] = {&du, &dv, &dw};
         *duties[phase] = duty;
-        PWM_SetThreePhaseDuty(du, dv, dw);
+        PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+        TIM1->EGR = TIM_EGR_UG;
 
         if (!gateDriverEnableForPulseTest()) {
             Telemetry::printf("[GF] ERROR: gate driver not ready or fault latched");
@@ -385,8 +405,26 @@ public:
             return;
         }
 
+        /* Arm the output stage the way ControlSupervisor::start() does.  A
+         * fault/safety sequence leaves TIM1 with a latched break (MOE
+         * blocked) and the HAL channel state machine busy, after which the
+         * plain PWM_ClearFault()+PWM_StartPhase() pair drove nothing
+         * (ready=Y fault=N, iu≈0).  PWM_Start() re-arms MOE and all channel
+         * enables robustly at the neutral 50/50/50 vector. */
         PWM_ClearFault();
-        PWM_StartPhase(phase);
+        PWM_Start();
+
+        /* Park the other two phases off WITHOUT touching MOE: per-channel
+         * HAL stops (PWM_StopPhase) also clear MOE, which would silence the
+         * target phase too.  Clear their CCxE/CCxNE bits directly instead. */
+        CLEAR_BIT(htim1.Instance->CCER,
+                  (phase == 0) ? (TIM_CCER_CC2E | TIM_CCER_CC2NE |
+                                  TIM_CCER_CC3E | TIM_CCER_CC3NE)
+                : (phase == 1) ? (TIM_CCER_CC1E | TIM_CCER_CC1NE |
+                                  TIM_CCER_CC3E | TIM_CCER_CC3NE)
+                               : (TIM_CCER_CC1E | TIM_CCER_CC1NE |
+                                  TIM_CCER_CC2E | TIM_CCER_CC2NE));
+        PWM_SetThreePhaseDuty(du, dv, dw);
         HAL_Delay(ms);
 
         /* Sample mid-pulse (gate driver still enabled, phase still firing) so
@@ -397,7 +435,13 @@ public:
         float dcl_i = Inverter::dcLinkCurrentSensor().current();
         const float enc_deg = encoderADC().extrapolatedAngleDeg();
 
-        PWM_StopPhase(phase);
+        /* Shutdown: clear every CCxE/CCxNE directly (a HAL per-channel stop
+         * would also clear MOE, which is fine here but leaves the parked
+         * phases' bookkeeping stale; the direct clear keeps it uniform). */
+        CLEAR_BIT(htim1.Instance->CCER,
+                  TIM_CCER_CC1E | TIM_CCER_CC1NE |
+                  TIM_CCER_CC2E | TIM_CCER_CC2NE |
+                  TIM_CCER_CC3E | TIM_CCER_CC3NE);
         PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
         GateDriver_DisableOutputs();
 

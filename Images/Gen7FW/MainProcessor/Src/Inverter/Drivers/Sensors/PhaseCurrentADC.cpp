@@ -482,21 +482,34 @@ float PhaseCurrentADC::countsToCurrent(uint32_t sig, uint32_t ref) const {
 bool PhaseCurrentADC::calibrateOffsets() {
     constexpr uint32_t DISCARD_SAMPLES = 500;
     constexpr uint32_t AVG_SAMPLES     = 1000;
+    constexpr uint32_t SAMPLE_TIMEOUT_MS = 100;
+
+    /* A missing injected ADC interrupt must not trap the boot sequence before
+     * the command shell can process commands or telemetry can be flushed. */
+    const auto waitForSample = [this]() {
+        const uint32_t start_ms = HAL_GetTick();
+        while (!m_new_data) {
+            if ((uint32_t)(HAL_GetTick() - start_ms) >= SAMPLE_TIMEOUT_MS) {
+                FaultManager::instance().raise(FaultSource::AdcError,
+                                               FaultReason::AdcSampleTimeout);
+                Telemetry::printf("[CUR] ERROR: no injected ADC samples during offset calibration");
+                return false;
+            }
+            __NOP();
+        }
+        return true;
+    };
 
     m_new_data = false;
     for (uint32_t i = 0; i < DISCARD_SAMPLES; ++i) {
-        while (!m_new_data) {
-            __NOP();
-        }
+        if (!waitForSample()) return false;
         m_new_data = false;
     }
 
     float sum_u = 0.0f;
     float sum_v = 0.0f;
     for (uint32_t i = 0; i < AVG_SAMPLES; ++i) {
-        while (!m_new_data) {
-            __NOP();
-        }
+        if (!waitForSample()) return false;
         sum_u += m_iu;
         sum_v += m_iv;
         m_new_data = false;

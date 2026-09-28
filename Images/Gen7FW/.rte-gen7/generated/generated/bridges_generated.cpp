@@ -53,52 +53,52 @@ rte::Dimensionless BridgeICAppBridgeType::load() const {
 
 BridgeICAppBridgeType BridgeICAppBridge;
 
-void BridgeIABridgeType::store(const rte::Current& value) {
+void BridgeSampleEncoderSignBridgeType::store(const rte::Dimensionless& value) {
     platform_critical_enter();
     data = value;
     platform_critical_exit();
 }
 
-rte::Current BridgeIABridgeType::load() const {
-    rte::Current result;
+rte::Dimensionless BridgeSampleEncoderSignBridgeType::load() const {
+    rte::Dimensionless result;
     platform_critical_enter();
     result = data;
     platform_critical_exit();
     return result;
 }
 
-BridgeIABridgeType BridgeIABridge;
+BridgeSampleEncoderSignBridgeType BridgeSampleEncoderSignBridge;
 
-void BridgeIBBridgeType::store(const rte::Current& value) {
+void BridgeSampleOffsetDegBridgeType::store(const rte::Dimensionless& value) {
     platform_critical_enter();
     data = value;
     platform_critical_exit();
 }
 
-rte::Current BridgeIBBridgeType::load() const {
-    rte::Current result;
+rte::Dimensionless BridgeSampleOffsetDegBridgeType::load() const {
+    rte::Dimensionless result;
     platform_critical_enter();
     result = data;
     platform_critical_exit();
     return result;
 }
 
-BridgeIBBridgeType BridgeIBBridge;
+BridgeSampleOffsetDegBridgeType BridgeSampleOffsetDegBridge;
 
-void BridgeICBridgeType::store(const rte::Current& value) {
+void BridgeSamplePolesBridgeType::store(const rte::Dimensionless& value) {
     platform_critical_enter();
     data = value;
     platform_critical_exit();
 }
 
-rte::Current BridgeICBridgeType::load() const {
-    rte::Current result;
+rte::Dimensionless BridgeSamplePolesBridgeType::load() const {
+    rte::Dimensionless result;
     platform_critical_enter();
     result = data;
     platform_critical_exit();
     return result;
 }
 
-BridgeICBridgeType BridgeICBridge;
+BridgeSamplePolesBridgeType BridgeSamplePolesBridge;
 
 } // namespace app

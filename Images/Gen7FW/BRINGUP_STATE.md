@@ -70,7 +70,7 @@ the connector's PH_x_HIGH/LOW pins per schematic).
   download, verify, GO, APP).
 - After flashing the main app may not boot on its own (reset-line quirk):
   full inverter power cycle fixes it (coproc RESET command does not).
-- Shell: 460800 8N1 on the bridge interface (usb-...if00), prefix first
+- Shell: 921600 8N1 on the bridge interface (usb-...if00), prefix first
   command with \r or send twice (first char eaten). Commands: status,
   fault status/sources/clear/test, control start/stop/status, start/stop <f> <m>, gatefire,
   temp, dclraw, maxcfg_raw, config get/set.

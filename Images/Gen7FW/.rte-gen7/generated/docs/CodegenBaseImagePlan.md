@@ -86,7 +86,7 @@ This is the primary codegen extension area for application behavior.
 | `APPLICATION_SENSOR_POLL_100HZ` | `Src/Inverter/Drivers/Sensors/DcLinkVoltageSensor.cpp` | 80 | Example main-loop sensor poll pattern. |
 | `FOC_SUPERVISOR_100HZ` | `Src/Inverter/Control/FocControlManager.cpp` | 582 | Main-loop FOC safety/startup/telemetry. |
 | `OPEN_LOOP_SUPERVISOR_100HZ` | `Src/Inverter/Control/OpenLoopController.cpp` | 417 | Main-loop open-loop safety/ramp. |
-| `TELEMETRY_FRAME_DISPATCH_100HZ` | `Src/Inverter/Telemetry.cpp` | 767 | `Telemetry::updateSensors()` frame sender. |
+| `TELEMETRY_FRAME_DISPATCH_200HZ` | `Src/Inverter/Telemetry.cpp` | 767 | `Telemetry::updateSensors()` frame sender. |
 | `APPLICATION_COMMAND_REGISTRATION` | `Src/Inverter/Command/CommandInitializer.cpp` | 13 | Shell command registration table. |
 
 ### 3.4 Hardware configuration / unimplemented application ADC domain

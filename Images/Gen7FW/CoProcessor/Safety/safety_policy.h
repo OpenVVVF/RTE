@@ -22,6 +22,19 @@ typedef enum {
     SAFETY_FAULT_INTERNAL = 1u << 5
 } SafetyFault;
 
+/* Retained when a fault latches. SAFETY_FAULT_POWER_NO_FEEDBACK has three
+ * possible causes; this tells the service port which check actually failed. */
+typedef enum {
+    SAFETY_TRIP_NONE,
+    SAFETY_TRIP_POWER_STUCK_ON,
+    SAFETY_TRIP_MAIN_HEARTBEAT_LOST,
+    SAFETY_TRIP_GATE_DRIVER,
+    SAFETY_TRIP_MAIN_POWER_FEEDBACK_LOST,
+    SAFETY_TRIP_OWN_POWER_FEEDBACK_LOST,
+    SAFETY_TRIP_OWN_POWER_START_TIMEOUT,
+    SAFETY_TRIP_INTERNAL
+} SafetyTripReason;
+
 typedef struct {
     bool own_power_feedback;
     bool main_power_feedback;
@@ -34,6 +47,8 @@ typedef struct {
     uint32_t faults;
     uint32_t powering_since_ms;
     bool post_passed;
+    SafetyTripReason trip_reason;
+    uint8_t trip_inputs;
 } SafetyPolicy;
 
 /* A clear request is accepted only with the second power switch open, no

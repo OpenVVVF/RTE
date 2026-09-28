@@ -39,7 +39,7 @@ def find_bridge():
 def main():
     ser = serial.Serial()
     ser.port = find_bridge()
-    ser.baudrate = 460800
+    ser.baudrate = 921600
     ser.parity = serial.PARITY_NONE
     ser.timeout = 0.25
     ser.dtr = False

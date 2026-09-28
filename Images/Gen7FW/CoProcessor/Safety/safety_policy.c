@@ -3,6 +3,22 @@
 /* A missing power-switch feedback after enable is a startup fault. */
 enum { POWER_STARTUP_TIMEOUT_MS = 150 };
 
+static uint8_t input_bits(SafetyInputs inputs)
+{
+    return (inputs.own_power_feedback ? 1u : 0u) |
+           (inputs.main_power_feedback ? 2u : 0u) |
+           (inputs.gate_fault ? 4u : 0u) |
+           (inputs.main_alive ? 8u : 0u);
+}
+
+static void trip(SafetyPolicy *policy, SafetyFault fault,
+                 SafetyTripReason reason, SafetyInputs inputs)
+{
+    SafetyPolicy_Trip(policy, fault);
+    policy->trip_reason = reason;
+    policy->trip_inputs = input_bits(inputs);
+}
+
 void SafetyPolicy_Init(SafetyPolicy *policy)
 {
     *policy = (SafetyPolicy){ .state = SAFETY_INHIBITED };
@@ -20,6 +36,9 @@ void SafetyPolicy_Trip(SafetyPolicy *policy, SafetyFault fault)
     policy->faults |= (uint32_t)fault;
     policy->state = SAFETY_FAULT_LATCHED;
     policy->post_passed = false;
+    if (policy->trip_reason == SAFETY_TRIP_NONE) {
+        policy->trip_reason = SAFETY_TRIP_INTERNAL;
+    }
 }
 
 bool SafetyPolicy_RequestArm(SafetyPolicy *policy, SafetyInputs inputs,
@@ -30,7 +49,8 @@ bool SafetyPolicy_RequestArm(SafetyPolicy *policy, SafetyInputs inputs,
         return false;
     }
     if (inputs.own_power_feedback) {
-        SafetyPolicy_Trip(policy, SAFETY_FAULT_POWER_STUCK_ON);
+        trip(policy, SAFETY_FAULT_POWER_STUCK_ON,
+             SAFETY_TRIP_POWER_STUCK_ON, inputs);
         return false;
     }
     policy->powering_since_ms = now_ms;
@@ -46,25 +66,31 @@ void SafetyPolicy_Update(SafetyPolicy *policy, SafetyInputs inputs,
     }
     if (policy->state == SAFETY_INHIBITED) {
         if (inputs.own_power_feedback) {
-            SafetyPolicy_Trip(policy, SAFETY_FAULT_POWER_STUCK_ON);
+            trip(policy, SAFETY_FAULT_POWER_STUCK_ON,
+                 SAFETY_TRIP_POWER_STUCK_ON, inputs);
         }
         return;
     }
     if (!inputs.main_alive) {
-        SafetyPolicy_Trip(policy, SAFETY_FAULT_MAIN_LOST);
+        trip(policy, SAFETY_FAULT_MAIN_LOST,
+             SAFETY_TRIP_MAIN_HEARTBEAT_LOST, inputs);
     } else if (inputs.gate_fault) {
-        SafetyPolicy_Trip(policy, SAFETY_FAULT_GATE_DRIVER);
+        trip(policy, SAFETY_FAULT_GATE_DRIVER,
+             SAFETY_TRIP_GATE_DRIVER, inputs);
     } else if (!inputs.main_power_feedback) {
-        SafetyPolicy_Trip(policy, SAFETY_FAULT_POWER_NO_FEEDBACK);
+        trip(policy, SAFETY_FAULT_POWER_NO_FEEDBACK,
+             SAFETY_TRIP_MAIN_POWER_FEEDBACK_LOST, inputs);
     } else if (policy->state == SAFETY_ARMED) {
         if (!inputs.own_power_feedback) {
-            SafetyPolicy_Trip(policy, SAFETY_FAULT_POWER_NO_FEEDBACK);
+            trip(policy, SAFETY_FAULT_POWER_NO_FEEDBACK,
+                 SAFETY_TRIP_OWN_POWER_FEEDBACK_LOST, inputs);
         }
     } else if (inputs.own_power_feedback) {
         policy->state = SAFETY_ARMED;
     } else if ((uint32_t)(now_ms - policy->powering_since_ms) >=
                POWER_STARTUP_TIMEOUT_MS) {
-        SafetyPolicy_Trip(policy, SAFETY_FAULT_POWER_NO_FEEDBACK);
+        trip(policy, SAFETY_FAULT_POWER_NO_FEEDBACK,
+             SAFETY_TRIP_OWN_POWER_START_TIMEOUT, inputs);
     }
 }
 

@@ -3,6 +3,7 @@
 #include "Inverter/Command/CommandInitializer.h"
 #include "Inverter/Command/CommandContext.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 
 #include "main.h"
 #include "usart.h"
@@ -143,14 +144,18 @@ void CommandShell::poll() {
 
                 /* Make a local copy and reset the buffer before parsing. */
                 char tmp[LINE_SIZE];
+                const size_t line_length = m_line_len;
                 std::strncpy(tmp, m_line, LINE_SIZE - 1);
                 tmp[LINE_SIZE - 1] = '\0';
 
                 m_line_len = 0;
                 m_line[0] = '\0';
 
-                /* Dispatch via the command manager framework. */
-                CommandManager::instance().processLine(tmp);
+                /* G474 safety reports share this UART with host commands.
+                 * Consume the private framed line before command dispatch. */
+                if (!CoprocessorFaults::instance().consumeLine(tmp, line_length)) {
+                    CommandManager::instance().processLine(tmp);
+                }
             }
         } else if (m_line_len < LINE_SIZE - 1) {
             m_line[m_line_len++] = static_cast<char>(b);

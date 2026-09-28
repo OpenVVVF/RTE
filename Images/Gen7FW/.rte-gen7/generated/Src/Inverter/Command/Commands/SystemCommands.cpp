@@ -1,11 +1,14 @@
 #include "Inverter/Command/CommandInterface.h"
 #include "Inverter/Command/CommandContext.h"
+#include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/SpikeRecorder.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Logging/SupplyMonitor.h"
 #include "Inverter/Telemetry.h"
+#include "Inverter/platform_api.h"
+#include <cstring>
 
 using Inverter::PhaseCurrentADC;
 using Inverter::EncoderADC;
@@ -123,6 +126,25 @@ public:
     }
 };
 
+class ControlCaptureCommand : public CommandInterface {
+public:
+    ControlCaptureCommand() : CommandInterface("ctrlcap",
+        "Bounded graph waveform capture: arm [decimation], status, dump [offset] [count<=16]",
+        {ArgSpec{"action", "", 0,0,0,true,ArgSpec::STRING},
+         ArgSpec{"value", "", 0,511,0,false,ArgSpec::FLOAT},
+         ArgSpec{"count", "", 0,16,16,false,ArgSpec::FLOAT}}) {}
+    void execute(const ArgValue* args, CommandContext&) override {
+        if (std::strcmp(args[0].s_val,"arm")==0)
+            platform_control_capture_arm(args[1].present ? uint32_t(args[1].f_val) : 1U);
+        else if (std::strcmp(args[0].s_val,"status")==0)
+            platform_control_capture_dump(0,0);
+        else if (std::strcmp(args[0].s_val,"dump")==0)
+            platform_control_capture_dump(args[1].present ? uint32_t(args[1].f_val) : 0U,
+                args[2].present ? uint32_t(args[2].f_val) : 16U);
+        else Telemetry::printf("[SHELL] ctrlcap: use arm, status or dump");
+    }
+};
+
 class EncBoundsCommand : public CommandInterface {
 public:
     EncBoundsCommand()
@@ -153,6 +175,42 @@ public:
     }
 };
 
+class GatePwrCommand : public CommandInterface {
+public:
+    GatePwrCommand()
+      : CommandInterface("gatepwr", "FAULT INJECTION: gate-driver power rail (0=off, 1=on), bypasses fault manager",
+            ArgSpec{"enable", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool on = (args[0].f_val != 0.0f);
+        GateDriver_EnablePower(on);
+        Telemetry::printf("[SHELL] gate power %s: ready=%s fault=%s",
+                          on ? "ON" : "OFF",
+                          GateDriver_IsReady() ? "Y" : "N",
+                          GateDriver_IsFault() ? "Y" : "N");
+    }
+};
+
+class GateRstCommand : public CommandInterface {
+public:
+    GateRstCommand()
+      : CommandInterface("gaterst", "FAULT INJECTION: gate-driver reset line (0=release, 1=assert), bypasses fault manager",
+            ArgSpec{"assert", "", 0.0f, 1.0f, 0.0f, true, ArgSpec::FLOAT}) {}
+
+    void execute(const ArgValue* args, CommandContext&) override {
+        const bool assert_rst = (args[0].f_val != 0.0f);
+        if (assert_rst) {
+            GateDriver_DisableOutputs();  /* /RST low: all gate outputs forced inactive */
+        } else {
+            GateDriver_EnableOutputs();   /* /RST high: release, 10 ms driver wake-up */
+        }
+        Telemetry::printf("[SHELL] gate reset %s: ready=%s fault=%s",
+                          assert_rst ? "ASSERTED" : "RELEASED",
+                          GateDriver_IsReady() ? "Y" : "N",
+                          GateDriver_IsFault() ? "Y" : "N");
+    }
+};
+
 static RawCommand          sRawCmd;
 static VZeroCommand        sVZeroCmd;
 static SupplyStatusCommand sSupplyStatusCmd;
@@ -160,7 +218,10 @@ static RebootCommand       sRebootCmd;
 static EncStatusCommand    sEncStatusCmd;
 static EncTraceCommand     sEncTraceCmd;
 static SpikeDumpCommand    sSpikeDumpCmd;
+static ControlCaptureCommand sControlCaptureCmd;
 static EncBoundsCommand    sEncBoundsCmd;
+static GatePwrCommand      sGatePwrCmd;
+static GateRstCommand      sGateRstCmd;
 
 #include "Inverter/Command/CommandManager.h"
 
@@ -172,5 +233,8 @@ void registerSystemCommands(CommandManager& mgr) {
     mgr.registerCommand(&sEncStatusCmd);
     mgr.registerCommand(&sEncTraceCmd);
     mgr.registerCommand(&sSpikeDumpCmd);
+    mgr.registerCommand(&sControlCaptureCmd);
     mgr.registerCommand(&sEncBoundsCmd);
+    mgr.registerCommand(&sGatePwrCmd);
+    mgr.registerCommand(&sGateRstCmd);
 }
