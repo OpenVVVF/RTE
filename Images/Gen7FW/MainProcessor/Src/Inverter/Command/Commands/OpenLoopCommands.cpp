@@ -442,6 +442,7 @@ public:
                   TIM_CCER_CC1E | TIM_CCER_CC1NE |
                   TIM_CCER_CC2E | TIM_CCER_CC2NE |
                   TIM_CCER_CC3E | TIM_CCER_CC3NE);
+        PWM_Stop();
         PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
         GateDriver_DisableOutputs();
 

@@ -295,7 +295,8 @@ private:
         { FaultSource::GateDriver,       "GateDriver",       "Gate Drive",   "legacy generic gate-driver fault",         FaultSeverity::Critical },
         { FaultSource::PwmBreak,         "PwmBreak",         "Gate Drive",   "hardware DESAT break event",               FaultSeverity::Critical },
         { FaultSource::Max22530Ov,       "Max22530Ov",       "Voltage Sense","Vbus overvoltage (MAX22530 comparator)",   FaultSeverity::Critical },
-        { FaultSource::Max22530Uv,       "Max22530Uv",       "Voltage Sense","Vbus undervoltage (MAX22530 comparator)",  FaultSeverity::Warning  },
+        // Comparator UV must stop actuation; DcLinkUvDerate is the separate warning-level clamp.
+        { FaultSource::Max22530Uv,       "Max22530Uv",       "Voltage Sense","Vbus undervoltage (MAX22530 comparator)",  FaultSeverity::Critical },
         { FaultSource::Max22530Adc,      "Max22530Adc",      "Isolated ADC", "MAX22530 ADC functionality diagnostic",    FaultSeverity::High     },
         { FaultSource::Max22530Comm,     "Max22530Comm",     "Isolated ADC", "MAX22530 SPI framing/internal CRC error",  FaultSeverity::High     },
         { FaultSource::Max22530Field,    "Max22530Field",    "Isolated ADC", "MAX22530 field-side data-loss",            FaultSeverity::High     },
@@ -315,7 +316,7 @@ private:
         { FaultSource::SupplyVosrdy,     "SupplyVosrdy",     "Supply",       "voltage scaling ready lost",               FaultSeverity::Critical },
         { FaultSource::FramComm,         "FramComm",         "Storage",      "SPI4 / F-RAM communication error",         FaultSeverity::High     },
         { FaultSource::AdcWatchdog,      "AdcWatchdog",      "STM32 ADC",    "ADC analog watchdog overcurrent",          FaultSeverity::Critical },
-        { FaultSource::ThrottlePlausibility, "ThrottlePlausibility", "Throttle", "throttle A/B channels disagree",       FaultSeverity::Warning  },
+        { FaultSource::ThrottlePlausibility, "ThrottlePlausibility", "Throttle", "throttle A/B channels disagree",       FaultSeverity::Critical },
         { FaultSource::TempSensor,       "TempSensor",       "Temperature",  "temperature sensor open/short",            FaultSeverity::Warning  },
         { FaultSource::OvertemperatureMotor,    "OvertemperatureMotor",    "Temperature", "motor temperature above limit",        FaultSeverity::Critical },
         { FaultSource::OvertemperatureInverter, "OvertemperatureInverter", "Temperature", "board temperature above limit",        FaultSeverity::Critical },
@@ -331,6 +332,12 @@ private:
         { FaultSource::RamEcc,           "RamEcc",           "Memory",       "RAM ECC event; reset required",               FaultSeverity::Critical },
         { FaultSource::FlashEcc,         "FlashEcc",         "Memory",       "flash ECC event; reset required",             FaultSeverity::Critical },
     };
+    static_assert(s_meta[3].source == FaultSource::Max22530Uv &&
+                  s_meta[3].severity == FaultSeverity::Critical,
+                  "MAX22530 comparator UV must remain a Critical safe-stop fault");
+    static_assert(s_meta[23].source == FaultSource::ThrottlePlausibility &&
+                  s_meta[23].severity == FaultSeverity::Critical,
+                  "Throttle plausibility mismatch must remain a Critical safe-stop fault");
 };
 
 constexpr size_t FaultManager::metaCount() {

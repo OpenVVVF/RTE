@@ -203,6 +203,8 @@ private:
 
     volatile uint32_t  m_irq_cnt            = 0;
     volatile uint32_t  m_dma_cnt            = 0;
+    volatile uint32_t  m_last_dma_ms        = 0;
+    uint32_t           m_last_poll_ms       = 0;
     volatile uint32_t  m_err_cnt            = 0;
     volatile uint32_t  m_dma_start_fail_cnt = 0;
     volatile uint32_t  m_crc_error_cnt      = 0;

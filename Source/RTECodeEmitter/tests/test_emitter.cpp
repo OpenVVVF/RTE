@@ -71,7 +71,7 @@ TEST(Emitter, Gen7CurrentGraphReadsCompletedAdcBurst) {
         ASSERT_NE(position, std::string::npos) << prerequisite;
         EXPECT_LT(position, step) << prerequisite;
     }
-    EXPECT_NE(callback.find("1.0f / PWM_GetFrequency()"), std::string::npos);
+    EXPECT_NE(callback.find("1.0f / PWM_GetUpdateFrequency()"), std::string::npos);
     const auto saveDt = callback.find("const float interrupted_domain_dt = platform_get_current_domain_dt();");
     const auto restoreDt = callback.find("platform_set_current_domain_dt(interrupted_domain_dt);");
     ASSERT_NE(saveDt, std::string::npos);

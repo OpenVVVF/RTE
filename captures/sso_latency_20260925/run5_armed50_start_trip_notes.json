@@ -1,0 +1,13 @@
+{
+ "run": "SSO-LAT_run5_armed50-start",
+ "date": "2026-09-26",
+ "event": "hwocset 50 armed at IDLE, control start with IqVar=0 -> immediate AdcWatchdog + PhaseOvercurrent trip",
+ "operator_observation": "Audible current spike; oscilloscope current probe showed >300 A real phase current at 50 V bus.",
+ "spike_capture": "firmware capture #1: iu max +1230 A, iv min -1429 A over 25.6 ms @ 2.5 kHz (values beyond LA37S600 range; mix of real transient and post-trip sensor-power-loss railing)",
+ "status": "under firmware investigation (fix-forward)",
+ "operator_clarifications": [
+  "current measured on motor PHASE LEAD (not DC-link shoot-through)",
+  "motor was still spinning (~-2000 RPM coasting) at the armed control start; ~2-3 s after control stop from -15 A / 2180 RPM",
+  "operator hypothesis: PWM re-enabled with 50/50/50 or stale duties into spinning motor -> back-EMF drives uncontrolled phase current"
+ ]
+}

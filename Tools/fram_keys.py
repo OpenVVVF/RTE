@@ -9,7 +9,7 @@ the RteParamStore key/value store in FRAM.  This tool uses those commands to:
   * list          -- print current FRAM keys to stdout
 
 Connection methods (pick one):
-  * Direct serial: --port /dev/ttyACM0 [--baud 460800]
+  * Direct serial: --port /dev/ttyACM0 [--baud 921600]
   * NodeGUI HTTP API: --http http://localhost:8080
 
 Examples:
@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional, Protocol, Tuple
 
-DEFAULT_BAUD = 460800
+DEFAULT_BAUD = 921600
 DEFAULT_QUIET_TIMEOUT = 0.25
 DEFAULT_READ_TIMEOUT = 2.0
 

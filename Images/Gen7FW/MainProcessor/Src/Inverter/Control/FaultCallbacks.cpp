@@ -46,7 +46,14 @@ void HAL_TIMEx_BreakCallback(TIM_HandleTypeDef* htim) {
          * During boot the gate driver is held in reset, so /FLT may be low
          * and the break flag asserts even though there is no run-time fault.
          * Only latch a fault once the gate driver has left reset and is ready. */
-        if (GateDriver_IsReady()) {
+        /* Critical software faults also issue TIM1 EGR.BG to open the
+         * switches.  That raises the same break interrupt without a gate
+         * driver fault.  Attribute DESAT only when the physical break or
+         * /FLT input is low; otherwise retain the original critical fault. */
+        const bool physical_break =
+            HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_15) == GPIO_PIN_RESET ||
+            GateDriver_IsFault();
+        if (GateDriver_IsReady() && physical_break) {
             Inverter::FaultManager::instance().raise(
                 Inverter::FaultSource::PwmBreak, Inverter::FaultReason::DesatBreak);
         }

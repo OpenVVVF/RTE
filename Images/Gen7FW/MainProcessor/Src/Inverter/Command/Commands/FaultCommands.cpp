@@ -293,6 +293,24 @@ void clearFaults(const char* scope) {
         GateDriver_EnablePower(true);
         SafetyLink_Resume();
         HAL_Delay(60);
+        if (GateDriver_IsFault()) {
+            /* A real DESAT leaves the shared /FLT line low after the G474
+             * opens PWR2. Its guarded clear must refuse while /FLT is low,
+             * so release /RST once to clear the driver's latch, then hold
+             * the outputs in reset before asking the G474 to re-arm. TIM1
+             * break and PWR2 still keep the power stage off throughout. */
+            GateDriver_EnableOutputs();
+            GateDriver_DisableOutputs();
+            HAL_Delay(1);
+            if (GateDriver_IsFault()) {
+                faults.raise(FaultSource::GateDriver,
+                             Inverter::FaultReason::GateDriverFaultPin);
+                faults.executeSafetyActions();
+                Telemetry::printf("[FAULT][COPROCESSOR] clear refused: gate /FLT remains asserted after reset");
+                return;
+            }
+            Telemetry::printf("[FAULT][COPROCESSOR] gate /FLT latch cleared with outputs held in reset");
+        }
         coprocessor_requested = coprocessor.requestClear();
         if (!coprocessor_requested) {
             faults.raise(FaultSource::GateDriverUvlo,

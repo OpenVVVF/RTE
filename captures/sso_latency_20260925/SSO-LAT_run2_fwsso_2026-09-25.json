@@ -1,0 +1,236 @@
+{
+ "run": "SSO-LAT_run2_fwsso",
+ "inject": "fault test GateDriver",
+ "iq": -15.0,
+ "steps": [],
+ "pre_injection": {
+  "Mech_RPM": -2198.7607421875,
+  "cg_iq_a": -12.741177558898926,
+  "control_outputs_enabled": 1.0,
+  "control_state": "RUNNING",
+  "gate_ready": 1.0,
+  "pwm_moe": 1.0,
+  "vdc_v": 49.267967224121094
+ },
+ "injection": {
+  "host_t0": 1790399725.9291842,
+  "host_t1": 1790399726.0966153,
+  "console": [
+   "[CLI] > fault test GateDriver",
+   "[CLI] sent",
+   "[FAULT] injected test fault GateDriver",
+   "[SAFETY] Critical fault -> PWM break, gate driver reset, power off",
+   "[SUP] critical fault -> FAULT",
+   "[FAULT][C][Gate Drive] GateDriver triggered: injected by user"
+  ]
+ },
+ "post_injection": {
+  "Mech_RPM": -2048.406494140625,
+  "cg_iq_a": 2.5192713737487793,
+  "control_outputs_enabled": 0.0,
+  "control_state": "FAULT",
+  "fault_flags_hex": "0x00000001",
+  "gate_ready": 0.0,
+  "pwm_moe": 0.0
+ },
+ "csv": "/home/tliao/Desktop/RTE/captures/sso_latency_20260925/SSO-LAT_run2_fwsso_2026-09-25.csv",
+ "fault_string_history": {
+  "returned_samples": 20,
+  "samples": [
+   {
+    "time_s": 553.688016342,
+    "value": "none"
+   },
+   {
+    "time_s": 555.575534042,
+    "value": "none"
+   },
+   {
+    "time_s": 555.703664527,
+    "value": "none"
+   },
+   {
+    "time_s": 556.696344889,
+    "value": "none"
+   },
+   {
+    "time_s": 557.68780638,
+    "value": "none"
+   },
+   {
+    "time_s": 558.680042254,
+    "value": "none"
+   },
+   {
+    "time_s": 559.704451603,
+    "value": "none"
+   },
+   {
+    "time_s": 560.696373701,
+    "value": "none"
+   },
+   {
+    "time_s": 561.688022898,
+    "value": "none"
+   },
+   {
+    "time_s": 562.712064715,
+    "value": "none"
+   },
+   {
+    "time_s": 563.704331246,
+    "value": "none"
+   },
+   {
+    "time_s": 565.559670102,
+    "value": "none"
+   },
+   {
+    "time_s": 565.688492756,
+    "value": "none"
+   },
+   {
+    "time_s": 566.712239721,
+    "value": "none"
+   },
+   {
+    "time_s": 567.6724861,
+    "value": "none"
+   },
+   {
+    "time_s": 568.696345106,
+    "value": "none"
+   },
+   {
+    "time_s": 569.400062169,
+    "value": "GateDriver"
+   },
+   {
+    "time_s": 569.688207003,
+    "value": "GateDriver"
+   },
+   {
+    "time_s": 570.712281842,
+    "value": "GateDriver"
+   },
+   {
+    "time_s": 571.7285684,
+    "value": "GateDriver"
+   }
+  ],
+  "signal": "fault_active_names",
+  "status": {
+   "age_s": 0.478253737,
+   "fresh": true,
+   "state": "live",
+   "timeout_s": 2.0
+  },
+  "token_note": "Raw samples are bounded for MCP context. Use rte_device_trends for compact analysis or rte_device_history_export for a full local CSV."
+ },
+ "console_tail": {
+  "latest_seq": 177,
+  "lines": [
+   {
+    "seq": 153,
+    "text": "[SHELL] control started: MAIN motor control (RTE graph)"
+   },
+   {
+    "seq": 154,
+    "text": "[MCP] rte_device_command_response \u2014 completed"
+   },
+   {
+    "seq": 155,
+    "text": "[MCP] rte_device_command_response {\"max_lines\":12,\"timeout_ms\":3000} \u2014 started"
+   },
+   {
+    "seq": 156,
+    "text": "[MCP] > control status"
+   },
+   {
+    "seq": 157,
+    "text": "[MCP] sent"
+   },
+   {
+    "seq": 158,
+    "text": "[SHELL] MAIN motor control (RTE graph) state=RUNNING running=Y faulted=N"
+   },
+   {
+    "seq": 159,
+    "text": "[MCP] rte_device_command_response \u2014 completed"
+   },
+   {
+    "seq": 160,
+    "text": "[MCP] rte_device_snapshot {\"signals\":[\"pwm_moe\",\"gate_ready\",\"gate_fault\",\"control_outputs_enabled\",\"cg_iq_a\",\"cg_iu_a\",\"Mech_RPM\",\"vdc_v\",\"hz_app_loop\"]} \u2014 started"
+   },
+   {
+    "seq": 161,
+    "text": "[CLI] > control stop"
+   },
+   {
+    "seq": 162,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 163,
+    "text": "[SUP] STOPPED"
+   },
+   {
+    "seq": 164,
+    "text": "[SHELL] control stopped: MAIN motor control (RTE graph)"
+   },
+   {
+    "seq": 165,
+    "text": "[CLI] > control start"
+   },
+   {
+    "seq": 166,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 167,
+    "text": "[SUP] STARTED f_sw=2500 Hz f_u=5000 Hz"
+   },
+   {
+    "seq": 168,
+    "text": "[SHELL] control started: MAIN motor control (RTE graph)"
+   },
+   {
+    "seq": 169,
+    "text": "[CLI] > var set IqVar -15"
+   },
+   {
+    "seq": 170,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 171,
+    "text": "[SHELL] IqVar = -15.0000"
+   },
+   {
+    "seq": 172,
+    "text": "[CLI] > fault test GateDriver"
+   },
+   {
+    "seq": 173,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 174,
+    "text": "[FAULT] injected test fault GateDriver"
+   },
+   {
+    "seq": 175,
+    "text": "[SAFETY] Critical fault -> PWM break, gate driver reset, power off"
+   },
+   {
+    "seq": 176,
+    "text": "[SUP] critical fault -> FAULT"
+   },
+   {
+    "seq": 177,
+    "text": "[FAULT][C][Gate Drive] GateDriver triggered: injected by user"
+   }
+  ],
+  "session_epoch": 1
+ }
+}

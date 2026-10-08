@@ -802,8 +802,14 @@ void EncoderADC::diagnose() {
         m_reject_pub_count = m_reject_count;
     }
 
+    /* Read the DMA timestamp before reading the clock.  The DMA ISR can
+     * update m_last_sample_ms while diagnose() runs; comparing it with the
+     * now_ms captured at entry would unsigned-underflow when a sample lands
+     * in the next millisecond and falsely report a timeout. */
+    const uint32_t last_sample_ms = m_last_sample_ms;
+    const uint32_t sample_check_ms = HAL_GetTick();
     if (encoder_required &&
-        (now_ms - m_last_sample_ms) > SAMPLE_TIMEOUT_MS) {
+        (sample_check_ms - last_sample_ms) > SAMPLE_TIMEOUT_MS) {
         FaultManager::instance().raise(FaultSource::EncoderTimeout,
                                        FaultReason::EncoderSampleTimeout);
     }

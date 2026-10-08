@@ -195,12 +195,10 @@ bool OpenLoopController::init() {
     /* Park all phases at 50 % (zero voltage vector). */
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
 
-    /* Gate-driver RESET is owned by GateDriver_Init() (boot sequence):
-     * assert -> power -> release.  Do NOT touch it here — /RDY is not yet
-     * high at this point in boot, so any "is it healthy?" check misfires
-     * and re-kneeling the driver leaves it in reset forever (RESET net 0 V,
-     * no switching).  Outputs are parked at 50 % with MOE off, so there is
-     * no switching burst either way. */
+    /* Offset calibration needs the PWM timing and isolated supplies, but
+     * must not energize the bridge.  GateDriver_Init() has already released
+     * reset, so assert it again before enabling any TIM1 output channel. */
+    GateDriver_DisableOutputs();
 
     /* Make sure the gate-driver power rail is explicitly enabled.  This is
      * redundant with InverterMain::init() but preserves the old init sequence
@@ -210,7 +208,7 @@ bool OpenLoopController::init() {
                       GPIO_PIN_SET);
     HAL_Delay(50);
 
-    /* Start TIM1 PWM outputs while the gate driver is still in reset.
+    /* Start TIM1 PWM outputs while the gate driver is held in reset.
      * The power stage cannot switch, but the gate-driver input pins and the
      * isolated supplies see the same operating load/state as a later manual
      * `cal`.  The current-sensor zero point shifts once this rail is loaded,
@@ -218,7 +216,9 @@ bool OpenLoopController::init() {
     PWM_ClearFault();
     PWM_Start();
     HAL_Delay(100);
-    if (!phaseCurrentADC().recalibrateOffsets()) {
+    const bool offsets_ok = phaseCurrentADC().recalibrateOffsets();
+    PWM_Stop();
+    if (!offsets_ok) {
         Telemetry::printf("[OL] ERROR: init offset calibration failed");
         return false;
     }
@@ -255,7 +255,9 @@ bool OpenLoopController::recalibrateOffsets() {
     PWM_Start();
     HAL_Delay(100);
 
-    if (!phaseCurrentADC().recalibrateOffsets()) {
+    const bool offsets_ok = phaseCurrentADC().recalibrateOffsets();
+    PWM_Stop();
+    if (!offsets_ok) {
         Telemetry::printf("[OL] ERROR: offset recalibration failed");
         return false;
     }

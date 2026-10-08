@@ -327,6 +327,9 @@ no coprocessor reflash is needed.
   the clear. When the G474 has latched PWR2 off, issue `fault clear all`, wait
   for `coprocessor_safety_state=ARMED` and no coprocessor faults, then issue
   `fault clear all` again to recheck gate hardware and re-arm TIM1 break.
+  If a real driver fault left `/FLT` asserted, the first clear briefly releases
+  and reasserts gate reset while PWR2 and PWM remain off; a persistent `/FLT`
+  aborts recovery. This reset step requires an updated H7 image.
   The H7 initializes its used RAM banks before clearing startup ECC flags;
   later ECC events remain Critical and require an H7 reset. The
   `fault_flags_hex` string signal is the widened

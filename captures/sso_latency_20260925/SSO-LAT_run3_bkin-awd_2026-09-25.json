@@ -1,0 +1,263 @@
+{
+ "run": "SSO-LAT_run3_bkin-awd",
+ "inject": "var set IqVar -15",
+ "iq": -15.0,
+ "steps": [
+  {
+   "fault_clear": [
+    "[CLI] > fault clear",
+    "[CLI] sent",
+    "[FAULT] clear refused: stop control/PWM before clearing gate faults"
+   ]
+  },
+  {
+   "pre: hwocset 8": [
+    "[CLI] > hwocset 8",
+    "[CLI] sent",
+    "[SHELL] hardware overcurrent threshold set to 8.000 A",
+    "[FAULT][C][STM32 ADC] AdcWatchdog triggered: ADC1 injected out of window",
+    "[SAFETY] Critical fault -> PWM break, gate driver reset, power off",
+    "[FAULT][W][Encoder] EncoderOutOfRange triggered: encoder signal at rail",
+    "[FAULT][C][Current Sense] PhaseOvercurrent triggered: software overcurrent"
+   ]
+  },
+  {
+   "control_start": [
+    "[CLI] > control start",
+    "[CLI] sent",
+    "[SUP] ERROR: active Critical/High faults",
+    "[FAULT][C][Current Sense] PhaseOvercurrent: phase current above safe limit (software overcurrent)",
+    "[FAULT][W][Encoder] EncoderOutOfRange: encoder signal stuck at rail (encoder signal at rail)",
+    "[FAULT][C][STM32 ADC] AdcWatchdog: ADC analog watchdog overcurrent (ADC1 injected out of window)",
+    "[SHELL] control start failed: MAIN motor control (RTE graph)"
+   ]
+  }
+ ],
+ "pre_injection": {
+  "Mech_RPM": -0.1779661476612091,
+  "cg_iq_a": -3303.644775390625,
+  "control_outputs_enabled": 0.0,
+  "control_state": "IDLE",
+  "gate_ready": 0.0,
+  "pwm_moe": 0.0,
+  "vdc_v": 49.267967224121094
+ },
+ "injection": {
+  "host_t0": 1790402416.0368257,
+  "host_t1": 1790402416.1563005,
+  "console": [
+   "[CLI] > var set IqVar -15",
+   "[CLI] sent",
+   "[SHELL] IqVar = -15.0000"
+  ]
+ },
+ "post_injection": {
+  "Mech_RPM": -0.020489320158958435,
+  "cg_iq_a": -3304.6513671875,
+  "control_outputs_enabled": 0.0,
+  "control_state": "IDLE",
+  "fault_flags_hex": "0x08402080",
+  "gate_ready": 0.0,
+  "pwm_moe": 0.0
+ },
+ "csv": "/home/tliao/Desktop/RTE/captures/sso_latency_20260925/SSO-LAT_run3_bkin-awd_2026-09-25.csv",
+ "fault_string_history": {
+  "returned_samples": 20,
+  "samples": [
+   {
+    "time_s": 3243.248464813,
+    "value": "none"
+   },
+   {
+    "time_s": 3244.240671107,
+    "value": "none"
+   },
+   {
+    "time_s": 3245.264319523,
+    "value": "none"
+   },
+   {
+    "time_s": 3245.64792093,
+    "value": "none"
+   },
+   {
+    "time_s": 3246.256665633,
+    "value": "none"
+   },
+   {
+    "time_s": 3247.247635277,
+    "value": "none"
+   },
+   {
+    "time_s": 3248.272315192,
+    "value": "none"
+   },
+   {
+    "time_s": 3249.264002803,
+    "value": "none"
+   },
+   {
+    "time_s": 3250.256191887,
+    "value": "none"
+   },
+   {
+    "time_s": 3251.280383279,
+    "value": "none"
+   },
+   {
+    "time_s": 3252.272416208,
+    "value": "none"
+   },
+   {
+    "time_s": 3253.232070834,
+    "value": "none"
+   },
+   {
+    "time_s": 3254.256034065,
+    "value": "none"
+   },
+   {
+    "time_s": 3255.248428562,
+    "value": "none"
+   },
+   {
+    "time_s": 3256.272005595,
+    "value": "PhaseOvercurrent,EncoderOutOfRange,AdcWatchdog"
+   },
+   {
+    "time_s": 3257.26372015,
+    "value": "PhaseOvercurrent,EncoderOutOfRange,AdcWatchdog,CurrentSensorRef"
+   },
+   {
+    "time_s": 3258.255585913,
+    "value": "PhaseOvercurrent,EncoderOutOfRange,AdcWatchdog,CurrentSensorRef"
+   },
+   {
+    "time_s": 3259.279859907,
+    "value": "PhaseOvercurrent,EncoderOutOfRange,AdcWatchdog,CurrentSensorRef"
+   },
+   {
+    "time_s": 3260.272390354,
+    "value": "PhaseOvercurrent,EncoderOutOfRange,AdcWatchdog,CurrentSensorRef"
+   },
+   {
+    "time_s": 3261.264456411,
+    "value": "PhaseOvercurrent,EncoderOutOfRange,AdcWatchdog,CurrentSensorRef"
+   }
+  ],
+  "signal": "fault_active_names",
+  "status": {
+   "age_s": 0.964846111,
+   "fresh": true,
+   "state": "live",
+   "timeout_s": 2.0
+  },
+  "token_note": "Raw samples are bounded for MCP context. Use rte_device_trends for compact analysis or rte_device_history_export for a full local CSV."
+ },
+ "console_tail": {
+  "latest_seq": 583,
+  "lines": [
+   {
+    "seq": 559,
+    "text": "[CLI] > dclraw"
+   },
+   {
+    "seq": 560,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 561,
+    "text": "[SHELL] dclink raw sig=32258 ref=32298 diff=-40 offset=-2.468 A valid=1"
+   },
+   {
+    "seq": 562,
+    "text": "[CLI] > fault clear"
+   },
+   {
+    "seq": 563,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 564,
+    "text": "[FAULT] clear refused: stop control/PWM before clearing gate faults"
+   },
+   {
+    "seq": 565,
+    "text": "[CLI] > hwocset 8"
+   },
+   {
+    "seq": 566,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 567,
+    "text": "[SHELL] hardware overcurrent threshold set to 8.000 A"
+   },
+   {
+    "seq": 568,
+    "text": "[FAULT][C][STM32 ADC] AdcWatchdog triggered: ADC1 injected out of window"
+   },
+   {
+    "seq": 569,
+    "text": "[SAFETY] Critical fault -> PWM break, gate driver reset, power off"
+   },
+   {
+    "seq": 570,
+    "text": "[FAULT][W][Encoder] EncoderOutOfRange triggered: encoder signal at rail"
+   },
+   {
+    "seq": 571,
+    "text": "[FAULT][C][Current Sense] PhaseOvercurrent triggered: software overcurrent"
+   },
+   {
+    "seq": 572,
+    "text": "[CLI] > control start"
+   },
+   {
+    "seq": 573,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 574,
+    "text": "[SUP] ERROR: active Critical/High faults"
+   },
+   {
+    "seq": 575,
+    "text": "[FAULT][C][Current Sense] PhaseOvercurrent: phase current above safe limit (software overcurrent)"
+   },
+   {
+    "seq": 576,
+    "text": "[FAULT][W][Encoder] EncoderOutOfRange: encoder signal stuck at rail (encoder signal at rail)"
+   },
+   {
+    "seq": 577,
+    "text": "[FAULT][C][STM32 ADC] AdcWatchdog: ADC analog watchdog overcurrent (ADC1 injected out of window)"
+   },
+   {
+    "seq": 578,
+    "text": "[SHELL] control start failed: MAIN motor control (RTE graph)"
+   },
+   {
+    "seq": 579,
+    "text": "[CUR] sensor ref implausible: U=0.00 V V=0.00 V (window 1.4..1.9)"
+   },
+   {
+    "seq": 580,
+    "text": "[FAULT][W][Current Sense] CurrentSensorRef triggered: reference out of window"
+   },
+   {
+    "seq": 581,
+    "text": "[CLI] > var set IqVar -15"
+   },
+   {
+    "seq": 582,
+    "text": "[CLI] sent"
+   },
+   {
+    "seq": 583,
+    "text": "[SHELL] IqVar = -15.0000"
+   }
+  ],
+  "session_epoch": 1
+ }
+}

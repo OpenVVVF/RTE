@@ -358,6 +358,9 @@ outputs in reset and request its guarded clear. Wait until the G474 reports
 `ARMED` with no faults, then run `fault clear all` again to reset/recheck the
 gate driver and re-arm the TIM1 break interrupt. The first command returns
 before the H7 command shell can parse the G474's response.
+When a real driver DESAT leaves `/FLT` low, the first clear briefly releases
+and reasserts gate reset with PWR2 and PWM off. It aborts recovery if `/FLT`
+remains low. This recovery step requires an updated H7 image.
 An ECC fault is Critical and cannot be cleared without an H7 reset. Its
 diagnostic loop leaves the shell and fault telemetry available while keeping
 PWM and gate power off. Reset startup initializes all RAM banks used by this

@@ -47,7 +47,9 @@ before that independent shutdown path can be enabled.
   for over 250 ms revokes power. The H7 stops sending edges on a critical
   fault and after 500 ms of stalled application loop while actuating.
   When this latch has opened PWR2, the H7 `fault clear all` path requests the
-  G474 clear with gate outputs held in reset. After the G474 reports `ARMED`,
+  G474 clear with gate outputs held in reset. If a real DESAT left /FAULT low,
+  the H7 briefly releases and reasserts gate reset while PWR2 and PWM remain
+  off, and aborts recovery if /FAULT stays low. After the G474 reports `ARMED`,
   a second `fault clear all` rechecks gate hardware and re-arms TIM1 break.
 - Control-port `STATUS` retains `SAFETY_TRIP` and `SAFETY_TRIP_INPUTS` when a
   fault latches, plus the current `PWR2_EN` command. Trip values 4, 5, and 6
@@ -89,9 +91,14 @@ before that independent shutdown path can be enabled.
 - The G474 has no direct DC-link voltage input in the checked control-board
   netlist. Bus overvoltage detection currently relies on the H7's MAX22530
   input and comparator, so it is not an independent coprocessor monitor.
-- The H7 firmware treats throttle and CAN loss as warnings for this interim
-  no-throttle bench configuration. DC-link undervoltage is also a warning
-  because a disconnected HV bus is normal during bench setup. Encoder loss
+- The H7 classifies a latched throttle A/B plausibility fault as Critical;
+  that severity was restored after the initial G474 safety merge. The
+  analog detection threshold remains 10% sustained for 100 ms, while FSR-01
+  requires a trip above 5% and independent detection on both MCUs. A
+  software fault injection confirmed the H7 safe-state action, but physical
+  dual-throttle behavior has not been verified. CAN loss remains a warning
+  in this interim bench configuration. The MAX22530 critical-UV comparator
+  fault is Critical; the lower UV derate threshold is a warning. Encoder loss
   during closed-loop actuation,
   ADC overcurrent, DC-link overvoltage, detected RAM or flash ECC, and
   heartbeat/power faults shut down. RAM ECC is interrupt driven; flash ECC

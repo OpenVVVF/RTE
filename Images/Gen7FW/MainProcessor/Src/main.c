@@ -108,6 +108,16 @@ int main(void)
   MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_TIM1_Init();
+  /* A bootloader jump can leave TIM1 output-enable bits set from the
+   * previous app.  The gate driver remains in reset at this point; force
+   * every PWM channel and MOE off before it is released during init().
+   * The timer counter may still run for current sensing while control is
+   * IDLE. */
+  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
+  CLEAR_BIT(TIM1->CCER,
+            TIM_CCER_CC1E | TIM_CCER_CC1NE |
+            TIM_CCER_CC2E | TIM_CCER_CC2NE |
+            TIM_CCER_CC3E | TIM_CCER_CC3NE);
   /* ECC monitoring is armed after the diagnostic shell is initialized in
    * InverterMain_Run(), so a startup ECC trip remains observable. */
   MX_ADC1_Init();

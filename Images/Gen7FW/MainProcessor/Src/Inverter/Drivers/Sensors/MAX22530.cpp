@@ -650,6 +650,7 @@ void MAX22530::onInterrupt() {
 
 void MAX22530::onDmaComplete() {
     ++m_dma_cnt;
+    m_last_dma_ms = HAL_GetTick();
     HAL_GPIO_WritePin(m_cs_port, m_cs_pin, GPIO_PIN_SET);
     m_dma_busy = false;
 
@@ -746,8 +747,32 @@ MAX22530* MAX22530::instanceForPin(uint16_t pin) {
 }
 
 void MAX22530::update() {
-    /* The SPI read already happened in onInterrupt(); just acknowledge the
-     * new-sample flag for callers that use dataReady(). */
+    /* A UV/OV comparator can hold INT low after an event.  EXTI is configured
+     * for falling edges, so no further EEOC edge arrives even if the bus
+     * later recovers.  Poll a filtered burst when DMA has stalled: the burst
+     * reads/clears INTERRUPT_STATUS and keeps the voltage live while the
+     * comparator condition persists.  Detect the missed DMA stream within
+     * one millisecond and poll at 1 kHz until edge-driven DMA resumes.  The
+     * fault remains latched separately. */
+    const uint32_t last_dma_ms = m_last_dma_ms;
+    const uint32_t now_ms = HAL_GetTick();
+    if (m_int_enable != 0U && !m_dma_busy &&
+        (now_ms - last_dma_ms) >= 1U &&
+        (now_ms - m_last_poll_ms) >= 1U) {
+        m_last_poll_ms = now_ms;
+        uint16_t counts[4] = {};
+        uint16_t status = 0;
+        if (burstReadFiltered(counts, &status)) {
+            for (uint8_t i = 0; i < 4U; ++i) {
+                m_voltages[i] = countsToVoltage(counts[i]);
+            }
+            m_int_status = status;
+            raiseFaultsFromInterruptStatus(status);
+            m_data_ready = true;
+            return;
+        }
+    }
+    /* The regular SPI read happened in the DMA completion callback. */
     m_data_ready = false;
 }
 
