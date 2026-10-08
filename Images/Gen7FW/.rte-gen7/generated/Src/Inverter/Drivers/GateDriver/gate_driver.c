@@ -19,25 +19,14 @@
 
 void GateDriver_Init(void)
 {
-    /* Assert reset (active low) before powering to ensure safe start.  Keep
-     * the pulse at 1 ms: the NCx5710y datasheet's 8-10 ms /RST low window
-     * invokes the DSCHK diagnostic rather than a plain fault reset. */
+    /* Boot-safe state: the gate-driver rail stays OFF and /RST stays asserted
+     * so the power stage can never switch before an explicit start command.
+     * Every actuation path (control start, foc start, open-loop start, cal,
+     * gatefire) powers the rail and releases /RST itself. */
+    HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port, GATE_DRIVER_POWER_ENABLE_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_RESET);
-    HAL_Delay(1);
 
-    /* Enable gate driver power */
-    HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port, GATE_DRIVER_POWER_ENABLE_Pin, GPIO_PIN_SET);
-    HAL_Delay(50); /* Allow power to stabilize */
-
-    /* Release reset – drivers become operational */
-    HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_SET);
-    HAL_Delay(10);
-
-    bool ready = GateDriver_IsReady();
-    bool fault = GateDriver_IsFault();
-    MCP2221A_Printf("[GATE_DRV] Init: READY=%s FAULT=%s\r\n",
-                     ready ? "YES" : "NO",
-                     fault ? "YES" : "NO");
+    MCP2221A_Printf("[GATE_DRV] Init: held in reset, power rail off (powered on demand)\r\n");
 }
 
 void GateDriver_ResetPulse(void)

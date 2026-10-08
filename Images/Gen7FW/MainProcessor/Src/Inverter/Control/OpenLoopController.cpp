@@ -195,33 +195,10 @@ bool OpenLoopController::init() {
     /* Park all phases at 50 % (zero voltage vector). */
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
 
-    /* Gate-driver RESET is owned by GateDriver_Init() (boot sequence):
-     * assert -> power -> release.  Do NOT touch it here — /RDY is not yet
-     * high at this point in boot, so any "is it healthy?" check misfires
-     * and re-kneeling the driver leaves it in reset forever (RESET net 0 V,
-     * no switching).  Outputs are parked at 50 % with MOE off, so there is
-     * no switching burst either way. */
-
-    /* Make sure the gate-driver power rail is explicitly enabled.  This is
-     * redundant with InverterMain::init() but preserves the old init sequence
-     * that produced accurate offsets. */
-    HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
-                      GATE_DRIVER_POWER_ENABLE_Pin,
-                      GPIO_PIN_SET);
-    HAL_Delay(50);
-
-    /* Start TIM1 PWM outputs while the gate driver is still in reset.
-     * The power stage cannot switch, but the gate-driver input pins and the
-     * isolated supplies see the same operating load/state as a later manual
-     * `cal`.  The current-sensor zero point shifts once this rail is loaded,
-     * so recalibrate now rather than relying on the pre-PWM offset. */
-    PWM_ClearFault();
-    PWM_Start();
-    HAL_Delay(100);
-    if (!phaseCurrentADC().recalibrateOffsets()) {
-        Telemetry::printf("[OL] ERROR: init offset calibration failed");
-        return false;
-    }
+    /* Nothing is powered or switching at boot: the gate rail is off and /RST
+     * is asserted (GateDriver_Init), and TIM1 outputs stay disarmed.  The
+     * current-sensor zeros shift when that rail loads, so every actuation
+     * path re-captures them after powering up. */
 
     m_initialized = true;
     m_running = false;
@@ -294,6 +271,15 @@ bool OpenLoopController::start(float freq_hz, float modulation_index) {
     m_applied_mod_idx = 0.0f;
 
     PoleEstimator::instance().setElectricalFrequency(m_freq_hz);
+
+    /* Power the gate rail for this run (it is off at boot) and capture the
+     * current-sensor zeros with the rail loaded: they shift with the rail. */
+    GateDriver_EnablePower(true);
+    HAL_Delay(50);
+    if (!phaseCurrentADC().recalibrateOffsets()) {
+        Telemetry::printf("[OL] ERROR: offset calibration failed");
+        return false;
+    }
 
     /* Park at 50 % (zero vector). */
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);

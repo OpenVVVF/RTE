@@ -140,28 +140,23 @@ static void init()
     /* Supply rail monitoring (PVD/AVD/VOSRDY). */
     (void)Inverter::supplyMonitorInit();
 
-    /* Enable the gate-driver power rail early so the isolated current sensors
-     * and their references settle with the final supply configuration before
-     * the zero-current offset is captured.  Keep the gate driver in reset so
-     * the outputs stay disabled. */
-    HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
-                      GATE_DRIVER_POWER_ENABLE_Pin,
-                      GPIO_PIN_SET);
+    /* The gate-driver rail stays OFF and /RST stays asserted at boot: the
+     * power stage must not switch until an explicit start command.  The
+     * isolated current-sensor zeros shift when that rail loads, so every
+     * actuation path re-captures them after powering up. */
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port,
                       GATE_DRIVER_RESET_Pin,
                       GPIO_PIN_RESET);
-    HAL_Delay(500);
 
     /* Phase-current sensor test harness. */
     Inverter::CurrentSensorTest_Init();
 
-    /* DC-link current sensor: start the zero-offset capture only now, after
-     * the gate-driver/isolated rails have settled with PWM running. */
+    /* DC-link current sensor: arm the zero-offset capture.  It is re-armed
+     * after every gate-rail power-up (zeroCalibrate) because its offset
+     * shifts with that rail. */
     Inverter::dcLinkCurrentSensor().init();
 
-    /* Gate driver: MX_GPIO_Init asserts RESET (safe start) and never releases
-     * it; this powers the driver and releases reset.  Without it the NCD57100
-     * sits in reset forever (RESET net 0 V at the connector, no switching). */
+    /* Gate driver: boot-safe state only (rail off, held in reset). */
     GateDriver_Init();
 
     /* Open-loop controller (used by shell commands for scalar induction control

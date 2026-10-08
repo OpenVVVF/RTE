@@ -144,28 +144,23 @@ static void init()
     /* Supply rail monitoring (PVD/AVD/VOSRDY). */
     (void)Inverter::supplyMonitorInit();
 
-    /* Enable the gate-driver power rail early so the isolated current sensors
-     * and their references settle with the final supply configuration before
-     * the zero-current offset is captured.  Keep the gate driver in reset so
-     * the outputs stay disabled. */
-    HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
-                      GATE_DRIVER_POWER_ENABLE_Pin,
-                      GPIO_PIN_SET);
+    /* The gate-driver rail stays OFF and /RST stays asserted at boot: the
+     * power stage must not switch until an explicit start command.  The
+     * isolated current-sensor zeros shift when that rail loads, so every
+     * actuation path re-captures them after powering up. */
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port,
                       GATE_DRIVER_RESET_Pin,
                       GPIO_PIN_RESET);
-    HAL_Delay(500);
 
     /* Phase-current sensor test harness. */
     Inverter::CurrentSensorTest_Init();
 
-    /* DC-link current sensor: start the zero-offset capture only now, after
-     * the gate-driver/isolated rails have settled with PWM running. */
+    /* DC-link current sensor: arm the zero-offset capture.  It is re-armed
+     * after every gate-rail power-up (zeroCalibrate) because its offset
+     * shifts with that rail. */
     Inverter::dcLinkCurrentSensor().init();
 
-    /* Gate driver: MX_GPIO_Init asserts RESET (safe start) and never releases
-     * it; this powers the driver and releases reset.  Without it the NCD57100
-     * sits in reset forever (RESET net 0 V at the connector, no switching). */
+    /* Gate driver: boot-safe state only (rail off, held in reset). */
     GateDriver_Init();
 
     /* Open-loop controller (used by shell commands for scalar induction control
@@ -277,12 +272,25 @@ static void loop()
     }
 
 #if defined(RTE_BUILD_MANIFEST)
-    static uint32_t s_last_manifest_ms = 0;
-    if (s_last_manifest_ms == 0 || (now_ms - s_last_manifest_ms) >= 10000U) {
+    static bool s_initial_manifest_sent = false;
+    static uint32_t s_next_manifest_try_ms = 0;
+    if (!s_initial_manifest_sent) {
+        /* Announce the build promptly after boot, then stream recurring
+         * copies at a steady low rate rather than bursting every 10 s. */
         if (Telemetry::log("fw_manifest", RTE_BUILD_MANIFEST)) {
             Telemetry::log("fw_graph", RTE_GRAPH_NAME);
             Telemetry::log("fw_graph_hash", RTE_GRAPH_HASH);
-            s_last_manifest_ms = now_ms;
+            s_initial_manifest_sent = true;
+            s_next_manifest_try_ms = now_ms + 1000U;
+        }
+    } else if (static_cast<int32_t>(now_ms - s_next_manifest_try_ms) >= 0) {
+        if (Telemetry::logPacedStatic("fw_manifest", RTE_BUILD_MANIFEST,
+                                     10000000U)) {
+            Telemetry::log("fw_graph", RTE_GRAPH_NAME);
+            Telemetry::log("fw_graph_hash", RTE_GRAPH_HASH);
+            s_next_manifest_try_ms = now_ms + 10000U;
+        } else {
+            s_next_manifest_try_ms = now_ms + 100U;
         }
     }
 #endif

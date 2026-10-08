@@ -2,6 +2,7 @@
 
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -21,6 +22,10 @@ void CalibrationHardware::update() {
     switch (m_state) {
         case State::POWER_STABILIZE:
             if ((now_ms - m_state_start_ms) >= 50U) {
+                /* The gate rail is off at boot and the current-sensor zeros
+                 * shift when it loads: capture them while /RST is still
+                 * asserted so the stage cannot switch. */
+                (void)Inverter::phaseCurrentADC().recalibrateOffsets();
                 releaseOutputs();
                 m_state_start_ms = now_ms;
                 m_state = State::READY_WAIT;

@@ -20,12 +20,12 @@ cc -std=c11 -Wall -Wextra -Werror -pedantic \
 "$build_dir/test_safety_ecc" 4
 "$build_dir/test_safety_ecc" 5
 cc -std=c11 -Wall -Wextra -Werror -pedantic \
-    -I"$firmware_dir/../../../../Lib/SafetyFaultLink/include" \
-    -c "$firmware_dir/../../../../Lib/SafetyFaultLink/src/safety_fault_wire.c" \
+    -I"$firmware_dir/../../../Lib/SafetyFaultLink/include" \
+    -c "$firmware_dir/../../../Lib/SafetyFaultLink/src/safety_fault_wire.c" \
     -o "$build_dir/safety_fault_wire.o"
 c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
     -I"$script_dir/mock" -I"$firmware_dir/Inc" \
-    -I"$firmware_dir/../../../../Lib/SafetyFaultLink/include" \
+    -I"$firmware_dir/../../../Lib/SafetyFaultLink/include" \
     "$firmware_dir/Src/Inverter/Control/CoprocessorFaults.cpp" \
     "$script_dir/test_coprocessor_faults.cpp" "$build_dir/safety_fault_wire.o" \
     -o "$build_dir/test_coprocessor_faults"

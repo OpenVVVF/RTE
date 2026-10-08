@@ -226,6 +226,16 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
     PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
     PWM_ClearFault();
 
+    /* Power the gate rail for this run (unpowered by default) and capture
+     * current-sensor zeros with the rail loaded and PWM toggling at the
+     * parked zero vector while /RST is asserted: the stage cannot switch. */
+    GateDriver_EnablePower(true);
+    HAL_Delay(50);
+    GateDriver_DisableOutputs();
+    PWM_Start();
+    HAL_Delay(100);
+    (void)Inverter::phaseCurrentADC().recalibrateOffsets();
+
     /* Always run the reset assert/release cycle: the pulse clears any
      * latched /FLT and guarantees a known driver state.  RESET_ASSERT_MS
      * stays under the NCx5710y 8-10 ms DSCHK-invocation window. */

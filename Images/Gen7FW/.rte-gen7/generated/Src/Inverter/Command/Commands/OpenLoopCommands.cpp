@@ -46,6 +46,9 @@ static bool gateDriverEnableForPulseTest() {
     HAL_Delay(50);
     GateDriver_DisableOutputs();
     HAL_Delay(1);
+    /* The gate rail is off at boot and the current-sensor zeros shift when
+     * it loads: re-capture them while /RST keeps the stage silent. */
+    (void)phaseCurrentADC().recalibrateOffsets();
     GateDriver_EnableOutputs();
     HAL_Delay(100);
     return GateDriver_IsReady() && !GateDriver_IsFault();

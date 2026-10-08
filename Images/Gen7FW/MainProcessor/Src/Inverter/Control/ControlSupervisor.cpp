@@ -6,6 +6,7 @@
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Drivers/Sensors/DcLinkCurrentSensor.h"
 #include "Inverter/Drivers/Sensors/DcLinkVoltageSensor.h"
 #include "Inverter/Drivers/Sensors/EncoderADC.h"
 #include "Inverter/Drivers/Sensors/PhaseCurrentADC.h"
@@ -68,6 +69,17 @@ bool ControlSupervisor::gateDriverStartup() {
     HAL_GPIO_WritePin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
                       GATE_DRIVER_POWER_ENABLE_Pin, GPIO_PIN_SET);
     HAL_Delay(50);
+
+    /* The gate rail is off at boot now, and the isolated current-sensor
+     * zeros shift when it loads, so capture them here: PWM pins toggle at
+     * the parked zero vector while /RST is still asserted, so the power
+     * stage cannot switch (the load matches a later manual cal). */
+    PWM_SetThreePhaseDuty(50.0f, 50.0f, 50.0f);
+    PWM_ClearFault();
+    PWM_Start();
+    HAL_Delay(100);
+    (void)Inverter::phaseCurrentADC().recalibrateOffsets();
+    (void)Inverter::dcLinkCurrentSensor().zeroCalibrate();
 
     HAL_GPIO_WritePin(GATE_DRIVER_RESET_GPIO_Port, GATE_DRIVER_RESET_Pin, GPIO_PIN_SET);
     HAL_Delay(50);

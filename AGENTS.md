@@ -41,7 +41,12 @@ change and test when its contract changes:
   `control_state`; Studio uses ISR state with the
   manifest's `tim_isr` domain to distinguish live monitoring from an actually
   stopped ISR. Legacy FOC publishes `foc_running` at transitions; keep these
-  publishers and Studio's reporting mapping aligned.
+  publishers and Studio's reporting mapping aligned. The gate-driver rail is
+  OFF and /RST asserted at boot: only explicit actuation commands (`control
+  start`, `foc start`, open-loop `start`, `cal`, `gatefire` and friends) power
+  the rail and release /RST, and each re-captures the current-sensor zeros
+  after the rail loads (they shift with it). Do not reintroduce boot-time gate
+  power or PWM arming.
 - `spikes` command or capture text: the main recorder and the MCP
   `rte_spike_capture` parser, including its assumed sample count and rate.
 - Bridge control commands, USB port identity, bootloader entry, or flash
