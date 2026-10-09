@@ -74,7 +74,44 @@ ROM bootloader bytes still pass without a newline.
 
 Built the G474 image, generated H7 `foc_demo` image, `rte`, and `RTEStudio`.
 Both firmware regression suites and the required host integration tests
-passed. **The startup fix has not been flashed or verified on hardware.**
-Deploy the G474 first, then the generated H7 image, and restart the rebuilt
-Studio. The earlier processor safety synchronization image was flashed
+passed. The earlier processor safety synchronization image was flashed
 before these startup changes; its live checks do not verify this fix.
+
+## Connected-device deployment, 2026-10-09
+
+Flashed and verified the G474 through USB DFU, then the generated H7 image
+through the Gen7 bridge. Restarted the rebuilt Studio for the new serial
+command prefix. Images from startup fix commit `289b716`:
+
+- G474: `Images/Gen7FW/CoProcessor/build/Debug/CoProcessor.elf`, SHA-256
+  `b84ec068012059a51a9c2bb60dd818c03d6711393a962b0d5bc2ec6369ad177d`.
+- H7: `build/startup-command-fw/STM32CubeMX.elf`, SHA-256
+  `862876774fe1f2513a60f2aac5d255cd4cd55102f7f43cfa6a4ab7a8b654748f`.
+
+The first main flash attempt failed to activate the ROM bootloader while
+Studio held the explicitly selected bridge port. Retrying with automatic
+port discovery acquired Studio's flash handoff and succeeded. When Studio
+owns the bridge, omit an explicit `serial` argument so the flash route can
+acquire that handoff. The successful coprocessor flash was not repeated.
+
+Live checks confirmed `foc_demo`, graph hash `bd5390d76c425eb1`, 82 nodes and
+33 manifest signals. The three new shell diagnostic signals were discovered
+and reported zero errors, drops, and rearm failures. Both current CLI mode
+diagnosis and the RTE MCP reported a responding application; control-port
+status showed `APP_WAIT=0`. G474 `UART_ERRORS=470` and `RX_DROPPED=313496`
+remained unchanged across subsequent monitoring and the reboot check; these
+cumulative values include the flash transitions and time without a reader.
+
+Using the RTE MCP, sent `reboot` and immediately sent command discovery
+(`help`) in the next call. The queued request returned all 53 commands with
+the expected count, closing footer, and argument ranges. After reboot the
+H7 shell diagnostic counters remained zero. This is one successful queued
+command check on hardware, not a statistical test of intermittent cold boots.
+
+With the bus supply off, telemetry read about 0.88 V. H7 still reported
+Critical `Max22530Uv`; the G474 retained `PowerFeedbackLost` with trip reason
+4 and inputs `09`, as in the earlier unpowered check. Generated and local
+outputs were disabled, gate power was off, reset was asserted, and TIM1
+measurement remained active. Faults were not cleared and motor control was
+not started. Clean-state reboot fault behavior with the bus powered remains
+unverified.
