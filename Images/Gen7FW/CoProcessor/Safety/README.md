@@ -58,9 +58,23 @@ before that independent shutdown path can be enabled.
   PWR2 feedback (1), PWR1 feedback (2), /FAULT asserted (4), and live H7
   heartbeat (8). These fields diagnose a feedback fault without changing the
   existing `!SF1` UART frame or the power-off policy.
-- A USB bridge `BOOTLOADER`, `APP`, or `RESET` command first opens PWR2 and
-  waits for its feedback to fall. This planned H7 reset does not clear a
-  pre-existing latched coprocessor fault.
+- A USB bridge `BOOTLOADER`, `APP`, or `RESET` command, or a shell `reboot`
+  sent through the application bridge, first opens PWR2. The bridge recognizes
+  a complete, case-insensitive `reboot` line, including across USB packets and
+  TX-ring wrap, and withholds its terminating DMA chunk until the main loop
+  has prepared the safety policy. Extra arguments and overlong lines rejected
+  by the H7 do not start a planned reset; ROM bootloader bytes stay opaque.
+  These resets preserve any pre-existing coprocessor fault latch.
+  PWR2 feedback must fall within 150 ms or `PowerStuckOn` latches. A shell
+  reboot must also drop PWR1 feedback within 1500 ms or `MainHeartbeatLost`
+  latches, keeping PWR2 off if the H7 never executes the command. Direct bridge
+  resets record the NRST assertion because their blocking pulse can hide the
+  PWR1-low interval from polling. After reset is observed and PWR2 feedback is
+  off, ordinary arming requires two fresh H7 heartbeat edges, PWR1 feedback,
+  and released /FAULT. Old heartbeat edges cannot rearm PWR2 while a reboot
+  waits in the H7 shell. Time spent unpowered in startup or the ROM bootloader
+  does not create a power-loss fault. This fix requires only a G474 coprocessor
+  reflash; H7 commands, USB identity, UART modes, and `!SF1` framing are unchanged.
 - The G474 sends a 21-byte `!SF1` status line to the H7 at state changes and
   every 500 ms. The bridge inserts it between complete host command lines in
   application UART mode and never in ROM bootloader mode. The frame carries
@@ -117,10 +131,11 @@ before that independent shutdown path can be enabled.
   off behavior must be measured on hardware before claiming fail-safe startup.
 
 From `RTE/Images/Gen7FW/CoProcessor`, run the host policy and heartbeat tests with
-`bash Safety/tests/run.sh` (including the normal H7 warmup and PWR1/PWR2 arming
-sequence), then build the target with `cmake --preset Debug`
+`bash Safety/tests/run.sh` (including normal H7 warmup, planned resets, fresh
+heartbeat reacquisition, and reset failure deadlines), then build the target with `cmake --preset Debug`
 and `cmake --build --preset Debug`.
-Run `bash USB_Device/App/tests/run.sh` for DMA wrap and command-boundary logic.
+Run `bash USB_Device/App/tests/run.sh` for DMA wrap, command boundaries, and
+reboot recognition across fragmented lines.
 Run `Safety/tests/verify_pinout.py` from this repository when `kicad-cli` and
 the adjacent `InverterGen5` checkout are available.
 Run `bash Lib/SafetyFaultLink/tests/run.sh` from RTE for the shared frame codec.

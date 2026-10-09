@@ -49,6 +49,9 @@ typedef struct {
     bool post_passed;
     SafetyTripReason trip_reason;
     uint8_t trip_inputs;
+    bool planned_reset;
+    bool main_reset_seen;
+    uint32_t reset_started_ms;
 } SafetyPolicy;
 
 /* A clear request is accepted only with the second power switch open, no
@@ -62,6 +65,12 @@ void SafetyPolicy_Update(SafetyPolicy *policy, SafetyInputs inputs,
                          uint32_t now_ms);
 void SafetyPolicy_Trip(SafetyPolicy *policy, SafetyFault fault);
 void SafetyPolicy_Disarm(SafetyPolicy *policy);
+/* Open PWR2 before a commanded reset. Keep existing fault latches, confirm
+ * PWR2 feedback off and H7 reset, and bound the wait if either fails. */
+void SafetyPolicy_PlanMainReset(SafetyPolicy *policy, uint32_t now_ms);
+/* The bridge directly asserted H7 NRST; its blocking pulse can hide the
+ * short PWR1-low interval from the safety polling loop. */
+void SafetyPolicy_MainResetAsserted(SafetyPolicy *policy);
 bool SafetyPolicy_TryClear(SafetyPolicy *policy, SafetyInputs inputs);
 bool SafetyPolicy_PowerEnabled(const SafetyPolicy *policy);
 

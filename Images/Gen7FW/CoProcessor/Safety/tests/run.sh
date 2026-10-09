@@ -20,3 +20,12 @@ cc -std=c11 -Wall -Wextra -Werror -pedantic \
     "$script_dir/test_normal_boot.c" \
     -o "$build_dir/test_normal_boot"
 "$build_dir/test_normal_boot"
+cc -std=c11 -Wall -Wextra -Werror -pedantic \
+    -I"$script_dir/mock" -I"$script_dir/.." \
+    -I"$script_dir/../../../../../Lib/SafetyFaultLink/include" \
+    "$script_dir/../safety_policy.c" \
+    "$script_dir/../safety_heartbeat.c" \
+    "$script_dir/../safety_hardware.c" \
+    "$script_dir/test_planned_reset.c" \
+    -o "$build_dir/test_planned_reset"
+"$build_dir/test_planned_reset"

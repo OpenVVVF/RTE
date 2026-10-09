@@ -169,6 +169,70 @@ static void test_clear_requires_live_safe_inputs(void)
     assert(!SafetyPolicy_TryClear(&policy, inputs));
 }
 
+static void test_planned_reset_waits_for_both_feedbacks(void)
+{
+    SafetyPolicy policy = powering(0u);
+    SafetyInputs inputs = healthy();
+    inputs.own_power_feedback = true;
+    SafetyPolicy_Update(&policy, inputs, 1u);
+    SafetyPolicy_PlanMainReset(&policy, 10u);
+    assert(policy.state == SAFETY_INHIBITED);
+    assert(!SafetyPolicy_PowerEnabled(&policy));
+    SafetyPolicy_Update(&policy, inputs, 11u);
+    assert(policy.faults == 0u); /* PWR2 takes time to fall after opening. */
+    inputs.own_power_feedback = false;
+    SafetyPolicy_Update(&policy, inputs, 20u);
+    SafetyPolicy_PostPassed(&policy);
+    assert(!SafetyPolicy_RequestArm(&policy, inputs, 21u));
+    assert(policy.planned_reset); /* The old H7 is still running. */
+    inputs.main_power_feedback = false;
+    inputs.main_alive = false;
+    inputs.gate_fault = true; /* Unpowered driver during the expected reset. */
+    SafetyPolicy_Update(&policy, inputs, 30u);
+    assert(!policy.planned_reset);
+    assert(policy.faults == 0u);
+    SafetyPolicy_PostPassed(&policy);
+    assert(!SafetyPolicy_RequestArm(&policy, inputs, 31u));
+    SafetyPolicy_Update(&policy, inputs, 10000u); /* ROM bootloader stays off. */
+    assert(policy.faults == 0u);
+    inputs = healthy();
+    assert(SafetyPolicy_RequestArm(&policy, inputs, 10001u));
+    inputs.own_power_feedback = true;
+    SafetyPolicy_Update(&policy, inputs, 10002u);
+    assert(policy.state == SAFETY_ARMED);
+    inputs.main_power_feedback = false;
+    SafetyPolicy_Update(&policy, inputs, 10003u);
+    assert(policy.trip_reason == SAFETY_TRIP_MAIN_POWER_FEEDBACK_LOST);
+    const SafetyPolicy latched = policy;
+    SafetyPolicy_PlanMainReset(&policy, 10004u);
+    assert(policy.state == latched.state && policy.faults == latched.faults);
+    assert(policy.trip_reason == latched.trip_reason);
+    assert(policy.trip_inputs == latched.trip_inputs);
+    assert(!policy.planned_reset);
+}
+
+static void test_planned_reset_deadlines_and_wrap(void)
+{
+    SafetyPolicy policy = powering(0u);
+    SafetyInputs inputs = healthy();
+    inputs.own_power_feedback = true;
+    SafetyPolicy_PlanMainReset(&policy, UINT32_MAX - 10u);
+    SafetyPolicy_Update(&policy, inputs, 138u);
+    assert(policy.faults == 0u);
+    SafetyPolicy_Update(&policy, inputs, 139u);
+    assert(policy.trip_reason == SAFETY_TRIP_POWER_STUCK_ON);
+    assert(!SafetyPolicy_PowerEnabled(&policy));
+
+    policy = powering(0u);
+    inputs.own_power_feedback = false;
+    SafetyPolicy_PlanMainReset(&policy, UINT32_MAX - 10u);
+    SafetyPolicy_Update(&policy, inputs, 1488u);
+    assert(policy.faults == 0u);
+    SafetyPolicy_Update(&policy, inputs, 1489u);
+    assert(policy.trip_reason == SAFETY_TRIP_MAIN_HEARTBEAT_LOST);
+    assert(!SafetyPolicy_PowerEnabled(&policy));
+}
+
 int main(void)
 {
     test_boot_is_inhibited();
@@ -177,5 +241,7 @@ int main(void)
     test_startup_timeout_and_wrap();
     test_faults_latch_and_disarm();
     test_clear_requires_live_safe_inputs();
+    test_planned_reset_waits_for_both_feedbacks();
+    test_planned_reset_deadlines_and_wrap();
     return 0;
 }

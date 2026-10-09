@@ -5,6 +5,7 @@
 #include "usart.h"
 #include "safety_hardware.h"
 #include "bridge_dma_math.h"
+#include "bridge_command.h"
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 uint8_t UserRxBufferFS[CDC_PORT_COUNT][APP_RX_DATA_SIZE];
@@ -37,6 +38,8 @@ static char safety_active_frame[SAFETY_FAULT_WIRE_LENGTH];
 static volatile uint8_t safety_pending_valid;
 static volatile uint8_t safety_active;
 static uint8_t tx_at_line_boundary = 1u;
+static BridgeCommand bridge_command;
+static volatile uint8_t bridge_reboot_pending, bridge_reboot_ready;
 enum { ACTION_NONE, ACTION_BOOTLOADER, ACTION_APP, ACTION_RESET, ACTION_STATUS };
 
 static int8_t cdc_init(uint8_t), cdc_deinit(uint8_t);
@@ -105,6 +108,19 @@ static void uart_tx_start(void){
    const uint16_t contiguous=uart_tx_head>tail?uart_tx_head-tail:CDC_BRIDGE_BUF_SIZE-tail;
    length=contiguous;
    length=BridgeDma_TxChunk(&uart_tx_ring[tail],contiguous,uart_bootloader_mode);
+   if(!uart_bootloader_mode){
+    BridgeCommand next=bridge_command;
+    const bool reboot=BridgeCommand_Feed(&next,&uart_tx_ring[tail],length);
+    if(reboot&&!bridge_reboot_ready){
+     /* The main loop owns the safety policy. Withhold this chunk, including
+      * the line terminator, until it has opened PWR2 for the planned reset. */
+     bridge_reboot_pending=1u;
+     if(!irq_state)__enable_irq();
+     return;
+    }
+    bridge_command=next;
+    if(reboot)bridge_reboot_ready=0u;
+   }
    uart_tx_dma_safety=0u;
    uart_tx_dma_last_byte=uart_tx_ring[tail+length-1U];
    source=&uart_tx_ring[tail];
@@ -197,6 +213,8 @@ static uint8_t uart_set_bootloader_mode(uint8_t bootloader){
  safety_pending_valid=0u;
  safety_active=0u;
  tx_at_line_boundary=1u;
+ bridge_command=(BridgeCommand){0};
+ bridge_reboot_pending=bridge_reboot_ready=0u;
  if(!irq_state)__enable_irq();
 
  if(HAL_UART_DeInit(&huart3)!=HAL_OK)goto fail;
@@ -313,7 +331,19 @@ static uint32_t uart_rx_produced(void){
  __DMB();
  return BridgeDma_RxProduced(halves,pending,remaining);
 }
-static void reset_main(GPIO_PinState boot){SafetyHardware_PlanMainReset();HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin,boot);HAL_Delay(20);HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin,GPIO_PIN_RESET);HAL_Delay(50);HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin,GPIO_PIN_SET);bridge_app_wait_since=HAL_GetTick();bridge_reset_active=0;HAL_Delay(100);HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin,GPIO_PIN_RESET);}
+static void reset_main(GPIO_PinState boot){
+ SafetyHardware_PlanMainReset();
+ HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin,boot);
+ HAL_Delay(20);
+ HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin,GPIO_PIN_RESET);
+ SafetyHardware_MainResetAsserted();
+ HAL_Delay(50);
+ HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin,GPIO_PIN_SET);
+ bridge_app_wait_since=HAL_GetTick();
+ bridge_reset_active=0;
+ HAL_Delay(100);
+ HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin,GPIO_PIN_RESET);
+}
 static void send_control(const char*s){size_t n=strlen(s);if(n>APP_TX_DATA_SIZE)return;memcpy(UserTxBufferFS[1],s,n);CDC_Transmit_FS(1,UserTxBufferFS[1],(uint16_t)n);}
 void CDC_Bridge_Process(void){
  bridge_out_arm_if_ready();
@@ -350,6 +380,15 @@ void CDC_Bridge_Process(void){
     SafetyPolicy_PowerEnabled(safety) ? 1u : 0u);
    send_control(response);
   }
+ }
+ if(bridge_reboot_pending){
+  SafetyHardware_PlanMainReset();
+  const uint32_t irq_state=__get_PRIMASK();
+  __disable_irq();
+  bridge_reboot_ready=1u;
+  bridge_reboot_pending=0u;
+  uart_tx_start();
+  if(!irq_state)__enable_irq();
  }
  if(bridge_waiting_for_app&&!bridge_reset_active&&
     (uint32_t)(HAL_GetTick()-bridge_app_wait_since)>=1500U){

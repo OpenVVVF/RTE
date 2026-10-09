@@ -392,6 +392,36 @@ The G474 control-port `STATUS` also includes `SAFETY_TRIP`,
 feedback loss, PWR2 feedback loss, and PWR2 startup timeout. These diagnostics
 require a coprocessor reflash; the `!SF1` status frame remains unchanged.
 
+Shell `reboot` commands sent through the Gen7 application bridge now prepare
+the G474 for the expected H7 reset. The bridge recognizes the complete command
+across USB packets and TX-ring wrap, including the H7 shell's whitespace and
+case handling, and holds its terminating DMA chunk until the safety loop has
+opened PWR2. Invalid argument lists and overlong shell lines do not request
+this exemption; binary ROM flashing remains opaque. The existing control-port
+`BOOTLOADER`, `APP`, and `RESET` commands use the same planned-reset policy.
+Existing coprocessor fault latches survive every planned reset.
+
+The G474 waits for PWR2 feedback to fall, then for the H7 reset: PWR1 feedback
+must fall for a shell reboot, or the bridge must have directly asserted NRST.
+This explicit NRST observation handles the bridge's blocking reset pulse,
+which can hide the PWR1-low interval from safety polling. PWR2 stays off until
+two fresh heartbeat edges, PWR1 feedback, and released /FAULT permit ordinary
+arming. Expected power loss and absent heartbeat during unpowered startup or
+ROM bootloader residence do not latch a fault. A PWR2 switch that stays on for
+150 ms still trips `PowerStuckOn`; a shell reboot that never drops PWR1 within
+1500 ms trips `MainHeartbeatLost`. A genuine loss after arming still latches.
+
+This reboot fix requires **only a G474 coprocessor rebuild and reflash**.
+`rte_device_command` and `rte_device_command_response` continue to send the
+ordinary `reboot` command, as does Studio's Runtime console. No host parser,
+command catalog format, telemetry signal, USB identity, UART mode, or `!SF1`
+frame change is required. After flashing, check `rte_device_commands`,
+`rte_signal_info`, and `rte_build_info`, then issue `reboot` and verify that
+`coprocessor_safety_state` returns to `ARMED` with zero coprocessor faults.
+Use control-port `STATUS` to check `SAFETY_FAULTS=00000000`, `SAFETY_TRIP=0`,
+and `PWR2_EN=1`. Hardware validation requires a connected inverter; the host
+simulated-port tests cannot prove a newly flashed coprocessor's behavior.
+
 ### Firmware changes and MCP compatibility
 
 The MCP tool names and schemas are host code; they do not regenerate from a

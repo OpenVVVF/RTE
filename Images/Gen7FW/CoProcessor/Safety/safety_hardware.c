@@ -6,7 +6,6 @@
 
 static SafetyPolicy policy;
 static SafetyHeartbeat heartbeat;
-static bool planned_reset;
 static bool clear_level_previous;
 static uint16_t report_generation;
 static SafetyClearResult clear_result;
@@ -76,7 +75,6 @@ static void apply_outputs(void)
 void SafetyHardware_Init(void)
 {
     SafetyPolicy_Init(&policy);
-    planned_reset = false;
     clear_level_previous = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET;
     report_generation = 0u;
     clear_result = SAFETY_CLEAR_NONE;
@@ -94,14 +92,14 @@ void SafetyHardware_Init(void)
 void SafetyHardware_Update(void)
 {
     const uint32_t now_ms = HAL_GetTick();
-    if (planned_reset) {
+    if (policy.planned_reset) {
         SafetyHardware_ForceOff();
-        if (HAL_GPIO_ReadPin(GATE_DRIVE_PWR2_FEEDBACK_GPIO_Port,
-                             GATE_DRIVE_PWR2_FEEDBACK_Pin) == GPIO_PIN_SET) {
-            report_if_due(now_ms);
-            return; /* Wait for the switch to open before ordinary POST. */
-        }
-        planned_reset = false;
+        /* Ignore pre-reset edges until PWR2 is off and H7 reset is observed.
+         * Otherwise a delayed shell reboot could rearm on the old heartbeat. */
+        SafetyHeartbeat_Init(&heartbeat,
+                             HAL_GPIO_ReadPin(INTERMCU_SYNC_LINE_GPIO_Port,
+                                              INTERMCU_SYNC_LINE_Pin) == GPIO_PIN_SET,
+                             now_ms);
     }
     const SafetyInputs inputs = read_inputs(now_ms);
     const bool clear_level = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET;
@@ -136,12 +134,11 @@ void SafetyHardware_PlanMainReset(void)
     if (policy.state == SAFETY_FAULT_LATCHED) {
         return;
     }
-    SafetyPolicy_Init(&policy);
+    SafetyPolicy_PlanMainReset(&policy, HAL_GetTick());
     SafetyHeartbeat_Init(&heartbeat,
                          HAL_GPIO_ReadPin(INTERMCU_SYNC_LINE_GPIO_Port,
                                           INTERMCU_SYNC_LINE_Pin) == GPIO_PIN_SET,
                          HAL_GetTick());
-    planned_reset = true;
     clear_result = SAFETY_CLEAR_NONE;
     report_sent = false;
 }
@@ -149,4 +146,9 @@ void SafetyHardware_PlanMainReset(void)
 const SafetyPolicy *SafetyHardware_Status(void)
 {
     return &policy;
+}
+
+void SafetyHardware_MainResetAsserted(void)
+{
+    SafetyPolicy_MainResetAsserted(&policy);
 }

@@ -7,9 +7,10 @@
 void SafetyHardware_Init(void);
 void SafetyHardware_Update(void);
 void SafetyHardware_ForceOff(void);
-/* Called before an intentional H7 reset by the USB bridge. A latched safety
- * fault is never cleared by this path. */
+/* Called before a bridge reset or before forwarding a shell reboot line.
+ * A latched safety fault is never cleared by this path. */
 void SafetyHardware_PlanMainReset(void);
+void SafetyHardware_MainResetAsserted(void);
 const SafetyPolicy *SafetyHardware_Status(void);
 
 #endif

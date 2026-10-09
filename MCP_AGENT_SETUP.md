@@ -210,6 +210,15 @@ no coprocessor reflash is needed.
   baud rates, USB ports, control commands, and `!SF1` framing unchanged.
   This bridge optimization requires only a coprocessor reflash; its DMA
   half/full-buffer interrupts replace per-byte UART interrupts.
+  A coprocessor rebuilt with the planned-reboot fix also recognizes shell
+  `reboot` lines before forwarding their terminator, opens PWR2, and waits for
+  the expected reset before reacquiring a fresh H7 heartbeat. This prevents
+  expected reboot power drops from latching `PowerFeedbackLost`. It preserves
+  existing faults and still trips if PWR2 stays on for 150 ms or the shell
+  reboot fails to drop PWR1 within 1500 ms. Normal unpowered startup time is
+  exempt. **Reflash the G474 coprocessor only** for this fix. Send `reboot`
+  through the usual generic command tools or Studio Runtime console; command
+  discovery, telemetry, bridge modes, and safety frame formats are unchanged.
 - For live data, run `RTEStudio` connected to the inverter first. Use
   `rte_device_status`, filtered `rte_signal_info`, `rte_device_signal`, or
   `rte_device_snapshot` first. `rte_device_telemetry` accepts exact `signals`

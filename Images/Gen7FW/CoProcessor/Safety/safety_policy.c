@@ -1,7 +1,7 @@
 #include "safety_policy.h"
 
 /* A missing power-switch feedback after enable is a startup fault. */
-enum { POWER_STARTUP_TIMEOUT_MS = 150 };
+enum { POWER_STARTUP_TIMEOUT_MS = 150, MAIN_RESET_TIMEOUT_MS = 1500 };
 
 static uint8_t input_bits(SafetyInputs inputs)
 {
@@ -26,7 +26,8 @@ void SafetyPolicy_Init(SafetyPolicy *policy)
 
 void SafetyPolicy_PostPassed(SafetyPolicy *policy)
 {
-    if (policy->state == SAFETY_INHIBITED && policy->faults == 0u) {
+    if (policy->state == SAFETY_INHIBITED && policy->faults == 0u &&
+        !policy->planned_reset) {
         policy->post_passed = true;
     }
 }
@@ -36,6 +37,7 @@ void SafetyPolicy_Trip(SafetyPolicy *policy, SafetyFault fault)
     policy->faults |= (uint32_t)fault;
     policy->state = SAFETY_FAULT_LATCHED;
     policy->post_passed = false;
+    policy->planned_reset = false;
     if (policy->trip_reason == SAFETY_TRIP_NONE) {
         policy->trip_reason = SAFETY_TRIP_INTERNAL;
     }
@@ -45,6 +47,7 @@ bool SafetyPolicy_RequestArm(SafetyPolicy *policy, SafetyInputs inputs,
                              uint32_t now_ms)
 {
     if (policy->state != SAFETY_INHIBITED || !policy->post_passed ||
+        policy->planned_reset ||
         !inputs.main_alive || !inputs.main_power_feedback || inputs.gate_fault) {
         return false;
     }
@@ -62,6 +65,21 @@ void SafetyPolicy_Update(SafetyPolicy *policy, SafetyInputs inputs,
                          uint32_t now_ms)
 {
     if (policy->state == SAFETY_FAULT_LATCHED) {
+        return;
+    }
+    if (policy->planned_reset) {
+        const uint32_t elapsed_ms = now_ms - policy->reset_started_ms;
+        if (inputs.own_power_feedback) {
+            if (elapsed_ms >= POWER_STARTUP_TIMEOUT_MS) {
+                trip(policy, SAFETY_FAULT_POWER_STUCK_ON,
+                     SAFETY_TRIP_POWER_STUCK_ON, inputs);
+            }
+        } else if (policy->main_reset_seen || !inputs.main_power_feedback) {
+            policy->planned_reset = false;
+        } else if (elapsed_ms >= MAIN_RESET_TIMEOUT_MS) {
+            trip(policy, SAFETY_FAULT_MAIN_LOST,
+                 SAFETY_TRIP_MAIN_HEARTBEAT_LOST, inputs);
+        }
         return;
     }
     if (policy->state == SAFETY_INHIBITED) {
@@ -100,6 +118,22 @@ void SafetyPolicy_Disarm(SafetyPolicy *policy)
         policy->state = SAFETY_INHIBITED;
         policy->post_passed = false;
     }
+}
+
+void SafetyPolicy_PlanMainReset(SafetyPolicy *policy, uint32_t now_ms)
+{
+    if (policy->state == SAFETY_FAULT_LATCHED) {
+        return;
+    }
+    SafetyPolicy_Disarm(policy);
+    policy->planned_reset = true;
+    policy->main_reset_seen = false;
+    policy->reset_started_ms = now_ms;
+}
+
+void SafetyPolicy_MainResetAsserted(SafetyPolicy *policy)
+{
+    if (policy->planned_reset) policy->main_reset_seen = true;
 }
 
 bool SafetyPolicy_TryClear(SafetyPolicy *policy, SafetyInputs inputs)
