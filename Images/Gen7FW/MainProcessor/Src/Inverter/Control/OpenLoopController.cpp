@@ -1,5 +1,6 @@
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 #include "Inverter/Control/FocControlManager.h"
 
 #include "Inverter/Drivers/PWM/pwm.h"
@@ -290,6 +291,7 @@ bool OpenLoopController::start(float freq_hz, float modulation_index) {
         FaultManager::instance().printSummary();
         return false;
     }
+    if (!CoprocessorFaults::instance().checkReadyForActuation()) return false;
 
     m_freq_hz = (freq_hz < 0.0f) ? 0.0f : freq_hz;
     m_mod_idx = (modulation_index < 0.0f) ? 0.0f : modulation_index;
@@ -429,6 +431,14 @@ void OpenLoopController::setModulationIndexDirect(float modulation_index) {
  */
 void OpenLoopController::update() {
     const uint32_t now_ms = HAL_GetTick();
+
+    if (isRunning() &&
+        (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+         (m_starting && FaultManager::instance().isSeverityActive(FaultSeverity::High)))) {
+        Telemetry::printf("[OL] fault detected - cancelling startup/actuation");
+        stop();
+        return;
+    }
 
     if (m_starting) {
         stepStartup(now_ms);

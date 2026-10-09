@@ -11,6 +11,10 @@ extern "C" {
 void SafetyLink_Init(void);
 void SafetyLink_Tick(void);
 void SafetyLink_MainLoop(bool actuating);
+/* Commanded heartbeat state and physical PWM/gate enable combination. MOE
+ * alone remains set for idle measurement and is not evidence of actuation. */
+bool SafetyLink_IsEnabled(void);
+bool SafetyLink_OutputsActive(void);
 void SafetyLink_Stop(void);
 /* Re-enable edges only after the main fault manager has no Critical fault. */
 void SafetyLink_Resume(void);

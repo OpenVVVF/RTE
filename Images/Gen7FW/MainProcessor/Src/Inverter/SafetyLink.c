@@ -52,8 +52,26 @@ void SafetyLink_Tick(void)
 void SafetyLink_MainLoop(bool actuating)
 {
     s_last_loop_ms = HAL_GetTick();
-    s_actuating = actuating;
+    s_actuating = actuating || SafetyLink_OutputsActive();
     s_booting = false;
+}
+
+bool SafetyLink_IsEnabled(void)
+{
+    return s_enabled;
+}
+
+bool SafetyLink_OutputsActive(void)
+{
+    const uint32_t channels = TIM_CCER_CC1E | TIM_CCER_CC1NE |
+                              TIM_CCER_CC2E | TIM_CCER_CC2NE |
+                              TIM_CCER_CC3E | TIM_CCER_CC3NE;
+    return s_initialized && (TIM1->CCER & channels) != 0u &&
+           (TIM1->BDTR & TIM_BDTR_MOE) != 0u &&
+           HAL_GPIO_ReadPin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
+                            GATE_DRIVER_POWER_ENABLE_Pin) == GPIO_PIN_SET &&
+           HAL_GPIO_ReadPin(GATE_DRIVER_RESET_GPIO_Port,
+                            GATE_DRIVER_RESET_Pin) == GPIO_PIN_SET;
 }
 
 void SafetyLink_Stop(void)

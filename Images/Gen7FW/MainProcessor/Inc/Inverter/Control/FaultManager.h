@@ -61,6 +61,7 @@ enum class FaultSource : uint16_t {
     DcLinkUvDerate   = 35,  /**< DC-link undervoltage derate active     */
     RamEcc           = 36,  /**< RAM ECC event; reset required          */
     FlashEcc         = 37,  /**< Flash ECC event; reset required        */
+    CoprocessorSafety = 38, /**< G474 unavailable or not armed while driving */
 };
 
 /**
@@ -180,6 +181,9 @@ enum class FaultReason : uint8_t {
     GateDriverFaultPin,
     RamEccDetected,
     FlashEccDetected,
+    CoprocessorTrip,
+    CoprocessorNotArmed,
+    CoprocessorStatusStale,
     Count
 };
 
@@ -331,6 +335,7 @@ private:
         { FaultSource::DcLinkUvDerate,   "DcLinkUvDerate",   "Voltage Sense","Vbus below UV derate threshold (current limited)", FaultSeverity::Warning },
         { FaultSource::RamEcc,           "RamEcc",           "Memory",       "RAM ECC event; reset required",               FaultSeverity::Critical },
         { FaultSource::FlashEcc,         "FlashEcc",         "Memory",       "flash ECC event; reset required",             FaultSeverity::Critical },
+        { FaultSource::CoprocessorSafety,"CoprocessorSafety","Safety Link", "coprocessor unavailable or not armed during actuation", FaultSeverity::Critical },
     };
     static_assert(s_meta[3].source == FaultSource::Max22530Uv &&
                   s_meta[3].severity == FaultSeverity::Critical,

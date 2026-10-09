@@ -3,6 +3,7 @@
 #include "TelemetryStore.h"
 
 #include <QObject>
+#include <nlohmann/json_fwd.hpp>
 
 #include <functional>
 #include <string>
@@ -11,6 +12,9 @@ class QTcpServer;
 class QTcpSocket;
 
 namespace NodeGUI::runtime {
+
+// Shared by the session endpoint and Studio's firmware diagnostics dialog.
+nlohmann::json MakeControlStatusReport(const TelemetryStore::DeviceView& view);
 
 // RTE Studio owns live device state. This loopback-only, authenticated
 // newline-JSON endpoint lets the finite `rte` worker and `rte mcp` query that

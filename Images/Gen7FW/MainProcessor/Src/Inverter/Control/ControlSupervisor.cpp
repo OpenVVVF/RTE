@@ -3,6 +3,7 @@
 #include "Inverter/AppState.h"
 #include "Inverter/Calibration/MotorCalibration.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 #include "Inverter/Control/FocControlManager.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
@@ -97,6 +98,7 @@ bool ControlSupervisor::start() {
         FaultManager::instance().printSummary();
         return false;
     }
+    if (!CoprocessorFaults::instance().checkReadyForActuation()) return false;
 
     /* The native FOC and the generated graph control both write PWM duties;
      * running both at once corrupts both loops.  foc start refuses while the
@@ -154,9 +156,11 @@ bool ControlSupervisor::start() {
     platform_set_control_outputs_enabled(false);
     m_state = State::Starting;
 
-    if (!gateDriverStartup()) {
-        m_state = State::Fault;
-        Telemetry::log("control_state", stateName());
+    if (!gateDriverStartup() ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::High) ||
+        !CoprocessorFaults::instance().checkReadyForActuation()) {
+        enterFaultState();
         return false;
     }
 
@@ -182,6 +186,12 @@ bool ControlSupervisor::start() {
      * motor that is an uncontrolled driven state. */
     platform_set_control_outputs_enabled(true);
     HAL_Delay(1);
+
+    if (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::High)) {
+        enterFaultState();
+        return false;
+    }
 
     PWM_Start();
 
@@ -278,6 +288,11 @@ void ControlSupervisor::enterFaultState() {
     }
     m_state = State::Fault;
     Telemetry::log("control_state", stateName());
+}
+
+void ControlSupervisor::notifySafetyShutdown() {
+    m_stop_requested = false;
+    enterFaultState();
 }
 
 void ControlSupervisor::service() {

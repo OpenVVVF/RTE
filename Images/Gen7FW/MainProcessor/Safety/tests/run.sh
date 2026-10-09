@@ -30,3 +30,17 @@ c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
     "$script_dir/test_coprocessor_faults.cpp" "$build_dir/safety_fault_wire.o" \
     -o "$build_dir/test_coprocessor_faults"
 "$build_dir/test_coprocessor_faults"
+cc -std=c11 -Wall -Wextra -Werror -pedantic \
+    -I"$script_dir/mock" -I"$firmware_dir/Inc" \
+    -c "$firmware_dir/Src/Inverter/SafetyLink.c" \
+    -o "$build_dir/safety_link.o"
+c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
+    -I"$script_dir/mock" -I"$firmware_dir/Inc" \
+    -I"$firmware_dir/../../../Lib/SafetyFaultLink/include" \
+    "$firmware_dir/Src/Inverter/Control/FaultManager.cpp" \
+    "$firmware_dir/Src/Inverter/Control/CoprocessorFaults.cpp" \
+    "$firmware_dir/Src/Inverter/Calibration/Common/CalibrationHardware.cpp" \
+    "$script_dir/test_safety_shutdown.cpp" \
+    "$build_dir/safety_fault_wire.o" "$build_dir/safety_link.o" \
+    -o "$build_dir/test_safety_shutdown"
+"$build_dir/test_safety_shutdown"

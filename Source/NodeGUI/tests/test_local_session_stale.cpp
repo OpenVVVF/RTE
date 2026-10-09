@@ -22,6 +22,53 @@ using namespace std::chrono_literals;
 
 namespace {
 
+TEST(LocalSession, KeepsMainAndCoprocessorFreshnessSeparate) {
+    NodeGUI::runtime::TelemetryStore store;
+    store.AddString("control_state", "IDLE");
+    store.AddString("fault_flags_hex", "0x00000000");
+    store.AddString("coprocessor_safety_state", "ARMED");
+    store.AddString("coprocessor_fault_flags_hex", "0x00000000");
+    store.AddString("coprocessor_fault_names", "none");
+    store.AddString("coprocessor_clear_result", "accepted");
+    store.AddF32("coprocessor_status_age_ms", 100.0f, 0.0f);
+    store.AddF32("coprocessor_status_fresh", 1.0f, 0.0f);
+    store.AddF32("main_heartbeat_enabled", 0.0f, 0.0f);
+    store.AddF32("gate_power_enabled", 0.0f, 0.0f);
+    store.AddF32("gate_reset_asserted", 1.0f, 0.0f);
+    store.AddF32("main_outputs_enabled", 0.0f, 0.0f);
+    store.SetStats(100, 1000, 2, 0, 0, 0, 0, 0, 0, 2);
+    auto view = store.GetDeviceView();
+    auto status = NodeGUI::runtime::MakeControlStatusReport(view);
+    EXPECT_EQ(status["fresh"], true);
+    EXPECT_EQ(status["coprocessor_fresh"], true);
+    EXPECT_EQ(status["coprocessor_power_enabled"], true);
+    EXPECT_EQ(status["main_heartbeat_enabled"], 0.0);
+    EXPECT_EQ(status["gate_power_enabled"], 0.0);
+    EXPECT_EQ(status["gate_reset_asserted"], 1.0);
+    EXPECT_EQ(status["main_outputs_enabled"], 0.0);
+
+    // Fresh H7 telemetry must not revive an expired private G474 report.
+    view.latest["coprocessor_status_fresh"] = 0.0f;
+    status = NodeGUI::runtime::MakeControlStatusReport(view);
+    EXPECT_EQ(status["fresh"], true);
+    EXPECT_EQ(status["coprocessor_fresh"], false);
+    EXPECT_EQ(status["coprocessor_safety_state"], "STALE");
+    EXPECT_TRUE(status["coprocessor_fault_names"].is_null());
+    EXPECT_TRUE(status["coprocessor_fault_flags_hex"].is_null());
+    EXPECT_TRUE(status["coprocessor_power_enabled"].is_null());
+    EXPECT_TRUE(status["coprocessor_clear_result"].is_null());
+
+    // Include age accumulated at the host, also for older H7 firmware.
+    view.latest.erase("coprocessor_status_fresh");
+    view.latest["coprocessor_status_age_ms"] = 1400.0f;
+    view.ageSeconds["coprocessor_status_age_ms"] = 0.2;
+    status = NodeGUI::runtime::MakeControlStatusReport(view);
+    EXPECT_EQ(status["coprocessor_fresh"], false);
+    view.latestStr["coprocessor_clear_result"] = "timeout";
+    status = NodeGUI::runtime::MakeControlStatusReport(view);
+    EXPECT_EQ(status["coprocessor_clear_result"], "timeout");
+}
+
 TEST(TelemetryStore, MeasuresEachSignalsValueChangeRate) {
     NodeGUI::runtime::TelemetryStore store;
     for (int i = 0; i <= 200; ++i) {

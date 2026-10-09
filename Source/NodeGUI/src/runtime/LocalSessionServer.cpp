@@ -154,6 +154,58 @@ json SignalStatus(const TelemetryStore::DeviceView& view,
 
 }  // namespace
 
+json MakeControlStatusReport(const TelemetryStore::DeviceView& view) {
+    const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
+    auto stringValue = [&](const std::string& key) -> json {
+        const auto it = view.latestStr.find(key);
+        return it == view.latestStr.end() || !Fresh(view, key)
+            ? json(nullptr) : json(it->second);
+    };
+    auto numberValue = [&](const std::string& key) -> json {
+        const auto it = view.latest.find(key);
+        return it == view.latest.end() || !Fresh(view, key)
+            ? json(nullptr) : json(it->second);
+    };
+    const auto cpState = stringValue("coprocessor_safety_state");
+    const auto cpAge = numberValue("coprocessor_status_age_ms");
+    const auto cpFreshSignal = numberValue("coprocessor_status_fresh");
+    // The H7 can keep reporting while its private G474 status link is stale.
+    // Include time elapsed at the host since the H7 published that age.
+    const bool cpFresh = cpState.is_string() && cpState != "STALE" &&
+        cpAge.is_number() && cpAge.get<double>() >= 0.0 &&
+        cpAge.get<double>() + view.ageSeconds.at("coprocessor_status_age_ms") * 1000.0 <= 1500.0 &&
+        (cpFreshSignal.is_null() || cpFreshSignal.get<double>() > 0.5);
+    auto clearResult = stringValue("coprocessor_clear_result");
+    if (!cpFresh && clearResult != "pending" && clearResult != "timeout") clearResult = nullptr;
+    return {{"fresh", Fresh(view, "control_state") && Fresh(view, "fault_flags_hex")},
+            {"reporting_state", ReportingState(view, reporting, "control_state")},
+            {"state", stringValue("control_state")},
+            {"fault_flags_hex", stringValue("fault_flags_hex")},
+            {"fault_names", stringValue("fault_active_names")},
+            {"main_fault_flags_hex", view.latestStr.count("main_fault_flags_hex")
+                ? stringValue("main_fault_flags_hex") : stringValue("fault_flags_hex")},
+            {"main_fault_names", view.latestStr.count("main_fault_names")
+                ? stringValue("main_fault_names") : stringValue("fault_active_names")},
+            {"coprocessor_fresh", cpFresh},
+            {"coprocessor_fault_flags_hex", cpFresh ? stringValue("coprocessor_fault_flags_hex") : json(nullptr)},
+            {"coprocessor_fault_names", cpFresh ? stringValue("coprocessor_fault_names") : json(nullptr)},
+            {"coprocessor_safety_state", !cpFresh && cpState.is_string() ? json("STALE") : cpState},
+            {"coprocessor_clear_result", clearResult},
+            {"coprocessor_status_age_ms", cpAge},
+            {"coprocessor_power_enabled", cpFresh
+                ? json(cpState == "POWERING" || cpState == "ARMED") : json(nullptr)},
+            {"pwm_moe", numberValue("pwm_moe")},
+            {"gate_ready", numberValue("gate_ready")},
+            {"gate_fault", numberValue("gate_fault")},
+            {"main_heartbeat_enabled", numberValue("main_heartbeat_enabled")},
+            {"gate_power_enabled", numberValue("gate_power_enabled")},
+            {"gate_reset_asserted", numberValue("gate_reset_asserted")},
+            {"main_outputs_enabled", numberValue("main_outputs_enabled")},
+            {"tim_isr_running", numberValue("tim_isr_running")},
+            {"control_outputs_enabled", numberValue("control_outputs_enabled")},
+            {"age_s", view.ageSeconds}};
+}
+
 LocalSessionServer::LocalSessionServer(TelemetryStore& store, QObject* parent)
     : QObject(parent), store_(store), server_(new QTcpServer(this)) {
     connect(server_, &QTcpServer::newConnection, this,
@@ -377,37 +429,7 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                 result["state"] = manifest.is_null() ? "unknown" : "not_in_build";
         } else if (method == "device.control_status") {
             const auto view = store_.GetDeviceView();
-            const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
-            auto stringValue = [&](const std::string& key) -> json {
-                const auto it = view.latestStr.find(key);
-                return it == view.latestStr.end() || !Fresh(view, key)
-                    ? json(nullptr) : json(it->second);
-            };
-            auto numberValue = [&](const std::string& key) -> json {
-                const auto it = view.latest.find(key);
-                return it == view.latest.end() || !Fresh(view, key)
-                    ? json(nullptr) : json(it->second);
-            };
-            result = {{"fresh", Fresh(view, "control_state") && Fresh(view, "fault_flags_hex")},
-                      {"reporting_state", ReportingState(view, reporting, "control_state")},
-                      {"state", stringValue("control_state")},
-                      {"fault_flags_hex", stringValue("fault_flags_hex")},
-                      {"fault_names", stringValue("fault_active_names")},
-                      {"main_fault_flags_hex", view.latestStr.count("main_fault_flags_hex")
-                          ? stringValue("main_fault_flags_hex") : stringValue("fault_flags_hex")},
-                      {"main_fault_names", view.latestStr.count("main_fault_names")
-                          ? stringValue("main_fault_names") : stringValue("fault_active_names")},
-                      {"coprocessor_fault_flags_hex", stringValue("coprocessor_fault_flags_hex")},
-                      {"coprocessor_fault_names", stringValue("coprocessor_fault_names")},
-                      {"coprocessor_safety_state", stringValue("coprocessor_safety_state")},
-                      {"coprocessor_clear_result", stringValue("coprocessor_clear_result")},
-                      {"coprocessor_status_age_ms", numberValue("coprocessor_status_age_ms")},
-                      {"pwm_moe", numberValue("pwm_moe")},
-                      {"gate_ready", numberValue("gate_ready")},
-                      {"gate_fault", numberValue("gate_fault")},
-                      {"tim_isr_running", numberValue("tim_isr_running")},
-                      {"control_outputs_enabled", numberValue("control_outputs_enabled")},
-                      {"age_s", view.ageSeconds}};
+            result = MakeControlStatusReport(view);
         } else if (method == "device.snapshot") {
             const auto view = store_.GetDeviceView();
             const auto reporting = MakeReportingContext(view, FirmwareManifest(view));
@@ -429,7 +451,10 @@ std::string LocalSessionServer::HandleRequest(const std::string& line) const {
                     "coprocessor_fault_names", "coprocessor_safety_state",
                     "coprocessor_clear_result", "coprocessor_status_age_ms",
                     "pwm_moe", "gate_ready", "gate_fault",
-                    "tim_isr_running", "control_outputs_enabled"});
+                    "tim_isr_running", "control_outputs_enabled",
+                    "main_heartbeat_enabled", "gate_power_enabled",
+                    "gate_reset_asserted", "main_outputs_enabled",
+                    "coprocessor_status_fresh"});
             }
             if (keys.empty() || keys.size() > 32)
                 return json{{"ok", false}, {"error", "snapshot requires 1 to 32 signal names or bundle=foc"}}.dump();

@@ -1,6 +1,7 @@
 #include "RuntimeTab.h"
 
 #include "ConsolePanel.h"
+#include "LocalSessionServer.h"
 #include "FramKeysManager.h"
 #include "RuntimeController.h"
 #include "RuntimeSessionExporter.h"
@@ -203,35 +204,9 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
         "Show the running firmware's graph manifest, control state, fault flags, and signal freshness"));
     connect(inspectButton, &QPushButton::clicked, this, [this] {
         const auto view = controller_->Store().GetDeviceView();
-        nlohmann::json report = {
-            {"frame_age_s", view.stats.frameAgeSeconds < 0.0
-                ? nlohmann::json(nullptr) : nlohmann::json(view.stats.frameAgeSeconds)},
-            {"control_state", view.latestStr.count("control_state")
-                ? nlohmann::json(view.latestStr.at("control_state")) : nlohmann::json(nullptr)},
-            {"tim_isr_running", view.latest.count("tim_isr_running")
-                ? nlohmann::json(view.latest.at("tim_isr_running")) : nlohmann::json(nullptr)},
-            {"control_outputs_enabled", view.latest.count("control_outputs_enabled")
-                ? nlohmann::json(view.latest.at("control_outputs_enabled")) : nlohmann::json(nullptr)},
-            {"fault_flags_hex", view.latestStr.count("fault_flags_hex")
-                ? nlohmann::json(view.latestStr.at("fault_flags_hex")) : nlohmann::json(nullptr)},
-            {"fault_active_names", view.latestStr.count("fault_active_names")
-                ? nlohmann::json(view.latestStr.at("fault_active_names")) : nlohmann::json(nullptr)},
-            {"main_fault_flags_hex", view.latestStr.count("main_fault_flags_hex")
-                ? nlohmann::json(view.latestStr.at("main_fault_flags_hex")) : nlohmann::json(nullptr)},
-            {"main_fault_names", view.latestStr.count("main_fault_names")
-                ? nlohmann::json(view.latestStr.at("main_fault_names")) : nlohmann::json(nullptr)},
-            {"coprocessor_fault_flags_hex", view.latestStr.count("coprocessor_fault_flags_hex")
-                ? nlohmann::json(view.latestStr.at("coprocessor_fault_flags_hex")) : nlohmann::json(nullptr)},
-            {"coprocessor_fault_names", view.latestStr.count("coprocessor_fault_names")
-                ? nlohmann::json(view.latestStr.at("coprocessor_fault_names")) : nlohmann::json(nullptr)},
-            {"coprocessor_safety_state", view.latestStr.count("coprocessor_safety_state")
-                ? nlohmann::json(view.latestStr.at("coprocessor_safety_state")) : nlohmann::json(nullptr)},
-            {"coprocessor_clear_result", view.latestStr.count("coprocessor_clear_result")
-                ? nlohmann::json(view.latestStr.at("coprocessor_clear_result")) : nlohmann::json(nullptr)},
-            {"pwm_moe", view.latest.count("pwm_moe")
-                ? nlohmann::json(view.latest.at("pwm_moe")) : nlohmann::json(nullptr)},
-            {"signal_age_s", view.ageSeconds},
-        };
+        nlohmann::json report = MakeControlStatusReport(view);
+        report["frame_age_s"] = view.stats.frameAgeSeconds < 0.0
+            ? nlohmann::json(nullptr) : nlohmann::json(view.stats.frameAgeSeconds);
         if (const auto it = view.latestStr.find("fw_manifest"); it != view.latestStr.end()) {
             const auto manifest = nlohmann::json::parse(it->second, nullptr, false);
             report["firmware_manifest"] = manifest.is_discarded()

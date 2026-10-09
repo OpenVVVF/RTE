@@ -9,6 +9,7 @@
 #include "Inverter/Calibration/PoleCalibrator.h"
 #include "Inverter/Calibration/ResistanceCalibrator.h"
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 #include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Control/VoltageVectorSchedule.h"
 #include "Inverter/Control/CurrentObserver.h"
@@ -162,6 +163,7 @@ bool FocControlManager::start(float iq_a, float id_a, bool allow_during_cal) {
         FaultManager::instance().printSummary();
         return false;
     }
+    if (!CoprocessorFaults::instance().checkReadyForActuation()) return false;
 
     if (openLoopController().isRunning()) {
         Telemetry::printf("[FOC] stopping open-loop controller first");
@@ -321,6 +323,7 @@ void FocControlManager::stop() {
     m_starting = false;
     m_startup_state = StartupState::IDLE;
     Telemetry::log("foc_running", 0.0f);
+    m_stop_requested_from_isr = false;
 
     Telemetry::printf("[FOC] STOPPED");
 }
@@ -692,6 +695,14 @@ void FocControlManager::logTelemetry() {
  */
 void FocControlManager::update() {
     const uint32_t now_ms = HAL_GetTick();
+
+    if (isRunning() &&
+        (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+         (m_starting && FaultManager::instance().isSeverityActive(FaultSeverity::High)))) {
+        Telemetry::printf("[FOC] fault detected - cancelling startup/actuation");
+        stop();
+        return;
+    }
 
     if (m_stop_requested_from_isr) {
         m_stop_requested_from_isr = false;

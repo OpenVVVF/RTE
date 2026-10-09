@@ -2,6 +2,8 @@
 
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
+#include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/CoprocessorFaults.h"
 #include "Inverter/Telemetry.h"
 
 #include "main.h"
@@ -9,6 +11,13 @@
 namespace Inverter {
 
 void CalibrationHardware::begin() {
+    if (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+        FaultManager::instance().isSeverityActive(FaultSeverity::High) ||
+        !CoprocessorFaults::instance().checkReadyForActuation()) {
+        shutdown();
+        m_state = State::FAILED;
+        return;
+    }
     GateDriver_EnablePower(true);
     assertOutputs();
     m_state_start_ms = HAL_GetTick();
@@ -17,6 +26,15 @@ void CalibrationHardware::begin() {
 
 void CalibrationHardware::update() {
     const uint32_t now_ms = HAL_GetTick();
+
+    if (m_state != State::IDLE && m_state != State::FAILED &&
+        (FaultManager::instance().isSeverityActive(FaultSeverity::Critical) ||
+         !CoprocessorFaults::instance().readyForActuation())) {
+        shutdown();
+        m_state = State::FAILED;
+        Telemetry::printf("[CAL] HW: safety shutdown; calibration aborted");
+        return;
+    }
 
     switch (m_state) {
         case State::POWER_STABILIZE:

@@ -294,6 +294,24 @@ no coprocessor reflash is needed.
   MOE, and gate status. These fields
   require a newly generated and flashed Gen7 main image; older images return
   unavailable metadata while ordinary telemetry still works.
+  With the processor synchronization update, this tool and Studio's Inspect
+  Firmware & Signals dialog also report `main_heartbeat_enabled`,
+  `gate_power_enabled` (H7 PWR1 command), `gate_reset_asserted`, and
+  `main_outputs_enabled` (local PWM channels/MOE, reset released, PWR1 on).
+  These do not measure the G474's PWR2 feedback. `coprocessor_power_enabled`
+  is derived from a fresh G474 safety state; `coprocessor_fresh` is independent
+  of the main `fresh` field and includes both H7-reported age and host age.
+  Stale G474 fault/power fields are null, even while H7 telemetry is live.
+  Firmware also publishes `coprocessor_status_fresh`; clear replies show
+  `pending` or `timeout` until a new generation confirms the request.
+  Actuation requires a fresh, fault-free G474 `ARMED` report. Losing it while
+  actuating raises the H7 Critical `CoprocessorSafety` source (bit 38), stops
+  graph/native controllers, and removes local gate power. Clearing the last
+  main Critical fault restores heartbeat monitoring without restarting PWM.
+  This update needs a **main MCU rebuild/reflash and rebuilt Studio/rte**;
+  the existing G474 `!SF1` image is compatible. Retain the G474 reflash needed
+  for the separate planned-reboot fix. See
+  `docs/gen7-processor-sync-audit.md` for the audit and hardware checks.
 - `rte_spike_capture` sends `spikes` to dump the firmware's existing frozen
   64-sample current/encoder capture with firmware-reported timing and re-arm it. It returns compact
   current/angle trend analysis by default. Set `include_samples: true` only

@@ -1,4 +1,7 @@
 #include "Inverter/Control/FaultManager.h"
+#include "Inverter/Control/ControlSupervisor.h"
+#include "Inverter/Control/FocControlManager.h"
+#include "Inverter/Control/OpenLoopController.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Drivers/GateDriver/gate_driver.h"
 #include "Inverter/Drivers/PWM/pwm.h"
@@ -88,6 +91,9 @@ const char* faultReasonString(FaultReason r) {
         case FaultReason::GateDriverFaultPin:   return "gate-driver /FLT asserted (GPIO poll)";
         case FaultReason::RamEccDetected:      return "RAM ECC status or IRQ";
         case FaultReason::FlashEccDetected:    return "flash ECC status";
+        case FaultReason::CoprocessorTrip:     return "coprocessor safety fault latched";
+        case FaultReason::CoprocessorNotArmed: return "coprocessor power switch not armed";
+        case FaultReason::CoprocessorStatusStale: return "coprocessor status unavailable or stale";
         case FaultReason::Count:                break;
     }
     return "unknown";
@@ -183,6 +189,10 @@ void FaultManager::clearMask(const FaultBits& mask) {
         }
     }
     if (!criticalRemains) {
+        /* Critical shutdown stopped PD8. Restore it when the last Critical
+         * latch clears, including a main-only or individual-source clear.
+         * This does not release gate reset or turn either power switch on. */
+        if (m_safety_executed) SafetyLink_Resume();
         m_safety_executed = false;
     }
     irqRestore(primask);
@@ -192,6 +202,7 @@ void FaultManager::clearAll() {
     const uint32_t primask = irqSave();
     m_active = FaultBits{};
     m_pending_log = FaultBits{};
+    if (m_safety_executed) SafetyLink_Resume();
     m_safety_executed = false;
     for (size_t i = 0; i < REASON_COUNT; ++i) {
         m_reason[i] = FaultReason::Unspecified;
@@ -403,6 +414,14 @@ void FaultManager::executeSafetyActions() {
     PWM_StopSPWM();
     GateDriver_DisableOutputs();
     GateDriver_EnablePower(false);
+
+    /* Publish stopped lifecycle states in this iteration, including an
+     * asynchronous startup; the hardware trip must not leave "running"
+     * software that can advance its startup state after fault clear. */
+    if (focControlManager().isRunning()) focControlManager().stop();
+    if (openLoopController().isRunning()) openLoopController().stop();
+    ControlSupervisor::instance().notifySafetyShutdown();
+    publishStatus();
 
     Telemetry::printf("[SAFETY] Critical fault -> PWM break, gate driver reset, power off");
 }

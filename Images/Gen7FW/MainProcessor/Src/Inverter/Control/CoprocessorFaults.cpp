@@ -1,4 +1,5 @@
 #include "Inverter/Control/CoprocessorFaults.h"
+#include "Inverter/Control/FaultManager.h"
 
 #include "Inverter/Telemetry.h"
 #include "main.h"
@@ -74,6 +75,15 @@ bool CoprocessorFaults::consumeLine(const char* line, size_t length) {
     m_last_rx_ms = HAL_GetTick();
     m_seen = true;
     m_publish_due = true;
+    const bool clear_reply = frame.clear_result == SAFETY_CLEAR_REFUSED
+        ? frame.state == 3u && frame.faults != 0u
+        : (frame.clear_result == SAFETY_CLEAR_ACCEPTED ||
+           frame.clear_result == SAFETY_CLEAR_NO_FAULT) && frame.faults == 0u;
+    if ((m_clear_pending || m_clear_timed_out) &&
+        frame.generation != m_clear_generation && clear_reply) {
+        m_clear_pending = false;
+        m_clear_timed_out = false;
+    }
     if (changed && (frame.faults != 0u || frame.clear_result != SAFETY_CLEAR_NONE)) {
         char names[128];
         formatNames(frame.faults, names, sizeof(names));
@@ -88,40 +98,75 @@ bool CoprocessorFaults::fresh() const {
 }
 
 bool CoprocessorFaults::requestClear() {
-    if (m_clear_active || !fresh()) return false;
+    if (m_clear_active || m_clear_pending || !fresh()) return false;
     m_clear_active = true;
+    m_clear_pending = true;
+    m_clear_timed_out = false;
+    m_clear_generation = m_frame.generation;
     m_clear_started_ms = HAL_GetTick();
+    m_publish_due = true;
     HAL_GPIO_WritePin(COPROCESSOR_WAKEUP_GPIO_Port, COPROCESSOR_WAKEUP_Pin,
                       GPIO_PIN_SET);
     return true;
 }
 
-void CoprocessorFaults::service() {
+bool CoprocessorFaults::readyForActuation() const {
+    return fresh() && m_frame.state == 2u && m_frame.faults == 0u &&
+           !m_clear_active && !m_clear_pending;
+}
+
+bool CoprocessorFaults::checkReadyForActuation() const {
+    if (readyForActuation()) return true;
+    Telemetry::printf("[SAFETY] start refused: coprocessor=%s faults=0x%08lX clear=%s; check 'fault status' and 'fault clear all'",
+                      fresh() ? stateName(m_frame.state) : "STALE",
+                      static_cast<unsigned long>(m_seen ? m_frame.faults : 0u),
+                      m_clear_pending ? "pending" : m_clear_timed_out ? "timeout" :
+                      clearName(m_frame.clear_result));
+    return false;
+}
+
+void CoprocessorFaults::service(bool actuating) {
     const uint32_t now_ms = HAL_GetTick();
+    if (actuating && !readyForActuation()) {
+        FaultManager::instance().raise(FaultSource::CoprocessorSafety,
+            !fresh() ? FaultReason::CoprocessorStatusStale :
+            m_frame.faults != 0u ? FaultReason::CoprocessorTrip :
+                                 FaultReason::CoprocessorNotArmed);
+    }
     if (m_clear_active && (uint32_t)(now_ms - m_clear_started_ms) >= 100u) {
         HAL_GPIO_WritePin(COPROCESSOR_WAKEUP_GPIO_Port, COPROCESSOR_WAKEUP_Pin,
                           GPIO_PIN_RESET);
         m_clear_active = false;
     }
-    if (m_publish_due || (uint32_t)(now_ms - m_last_publish_ms) >= 1000u) {
+    if (m_clear_pending && (uint32_t)(now_ms - m_clear_started_ms) > 1500u) {
+        m_clear_pending = false;
+        m_clear_timed_out = true;
+        m_publish_due = true;
+    }
+    if (m_publish_due || fresh() != m_published_fresh ||
+        (uint32_t)(now_ms - m_last_publish_ms) >= 1000u) {
         publishStatus();
+        m_published_fresh = fresh();
         m_last_publish_ms = now_ms;
         m_publish_due = false;
     }
 }
 
 void CoprocessorFaults::publishStatus() const {
+    const bool current = fresh();
     char flags[16];
     char names[128];
     std::snprintf(flags, sizeof(flags), "0x%08lX",
                   static_cast<unsigned long>(m_seen ? m_frame.faults : 0u));
     formatNames(m_seen ? m_frame.faults : 0u, names, sizeof(names));
-    Telemetry::log("coprocessor_fault_flags_hex", m_seen ? flags : "unknown");
-    Telemetry::log("coprocessor_fault_names", m_seen ? names : "unknown");
+    Telemetry::log("coprocessor_fault_flags_hex", current ? flags : "unknown");
+    Telemetry::log("coprocessor_fault_names", current ? names : "unknown");
+    Telemetry::log("coprocessor_status_fresh", current ? 1.0f : 0.0f);
     Telemetry::log("coprocessor_safety_state",
-                   fresh() ? stateName(m_frame.state) : "STALE");
+                   current ? stateName(m_frame.state) : "STALE");
     Telemetry::log("coprocessor_clear_result",
-                   m_seen ? clearName(m_frame.clear_result) : "unknown");
+                   m_clear_pending ? "pending" : m_clear_timed_out ? "timeout" :
+                   current ? clearName(m_frame.clear_result) : "unknown");
     Telemetry::log("coprocessor_status_age_ms",
                    m_seen ? static_cast<float>(HAL_GetTick() - m_last_rx_ms) : -1.0f);
 }
@@ -135,7 +180,12 @@ void CoprocessorFaults::printStatus() const {
     Telemetry::printf("[FAULT][COPROCESSOR] state=%s flags=0x%08lX age=%lu ms generation=%u clear=%s%s",
                       stateName(m_frame.state), static_cast<unsigned long>(m_frame.faults),
                       static_cast<unsigned long>(age_ms), m_frame.generation,
-                      clearName(m_frame.clear_result), fresh() ? "" : " STALE");
+                      m_clear_pending ? "pending" : m_clear_timed_out ? "timeout" :
+                      clearName(m_frame.clear_result), fresh() ? "" : " STALE (last report)");
+    if (!fresh()) {
+        Telemetry::printf("[FAULT][COPROCESSOR] current faults unknown; last received report shown above");
+        return;
+    }
     if (m_frame.faults == 0u) {
         Telemetry::printf("[FAULT][COPROCESSOR] none active");
     } else {

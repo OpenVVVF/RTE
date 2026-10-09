@@ -424,6 +424,41 @@ simulated-port tests cannot prove a newly flashed coprocessor's behavior.
 
 ### Firmware changes and MCP compatibility
 
+The processor synchronization update adds an H7 actuation interlock: graph
+control, native FOC, and the calibration gate startup require a fresh,
+fault-free G474 `ARMED` report. A missing/stale report, non-armed state, or G474
+fault during actuation raises main Critical `CoprocessorSafety` (bit 38, in the
+existing extended fault word). The H7 processes safety reports before advancing
+controllers and cancels pending startups on Critical shutdown. Native FOC,
+open-loop, and graph lifecycle states now reflect the hardware shutdown in the
+same application iteration. The heartbeat stall check also covers open-loop
+requests and locally enabled PWM/gate outputs used by direct calibrations.
+Clearing the last main Critical latch resumes heartbeat monitoring while PWM
+and gate outputs stay disabled. Existing two-stage `fault clear all` recovery
+still applies when PWR2 is latched off.
+
+New firmware telemetry includes `main_heartbeat_enabled`, `gate_power_enabled`
+(local PWR1 command), `gate_reset_asserted`, `main_outputs_enabled` (local
+channels/MOE/reset/PWR1 combination), and `coprocessor_status_fresh`. These are
+command/enable states, not measurements of delivered torque or gate voltage.
+Power/heartbeat changes publish on the next application pass and refresh once
+per second. A G474 clear request remains `pending` until a newer generation
+reports its result; it becomes `timeout` after 1500 ms without confirmation.
+Stale G474 fault telemetry becomes `unknown`; `fault status` identifies its last
+received report and does not describe it as the current fault set.
+
+`rte_control_status` and Studio's Inspect Firmware & Signals dialog share the
+same freshness handling and expose these power fields. The endpoint adds
+`coprocessor_fresh` separately from the main `fresh` flag, and derives
+`coprocessor_power_enabled` only from a fresh `POWERING`/`ARMED` state. It adds
+host elapsed time to the H7-reported G474 age and returns null G474 fault/power
+values when that status has expired. The ordinary signal tools continue to
+discover the new signals at runtime. Tool schemas, command/help formatting,
+telemetry framing, and the G474 `!SF1` frame are unchanged. This update needs a
+**main MCU rebuild/reflash and a rebuilt/restarted Studio**. It does not require
+an additional G474 image change beyond the planned-reboot fix above.
+See [the processor synchronization audit](gen7-processor-sync-audit.md).
+
 The MCP tool names and schemas are host code; they do not regenerate from a
 firmware image. Generic command sending accepts new firmware command text,
 and `rte_device_commands` discovers registered commands at runtime while the

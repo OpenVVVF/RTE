@@ -215,6 +215,35 @@ static void init()
     Inverter::ControlSupervisor::instance().init();
 }
 
+static bool actuationRequested()
+{
+    return platform_control_outputs_enabled() ||
+           Inverter::focControlManager().isRunning() ||
+           Inverter::openLoopController().isRunning() || SafetyLink_OutputsActive();
+}
+
+static void publishPowerState()
+{
+    const bool heartbeat = SafetyLink_IsEnabled();
+    const bool power = HAL_GPIO_ReadPin(GATE_DRIVER_POWER_ENABLE_GPIO_Port,
+                                        GATE_DRIVER_POWER_ENABLE_Pin) == GPIO_PIN_SET;
+    const bool reset = HAL_GPIO_ReadPin(GATE_DRIVER_RESET_GPIO_Port,
+                                        GATE_DRIVER_RESET_Pin) == GPIO_PIN_RESET;
+    const bool outputs = SafetyLink_OutputsActive();
+    const uint8_t bits = (heartbeat ? 1u : 0u) | (power ? 2u : 0u) |
+                         (reset ? 4u : 0u) | (outputs ? 8u : 0u);
+    static uint8_t previous = 0xffu;
+    static uint32_t last_ms = 0u;
+    const uint32_t now_ms = HAL_GetTick();
+    if (bits == previous && (uint32_t)(now_ms - last_ms) < 1000u) return;
+    Telemetry::log("main_heartbeat_enabled", heartbeat ? 1.0f : 0.0f);
+    Telemetry::log("gate_power_enabled", power ? 1.0f : 0.0f);
+    Telemetry::log("gate_reset_asserted", reset ? 1.0f : 0.0f);
+    Telemetry::log("main_outputs_enabled", outputs ? 1.0f : 0.0f);
+    previous = bits;
+    last_ms = now_ms;
+}
+
 /* TIME_DOMAIN: APPLICATION_MAIN_LOOP
  *   Rate: free-running, effectively ~100 Hz depending on loop workload.
  *   Soft real-time.  This is where codegen application-layer logic lives:
@@ -242,11 +271,16 @@ static void loop()
         Inverter::CoprocessorFaults::instance().service();
         Inverter::FaultManager::instance().service();
         Inverter::FaultManager::instance().executeSafetyActions();
+        publishPowerState();
         Telemetry::updateSensors();
         return;
     }
-    SafetyLink_MainLoop(platform_control_outputs_enabled() ||
-                        Inverter::focControlManager().isRunning());
+    /* Consume G474 reports before any controller/calibration can advance.
+     * Keep this check independent of /RDY's slower physical decay. */
+    Inverter::commandShell().poll();
+    Inverter::CoprocessorFaults::instance().service(actuationRequested());
+    Inverter::FaultManager::instance().executeSafetyActions();
+    SafetyLink_MainLoop(actuationRequested());
 
     if ((now_ms - s_last_hz_ms) >= 1000U) {
         Telemetry::log("hz_app_loop", static_cast<float>(Inverter::LoopStats::app_loop));
@@ -367,8 +401,9 @@ static void loop()
     Inverter::ControlSupervisor::instance().service();
     Inverter::FaultManager::instance().service();
     Inverter::commandShell().poll();
-    Inverter::CoprocessorFaults::instance().service();
+    Inverter::CoprocessorFaults::instance().service(actuationRequested());
     Inverter::FaultManager::instance().executeSafetyActions();
+    publishPowerState();
 
     /* Flush queued telemetry values over UART. */
     Telemetry::updateSensors();

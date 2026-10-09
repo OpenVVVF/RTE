@@ -54,6 +54,8 @@ public:
      * Refuses while any Critical or High software fault remains active.
      */
     bool resetFaultState();
+    /** Synchronize the lifecycle with a main-loop Critical shutdown. */
+    void notifySafetyShutdown();
 
     bool isRunning() const { return m_state == State::Running; }
     bool isFaulted() const { return m_state == State::Fault; }
