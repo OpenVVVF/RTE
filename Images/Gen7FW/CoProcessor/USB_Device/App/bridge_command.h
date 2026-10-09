@@ -29,6 +29,10 @@ static inline bool BridgeCommand_Feed(BridgeCommand *command,
     bool reset = false;
     for (uint16_t i = 0u; i < count; ++i) {
         uint8_t byte = bytes[i];
+        if (byte == 0x18u) { /* Shell CAN cancels startup/interrupted input. */
+            *command = (BridgeCommand){0};
+            continue;
+        }
         if (byte == '\r' || byte == '\n') {
             reset = !command->invalid && command->matched == sizeof(reboot) - 1u;
             *command = (BridgeCommand){0};

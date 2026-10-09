@@ -291,9 +291,9 @@ int UartTransport::extractFrame(uint8_t* out, size_t cap) {
 
 bool UartTransport::sendLine(const std::string& line) {
     if (line.empty()) return false;
-    // Terminate any partial shell line left by startup noise or an interrupted
-    // transmission. The firmware ignores an empty line.
-    std::string out = "\n" + line;
+    // CAN cancels partial input without executing it. Keep the newline for
+    // older firmware and to resynchronize a receiver that lost the CAN byte.
+    std::string out = "\x18\n" + line;
     if (out.back() != '\n' && out.back() != '\r') out.push_back('\n');
     if (!port_.write(reinterpret_cast<const uint8_t*>(out.data()), static_cast<int>(out.size())))
         return false;

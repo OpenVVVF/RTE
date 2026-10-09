@@ -219,6 +219,22 @@ no coprocessor reflash is needed.
   exempt. **Reflash the G474 coprocessor only** for this fix. Send `reboot`
   through the usual generic command tools or Studio Runtime console; command
   discovery, telemetry, bridge modes, and safety frame formats are unchanged.
+- The startup command fix requires **both Gen7 MCU images to be rebuilt and
+  reflashed**, plus the current `rte` and `RTEStudio`. The G474 holds commands
+  until a complete valid IVP telemetry frame confirms application startup;
+  shell `reboot` also restarts this wait after a 20 ms UART quiet interval.
+  A zero byte or 1.5 seconds of silence no longer releases the queue.
+  `rte_device_mode` and the manual `rte device mode` expose `app_waiting` from
+  control-port `APP_WAIT`. USB write success is not command execution, and
+  there is no automatic replay. Studio and serial protocol writers send
+  ASCII CAN (`0x18`) plus a newline before each command to cancel leftover
+  input and recover the shell parser. Plain terminal commands remain valid.
+  The bridge stages complete application lines so incomplete USB input cannot
+  block private safety status; ROM bootloader bytes remain opaque. Use exact
+  signals `shell_uart_errors`, `shell_rx_dropped`, and
+  `shell_rx_rearm_failures` to diagnose H7 receive errors. These are distinct
+  from control-port counters for the opposite UART direction. See
+  [startup command diagnosis](docs/gen7-command-startup.md).
 - For live data, run `RTEStudio` connected to the inverter first. Use
   `rte_device_status`, filtered `rte_signal_info`, `rte_device_signal`, or
   `rte_device_snapshot` first. `rte_device_telemetry` accepts exact `signals`

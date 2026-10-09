@@ -25,6 +25,14 @@ bool CommandShell::init() {
         return true;
     }
 
+    /* Registration may take time. Flush immediately before arming RX, not
+     * before registration, so bytes arriving during setup cannot prefix the
+     * first command or leave a pending overrun. */
+    initializeCommands();
+    CommandManager::instance().setContext(s_commandContext);
+
+    const uint32_t irq_state = __get_PRIMASK();
+    __disable_irq();
     m_rx_head = 0;
     m_rx_tail = 0;
     m_rx_corrupt = false;
@@ -44,11 +52,8 @@ bool CommandShell::init() {
                                   UART_CLEAR_IDLEF);
     HAL_NVIC_ClearPendingIRQ(USART3_IRQn);
 
-    /* Register before arming RX so poll() can retry a failed first arm. */
-    initializeCommands();
-    CommandManager::instance().setContext(s_commandContext);
-
     HAL_StatusTypeDef status = HAL_UART_Receive_IT(&huart3, &m_hal_rx_byte, 1U);
+    __set_PRIMASK(irq_state);
     if (status != HAL_OK) {
         ++m_rx_rearm_failures;
         Telemetry::printf("[SHELL] ERROR: HAL_UART_Receive_IT failed");
@@ -90,6 +95,7 @@ void CommandShell::recover() {
     m_rx_corrupt = true;
 
     /* Clear error/idle flags and restart reception. */
+    __HAL_UART_SEND_REQ(&huart3, UART_RXDATA_FLUSH_REQUEST);
     __HAL_UART_CLEAR_FLAG(&huart3, UART_CLEAR_PEF | UART_CLEAR_FEF |
                                   UART_CLEAR_NEF | UART_CLEAR_OREF |
                                   UART_CLEAR_IDLEF);
@@ -126,10 +132,25 @@ void CommandShell::poll() {
             m_line_len = 0;
             m_line[0] = '\0';
             m_discard_line = true;
+            Telemetry::printf("[SHELL] UART input discarded; resend complete command "
+                              "(errors=%lu dropped=%lu rearm=%lu)",
+                              static_cast<unsigned long>(m_uart_errors),
+                              static_cast<unsigned long>(m_rx_dropped),
+                              static_cast<unsigned long>(m_rx_rearm_failures));
         }
 
         if (empty) {
             break;
+        }
+
+        /* CAN is an explicit cancellation, not a terminator: leftover input
+         * must never execute just because a new host command resynchronizes.
+         * Accept it even while recovering from a corrupt/overlong line. */
+        if (b == 0x18u) {
+            m_line_len = 0;
+            m_line[0] = '\0';
+            m_discard_line = false;
+            continue;
         }
 
         if (m_discard_line) {

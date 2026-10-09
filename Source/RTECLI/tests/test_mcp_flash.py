@@ -44,6 +44,7 @@ def main():
         control.symlink_to(os.ttyname(control_slave))
         received = []
         bridge_mode = ["APP_8N1"]
+        app_wait = [False]
         stop = threading.Event()
 
         def control_worker():
@@ -63,6 +64,7 @@ def main():
                                     + bridge_mode[0]
                                     + (" UART_BAUD=460800" if bridge_mode[0] == "BOOT_8E1"
                                        else " UART_BAUD=921600")
+                                    + f" APP_WAIT={int(app_wait[0])}"
                                     + " UART_ERRORS=0 RX_DROPPED=0 TX_DROPPED=0\r\n")
                     else:
                         if command == "BOOTLOADER":
@@ -618,6 +620,13 @@ def main():
                            "arguments": {}})["structuredContent"]
             assert mode["state"] == "app_responding", mode
             assert "UART_BAUD=921600" in mode["control_status"], mode
+            assert mode["app_waiting"] is False, mode
+            app_wait[0] = True
+            mode = request(server, 149, "tools/call", {"name": "rte_device_mode",
+                           "arguments": {}})["structuredContent"]
+            assert mode["app_waiting"] is True, mode
+            assert any("holding commands" in note for note in mode["notes"]), mode
+            app_wait[0] = False
             session_server.freeze_frames = True
             mode = request(server, 150, "tools/call", {"name": "rte_device_mode",
                            "arguments": {}})["structuredContent"]

@@ -80,7 +80,7 @@ void CommandManager::processLine(const char* line) {
                 Telemetry::printf("[SHELL] Error: Missing required argument <%s>", spec.name);
                 return;
             } else {
-                values[i] = {spec.default_val, (int32_t)spec.default_val, false};
+                values[i] = {spec.default_val, (int32_t)spec.default_val, {}, false};
                 continue;
             }
         }

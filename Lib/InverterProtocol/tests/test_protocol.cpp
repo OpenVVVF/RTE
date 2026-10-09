@@ -394,7 +394,7 @@ void WriteAll(int fd, const std::vector<uint8_t>& data) {
 
 }  // namespace
 
-TEST(UartTransport, CommandLineStartsWithResyncDelimiter) {
+TEST(UartTransport, CommandLineStartsWithCancelAndResyncDelimiter) {
     Pty pty;
     ASSERT_TRUE(OpenPty(pty));
 
@@ -406,7 +406,7 @@ TEST(UartTransport, CommandLineStartsWithResyncDelimiter) {
     const ssize_t received = ::read(pty.master, bytes, sizeof(bytes));
     ASSERT_GT(received, 0);
     EXPECT_EQ(std::string(bytes, static_cast<std::size_t>(received)),
-              "\ncontrol start\n");
+              "\x18\ncontrol start\n");
 }
 
 // Regression test: one read() chunk at 100 Hz typically holds several frames.

@@ -182,16 +182,37 @@ The coprocessor's `STATUS` reports its own selected UART mode, not an
 independent main MCU heartbeat, so an unresponsive app is a diagnosis lead
 rather than proof of a CPU hang.
 After an app reset, `STATUS APP_WAIT=1` means the coprocessor is holding
-incoming commands until it sees an application UART frame delimiter.
-If the app stays silent, it releases queued commands after 1.5 seconds;
-`APP_WAIT=0` means normal forwarding has resumed.
+incoming commands until it receives a complete COBS telemetry frame with a
+valid IVP header, length, and CRC. Noise, an isolated zero byte, and elapsed
+time cannot release the queue. After a shell `reboot`, the bridge first
+requires 20 ms without UART traffic to exclude telemetry still in flight
+from the previous application. `APP_WAIT=0` means forwarding has resumed.
+`rte device mode` and `rte_device_mode` expose this flag as `app_waiting` and
+explain pending commands when it is set. USB delivery alone does not confirm
+execution, and commands are never automatically replayed.
 The same control-port `STATUS` line also includes `SAFETY_STATE` and
 `SAFETY_FAULTS` from the G474, so these remain readable even if the H7 is
 not publishing telemetry.
-The main shell internally counts USART3 HAL errors, shell ring overflow, and
-failed receive rearms. Its three telemetry log calls are currently commented
-out in `InverterMain.cpp`. Control port `UART_ERRORS` and `RX_DROPPED` count
-the opposite UART direction, from main MCU to coprocessor.
+The main shell publishes `shell_uart_errors`, `shell_rx_dropped`, and
+`shell_rx_rearm_failures` once per second. A receive error or overflow also
+prints a bounded shell diagnostic requesting a complete command resend.
+Control port `UART_ERRORS` and `RX_DROPPED` count the opposite UART direction,
+from main MCU to coprocessor.
+
+Application command writers in Studio and the protocol library prefix each
+request with ASCII CAN (`0x18`) and a newline. CAN cancels partial input
+without executing it and clears the shell's discard state after an error;
+ordinary newline-terminated terminal input remains supported. The shell
+flushes the UART FIFO and clears stale error flags immediately before arming
+reception, after command registration. The coprocessor stages a complete
+application line before forwarding it, so a USB disconnect mid-command
+cannot prevent private safety reports from reaching the main MCU. Overlong
+lines are dropped; ROM bootloader traffic still uses the opaque byte path.
+
+These startup command fixes require **both the G474 coprocessor and H7 main
+images to be rebuilt and reflashed**, plus the rebuilt `rte` and `RTEStudio`.
+See [Gen7 startup command diagnosis](gen7-command-startup.md) for causes,
+regression coverage, and deployment status.
 
 The session is bound to `127.0.0.1`, uses a random token stored in the user-only
 cache descriptor, and disappears when Studio exits. Device commands and a

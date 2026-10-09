@@ -290,9 +290,9 @@ static void loop()
         Telemetry::log("tim_isr_running", PWM_IsUpdateInterruptRunning() ? 1.0f : 0.0f);
         Telemetry::log("control_outputs_enabled",
                        platform_control_outputs_enabled() ? 1.0f : 0.0f);
-        // Telemetry::log("shell_uart_errors", static_cast<float>(Inverter::commandShell().uartErrorCount()));
-        // Telemetry::log("shell_rx_dropped", static_cast<float>(Inverter::commandShell().rxDroppedCount()));
-        // Telemetry::log("shell_rx_rearm_failures", static_cast<float>(Inverter::commandShell().rxRearmFailureCount()));
+        Telemetry::log("shell_uart_errors", static_cast<float>(Inverter::commandShell().uartErrorCount()));
+        Telemetry::log("shell_rx_dropped", static_cast<float>(Inverter::commandShell().rxDroppedCount()));
+        Telemetry::log("shell_rx_rearm_failures", static_cast<float>(Inverter::commandShell().rxRearmFailureCount()));
         Telemetry::log("control_state", Inverter::ControlSupervisor::instance().stateName());
         Telemetry::log("foc_running", Inverter::focControlManager().isRunning() ? 1.0f : 0.0f);
         Inverter::FaultManager::instance().publishStatus();

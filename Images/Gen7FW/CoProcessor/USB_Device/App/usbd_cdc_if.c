@@ -6,6 +6,8 @@
 #include "safety_hardware.h"
 #include "bridge_dma_math.h"
 #include "bridge_command.h"
+#include "bridge_app_ready.h"
+#include "bridge_line.h"
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 uint8_t UserRxBufferFS[CDC_PORT_COUNT][APP_RX_DATA_SIZE];
@@ -18,6 +20,7 @@ static volatile uint8_t uart_rx_restart_pending;
 static uint32_t uart_rx_consumed, uart_rx_scanned;
 static volatile uint16_t uart_tx_head, uart_tx_tail;
 static volatile uint8_t uart_tx_dma_active, uart_tx_dma_safety;
+static volatile uint8_t uart_tx_dma_reboot;
 static volatile uint16_t uart_tx_dma_length;
 static volatile uint8_t uart_tx_dma_last_byte;
 static volatile uint8_t usb_tx_busy[CDC_PORT_COUNT];
@@ -26,7 +29,8 @@ static volatile uint8_t bridge_paused;
 static volatile uint8_t uart_bootloader_mode;
 static volatile uint8_t bridge_waiting_for_app;
 static volatile uint8_t bridge_reset_active;
-static volatile uint32_t bridge_app_wait_since;
+static BridgeAppReady bridge_app_ready;
+static bool uart_tx_discard_line;
 static volatile uint32_t uart_errors, uart_rx_dropped, uart_tx_dropped;
 static uint32_t bridge_rx_last_poll_ms = UINT32_MAX;
 static uint8_t command[32], command_length;
@@ -51,6 +55,7 @@ static uint8_t uart_set_bootloader_mode(uint8_t bootloader);
 static void uart_clear_bridge_buffers(void);
 static void uart_dma_stop(void), uart_dma_start(void);
 static uint32_t uart_rx_produced(void);
+static void bridge_begin_app_wait(bool wait_for_quiet);
 USBD_CDC_ItfTypeDef USBD_Interface_fops_FS = {cdc_init,cdc_deinit,cdc_control,cdc_receive,cdc_tx_complete};
 
 static int8_t cdc_init(uint8_t p){usb_tx_busy[p]=0;USBD_CDC_SetTxBuffer(&hUsbDeviceFS,p,UserTxBufferFS[p],0);USBD_CDC_SetRxBuffer(&hUsbDeviceFS,p,UserRxBufferFS[p]);if(p==CDC_PORT_BRIDGE)bridge_out_armed=1;return USBD_OK;}
@@ -96,6 +101,7 @@ static void uart_tx_start(void){
  if(!bridge_paused&&!bridge_waiting_for_app&&!uart_tx_dma_active){
   const uint8_t *source=NULL;
   uint16_t length=0u;
+  bool reboot_chunk=false;
   if(!uart_bootloader_mode&&safety_pending_valid&&tx_at_line_boundary){
    memcpy(safety_active_frame,safety_pending,sizeof(safety_active_frame));
    safety_pending_valid=0u;
@@ -104,10 +110,17 @@ static void uart_tx_start(void){
    source=(const uint8_t *)safety_active_frame;
    length=SAFETY_FAULT_WIRE_LENGTH;
   }else if(uart_tx_head!=uart_tx_tail){
-   const uint16_t tail=uart_tx_tail;
-   const uint16_t contiguous=uart_tx_head>tail?uart_tx_head-tail:CDC_BRIDGE_BUF_SIZE-tail;
-   length=contiguous;
-   length=BridgeDma_TxChunk(&uart_tx_ring[tail],contiguous,uart_bootloader_mode);
+   uint16_t tail=uart_tx_tail;
+   if(uart_bootloader_mode){
+    length=uart_tx_head>tail?(uint16_t)(uart_tx_head-tail):(uint16_t)(CDC_BRIDGE_BUF_SIZE-tail);
+   }else{
+    const BridgeLineChunk chunk=BridgeLine_Next(uart_tx_ring,CDC_BRIDGE_BUF_SIZE,
+                                               uart_tx_head,tail,uart_tx_discard_line);
+    uart_tx_tail=tail=chunk.tail;
+    uart_tx_discard_line=chunk.discard;
+    uart_tx_dropped+=chunk.dropped;
+    length=chunk.length;
+   }
    if(!uart_bootloader_mode){
     BridgeCommand next=bridge_command;
     const bool reboot=BridgeCommand_Feed(&next,&uart_tx_ring[tail],length);
@@ -119,11 +132,13 @@ static void uart_tx_start(void){
      return;
     }
     bridge_command=next;
-    if(reboot)bridge_reboot_ready=0u;
+    if(reboot){bridge_reboot_ready=0u;reboot_chunk=true;}
    }
    uart_tx_dma_safety=0u;
-   uart_tx_dma_last_byte=uart_tx_ring[tail+length-1U];
-   source=&uart_tx_ring[tail];
+   if(length){
+    uart_tx_dma_last_byte=uart_tx_ring[tail+length-1U];
+    source=&uart_tx_ring[tail];
+   }
   }
   if(length){
    DMA1_Channel2->CCR&=~DMA_CCR_EN;
@@ -131,6 +146,7 @@ static void uart_tx_start(void){
    DMA1_Channel2->CNDTR=length;
    DMA1_Channel2->CMAR=(uint32_t)(uintptr_t)source;
    uart_tx_dma_length=length;
+   uart_tx_dma_reboot=reboot_chunk?1u:0u;
    uart_tx_dma_active=1u;
    __DMB();
    DMA1_Channel2->CCR|=DMA_CCR_EN;
@@ -164,6 +180,7 @@ static void uart_dma_stop(void){
  DMA1->IFCR=DMA_IFCR_CGIF1|DMA_IFCR_CGIF2;
  uart_tx_dma_active=0u;
  uart_tx_dma_safety=0u;
+ uart_tx_dma_reboot=0u;
  uart_tx_dma_length=0u;
  uart_rx_restart_pending=0u;
 }
@@ -210,6 +227,7 @@ static uint8_t uart_set_bootloader_mode(uint8_t bootloader){
  USART3->CR3&=~USART_CR3_EIE;
  uart_dma_stop();
  uart_tx_head=uart_tx_tail=0;
+ uart_tx_discard_line=false;
  safety_pending_valid=0u;
  safety_active=0u;
  tx_at_line_boundary=1u;
@@ -242,8 +260,9 @@ static uint8_t uart_set_bootloader_mode(uint8_t bootloader){
  HAL_NVIC_SetPriority(USART3_IRQn,5,0);
  HAL_NVIC_EnableIRQ(USART3_IRQn);
  uart_bootloader_mode=bootloader?1U:0U;
- /* A reset follows each mode switch. Hold USB commands until the application
-  * emits a UART frame delimiter after reset. ROM flashing stays live. */
+ /* A reset follows each mode switch. Hold application traffic until a
+  * complete valid telemetry frame arrives after reset. ROM stays opaque. */
+ BridgeAppReady_Begin(&bridge_app_ready,HAL_GetTick(),false);
  bridge_waiting_for_app=bootloader?0U:1U;
  bridge_reset_active=bootloader?0U:1U;
  bridge_paused=0;
@@ -264,6 +283,7 @@ static void uart_clear_bridge_buffers(void){
  HAL_NVIC_DisableIRQ(USART3_IRQn);
  uart_dma_stop();
  uart_tx_head=uart_tx_tail=0;
+ uart_tx_discard_line=false;
  USART3->RQR=USART_RQR_RXFRQ;
  USART3->ICR=USART_ICR_PECF|USART_ICR_FECF|USART_ICR_NECF|USART_ICR_ORECF;
  uart_dma_start();
@@ -314,6 +334,13 @@ void CDC_Bridge_DmaTxIrqHandler(void){
   tx_at_line_boundary=(uart_tx_dma_last_byte=='\n'||uart_tx_dma_last_byte=='\r');
  }
  uart_tx_dma_active=0u;
+ if(uart_tx_dma_reboot){
+  /* The terminator has left the bridge. Discard old in-flight telemetry,
+   * observe a UART quiet interval, then require a fresh valid app frame. */
+  bridge_begin_app_wait(true);
+  bridge_reset_active=0u;
+  uart_tx_dma_reboot=0u;
+ }
  uart_tx_start();
 }
 
@@ -331,6 +358,11 @@ static uint32_t uart_rx_produced(void){
  __DMB();
  return BridgeDma_RxProduced(halves,pending,remaining);
 }
+static void bridge_begin_app_wait(bool wait_for_quiet){
+ bridge_waiting_for_app=1u;
+ uart_rx_scanned=uart_rx_produced();
+ BridgeAppReady_Begin(&bridge_app_ready,HAL_GetTick(),wait_for_quiet);
+}
 static void reset_main(GPIO_PinState boot){
  SafetyHardware_PlanMainReset();
  HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin,boot);
@@ -338,8 +370,9 @@ static void reset_main(GPIO_PinState boot){
  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin,GPIO_PIN_RESET);
  SafetyHardware_MainResetAsserted();
  HAL_Delay(50);
+ /* Exclude all bytes from the previous application while NRST is held. */
+ if(!uart_bootloader_mode)bridge_begin_app_wait(false);
  HAL_GPIO_WritePin(RESET_MAIN_MCU_GPIO_Port,RESET_MAIN_MCU_Pin,GPIO_PIN_SET);
- bridge_app_wait_since=HAL_GetTick();
  bridge_reset_active=0;
  HAL_Delay(100);
  HAL_GPIO_WritePin(BOOTSEL_MAIN_MCU_GPIO_Port,BOOTSEL_MAIN_MCU_Pin,GPIO_PIN_RESET);
@@ -390,11 +423,6 @@ void CDC_Bridge_Process(void){
   uart_tx_start();
   if(!irq_state)__enable_irq();
  }
- if(bridge_waiting_for_app&&!bridge_reset_active&&
-    (uint32_t)(HAL_GetTick()-bridge_app_wait_since)>=1500U){
-  bridge_waiting_for_app=0u;
-  uart_tx_start();
- }
  if(bridge_paused)return;
  /* The safety pins are polled on every main-loop pass. RX DMA has enough
   * headroom for a millisecond of UART traffic, so keep bridge bookkeeping
@@ -411,6 +439,7 @@ void CDC_Bridge_Process(void){
   uart_rx_completed_halves=0u;
   uart_rx_consumed=0u;
   uart_rx_scanned=0u;
+  BridgeAppReady_Begin(&bridge_app_ready,poll_ms,bridge_app_ready.quiet);
   DMA1_Channel1->CNDTR=BRIDGE_RX_DMA_SIZE;
   uart_rx_restart_pending=0u;
   DMA1_Channel1->CCR|=DMA_CCR_EN;
@@ -420,9 +449,13 @@ void CDC_Bridge_Process(void){
  const uint32_t produced=uart_rx_produced();
  if(bridge_waiting_for_app&&!bridge_reset_active){
   uint32_t scan=uart_rx_scanned;
-  if(produced-scan>BRIDGE_RX_DMA_SIZE)scan=produced-BRIDGE_RX_DMA_SIZE;
+  if(produced-scan>BRIDGE_RX_DMA_SIZE){
+   scan=produced-BRIDGE_RX_DMA_SIZE;
+   BridgeAppReady_Begin(&bridge_app_ready,poll_ms,bridge_app_ready.quiet);
+  }
   while(scan!=produced){
-   if(uart_rx_dma[scan&(BRIDGE_RX_DMA_SIZE-1U)]==0u){
+   if(BridgeAppReady_Feed(&bridge_app_ready,
+                         uart_rx_dma[scan&(BRIDGE_RX_DMA_SIZE-1U)],poll_ms)){
     bridge_waiting_for_app=0u;
     uart_tx_start();
     break;

@@ -22,6 +22,9 @@ static void check_text(const char *line, bool expected)
 
 int main(void)
 {
+    BridgeCommand cancelled = {0};
+    assert(!BridgeCommand_Feed(&cancelled, (const uint8_t *)"garbage", 7u));
+    assert(BridgeCommand_Feed(&cancelled, (const uint8_t *)"\x18reboot\n", 8u));
     check_text("reboot\n", true);
     check_text(" \tReBoOt \t\v\f\r", true);
     check_text("reboot extra\n", false);

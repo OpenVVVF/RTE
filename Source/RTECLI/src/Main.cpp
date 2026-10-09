@@ -478,6 +478,10 @@ json ProbeMainMode(const std::string& preferredBridge,
     const auto controlStatus = RTEAutomation::ReadGen7ControlStatus(control);
     if (controlStatus.success) {
         report["control_status"] = controlStatus.line;
+        report["app_waiting"] = controlStatus.line.find("APP_WAIT=1") != std::string::npos;
+        if (report["app_waiting"].get<bool>()) {
+            report["notes"].push_back("The bridge is holding commands until a complete valid application telemetry frame confirms startup. USB delivery does not confirm command execution; no automatic command retry is performed.");
+        }
         if (controlStatus.line.find("UART_MODE=BOOT_8E1") != std::string::npos)
             report["bridge_mode"] = "bootloader";
         else if (controlStatus.line.find("UART_MODE=APP_8N1") != std::string::npos)

@@ -42,6 +42,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ../../../Lib/SafetyFaultLink/src/safety_fault_wire.c
+    ../../../Lib/InverterProtocol/src/protocol.c
     Safety/safety_policy.c
     Safety/safety_heartbeat.c
     Safety/safety_hardware.c
@@ -50,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ../../../Lib/SafetyFaultLink/include
+    ../../../Lib/InverterProtocol/include
     Safety
 )
 
