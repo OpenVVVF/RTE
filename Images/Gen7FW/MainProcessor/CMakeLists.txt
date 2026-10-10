@@ -74,6 +74,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Src/Inverter/LoopStats.cpp
     Src/Inverter/platform_api.cpp
     Src/Inverter/Telemetry.cpp
+    Src/Inverter/Drivers/Sensors/ApplicationSensorsThrottle.cpp
     Src/Inverter/Control/CommandShell.cpp
     Src/Inverter/Control/FaultManager.cpp
     Src/Inverter/Control/CoprocessorFaults.cpp

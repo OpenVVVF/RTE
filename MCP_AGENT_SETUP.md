@@ -275,6 +275,52 @@ no coprocessor reflash is needed.
   values, excluding identical refreshes; they do not report ADC sample rate.
   This reduces UART load without changing the frame format and requires only
   a main MCU reflash.
+  Gen7 `thr_a_v` (throttle 1/A, PA3 ADC pin voltage) keeps the existing
+  telemetry behavior: the sensor updates every 16 ms, and the 200 Hz
+  dispatcher sends changes with a one-second refresh for unchanged values.
+  In `foc_demo`, `Throttle.A_V` feeds only
+  `LogThrAVoltage` in `app_loop`. The bounded `Throttle.A` output feeds
+  `ThrottleIq` (`Control.BlendedThrottle`). Its neutral pedal fraction rises
+  from 0% below 50 motor RPM to 30% at 800 RPM. Above neutral it maps to
+  +150 A at full throttle; below neutral it requests up to 50 A opposing
+  electrical rotation, fading regen between 50 and 300 motor RPM. Invalid
+  inputs or settings request zero. Six visible `Ctrl.Thr.*` config nodes
+  expose the tuning; see [blended throttle](docs/gen7-blended-throttle.md).
+  `thr_neutral` and `thr_regen_available_a` expose the moving neutral and
+  speed-limited regen magnitude before voltage protection. Speed bridges use
+  `ControlSpeed` (timestamped velocity, rather than delayed dashboard RPM);
+  DC-link regen classification uses the same electrical velocity. An explicit
+  domain bridge feeds `IqGate`
+  directly, then `VectorPi.IqRef`. There is no throttle slew; the next sensor
+  update reaches the control reference. `Ctrl.ThrottleEnable` still gates Iq.
+  `cg_iq_target_a` reports the throttle target; `cg_iq_ref_a` reports the
+  gated reference before voltage protection, and `cg_iq_effective_a` reports
+  the reference after OV/UV protection, all in amperes.
+  `vdc_regen_disabled` and `vdc_derate_limit_a` report the live voltage clamps
+  separately from latched `DcLinkOvWarning` / `DcLinkUvDerate` fault names.
+  Defaults are OV above 55 V (release below 53 V) and UV below 40 V
+  (release above 42 V, 10 A ceiling). OV blocks Iq opposing electrical
+  rotation, allowing motoring in either direction. These requests can be monitored while
+  outputs are disabled. `IqVar` is removed from this graph; use the throttle
+  for Iq and `control start` for graph actuation. Native `foc start` remains
+  the separate internal diagnostic.
+  `thr_a` / `thr_a_norm` remain normalized and plausibility-gated; use
+  `thr_a_v` to measure bounds before setting calibration. The manifest gives
+  this signal unit `V`. Rebuild/reflash **only the main MCU**. Use an exact
+  `rte_device_snapshot` or `rte_device_trends` signal list. Manual access
+  is the Runtime signal table and plot, or `device signal thr_a_v`.
+  Gen7 `Hw.ThrB.Enable` defaults to `1` (A/B redundancy); `0` selects A
+  only and disables the A/B mismatch comparison, with normalized B zero.
+  `thr_b_enabled` reports the applied setting. Use generic commands
+  `config set Hw.ThrB.Enable 0`, `config set Hw.ThrA.MinV 0.330`, and
+  `config set Hw.ThrA.MaxV 2.873` for this board's configured bounds. The
+  minimum includes idle noise margin: a 30-second released-throttle capture
+  ranged from 0.31895 to 0.32685 V. These
+  base-driver keys save immediately; `temp reload` or reboot applies them.
+  The same commands work in Studio's Runtime console. Re-enable B with
+  `config set Hw.ThrB.Enable 1` and reload. This does not clear a latched
+  fault. The new setting and graph wiring require
+  a **main MCU reflash only**.
   `rte_device_histories` reads up to eight signals from one Studio store
   snapshot, with a total MCP budget of 400 raw samples; each sample retains
   its own timestamp, and its window continues advancing after reports stop.

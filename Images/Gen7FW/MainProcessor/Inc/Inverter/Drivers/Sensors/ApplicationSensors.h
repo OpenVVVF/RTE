@@ -55,8 +55,10 @@ public:
     float throttleA() const;
     float throttleB() const;
 
-    /** @brief true while throttle A/B agree within the plausibility tolerance. */
+    /** @brief true while the configured throttle inputs pass plausibility. */
     bool throttlePlausible() const;
+    /** @brief Hw.ThrB.Enable: false selects throttle A only. Default true. */
+    bool throttleBEnabled() const;
 
     /**
      * @brief DC-link current sensor raw counts + scan sequence counter.
@@ -154,6 +156,7 @@ private:
     float    m_thr_min_v[2] = {0.5f, 0.5f};
     float    m_thr_max_v[2] = {4.5f, 4.5f};
     bool     m_thr_plausible = true;
+    bool     m_thr_b_enabled = true;
     bool     m_thr_fault_raised = false;
     uint32_t m_thr_implausible_since = 0;
     float    m_vcc = 3.3f;

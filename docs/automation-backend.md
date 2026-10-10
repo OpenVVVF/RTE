@@ -408,6 +408,100 @@ numeric values over roughly one second; equal refreshes do not count. This is
 a value-change rate, not an ADC sampling rate. The refresh stays below the
 host's two-second stale-signal timeout. The wire format is unchanged, and
 only the main MCU needs a reflash.
+Gen7 `thr_a_v` reports the raw throttle 1/A PA3 ADC voltage with the existing
+telemetry behavior. The sensor updates every 16 ms (about 62.5 Hz), and the
+200 Hz dispatcher sends changed values with a one-second refresh for
+unchanged values. There is no fixed 30 Hz override. The ADC acquisition and
+throttle plausibility checks retain their existing cadence.
+`foc_demo` exposes `Throttle.A_V` with unit `V` and connects
+it only to `LogThrAVoltage` in the application domain. Existing normalized
+signals `thr_a` and `thr_a_norm` remain separate. The voltage is at the ADC
+pin, scaled using `Hw.Temp.Vcc`, before min/max calibration and plausibility
+masking; it is not a reconstruction of a higher connector voltage.
+Read or plot `thr_a_v` in Studio, or use `rte_device_snapshot` /
+`rte_device_trends` with this exact signal. Studio's Rate column counts value
+changes, so a held input can display a lower rate. The throttle remains
+available through the raw and normalized telemetry signals.
+This requires a **main MCU rebuild/reflash only**, with no coprocessor or
+telemetry wire-format change. HostSim has no raw ADC voltage model and reports
+NaN for the new raw output; simulated values cannot establish throttle bounds.
+
+`Hw.ThrB.Enable` selects Gen7 throttle redundancy: the default `1` requires
+the existing A/B normalized agreement within 0.10 for 100 ms; an explicit
+`0` selects throttle A only. Missing or nonzero settings retain dual mode.
+Single mode skips only the A/B mismatch check and reports normalized B as
+zero; raw B voltage remains available. `thr_b_enabled` reports the active
+mode. An existing latched fault is not automatically cleared by switching
+modes. Driver settings use the ordinary FRAM config commands and apply on
+`temp reload` or reboot; this feature requires a main MCU reflash only.
+The configured calibration on this board is A minimum `0.330 V`, maximum
+`2.873 V` (full throttle). The minimum includes an idle deadband: 1,840 raw
+samples over 30 seconds with the throttle released ranged from 0.31895 to
+0.32685 V. The 0.330 V threshold is about 3.1 mV above that observed peak;
+voltages below it clamp to normalized zero. Configure through MCP generic
+device commands or the Studio Runtime console:
+
+```text
+config set Hw.ThrB.Enable 0
+config set Hw.ThrA.MinV 0.330
+config set Hw.ThrA.MaxV 2.873
+temp reload
+```
+
+These base-driver keys are saved immediately to FRAM by `config set`.
+Restore `Hw.ThrB.Enable 1` and reload to use redundant inputs again. The
+raw voltage output continues to feed telemetry only.
+
+The `foc_demo` graph uses bounded throttle A for a blended Iq request:
+`Throttle.A` and `Throttle.Valid` feed `ThrottleIq` (`Control.BlendedThrottle`)
+in `app_loop`. Explicit bridges supply timestamped control mechanical RPM and
+sign-corrected electrical RPM from `ControlSpeed`. The control estimate
+avoids the dashboard RPM estimate's approximately one-second lag, and
+DC-link regen classification uses the same electrical speed. Neutral rises linearly
+from 0% below 50 motor RPM to 30% at 800 RPM. Pedal above neutral maps
+linearly to +150 A at full throttle; below neutral maps to up to 50 A of
+regen opposing electrical rotation. Available regen fades from zero at
+50 RPM to 50 A at 300 RPM. Released throttle at standstill requests zero;
+full throttle always requests +150 A. Invalid inputs or settings request zero.
+The existing voltage bounds remain 0.330–2.873 V.
+
+Six visible `Ctrl.Thr.*` config nodes expose the tuning. `config set`
+updates these live; `config save <key>` persists a value. `thr_neutral`
+reports the current neutral fraction and `thr_regen_available_a` reports
+the speed-limited regen magnitude before voltage protection. See
+[Gen7 blended throttle](gen7-blended-throttle.md) for keys, equations,
+examples, and direction behavior.
+An explicit `throttle_iq_bridge` transfers this target directly to
+`IqGate.Val` in `tim_isr`, followed by `VectorPi.IqRef`.
+`Ctrl.ThrottleEnable` still gates Iq. The throttle path has no slew limiter:
+`SlewIq` and `CfgIqSlew` are removed, and the stored `Ctrl.Iq.SlewAps` key
+does not affect this graph. Changes follow the sensor's existing 16 ms
+update cadence, then the next application/control step.
+`cg_iq_target_a` reports the target, and `cg_iq_ref_a` reports the gated
+reference before voltage protection. `cg_iq_effective_a` reports the
+reference after voltage protection, all in amperes. These are requests,
+distinct from measured `cg_iq_a`; computed requests do not mean PWM is
+enabled. Studio's node editor shows the blend, speed bridges, config, gate, and log nodes.
+The former manual `IqVar` and unused `IqRef` nodes are removed from this
+graph. `IdVar` is unchanged. Use `control start` for graph motor control;
+native `foc start <iq_a> [id_a]` remains an independent internal diagnostic.
+Installing this graph requires a **main MCU rebuild/reflash only**.
+
+DC-link warning defaults are `Hw.DcLink.OvWarnV = 55 V`,
+`Hw.DcLink.UvDerateV = 40 V`, and `Hw.DcLink.UvDerateMaxA = 10 A`.
+Missing FRAM keys use these defaults. A single filtered voltage reading
+crossing a threshold can activate the clamp; entry has no software debounce.
+OV releases below 53 V, and UV releases above 42 V. The Warning fault bits
+remain latched until cleared even after the live clamps recover.
+`vdc_regen_disabled` reports the live OV condition and
+`vdc_derate_limit_a` reports the live current ceiling (0 means no UV derate).
+OV rejects Iq opposing sign-corrected electrical rotation, with a 5 electrical
+RPM standstill deadband; it preserves motoring in either direction. UV
+symmetrically limits Iq magnitude. Unknown speed during OV requests zero.
+These changes require a **main MCU reflash only** and preserve the separate
+critical MAX22530 comparator thresholds. See
+[DC-link warning diagnosis](gen7-dclink-warnings.md) for the captured events.
+
 The G474 control-port `STATUS` also includes `SAFETY_TRIP`,
 `SAFETY_TRIP_INPUTS`, and `PWR2_EN`. Trip reasons 4, 5, and 6 distinguish PWR1
 feedback loss, PWR2 feedback loss, and PWR2 startup timeout. These diagnostics

@@ -431,7 +431,8 @@ public:
                               static_cast<double>(volts), static_cast<double>(ohms),
                               static_cast<double>(tempC), oor ? " OUT-OF-RANGE" : "");
         }
-        Telemetry::printf("[SHELL] throttle: A=%.3f V (%.2f) B=%.3f V (%.2f)%s",
+        Telemetry::printf("[SHELL] throttle: mode=%s A=%.3f V (%.2f) B=%.3f V (%.2f)%s",
+                          Inverter::appSensors().throttleBEnabled() ? "A+B" : "A only",
                           static_cast<double>(Inverter::appSensors().throttleAVoltage()),
                           static_cast<double>(Inverter::appSensors().throttleA()),
                           static_cast<double>(Inverter::appSensors().throttleBVoltage()),

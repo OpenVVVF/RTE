@@ -95,6 +95,54 @@
         "frame": "scalar",
         "quantity": "dimensionless"
       }
+    },
+    {
+      "id": "throttle_iq_bridge",
+      "producer": {
+        "nodeId": "ThrottleIq",
+        "portName": "Iq"
+      },
+      "consumer": {
+        "nodeId": "IqGate",
+        "portName": "Val"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "id": "throttle_RpmMech_bridge",
+      "producer": {
+        "nodeId": "ControlSpeed",
+        "portName": "RpmMech"
+      },
+      "consumer": {
+        "nodeId": "ThrottleIq",
+        "portName": "RpmMech"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "id": "throttle_RpmElec_bridge",
+      "producer": {
+        "nodeId": "ControlSpeed",
+        "portName": "RpmElec"
+      },
+      "consumer": {
+        "nodeId": "ThrottleIq",
+        "portName": "RpmElec"
+      },
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
     }
   ],
   "connections": [
@@ -386,17 +434,6 @@
     },
     {
       "from": {
-        "nodeId": "IqVar",
-        "portName": "Value"
-      },
-      "id": "c56",
-      "to": {
-        "nodeId": "SlewIq",
-        "portName": "In"
-      }
-    },
-    {
-      "from": {
         "nodeId": "Din1",
         "portName": "Out"
       },
@@ -464,34 +501,23 @@
     {
       "from": {
         "nodeId": "Throttle",
+        "portName": "A_V"
+      },
+      "id": "c_thrA_voltage",
+      "to": {
+        "nodeId": "LogThrAVoltage",
+        "portName": "Value"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Throttle",
         "portName": "B"
       },
       "id": "c_thrB",
       "to": {
         "nodeId": "LogThrB",
         "portName": "Value"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "SlewIq",
-        "portName": "Out"
-      },
-      "id": "c_slew_iq_out",
-      "to": {
-        "nodeId": "IqGate",
-        "portName": "Val"
-      }
-    },
-    {
-      "from": {
-        "nodeId": "CfgIqSlew",
-        "portName": "Value"
-      },
-      "id": "c_slew_rate",
-      "to": {
-        "nodeId": "SlewIq",
-        "portName": "Rate"
       }
     },
     {
@@ -1052,6 +1078,138 @@
       },
       "to": {
         "nodeId": "LogControlRpm",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_throttle_iq_a",
+      "from": {
+        "nodeId": "Throttle",
+        "portName": "A"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "A"
+      }
+    },
+    {
+      "id": "c_throttle_iq_valid",
+      "from": {
+        "nodeId": "Throttle",
+        "portName": "Valid"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "Valid"
+      }
+    },
+    {
+      "id": "c_throttle_iq_log",
+      "from": {
+        "nodeId": "ThrottleIq",
+        "portName": "Iq"
+      },
+      "to": {
+        "nodeId": "LogIqTarget",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_iq_ref_log",
+      "from": {
+        "nodeId": "IqGate",
+        "portName": "Out"
+      },
+      "to": {
+        "nodeId": "LogIqRef",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_CfgThrMaxA_throttle",
+      "from": {
+        "nodeId": "CfgThrMaxA",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "MaxAmps"
+      }
+    },
+    {
+      "id": "c_CfgThrRegenMaxA_throttle",
+      "from": {
+        "nodeId": "CfgThrRegenMaxA",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "RegenAmps"
+      }
+    },
+    {
+      "id": "c_CfgThrNeutralMax_throttle",
+      "from": {
+        "nodeId": "CfgThrNeutralMax",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "NeutralMax"
+      }
+    },
+    {
+      "id": "c_CfgThrNeutralRpm_throttle",
+      "from": {
+        "nodeId": "CfgThrNeutralRpm",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "NeutralFullRpm"
+      }
+    },
+    {
+      "id": "c_CfgThrRegenStartRpm_throttle",
+      "from": {
+        "nodeId": "CfgThrRegenStartRpm",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "RegenStartRpm"
+      }
+    },
+    {
+      "id": "c_CfgThrRegenFullRpm_throttle",
+      "from": {
+        "nodeId": "CfgThrRegenFullRpm",
+        "portName": "Value"
+      },
+      "to": {
+        "nodeId": "ThrottleIq",
+        "portName": "RegenFullRpm"
+      }
+    },
+    {
+      "id": "c_throttle_Neutral_log",
+      "from": {
+        "nodeId": "ThrottleIq",
+        "portName": "Neutral"
+      },
+      "to": {
+        "nodeId": "LogThrNeutral",
+        "portName": "Value"
+      }
+    },
+    {
+      "id": "c_throttle_RegenAvailable_log",
+      "from": {
+        "nodeId": "ThrottleIq",
+        "portName": "RegenAvailable"
+      },
+      "to": {
+        "nodeId": "LogThrRegenAvailable",
         "portName": "Value"
       }
     }
@@ -2067,11 +2225,11 @@
       "classHeader": "",
       "constructorCode": "",
       "defaultName": "Throttle",
-      "description": "Reads the redundant throttle channels and their plausibility status.",
+      "description": "Reads throttle inputs, raw A voltage, and plausibility status for the configured channels.",
       "displayName": "Throttle",
       "domain": "",
       "id": "Sensors.Throttle",
-      "inlineCode": "/* Dual throttle channels, normalized [0..1] by the base-image driver\n * (KV calibration Hw.ThrA/B.MinV/MaxV).  Both read 0 and Valid is false\n * while the channels disagree beyond the plausibility tolerance. */\nA = platform_get_throttle_a();\nB = platform_get_throttle_b();\nValid = platform_get_throttle_valid();\n",
+      "inlineCode": "/* Throttle channels normalized by Hw.ThrA/B.MinV/MaxV. Hw.ThrB.Enable=0\n * selects A only and makes B zero. In dual mode a sustained mismatch\n * makes both normalized outputs zero and Valid false. */\nA = platform_get_throttle_a();\nB = platform_get_throttle_b();\nValid = platform_get_throttle_valid();\n/* Raw PA3 pin voltage for bounds measurement, before normalization/clamping. */\nA_V = au::volts(platform_get_throttle_a_voltage());\n",
       "inputPorts": [],
       "isEntryPoint": true,
       "maxInstances": 1,
@@ -2088,7 +2246,7 @@
           }
         },
         {
-          "description": "Normalized throttle channel B in the range 0 to 1.",
+          "description": "Normalized throttle channel B in the range 0 to 1; zero when B is disabled.",
           "direction": "output",
           "name": "B",
           "optional": false,
@@ -2099,7 +2257,7 @@
           }
         },
         {
-          "description": "True when both throttle channels pass the plausibility check.",
+          "description": "True when the configured throttle inputs pass plausibility (A only or A+B).",
           "direction": "output",
           "name": "Valid",
           "optional": false,
@@ -2107,6 +2265,16 @@
             "dtype": "f32",
             "frame": "scalar",
             "quantity": "boolean"
+          }
+        },
+        {
+          "name": "A_V",
+          "description": "Raw throttle 1/A ADC pin voltage in volts (Gen7 PA3), before normalization and plausibility masking.",
+          "direction": "output",
+          "type": {
+            "quantity": "voltage",
+            "frame": "scalar",
+            "dtype": "f32"
           }
         }
       ]
@@ -5100,6 +5268,138 @@
           }
         }
       ]
+    },
+    {
+      "id": "Control.BlendedThrottle",
+      "displayName": "Blended Throttle",
+      "defaultName": "ThrottleIq",
+      "description": "Speed-dependent neutral pedal point with forward drive above neutral and opposing-rotation regen below it. Regen fades to zero at low speed; invalid inputs or settings request zero. No temporal slew.",
+      "domain": "",
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "inputPorts": [
+        {
+          "name": "A",
+          "description": "Calibrated normalized throttle, clamped to 0\u20131.",
+          "direction": "input",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "Valid",
+          "description": "Configured throttle plausibility status.",
+          "direction": "input",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "boolean"
+          }
+        },
+        {
+          "name": "RpmMech",
+          "description": "Timestamped control mechanical RPM; magnitude sets the neutral and regen curves.",
+          "direction": "input",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "RpmElec",
+          "description": "Sign-corrected electrical RPM; regen current opposes this direction.",
+          "direction": "input",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "outputPorts": [
+        {
+          "name": "Iq",
+          "description": "Blended Iq request before enable gate and DC-link protection.",
+          "direction": "output",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "name": "Neutral",
+          "description": "Neutral throttle fraction (0\u20131) at the current speed.",
+          "direction": "output",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "name": "RegenAvailable",
+          "description": "Speed-limited regen Iq magnitude before DC-link protection.",
+          "direction": "output",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "MaxAmps": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "current",
+          "description": "Full-throttle forward Iq in amperes."
+        },
+        "RegenAmps": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "current",
+          "description": "Maximum opposing-rotation regen Iq magnitude in amperes."
+        },
+        "NeutralMax": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless",
+          "description": "Neutral pedal fraction at or above NeutralFullRpm; must be >=0 and <1."
+        },
+        "NeutralFullRpm": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless",
+          "description": "Mechanical RPM magnitude where neutral reaches NeutralMax; greater than RegenStartRpm."
+        },
+        "RegenStartRpm": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless",
+          "description": "Mechanical RPM magnitude below which neutral and regen are zero."
+        },
+        "RegenFullRpm": {
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless",
+          "description": "Mechanical RPM magnitude where full regen becomes available; greater than RegenStartRpm."
+        }
+      },
+      "inlineCode": "/* Stateless pedal map: speed moves neutral; there is no temporal slew.\n * Positive Iq retains the graph's forward drive direction. Regen opposes\n * sign-corrected electrical rotation and fades out before standstill. */\nIq = rte::Amperes(0.0f);\nNeutral = 0.0f;\nRegenAvailable = rte::Amperes(0.0f);\nconst float drive_max = MaxAmps.in(au::amperes);\nconst float regen_max = RegenAmps.in(au::amperes);\nconst bool settings_valid =\n    isfinite(drive_max) && drive_max >= 0.0f &&\n    isfinite(regen_max) && regen_max >= 0.0f &&\n    isfinite(NeutralMax) && NeutralMax >= 0.0f && NeutralMax < 1.0f &&\n    isfinite(RegenStartRpm) && RegenStartRpm >= 0.0f &&\n    isfinite(NeutralFullRpm) && NeutralFullRpm > RegenStartRpm &&\n    isfinite(RegenFullRpm) && RegenFullRpm > RegenStartRpm;\nif (Valid && isfinite(A) && isfinite(RpmMech) && isfinite(RpmElec) && settings_valid) {\n    const float pedal = fminf(1.0f, fmaxf(0.0f, A));\n    const float speed = fabsf(RpmMech);\n    const float neutral_scale = fminf(1.0f, fmaxf(0.0f,\n        (speed - RegenStartRpm) / (NeutralFullRpm - RegenStartRpm)));\n    const float regen_scale = fminf(1.0f, fmaxf(0.0f,\n        (speed - RegenStartRpm) / (RegenFullRpm - RegenStartRpm)));\n    Neutral = NeutralMax * neutral_scale;\n    const float available = (Neutral > 0.0f && RpmElec != 0.0f)\n        ? regen_max * regen_scale : 0.0f;\n    RegenAvailable = rte::Amperes(available);\n    float request = 0.0f;\n    if (pedal > Neutral) {\n        request = drive_max * (pedal - Neutral) / (1.0f - Neutral);\n    } else if (pedal < Neutral) {\n        request = -copysignf(available * (Neutral - pedal) / Neutral, RpmElec);\n    }\n    Iq = rte::Amperes(request);\n}\n",
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": ""
     }
   ],
   "nodes": [
@@ -5202,19 +5502,6 @@
         "y": 2777.6099965706444
       },
       "type": "Transforms.InversePark"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "IqRef",
-      "parameters": {
-        "Amps": "0.0"
-      },
-      "position": {
-        "x": -291.66666666666663,
-        "y": 2273.111111111111
-      },
-      "type": "Custom.ConstantCurrent"
     },
     {
       "displayName": "",
@@ -5592,21 +5879,6 @@
       "type": "Logic.Gate"
     },
     {
-      "displayName": "IqVar",
-      "domain": "tim_isr",
-      "id": "IqVar",
-      "parameters": {
-        "In": "0.0",
-        "Set": "0.0",
-        "Stored": "0.0"
-      },
-      "position": {
-        "x": 33.33333333333334,
-        "y": 3293.3333333333335
-      },
-      "type": "Custom.VarCurrent"
-    },
-    {
       "displayName": "IdVar",
       "domain": "tim_isr",
       "id": "IdVar",
@@ -5664,8 +5936,8 @@
       "id": "Throttle",
       "parameters": {},
       "position": {
-        "x": 912.0,
-        "y": 1354.6666666666667
+        "x": 3600.0,
+        "y": 600.0
       },
       "type": "Sensors.Throttle"
     },
@@ -5729,8 +6001,8 @@
         "Key": "thr_a_norm"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 1134.3333333333333
+        "x": 4100.0,
+        "y": 350.0
       },
       "type": "Debug.TelemetryLog"
     },
@@ -5742,43 +6014,23 @@
         "Key": "thr_b_norm"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 1287.3333333333333
+        "x": 4100.0,
+        "y": 550.0
       },
       "type": "Debug.TelemetryLog"
     },
     {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "SlewIq",
-      "parameterInputs": [
-        "Rate"
-      ],
+      "displayName": "Throttle 1/A voltage (PA3)",
+      "domain": "app_loop",
+      "id": "LogThrAVoltage",
       "parameters": {
-        "Dt": "0.0002",
-        "Rate": "50.0",
-        "Value": "0.0"
+        "Key": "thr_a_v"
       },
       "position": {
-        "x": 384.3888841258953,
-        "y": 3395.0385516689526
+        "x": 4100.0,
+        "y": 750.0
       },
-      "type": "Control.Slew"
-    },
-    {
-      "displayName": "",
-      "domain": "tim_isr",
-      "id": "CfgIqSlew",
-      "parameters": {
-        "Cached": "0.0",
-        "DefaultValue": "50.0",
-        "Key": "Ctrl.Iq.SlewAps"
-      },
-      "position": {
-        "x": 13.888888888888872,
-        "y": 3447.1111111111104
-      },
-      "type": "Values.Config"
+      "type": "Debug.TelemetryLog"
     },
     {
       "displayName": "",
@@ -6179,6 +6431,174 @@
       "position": {
         "x": 300,
         "y": 3400
+      }
+    },
+    {
+      "id": "ThrottleIq",
+      "type": "Control.BlendedThrottle",
+      "domain": "app_loop",
+      "displayName": "Throttle: drive / coast / regen",
+      "parameters": {
+        "MaxAmps": "150.0",
+        "RegenAmps": "50.0",
+        "NeutralMax": "0.3",
+        "NeutralFullRpm": "800.0",
+        "RegenStartRpm": "50.0",
+        "RegenFullRpm": "300.0"
+      },
+      "position": {
+        "x": 4620.0,
+        "y": 1100.0
+      },
+      "parameterInputs": [
+        "MaxAmps",
+        "RegenAmps",
+        "NeutralMax",
+        "NeutralFullRpm",
+        "RegenStartRpm",
+        "RegenFullRpm"
+      ]
+    },
+    {
+      "id": "LogIqTarget",
+      "type": "Debug.TelemetryLog",
+      "domain": "app_loop",
+      "displayName": "Throttle Iq target (A)",
+      "parameters": {
+        "Key": "cg_iq_target_a"
+      },
+      "position": {
+        "x": 5200.0,
+        "y": 1100.0
+      }
+    },
+    {
+      "id": "LogIqRef",
+      "type": "Debug.TelemetryLog",
+      "domain": "tim_isr",
+      "displayName": "Iq reference (A)",
+      "parameters": {
+        "Key": "cg_iq_ref_a"
+      },
+      "position": {
+        "x": 1420.0,
+        "y": 2240.0
+      }
+    },
+    {
+      "id": "CfgThrMaxA",
+      "type": "Values.Config",
+      "domain": "app_loop",
+      "displayName": "Ctrl.Thr.MaxA",
+      "parameters": {
+        "Key": "Ctrl.Thr.MaxA",
+        "DefaultValue": "150.0",
+        "Cached": "0.0"
+      },
+      "position": {
+        "x": 4100.0,
+        "y": 1100.0
+      }
+    },
+    {
+      "id": "CfgThrRegenMaxA",
+      "type": "Values.Config",
+      "domain": "app_loop",
+      "displayName": "Ctrl.Thr.RegenMaxA",
+      "parameters": {
+        "Key": "Ctrl.Thr.RegenMaxA",
+        "DefaultValue": "50.0",
+        "Cached": "0.0"
+      },
+      "position": {
+        "x": 4100.0,
+        "y": 1280.0
+      }
+    },
+    {
+      "id": "CfgThrNeutralMax",
+      "type": "Values.Config",
+      "domain": "app_loop",
+      "displayName": "Ctrl.Thr.NeutralMax",
+      "parameters": {
+        "Key": "Ctrl.Thr.NeutralMax",
+        "DefaultValue": "0.3",
+        "Cached": "0.0"
+      },
+      "position": {
+        "x": 4100.0,
+        "y": 1460.0
+      }
+    },
+    {
+      "id": "CfgThrNeutralRpm",
+      "type": "Values.Config",
+      "domain": "app_loop",
+      "displayName": "Ctrl.Thr.NeutralFullRpm",
+      "parameters": {
+        "Key": "Ctrl.Thr.NeutralFullRpm",
+        "DefaultValue": "800.0",
+        "Cached": "0.0"
+      },
+      "position": {
+        "x": 4100.0,
+        "y": 1640.0
+      }
+    },
+    {
+      "id": "CfgThrRegenStartRpm",
+      "type": "Values.Config",
+      "domain": "app_loop",
+      "displayName": "Ctrl.Thr.RegenStartRpm",
+      "parameters": {
+        "Key": "Ctrl.Thr.RegenStartRpm",
+        "DefaultValue": "50.0",
+        "Cached": "0.0"
+      },
+      "position": {
+        "x": 4100.0,
+        "y": 1820.0
+      }
+    },
+    {
+      "id": "CfgThrRegenFullRpm",
+      "type": "Values.Config",
+      "domain": "app_loop",
+      "displayName": "Ctrl.Thr.RegenFullRpm",
+      "parameters": {
+        "Key": "Ctrl.Thr.RegenFullRpm",
+        "DefaultValue": "300.0",
+        "Cached": "0.0"
+      },
+      "position": {
+        "x": 4100.0,
+        "y": 2000.0
+      }
+    },
+    {
+      "id": "LogThrNeutral",
+      "type": "Debug.TelemetryLog",
+      "domain": "app_loop",
+      "displayName": "thr_neutral",
+      "parameters": {
+        "Key": "thr_neutral"
+      },
+      "position": {
+        "x": 5200.0,
+        "y": 1300.0
+      }
+    },
+    {
+      "id": "LogThrRegenAvailable",
+      "type": "Debug.TelemetryLog",
+      "domain": "app_loop",
+      "displayName": "thr_regen_available_a",
+      "parameters": {
+        "Key": "thr_regen_available_a"
+      },
+      "position": {
+        "x": 5200.0,
+        "y": 1500.0
       }
     }
   ],

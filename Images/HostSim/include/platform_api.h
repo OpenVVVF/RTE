@@ -166,6 +166,8 @@ float platform_phase_voltage_u(void);
 float platform_phase_voltage_v(void);
 float platform_phase_voltage_w(void);
 float platform_get_throttle_a(void);
+/* Raw ADC voltage is unavailable in the normalized-only simulation model. */
+float platform_get_throttle_a_voltage(void);
 float platform_get_throttle_b(void);
 bool platform_get_throttle_valid(void);
 /* Scenario-driven ("environment" object); defaults 25 C. */

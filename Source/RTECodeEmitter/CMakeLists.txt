@@ -9,6 +9,7 @@ add_executable(RTECodeEmitter_tests
     tests/test_emitter.cpp
     tests/test_codegen.cpp
     tests/test_current_loop.cpp
+    tests/test_blended_throttle.cpp
 )
 
 target_link_libraries(RTECodeEmitter_tests

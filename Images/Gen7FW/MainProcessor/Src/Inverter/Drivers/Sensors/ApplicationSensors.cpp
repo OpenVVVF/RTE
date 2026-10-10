@@ -94,26 +94,6 @@ float ApplicationSensors::inverterTemperatureC(uint8_t channel) const {
     return m_ch[channel].temp_c;
 }
 
-float ApplicationSensors::throttleAVoltage() const {
-    return m_thr_a_v;
-}
-
-float ApplicationSensors::throttleBVoltage() const {
-    return m_thr_b_v;
-}
-
-float ApplicationSensors::throttleA() const {
-    return m_thr_a_norm;
-}
-
-float ApplicationSensors::throttleB() const {
-    return m_thr_b_norm;
-}
-
-bool ApplicationSensors::throttlePlausible() const {
-    return m_thr_plausible;
-}
-
 uint16_t ApplicationSensors::dcLinkSigCounts() const {
     return m_dclink_sig;
 }
@@ -124,29 +104,6 @@ uint16_t ApplicationSensors::dcLinkRefCounts() const {
 
 uint32_t ApplicationSensors::dcLinkSeq() const {
     return m_dclink_seq;
-}
-
-void ApplicationSensors::updateThrottlePlausibility(uint32_t now_ms) {
-    const float diff = std::fabs(m_thr_a_cand - m_thr_b_cand);
-    if (diff <= THROTTLE_PLAUS_TOL) {
-        m_thr_plausible = true;
-        m_thr_implausible_since = 0;
-        m_thr_fault_raised = false;  /**< re-arm: a cleared fault can re-raise */
-        return;
-    }
-    if (m_thr_implausible_since == 0) {
-        m_thr_implausible_since = now_ms;
-        return;
-    }
-    if ((now_ms - m_thr_implausible_since) >= THROTTLE_PLAUS_MS) {
-        m_thr_plausible = false;
-        if (!m_thr_fault_raised ||
-            !FaultManager::instance().isActive(FaultSource::ThrottlePlausibility)) {
-            m_thr_fault_raised = true;
-            FaultManager::instance().raise(FaultSource::ThrottlePlausibility,
-                                           FaultReason::ThrottlePlausibilityMismatch);
-        }
-    }
 }
 
 void ApplicationSensors::debugStatus() const {
@@ -335,6 +292,10 @@ void ApplicationSensors::loadConfig(bool persist_defaults) {
     m_thr_max_v[0] = loadOne("Hw.ThrA.MaxV", 4.5f);
     m_thr_min_v[1] = loadOne("Hw.ThrB.MinV", 0.5f);
     m_thr_max_v[1] = loadOne("Hw.ThrB.MaxV", 4.5f);
+    /* Only an explicit finite zero disables B. Missing/invalid settings
+     * retain the existing redundant-channel mismatch protection. */
+    m_thr_b_enabled = loadOne("Hw.ThrB.Enable", 1.0f) != 0.0f;
+    updateThrottlePlausibility(HAL_GetTick());
 
     if (persist_defaults && RteParamStore::isReady()) {
         RteParamStore::flush();
@@ -343,7 +304,8 @@ void ApplicationSensors::loadConfig(bool persist_defaults) {
 
 void ApplicationSensors::reloadConfig() {
     loadConfig(/*persist_defaults=*/false);
-    Telemetry::printf("[TMP] config reloaded");
+    Telemetry::printf("[TMP] config reloaded; throttle mode=%s",
+                      m_thr_b_enabled ? "A+B" : "A only");
 }
 
 bool ApplicationSensors::init() {
@@ -650,9 +612,10 @@ void ApplicationSensors::computeWindow(uint32_t now_ms) {
     m_thr_a_cand = normalize(m_thr_a_v, m_thr_min_v[0], m_thr_max_v[0]);
     m_thr_b_cand = normalize(m_thr_b_v, m_thr_min_v[1], m_thr_max_v[1]);
     m_thr_a_norm = m_thr_plausible ? m_thr_a_cand : 0.0f;
-    m_thr_b_norm = m_thr_plausible ? m_thr_b_cand : 0.0f;
+    m_thr_b_norm = m_thr_b_enabled && m_thr_plausible ? m_thr_b_cand : 0.0f;
     Telemetry::log("thr_a", m_thr_a_norm);
     Telemetry::log("thr_b", m_thr_b_norm);
+    Telemetry::log("thr_b_enabled", m_thr_b_enabled ? 1.0f : 0.0f);
 
     /* ADC3 scan: board temp 1 (rank 0) + motor temp (rank 1), 12-bit. */
     m_ch[0].voltage = (static_cast<float>(s_adc3_buf[0]) / ADC3_FULL_SCALE) * m_vcc;

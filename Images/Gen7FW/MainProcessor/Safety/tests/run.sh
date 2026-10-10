@@ -51,3 +51,13 @@ c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
     "$firmware_dir/Src/Inverter/Command/CommandManager.cpp" \
     "$script_dir/test_command_shell.cpp" -o "$build_dir/test_command_shell"
 "$build_dir/test_command_shell"
+c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
+    -I"$firmware_dir/Inc" \
+    "$firmware_dir/Src/Inverter/Drivers/Sensors/ApplicationSensorsThrottle.cpp" \
+    "$script_dir/test_throttle_mode.cpp" -o "$build_dir/test_throttle_mode"
+"$build_dir/test_throttle_mode"
+c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
+    -I"$firmware_dir/Inc" \
+    "$script_dir/test_dc_link_command_limits.cpp" \
+    -o "$build_dir/test_dc_link_command_limits"
+"$build_dir/test_dc_link_command_limits"

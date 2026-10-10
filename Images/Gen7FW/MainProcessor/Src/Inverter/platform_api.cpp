@@ -13,6 +13,7 @@
 #include "Inverter/Control/FaultManager.h"
 #include "Inverter/Control/CurrentObserver.h"
 #include "Inverter/Control/CurrentLoopMath.h"
+#include "Inverter/Control/DcLinkCommandLimits.h"
 #include "Inverter/Telemetry.h"
 #include "Inverter/Drivers/Logging/TraceRecorder.h"
 
@@ -290,6 +291,10 @@ float platform_phase_voltage_w(void) {
 
 float platform_get_throttle_a(void) {
     return Inverter::appSensors().throttleA();
+}
+
+float platform_get_throttle_a_voltage(void) {
+    return Inverter::appSensors().throttleAVoltage();
 }
 
 float platform_get_throttle_b(void) {
@@ -632,19 +637,16 @@ void platform_vector_pi(float id_ref, float iq_ref, float id, float iq,
                         float fd, float fq, float kpd, float kid, float kpq, float kiq,
                         float max_bus_fraction, float valid,
                         float* vd, float* vq, float* rd, float* rq, float* scale) {
-    /* SG-10 command-path clamps (evaluated at 100 Hz by DcLinkVoltageSensor;
+    /* SG-10 command-path clamps (updated by DcLinkVoltageSensor's main-loop poll;
      * cheap flags here):
-     *  - FSR-11 OV warning: regen disabled — no positive (regen) q-current
-     *    while the condition persists.
+     *  - FSR-11 OV warning: disable Iq opposing electrical rotation.
      *  - FSR-21 UV derate: |iq| ceiling while the undervoltage condition
      *    persists.  Both auto-recover; faults latch separately. */
-    if (Inverter::dcLinkVoltageSensor().regenDisabled() && iq_ref > 0.0f) {
-        iq_ref = 0.0f;
-    }
-    const float derate_limit_a = Inverter::dcLinkVoltageSensor().derateCurrentLimitA();
-    if (derate_limit_a > 0.0f) {
-        iq_ref = std::clamp(iq_ref, -derate_limit_a, derate_limit_a);
-    }
+    iq_ref = Inverter::limitDcLinkIq(
+        iq_ref, platform_get_control_rpm_elec(),
+        Inverter::dcLinkVoltageSensor().regenDisabled(),
+        Inverter::dcLinkVoltageSensor().derateCurrentLimitA());
+    Telemetry::log("cg_iq_effective_a", iq_ref);
 
     s_id_ref = id_ref; s_iq_ref = iq_ref;
     s_control_bus = platform_get_dc_link_voltage();

@@ -108,6 +108,9 @@ void DcLinkVoltageSensor::update() {
     Telemetry::log(m_key, m_voltage);
 
     evaluateProtection();
+    /* Live clamp state is separate from the latched warning fault bits. */
+    Telemetry::log("vdc_regen_disabled", m_regen_disabled ? 1.0f : 0.0f);
+    Telemetry::log("vdc_derate_limit_a", derateCurrentLimitA());
 }
 
 void DcLinkVoltageSensor::evaluateProtection() {

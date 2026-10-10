@@ -242,13 +242,16 @@ float platform_phase_voltage_w(void);
  */
 float platform_get_throttle_a(void);
 
+/** @brief Raw throttle 1/A ADC pin voltage [V], PA3 on Gen7; independent of normalization/plausibility. */
+float platform_get_throttle_a_voltage(void);
+
 /**
  * @brief Throttle B input, normalized [0..1] (0 while implausible).
  */
 float platform_get_throttle_b(void);
 
 /**
- * @brief true while throttle A/B agree within the plausibility tolerance.
+ * @brief true while the configured throttle inputs pass plausibility (A only or A+B).
  */
 bool platform_get_throttle_valid(void);
 

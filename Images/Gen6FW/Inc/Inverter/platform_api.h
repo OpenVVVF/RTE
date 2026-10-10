@@ -211,6 +211,7 @@ float platform_phase_voltage_w(void);
  * @brief Throttle A input, normalized [0..1] (0 while implausible).
  */
 float platform_get_throttle_a(void);
+float platform_get_throttle_a_voltage(void);
 
 /**
  * @brief Throttle B input, normalized [0..1] (0 while implausible).

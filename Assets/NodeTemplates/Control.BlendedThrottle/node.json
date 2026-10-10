@@ -1,0 +1,128 @@
+{
+  "id": "Control.BlendedThrottle",
+  "displayName": "Blended Throttle",
+  "defaultName": "ThrottleIq",
+  "description": "Speed-dependent neutral pedal point with forward drive above neutral and opposing-rotation regen below it. Regen fades to zero at low speed; invalid inputs or settings request zero. No temporal slew.",
+  "domain": "",
+  "isEntryPoint": false,
+  "maxInstances": 0,
+  "inputPorts": [
+    {
+      "name": "A",
+      "description": "Calibrated normalized throttle, clamped to 0\u20131.",
+      "direction": "input",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "name": "Valid",
+      "description": "Configured throttle plausibility status.",
+      "direction": "input",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "boolean"
+      }
+    },
+    {
+      "name": "RpmMech",
+      "description": "Timestamped control mechanical RPM; magnitude sets the neutral and regen curves.",
+      "direction": "input",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "name": "RpmElec",
+      "description": "Sign-corrected electrical RPM; regen current opposes this direction.",
+      "direction": "input",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Iq",
+      "description": "Blended Iq request before enable gate and DC-link protection.",
+      "direction": "output",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "current"
+      }
+    },
+    {
+      "name": "Neutral",
+      "description": "Neutral throttle fraction (0\u20131) at the current speed.",
+      "direction": "output",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "dimensionless"
+      }
+    },
+    {
+      "name": "RegenAvailable",
+      "description": "Speed-limited regen Iq magnitude before DC-link protection.",
+      "direction": "output",
+      "optional": false,
+      "type": {
+        "dtype": "f32",
+        "frame": "scalar",
+        "quantity": "current"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "MaxAmps": {
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "current",
+      "description": "Full-throttle forward Iq in amperes."
+    },
+    "RegenAmps": {
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "current",
+      "description": "Maximum opposing-rotation regen Iq magnitude in amperes."
+    },
+    "NeutralMax": {
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless",
+      "description": "Neutral pedal fraction at or above NeutralFullRpm; must be >=0 and <1."
+    },
+    "NeutralFullRpm": {
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless",
+      "description": "Mechanical RPM magnitude where neutral reaches NeutralMax; greater than RegenStartRpm."
+    },
+    "RegenStartRpm": {
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless",
+      "description": "Mechanical RPM magnitude below which neutral and regen are zero."
+    },
+    "RegenFullRpm": {
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless",
+      "description": "Mechanical RPM magnitude where full regen becomes available; greater than RegenStartRpm."
+    }
+  }
+}

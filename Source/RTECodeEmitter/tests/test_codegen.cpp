@@ -238,6 +238,45 @@ TEST(CodeGenerator, CanonicalizesParameterLiterals) {
     std::filesystem::remove_all(outDir);
 }
 
+TEST(CodeGenerator, ConvertsUnitsForWiredParametersInBothDirections) {
+    const WireType current{.quantity = Quantity::Current,
+                           .frame = Frame::Scalar, .dtype = DType::F32};
+    Graph graph;
+    graph.AddNodeType(ConstantType());
+    graph.AddNodeType(NodeType{
+        .id = "test.current",
+        .outputPorts = {Port{.name = "out", .direction = PortDirection::Output,
+                             .type = current}},
+        .parameterTypes = {{"limit", current}},
+        .inlineCode = "out = limit;",
+    });
+    graph.AddNodeType(NodeType{
+        .id = "test.numeric",
+        .parameterTypes = {{"value", kScalarDimensionless}},
+        .inlineCode = "(void)value;",
+    });
+    graph.AddNode(Node{.id = "src", .type = "test.constant", .domain = "app_loop"});
+    graph.AddNode(Node{.id = "physical", .type = "test.current", .domain = "app_loop",
+                       .parameters = {{"limit", "50"}}, .parameterInputs = {"limit"}});
+    graph.AddNode(Node{.id = "numeric", .type = "test.numeric", .domain = "app_loop",
+                       .parameters = {{"value", "0"}}, .parameterInputs = {"value"}});
+    ASSERT_TRUE(graph.Connect({.id = "inject", .from = {"src", "out"},
+                               .to = {"physical", "limit"}}));
+    ASSERT_TRUE(graph.Connect({.id = "extract", .from = {"physical", "out"},
+                               .to = {"numeric", "value"}}));
+    const auto outDir = std::filesystem::temp_directory_path() / "rte_codegen_wired_units";
+    std::filesystem::remove_all(outDir);
+    std::string error;
+    InverterCodegen::CodeGenerator generator(graph);
+    ASSERT_TRUE(generator.Generate(outDir.string(), error)) << error;
+    const auto source = ReadFileText(outDir / "domain_app_loop_generated.cpp");
+    EXPECT_NE(source.find("const rte::Current limit = rte::Amperes(state.src.out);"),
+              std::string::npos);
+    EXPECT_NE(source.find("const rte::Dimensionless value = state.physical.out.in(au::amperes);"),
+              std::string::npos);
+    std::filesystem::remove_all(outDir);
+}
+
 TEST(CodeGenerator, HoistsClassBasedTypesAcrossDomains) {
     // A class-based node type used in two timing domains must emit its class
     // declaration and definition exactly once, not once per domain.

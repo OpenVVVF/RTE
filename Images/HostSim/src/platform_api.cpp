@@ -677,6 +677,10 @@ float platform_get_throttle_a(void) {
     return hostsim::GetSimContext().throttle_a;
 }
 
+float platform_get_throttle_a_voltage(void) {
+    return NAN;
+}
+
 float platform_get_throttle_b(void) {
     return hostsim::GetSimContext().throttle_b;
 }

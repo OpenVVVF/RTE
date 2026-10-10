@@ -244,6 +244,10 @@ float platform_get_throttle_a(void) {
     return Inverter::appSensors().throttleA();
 }
 
+float platform_get_throttle_a_voltage(void) {
+    return Inverter::appSensors().throttleAVoltage();
+}
+
 float platform_get_throttle_b(void) {
     return Inverter::appSensors().throttleB();
 }

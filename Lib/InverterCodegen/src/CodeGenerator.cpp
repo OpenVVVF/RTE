@@ -345,11 +345,7 @@ std::optional<std::string> ConfigNodeKey(const NodeAPI::Node& node) {
 std::string ExtractionSuffix(const NodeAPI::Graph& graph,
                              const std::string& targetNodeId,
                              const std::string& targetPortName) {
-    const auto targetNode = graph.FindNode(targetNodeId);
-    if (!targetNode) return "";
-    const auto targetType = graph.FindNodeType(targetNode->type);
-    if (!targetType) return "";
-    const auto targetPort = targetType->FindInputPort(targetPortName);
+    const auto targetPort = graph.FindPort({targetNodeId, targetPortName});
     if (!targetPort) return "";
     if (targetPort->type.quantity != NodeAPI::Quantity::Dimensionless ||
         targetPort->type.frame != NodeAPI::Frame::Scalar) {
@@ -386,11 +382,7 @@ std::string ExtractionSuffix(const NodeAPI::Graph& graph,
 std::string InjectionWrapper(const NodeAPI::Graph& graph,
                              const std::string& targetNodeId,
                              const std::string& targetPortName) {
-    const auto targetNode = graph.FindNode(targetNodeId);
-    if (!targetNode) return "";
-    const auto targetType = graph.FindNodeType(targetNode->type);
-    if (!targetType) return "";
-    const auto targetPort = targetType->FindInputPort(targetPortName);
+    const auto targetPort = graph.FindPort({targetNodeId, targetPortName});
     if (!targetPort) return "";
     const auto q = targetPort->type.quantity;
     if (targetPort->type.frame != NodeAPI::Frame::Scalar ||
@@ -796,10 +788,15 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                             "' is not connected";
                     return false;
                 }
+                const std::string wrap = InjectionWrapper(graph_, node->id, key);
                 source << "        const "
                        << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
-                       << " " << key << " = " << *src
-                       << ExtractionSuffix(graph_, node->id, key) << ";\n";
+                       << " " << key << " = ";
+                if (!wrap.empty()) {
+                    source << wrap << "(" << *src << ");\n";
+                } else {
+                    source << *src << ExtractionSuffix(graph_, node->id, key) << ";\n";
+                }
             }
 
             // Outputs.
