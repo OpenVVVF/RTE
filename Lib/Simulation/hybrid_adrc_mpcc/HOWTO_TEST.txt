@@ -1,0 +1,18 @@
+Hybrid ADRC + MPC (simulation only) — Gen6-like locked-rotor current loop
+
+This package is standalone under Lib/Simulation/hybrid_adrc_mpcc/.
+It does not change FOC, LADRC, or MPCC firmware graphs.
+
+Run:
+  ./Lib/Simulation/hybrid_adrc_mpcc/run_hybrid.sh
+
+Outputs:
+  results/adrc_mpcc_hybrid/*.csv
+  results/adrc_mpcc_hybrid/plots/*.png
+  results/adrc_mpcc_hybrid/metrics_summary.csv
+
+Cases:
+  1) iq step 0 -> 3 A (locked rotor)
+  2) same with controller L -20% mismatch
+
+NOT for Gen6 flash yet — simulation review only while ADRC hardware testing continues.

@@ -54,6 +54,12 @@
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
+    },
+    "Unwrap": {
+      "description": "If >0.5, wrap (In-Prev) into (-pi, pi] before differentiating (use for electrical/mechanical angle).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
     }
   }
 }

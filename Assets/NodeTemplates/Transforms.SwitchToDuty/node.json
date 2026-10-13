@@ -1,0 +1,74 @@
+{
+  "id": "Transforms.SwitchToDuty",
+  "displayName": "Switch States to Duty",
+  "defaultName": "SwitchToDuty",
+  "description": "Converts inverter switch states (0/1) to PWM duty cycles (0%/100%).",
+  "maxInstances": 1,
+  "isEntryPoint": false,
+  "domain": "tim_isr",
+  "inputPorts": [
+    {
+      "name": "S_A",
+      "description": "Phase A high-side switch state (1 = on).",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "S_B",
+      "description": "Phase B high-side switch state (1 = on).",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "S_C",
+      "description": "Phase C high-side switch state (1 = on).",
+      "direction": "input",
+      "type": {
+        "quantity": "boolean",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Phase A PWM duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_B",
+      "description": "Phase B PWM duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Duty_C",
+      "description": "Phase C PWM duty cycle (0-100%).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {}
+}
