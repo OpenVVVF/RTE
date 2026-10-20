@@ -9,4 +9,6 @@ double lt = (K1 * fabs(Im) + K2 * Im * Im + K3 * fabs(Om)
 if (idle >= 0.5) lt = 0.0;
 if (lt < 0.0) lt = 0.0;
 P_Loss = lt;
-P_Plate = lt * PlateShare;
+// plate heat = share of the law + the idle heat floor while gates are live
+// (bench aux residual, cal_log idle-warm anchor); zero when gates off
+P_Plate = lt * PlateShare + (idle >= 0.5 ? 0.0 : (double)IdleHeat_W);

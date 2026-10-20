@@ -62,9 +62,10 @@ Ird = fmin(2000.0, fmax(-2000.0, Ird));
 Irq = fmin(2000.0, fmax(-2000.0, Irq));
 
 Torque = 1.5 * Poles * (psi_rd * Isq - psi_rq * Isd);
-// air-gap (link-side) power = Te * syn speed: nomenclature plant.py
-double om_syn = (Omega_Cmd != 0.0) ? (double)Omega_Cmd : (double)Omega_M;
-P_Elec = Torque * om_syn / Poles;
+// air-gap (link-side) power = Te * syn speed: nomenclature plant.py; the
+// synchronous speed is a controller-side external (unwired = 0, matching
+// the python zero-binding), gated to zero while gates are open
+P_Elec = (OpenGates >= 0.5) ? 0.0 : Torque * Omega_Cmd / Poles;
 
 // abc stator currents at the stationary frame: alpha := U directly
 I_U = Isd;

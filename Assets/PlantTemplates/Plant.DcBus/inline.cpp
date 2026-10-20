@@ -18,9 +18,7 @@ double i_inv = P_Draw / fmax((double)Vdc, 1.0);
 Vdc += (i_sup - i_inv) / (double)Cap_F * DtPlant;
 Vdc = fmin(fmax((double)Vdc, 0.5), 2000.0);
 
-// regen-feed convention: positive = into the link (matches recorded dclink_*)
-I_Link = -i_inv;
-P_Link = I_Link * Vdc;
-
-// physical rails (twin/plant.py)
-I_Link = fmin(2000.0, fmax(-2000.0, I_Link));
+// regen-feed convention: positive = into the link (matches recorded dclink_*;
+// twin/plant.py emits -p_dc / -p_dc/max(vdc,1) against the updated bus)
+P_Link = -P_Draw;
+I_Link = -P_Draw / fmax((double)Vdc, 1.0);

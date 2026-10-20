@@ -1,6 +1,16 @@
 /* PMSM dq-Euler integration (exactly twin/plant/plant.py semantics).
  * Runtime symbols: only parameters/substituted ports and `DtPlant` (the host
- * substep). `OpenGates` is an optional input port (default 0). */
+ * substep). `OpenGates` is an optional input port (default 0).
+ *
+ * Ordering rules (validated by twin/plantgraph/proof_bench_parity.py):
+ *   - ALL derivatives are computed from the PRE-update state, then assigned
+ *     (assigning Id before computing dIq breaks bit-comparability), and
+ *   - abc/torque outputs are rebuilt from the FINAL (id, iq, theta) of the
+ *     substep (the plant measurement view is instantaneous with the
+ *     reported state), and
+ *   - P_Elec is zero when the gates are open (the collapse returns energy
+ *     via the machine state decay itself, not the air-gap power term).
+ */
 
 double ct = cos((double)ThetaE);
 double st = sin((double)ThetaE);
@@ -19,8 +29,10 @@ if (OpenGates >= 0.5) {
     Id -= Id * DtPlant / tau_open;
     Iq -= Iq * DtPlant / tau_open;
 } else {
-    Id += (vd - Rs * Id + Omega_Elec * Lq * Iq) / Ld * DtPlant;
-    Iq += (vq - Rs * Iq - Omega_Elec * (Ld * Id + Lambda)) / Lq * DtPlant;
+    double did = (vd - Rs * Id + Omega_Elec * Lq * Iq) / Ld;
+    double diq = (vq - Rs * Iq - Omega_Elec * (Ld * Id + Lambda)) / Lq;
+    Id += did * DtPlant;
+    Iq += diq * DtPlant;
 }
 ThetaE = fmod((double)ThetaE + Omega_Elec * DtPlant, 2.0 * M_PI);
 if (ThetaE < 0.0) ThetaE += 2.0 * M_PI;
@@ -30,9 +42,11 @@ Id = fmin(2000.0, fmax(-2000.0, Id));
 Iq = fmin(2000.0, fmax(-2000.0, Iq));
 
 Torque = 1.5 * Poles * (Lambda * Iq + (Ld - Lq) * Id * Iq);
-P_Elec = Torque * Omega_Elec / Poles;   // air-gap power (plant convention)
+P_Elec = (OpenGates >= 0.5) ? 0.0 : Torque * Omega_Elec / Poles;
 
-// abc outputs from the final (id, iq, theta) this step (sensor instant)
-I_U = ct * Id - st * Iq;
+// abc outputs from the FINAL (id, iq, theta) this step (sensor instant)
+double ct2 = cos((double)ThetaE);
+double st2 = sin((double)ThetaE);
+I_U = ct2 * Id - st2 * Iq;
 I_V = cos((double)ThetaE - 2.0 * M_PI / 3.0) * Id - sin((double)ThetaE - 2.0 * M_PI / 3.0) * Iq;
 I_W = -I_U - I_V;
