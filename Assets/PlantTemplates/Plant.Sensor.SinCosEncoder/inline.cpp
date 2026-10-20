@@ -7,6 +7,8 @@ if (Disconnect >= 0.5) {
     Cos = 0.0;
 } else {
     double phi = ((double)ThetaE - (double)OffsetDeg * (double)(M_PI / 180.0)) / (double)Poles;
-    Sin = floor((double)MidSin + (double)AmpSin * sin(phi) + 0.5);
-    Cos = floor((double)MidCos + (double)AmpCos * cos(phi) + 0.5);
+    /* python reference uses int() truncation (toward zero), not rounding;
+     * keep all three engines bit-identical */
+    Sin = (double)(int)((double)MidSin + (double)AmpSin * sin(phi));
+    Cos = (double)(int)((double)MidCos + (double)AmpCos * cos(phi));
 }
