@@ -1,0 +1,24 @@
+{
+  "id": "Plant.Sensor.SinCosEncoder",
+  "displayName": "Sin/Cos Encoder Counts",
+  "defaultName": "Encoder",
+  "description": "Analog sin/cos encoder emitting integer counts with the recorded healthy bounds and mid-scale offsets; counts rail low on disconnect (encoder-loss artifact). One electrical cycle per mechanical rev.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "ThetaE", "description": "Electrical rotor angle, rad.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Disconnect", "description": ">=0.5 rails the counts (encoder-loss injection).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+  ],
+  "outputPorts": [
+    {"name": "Sin", "description": "Sin raw counts.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Cos", "description": "Cos raw counts.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "OffsetDeg": {"description": "Physical zero-alignment offset (electrical degrees) subtracted from ThetaE.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Poles":     {"description": "Pole PAIRS (per-rev electrical cycles = pp).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "MidSin":    {"description": "Sin mid-scale, counts.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "AmpSin":    {"description": "Sin amplitude, counts.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "MidCos":    {"description": "Cos mid-scale.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "AmpCos":    {"description": "Cos amplitude.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "Plant.Sensor.VoltageSense",
+  "displayName": "Voltage Sense (MAX22530-style)",
+  "defaultName": "VoltageSense",
+  "description": "Isolated voltage measurement on bus/phase channels: first-order sensor lag then 0.44 V/LSB quantization (matches the recorded 1001:1 divider + MAX22530 behavior incl. its quantization floor).",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "V_True", "description": "True channel voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [
+    {"name": "V_Meas", "description": "Measured voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Lsb_V":    {"description": "Quantization step, V.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "LagTau_S": {"description": "First-order lag time constant, s.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

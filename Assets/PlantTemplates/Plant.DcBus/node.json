@@ -1,0 +1,27 @@
+{
+  "id": "Plant.DcBus",
+  "displayName": "DC Bus + Bench Supply",
+  "defaultName": "DcBus",
+  "description": "DC-link voltage state: electrolytic+film link capacitor with a bench bench supply model (CV with series resistance, source/sink current limits, optional CV clamp. Bus integrates C dv/dt = i_supply - i_inverter.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "P_Draw", "description": "Total electrical power drawn from the link, W (machine air-gap + losses, positive = leaves the link).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [
+    {"name": "Vdc", "description": "Bus voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_Link", "description": "Current INTO the link, A (regen-feed convention, matches recordings).", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "P_Link", "description": "Power INTO the link, W (regen-feed convention).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Cap_F":           {"description": "Link capacitance, F.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "SeriesR_mOhm":    {"description": "Bench supply effective series resistance, milliohm.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "VSet_V":          {"description": "Bench CV setpoint, V.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "ILimit_A":        {"description": "Source current limit, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "CanSink":         {"description": "1 = sink path enabled.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "SinkLimit_A":     {"description": "Sink current limit (down-programmer / Sorensen class), A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "CvClamp_V":       {"description": "Optional CV clamp setpoint, V (Chroma). 0 = disabled.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "CvClampSink_A":   {"description": "CV clamp sink limit, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "V0_V":            {"description": "Initial bus voltage, V.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

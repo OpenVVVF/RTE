@@ -1,0 +1,15 @@
+{
+  "id": "Plant.Io.DutyIn",
+  "displayName": "Duty Inputs (controller->plant)",
+  "defaultName": "DutyIn",
+  "description": "Reserved external node for the three duty commands from the controller build. The host sim assigns these fields once per control period before stepping the plant graph (SVPWM-convention duties, percent, 50 = zero vector).",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "inputPorts": [],
+  "outputPorts": [
+    {"name": "Du", "description": "Phase U duty, percent.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dv", "description": "Phase V duty, percent.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dw", "description": "Phase W duty, percent.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {}
+}

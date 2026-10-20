@@ -1,0 +1,17 @@
+{
+  "id": "Plant.Util.Sum",
+  "displayName": "Sum (any-arity by convention of 3)",
+  "defaultName": "Sum",
+  "description": "Utility summer: Out = A + B + C (C optional, zero-bound default). Generic math node for energy-balance joins (e.g. machine air-gap power + total loss -> DcBus draw).",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "A", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "B", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "C", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+  ],
+  "outputPorts": [
+    {"name": "Out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {}
+}

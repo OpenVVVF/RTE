@@ -1,0 +1,29 @@
+{
+  "id": "Plant.Io.MeasOut",
+  "displayName": "Measurements (plant->controller)",
+  "defaultName": "MeasOut",
+  "description": "Reserved external node collecting the platform-facing measurement view (the same names the generated controller code reads via the platform_api shim): raw phase currents, DC link + phase voltages, sin/cos encoder counts, temperatures, speeds, dclink instantaneous power/current. Every connection here becomes a field in the exported PlantMeas struct keyed by the connection's source port name, preserving controller-compatibility names.",
+  "maxInstances": 1,
+  "isEntryPoint": true,
+  "inputPorts": [
+    {"name": "Iu_A", "description": "Measured phase current U, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Iv_A", "description": "Measured phase current V, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Iw_A", "description": "Measured phase current W, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Vdc_V", "description": "Measured DC link voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Vu_V", "description": "Measured phase voltage U, V (MAX22530 view).", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Vv_V", "description": "Measured phase voltage V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Vw_V", "description": "Measured phase voltage W.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Enc_Sin", "description": "Encoder sin raw counts.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Enc_Cos", "description": "Encoder cos raw counts.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Temp_Inv1_C", "description": "NTC baseplate reading TS1, C.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Temp_Inv2_C", "description": "NTC baseplate reading TS2, C.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Temp_Inv3_C", "description": "NTC baseplate reading TS3, C (often null/unpopulated).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Temp_Motor_C", "description": "Motor thermistor reading, C (often null).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Mech_Rpm", "description": "Mechanical speed, RPM.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Elec_Rpm", "description": "Electrical speed, RPM (mech*pp).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dclink_I_A", "description": "DC-link current (regen-feed sign), A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dclink_P_W", "description": "DC-link power (regen-feed sign), W.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [],
+  "parameterTypes": {}
+}

@@ -1,0 +1,27 @@
+{
+  "id": "Plant.Loss.FittedLaw",
+  "displayName": "Inverter Loss (fitted law)",
+  "defaultName": "Loss",
+  "description": "Total inverter loss from the phenomenological fitted law L = k1|i| + k2 i^2 + k3|w| + k4|i w| + k5*vdc*|i| (v2 coefficients, calibrated against 7 recorded campaigns 2026-10-20). Splits into plate share for the thermal plant; carries the energy-balance term p_link_drawn the DcBus needs. Domain-guarded at zero (data-law span guard).",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "Im", "description": "dq-current magnitude, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Om", "description": "Mechanical speed, rad/s (abs).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Vdc", "description": "DC link voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Idle", "description": ">= 0.5 disables losses (gates off); 0 = live (zero-bound default when unconnected).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+  ],
+  "outputPorts": [
+    {"name": "P_Loss", "description": "Total inverter loss (machine winding + devices + speed/friction + bench residual), W.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "P_Plate", "description": "Plate share of the loss heating the baseplate NTC, W.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "K1": {"description": "coefficient W/A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "K2": {"description": "coefficient W/A^2.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "K3": {"description": "coefficient W/(rad/s).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "K4": {"description": "coefficient W/(A rad/s).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "K5": {"description": "coefficient W/(V*A).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "PlateShare": {"description": "Fraction of total loss heating the baseplate (rest: machine winding/friction/bench).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "IdleHeat_W": {"description": "Heat floor into the plate while gates are live (bench aux/idle residual, cal_log idle-warm +4.9K anchor = 120 W); 0 when Idle >= 0.5.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

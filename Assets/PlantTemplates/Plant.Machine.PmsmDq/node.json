@@ -1,0 +1,35 @@
+{
+  "id": "Plant.Machine.PmsmDq",
+  "displayName": "PMSM (dq Euler)",
+  "defaultName": "Machine",
+  "description": "Permanent-magnet synchronous machine in the rotor dq frame: integrates (vd, vq) winding voltages into (id, iq) currents, emits electromechanical torque and abc phase currents, plus the electrical rotor angle the encoder sensor consumes. When the OpenGates input is driven >= 0.5 (by a Plant.Fault.Point node) the machine enters the six-switch-open freewheel collapse.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "V_U", "description": "Phase U winding voltage (post-distortion), V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_V", "description": "Phase V winding voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_W", "description": "Phase W winding voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Omega_Elec", "description": "Electrical rotor speed, rad/s, from Plant.Shaft.* nodes.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "OpenGates", "description": ">=0.5 routes the machine into the six-switch-open freewheel collapse (gate-reset / power-cut / PWM gate-off); <0.5 = live. Defaults to 0 when unconnected.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+  ],
+  "outputPorts": [
+    {"name": "I_U", "description": "Phase U current, A (peak convention).", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_V", "description": "Phase V current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_W", "description": "Phase W current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Id", "description": "d-axis current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Iq", "description": "q-axis current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "ThetaE", "description": "Electrical rotor angle, rad.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Torque", "description": "Electromechanical torque, N m.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "P_Elec", "description": "Electrical air-gap power drawn from/into the winding, W (positive = absorbed).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Rs":      {"description": "Winding resistance per phase, ohm.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Ld":      {"description": "d-axis inductance, H.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Lq":      {"description": "q-axis inductance, H.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Lambda":  {"description": "PM flux linkage, Wb.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Poles":   {"description": "Pole PAIRS.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Id0":     {"description": "Initial d current, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Iq0":     {"description": "Initial q current, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Theta0":  {"description": "Initial electrical angle, rad.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

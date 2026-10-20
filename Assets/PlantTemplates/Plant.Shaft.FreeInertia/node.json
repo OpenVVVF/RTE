@@ -1,0 +1,22 @@
+{
+  "id": "Plant.Shaft.FreeInertia",
+  "displayName": "Shaft Free Inertia (J/B)",
+  "defaultName": "FreeShaft",
+  "description": "Free-spinning shaft: J d(omega)/dt = Te - B*omega. Used when no dyno holds the shaft (V/Hz bringup / no-load runs, free runaway after faults).",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "Torque", "description": "Electromechanical torque, N m.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [
+    {"name": "Omega_Elec", "description": "Electrical speed, rad/s.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Rpm", "description": "Mechanical speed, RPM.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Elec_Rpm", "description": "Electrical speed, RPM (mech*pp).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "J": {"description": "Inertia, kg m2.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "B": {"description": "Viscous friction, N m s.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Poles": {"description": "Pole PAIRS for elec conversion.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Rpm0": {"description": "Initial mechanical RPM.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

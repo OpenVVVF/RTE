@@ -1,0 +1,18 @@
+{
+  "id": "Plant.Shaft.Dyno",
+  "displayName": "Shaft Dyno (external speed)",
+  "defaultName": "Dyno",
+  "description": "External dynamometer state: the host assigns the mechanical speed each step (from a scenario RPM series or a scripted command), this node converts it to electrical speed for the machine and to RPM views for telemetry.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [],
+  "outputPorts": [
+    {"name": "Omega_Elec", "description": "Electrical rotor speed, rad/s.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Rpm", "description": "Mechanical speed, RPM (assigned value).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Elec_Rpm", "description": "Electrical speed, RPM (mech * poles).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Poles": {"description": "Pole PAIRS for elec conversion.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "StartRpm": {"description": "Initial mechanical RPM until the host assigns otherwise.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

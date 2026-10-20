@@ -1,0 +1,27 @@
+{
+  "id": "Plant.Inverter.Knee3ph",
+  "displayName": "Inverter (knee + deadtime)",
+  "defaultName": "Inverter",
+  "description": "Three-phase averaged power stage: converts duties (du/dv/dw percent, SVPWM convention) at the DC link into phase-to-neutral-mid voltages with the IGBT knee, deadtime distortion and Rce drop. Sign error convention sign(i)*(v_ce0 + td*f_sw*vdc + r_ce*|i_p|).",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "Du", "description": "Phase U duty, percent (0-100, 50 = zero vector).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dv", "description": "Phase V duty, percent.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dw", "description": "Phase W duty, percent.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Vdc", "description": "DC link voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_U", "description": "Phase current, A (for sign distortion; from machine output).", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_V", "description": "Phase current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_W", "description": "Phase current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [
+    {"name": "V_U", "description": "Phase-to-mid winding voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_V", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_W", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Vce0_V":   {"description": "IGBT/effective knee forward drop, V.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Rce_Ohm":  {"description": "Effective series resistance per device path incl. lead, ohm.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "TdOverhead": {"description": "Dimensionless deadtime distortion factor: dt_dead * f_sw (e.g. 1e-6*5000 = 0.005).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

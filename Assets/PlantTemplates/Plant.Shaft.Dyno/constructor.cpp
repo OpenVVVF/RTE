@@ -1,0 +1,2 @@
+/* Dyno constructor. */
+Rpm = StartRpm;

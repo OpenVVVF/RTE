@@ -1,0 +1,17 @@
+{
+  "id": "Plant.Fault.Point",
+  "displayName": "Fault Injection Point",
+  "defaultName": "Fault",
+  "description": "Host-injected named fault flag. The scenario/event timeline raises this node's named state ('OpenGates', 'EncoderDisconnect', 'SensorRail', ...) and downstream plant nodes read it. Optional multiple outputs for common fault classes.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [],
+  "outputPorts": [
+    {"name": "OpenGates", "description": "1 = six-switch open (gate reset / power cut / PWM gate-off).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "EncoderDisconnect", "description": "1 = sin/cos encoder disconnected (counts rail).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "SensorRail", "description": "1 = isolated current-sensor rail collapse (phantom ±range).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Name": {"description": "Host-visible fault name (scenario hook).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

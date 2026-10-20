@@ -1,0 +1,16 @@
+{
+  "id": "Plant.Util.Hypot",
+  "displayName": "hypot(id, iq)",
+  "defaultName": "Hypot",
+  "description": "Utility: emits the dq-current magnitude the loss law needs.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "A", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "B", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [
+    {"name": "Out", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {}
+}

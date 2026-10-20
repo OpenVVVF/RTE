@@ -1,0 +1,17 @@
+{
+  "id": "Plant.Util.AbsOmega",
+  "displayName": "|omega_mech| (rad/s)",
+  "defaultName": "AbsOmega",
+  "description": "Utility: emits |Omega_Elec / Poles|, the absolute mechanical speed the loss law expects.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "Omega_Elec", "description": "Electrical rotor speed, rad/s.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "outputPorts": [
+    {"name": "Om", "description": "Absolute mechanical speed, rad/s.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Poles": {"description": "Pole PAIRS.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}
