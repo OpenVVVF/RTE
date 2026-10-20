@@ -53,6 +53,7 @@ option(RTE_SKIP_NODEGUI "Skip the Qt-dependent RTE Studio target (headless build
 add_subdirectory(Lib/NodeAPI)
 add_subdirectory(Lib/RTELogger)
 add_subdirectory(Lib/InverterCodegen)
+add_subdirectory(Lib/PlantCodegen)
 add_subdirectory(Lib/InverterProtocol)
 add_subdirectory(Source/RTEAutomation)
 add_subdirectory(Source/RTECodeEmitter)
