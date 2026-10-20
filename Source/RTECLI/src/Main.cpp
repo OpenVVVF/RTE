@@ -1,5 +1,6 @@
 #include "Builder.h"
 #include "Emitter.h"
+#include "SimCli.h"
 #include "TraceCli.h"
 
 #include <RTEAutomation/CachePaths.h>
@@ -50,6 +51,10 @@ void Usage() {
         << "  device status|telemetry|console|command [--session FILE]\n"
         << "  trace record --interface can0 --output FILE [--seconds N] [--id-base ID]\n"
         << "  trace export --input FILE --output CSV\n"
+        << "  sim --sw-graph FILE --plant-graph FILE --base-source DIR [--name NAME]\n"
+        << "        [--duration S] [--dyno-rpm R | --dyno-series CSV] [--supply KV,..]\n"
+        << "        [--event 't=.. kind=.. arg=..'] [--telemetry-hz HZ] [--out FILE]\n"
+        << "        [--workdir DIR] [--keep-work]\n"
         << "  mcp [--workspace PATH] [--session FILE]\n";
 }
 
@@ -614,6 +619,7 @@ int Dispatch(const Parsed& parsed) {
     if (parsed.command == "device") return Device(parsed.args, parsed.format);
     if (parsed.command == "mcp2221") return Mcp2221(parsed.args, parsed.format);
     if (parsed.command == "trace") return RunTraceCommand(parsed.args);
+    if (parsed.command == "sim") return RunSimCommand(parsed.args);
     if (parsed.command == "mcp") return Mcp(parsed.args);
     Usage();
     return 2;
