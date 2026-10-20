@@ -48,6 +48,8 @@ endif()
 
 enable_testing()
 
+option(RTE_SKIP_NODEGUI "Skip the Qt-dependent RTE Studio target (headless builds)" OFF)
+
 add_subdirectory(Lib/NodeAPI)
 add_subdirectory(Lib/RTELogger)
 add_subdirectory(Lib/InverterCodegen)
@@ -55,8 +57,13 @@ add_subdirectory(Lib/InverterProtocol)
 add_subdirectory(Source/RTEAutomation)
 add_subdirectory(Source/RTECodeEmitter)
 add_subdirectory(Source/RTEFirmwareBuilder)
+# Source/RTESim stays after all Lib/ entries so its if(TARGET PlantCodegenLib)
+# guard observes Lib/PlantCodegen whenever that registration lands.
+add_subdirectory(Source/RTESim)
 add_subdirectory(Source/RTECLI)
-add_subdirectory(Source/NodeGUI)
+if(NOT RTE_SKIP_NODEGUI)
+    add_subdirectory(Source/NodeGUI)
+endif()
 
 install(TARGETS rte RTECodeEmitter RTEFirmwareBuilder
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
