@@ -21,8 +21,9 @@
     template <typename M>                                                                  \
     struct Has_##Field<M, std::void_t<decltype(std::declval<const M&>().Field)>>          \
         : std::true_type {};                                                               \
-    inline double Meas_##Field(const plant::PlantMeas& m, double fallback) {              \
-        if constexpr (Has_##Field<plant::PlantMeas>::value)                                \
+    template <typename PlantMeasT>                                                         \
+    inline double Meas_##Field(const PlantMeasT& m, double fallback) {                    \
+        if constexpr (Has_##Field<PlantMeasT>::value)                                      \
             return static_cast<double>(m.Field);                                           \
         return fallback;                                                                   \
     }

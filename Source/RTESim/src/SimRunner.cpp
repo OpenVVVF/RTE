@@ -14,6 +14,8 @@
 #include <PlantCodegen/PlantGenerator.h>
 #endif
 
+#include <nlohmann/json.hpp>
+
 namespace fs = std::filesystem;
 
 namespace RTESim {
@@ -176,7 +178,13 @@ bool SimRunner::GeneratePlant(std::string& error) {
         return false;
     }
     try {
-        NodeAPI::LoadIntoGraph(graph, graphText);
+        // The example plant graphs embed no "nodeTypes" array (they reference
+        // the shared Assets/PlantTemplates library loaded above); the
+        // sanctioned loader requires the key. Mirrors
+        // Lib/PlantCodegen/tests/plant_test_util.h LoadPlantGraph.
+        nlohmann::json parsed = nlohmann::json::parse(graphText);
+        if (!parsed.contains("nodeTypes")) parsed["nodeTypes"] = nlohmann::json::array();
+        NodeAPI::LoadIntoGraph(graph, parsed.dump());
     } catch (const std::exception& e) {
         error = std::string("could not parse plant graph: ") + e.what();
         return false;

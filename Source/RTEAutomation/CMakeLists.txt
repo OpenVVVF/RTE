@@ -58,4 +58,5 @@ target_include_directories(RTEAutomation_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DI
 target_link_libraries(RTEAutomation_tests
     PRIVATE RTEAutomation GTest::gtest_main project_warnings
 )
+include(GoogleTest)
 gtest_discover_tests(RTEAutomation_tests)

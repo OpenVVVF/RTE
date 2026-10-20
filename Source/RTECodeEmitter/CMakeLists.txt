@@ -13,4 +13,5 @@ target_link_libraries(RTECodeEmitter_tests
     PRIVATE RTEAutomation GTest::gtest_main project_warnings
 )
 
+include(GoogleTest)
 gtest_discover_tests(RTECodeEmitter_tests)
