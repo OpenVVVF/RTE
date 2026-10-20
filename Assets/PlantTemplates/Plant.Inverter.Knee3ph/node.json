@@ -12,12 +12,16 @@
     {"name": "Vdc", "description": "DC link voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
     {"name": "I_U", "description": "Phase current, A (for sign distortion; from machine output).", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
     {"name": "I_V", "description": "Phase current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
-    {"name": "I_W", "description": "Phase current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}}
+    {"name": "I_W", "description": "Phase current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "OpenGates", "description": ">=0.5: power stage de-energized, all phase voltage outputs go to zero (leg nodes float; the twin's phase-ADC convention).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
   ],
   "outputPorts": [
     {"name": "V_U", "description": "Phase-to-mid winding voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
     {"name": "V_V", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
-    {"name": "V_W", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}}
+    {"name": "V_W", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_U_Raw", "description": "Pre-distortion duty-mapped phase voltage, V (the MAX22530 phase-sense view; knee/deadtime/Rce error is invisible to that ADC).", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_V_Raw", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_W_Raw", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}}
   ],
   "parameterTypes": {
     "Vce0_V":   {"description": "IGBT/effective knee forward drop, V.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},

@@ -1,16 +1,16 @@
 {
   "id": "Plant.Machine.InductDq",
-  "displayName": "Induction Machine (syn frame)",
+  "displayName": "Induction Machine (stationary frame)",
   "defaultName": "Induction",
-  "description": "Three-phase induction machine in the synchronous (controller-command) frame, coupled-L solve per substep at the stationary frame (wf=0) for numerical robustness at line frequency: slip enters via machine speed. Matches twin/plant/induction.py.",
+  "description": "Three-phase induction machine solved in the stationary frame (wf=0) for numerical robustness at line frequency: slip enters via machine speed; air-gap power returns at the command (synchronous) speed on the Omega_Cmd input. Matches twin/plant/induction.py.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
     {"name": "V_U", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
     {"name": "V_V", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
     {"name": "V_W", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Omega_M", "description": "Mechanical shaft speed, rad/s-elec (machine elec speed = mech*pp on the dyno / free shaft command path).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Omega_Cmd", "description": "Command (synchronous) electrical speed from the V/Hz controller, rad/s (kept for slip ratios; equal to 0 in the stationary-frame reference used).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Omega_Elec", "description": "Electrical shaft speed, rad/s (mech*pp from the dyno / free shaft).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Omega_Cmd", "description": "Command (synchronous) electrical speed, rad/s, from the V/Hz controller: drives the link-side air-gap power P_Elec = Torque * Omega_Cmd / Poles. Controller-side external: push per control period via set_input / PlantSetInput / rte sim 'plant-input'; unwired zero-binds (loss-only link draw).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
     {"name": "OpenGates", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
   ],
   "outputPorts": [
@@ -28,8 +28,6 @@
     "Lm":     {"description": "Magnetizing inductance, H.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
     "Lls":    {"description": "Stator leakage inductance, H.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
     "Llr":    {"description": "Rotor leakage inductance (referred), H.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Poles":  {"description": "Pole PAIRS.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "J":      {"description": "Rotor inertia, kg m2 (free-shaft only).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "B":      {"description": "Viscous friction, N m s.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+    "Poles":  {"description": "Pole PAIRS.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
   }
 }

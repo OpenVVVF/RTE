@@ -2,7 +2,7 @@
   "id": "Plant.DcBus",
   "displayName": "DC Bus + Bench Supply",
   "defaultName": "DcBus",
-  "description": "DC-link voltage state: electrolytic+film link capacitor with a bench bench supply model (CV with series resistance, source/sink current limits, optional CV clamp. Bus integrates C dv/dt = i_supply - i_inverter.",
+  "description": "DC-link voltage state: electrolytic+film link capacitor with a bench supply model (CV with series resistance, source/sink current limits, optional CV clamp. Bus integrates C dv/dt = i_supply - i_inverter.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

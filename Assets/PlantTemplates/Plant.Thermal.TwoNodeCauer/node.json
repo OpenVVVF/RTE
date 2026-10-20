@@ -22,7 +22,9 @@
     "TAmb_C":   {"description": "Ambient temperature, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
     "T1_0_C":   {"description": "Initial plate temperature, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
     "T2_0_C":   {"description": "Initial sink temperature, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Off1":     {"description": "NTC ch1 spot offset, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Off2":     {"description": "NTC ch2 spot offset, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+    "Off1":      {"description": "NTC ch1 spot offset, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Off2Idle":  {"description": "NTC ch2 idle spot offset, C (recorded +3.4 at idle).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Off2Slope": {"description": "ch2 load-relief slope, K per K of plate rise above the knee (recorded 0.268); 0 = constant offset.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Off2Knee_C":{"description": "offset knee above ambient, C (4.9 anchor).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
   }
 }

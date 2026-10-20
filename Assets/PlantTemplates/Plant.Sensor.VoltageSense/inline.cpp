@@ -6,4 +6,4 @@ if (LagTau_S > 0.0) {
 } else {
     Lag = (double)V_True;
 }
-V_Meas = round(Lag / (double)Lsb_V) * (double)Lsb_V;
+V_Meas = rint(Lag / (double)Lsb_V) * (double)Lsb_V;   // nearest-even ties == python round()

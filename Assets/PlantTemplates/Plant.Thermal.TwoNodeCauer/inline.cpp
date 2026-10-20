@@ -9,4 +9,7 @@ T2 += ((T1 - T2) / (double)R12_KW - (T2 - (double)TAmb_C) / (double)R2_KW)
 T_Plate = T1;
 T_Sink = T2;
 T_Meas1 = T1 + Off1;
-T_Meas2 = T1 + Off2;
+/* ch2 NTC law (twin/plant/plant.py idle-warm artifact):
+ *   t_plate + Off2Idle - Off2Slope * max(0, t_plate - (t_amb + Off2Knee)) */
+T_Meas2 = T1 + Off2Idle
+        - (double)Off2Slope * fmax(0.0, T1 - ((double)TAmb_C + (double)Off2Knee_C));

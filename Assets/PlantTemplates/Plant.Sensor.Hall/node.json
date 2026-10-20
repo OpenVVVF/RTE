@@ -7,7 +7,7 @@
   "isEntryPoint": false,
   "inputPorts": [
     {"name": "I_True", "description": "True phase current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Rail", "description": ">=0.5 drives the isolated-rail phantom course (post-fault artifact mode, ±range).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+    {"name": "Rail", "description": ">=0.5 emits the recorded isolated-rail-collapse artifact value (RailVal_A) verbatim, bypassing quantization and the range clamp.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
   ],
   "outputPorts": [
     {"name": "I_Meas", "description": "Measured phase current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}}
@@ -15,6 +15,7 @@
   "parameterTypes": {
     "Lsb_A":   {"description": "Quantization step, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
     "Range_A": {"description": "Sensor range, ±A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Offset_A":{"description": "DC offset, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+    "Offset_A":{"description": "DC offset, A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "RailVal_A":{"description": "Post rail-collapse artifact readout, A (recorded per-channel: U=+1390, V=-1250, W=+1180); emitted verbatim when Rail >= 0.5.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
   }
 }

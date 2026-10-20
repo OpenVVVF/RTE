@@ -8,3 +8,6 @@ __pycache__/
 .mxproject
 .vscode/
 .venv/
+
+# agent/integration build trees
+build-*/

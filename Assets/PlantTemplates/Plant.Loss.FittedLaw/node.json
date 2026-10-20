@@ -13,7 +13,8 @@
   ],
   "outputPorts": [
     {"name": "P_Loss", "description": "Total inverter loss (machine winding + devices + speed/friction + bench residual), W.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "P_Plate", "description": "Plate share of the loss heating the baseplate NTC, W.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+    {"name": "P_Plate", "description": "Plate share of the loss heating the baseplate NTC, W.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "FloorHits", "description": "Count of domain-guard zero-floor engagements (persistent state; extrapolation guard fired = fitted-data span left).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
   ],
   "parameterTypes": {
     "K1": {"description": "coefficient W/A.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},

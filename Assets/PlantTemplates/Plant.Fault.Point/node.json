@@ -11,7 +11,5 @@
     {"name": "EncoderDisconnect", "description": "1 = sin/cos encoder disconnected (counts rail).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
     {"name": "SensorRail", "description": "1 = isolated current-sensor rail collapse (phantom ±range).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
   ],
-  "parameterTypes": {
-    "Name": {"description": "Host-visible fault name (scenario hook).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
-  }
+  "parameterTypes": {  /* fault flags are addressed by OUTPUT PORT name, broadcast to all Fault.Point nodes */ }
 }

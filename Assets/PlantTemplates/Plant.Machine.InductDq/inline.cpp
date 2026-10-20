@@ -11,20 +11,13 @@ double lsg = (double)Lls + (double)Lm;
 double lrg = (double)Llr + (double)Lm;
 double det = lsg * lrg - (double)Lm * (double)Lm;
 
-// abc reconstruction convention at the stationary frame (alpha = U axis):
-// states swing sinusoidally at line frequency; alpha := U.
-double ia = Isd;
-double ibridge = -0.5 * Isd + (M_SQRT3 / 2.0) * Isq;
-double ic = -ia - ibridge;
-(void)ibridge; (void)ic;
-
 double valpha = (2.0 / 3.0) * (V_U - 0.5 * (V_V + V_W));
 double vbeta  = (2.0 / 3.0) * ((M_SQRT3 / 2.0) * (V_V - V_W));
 double vd = valpha;
 double vq = vbeta;
 
 double wf = 0.0;                              // stationary frame
-double w_slip = wf - (double)Omega_M;         // frame - machine elec speed
+double w_slip = wf - (double)Omega_Elec;      // frame - machine elec speed
 
 double psi_sd = lsg * Isd + (double)Lm * Ird;
 double psi_sq = lsg * Isq + (double)Lm * Irq;

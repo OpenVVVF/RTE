@@ -13,6 +13,6 @@
   ],
   "parameterTypes": {
     "Poles": {"description": "Pole PAIRS for elec conversion.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "StartRpm": {"description": "Initial mechanical RPM until the host assigns otherwise.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+    "Rpm0":     {"description": "Initial mechanical RPM until the host assigns otherwise (canonical initial-RPM name, shared with FreeInertia).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
   }
 }

@@ -7,7 +7,11 @@ double idle = Idle;   // optional-wired; 0 = live (default), >=0.5 = gates off
 double lt = (K1 * fabs(Im) + K2 * Im * Im + K3 * fabs(Om)
              + K4 * fabs(Im) * fabs(Om) + K5 * Vdc * fabs(Im));
 if (idle >= 0.5) lt = 0.0;
-if (lt < 0.0) lt = 0.0;
+if (lt < 0.0) {
+    /* guard engagement is observability, not silence (python floor_hits) */
+    FloorHits = FloorHits + 1.0;
+    lt = 0.0;
+}
 P_Loss = lt;
 // plate heat = share of the law + the idle heat floor while gates are live
 // (bench aux residual, cal_log idle-warm anchor); zero when gates off
