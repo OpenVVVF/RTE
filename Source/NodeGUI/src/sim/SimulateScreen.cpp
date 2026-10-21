@@ -945,7 +945,7 @@ void SimulateScreen::OnRun() {
     QStringList arguments;
     QString error;
     if (!BuildArguments(arguments, error)) {
-        AppendLog(QStringLiteral("\n[cancelled] %1\n").arg(error));
+        AppendLog(QStringLiteral("\n[refused] %1\n").arg(error));
         SetStatus(error, QLatin1String(kStatusBadStyle));
         bottomTabs_->setCurrentWidget(logView_);
         return;
@@ -955,7 +955,7 @@ void SimulateScreen::OnRun() {
     // parent exists first.
     const QString outPath = outEdit_->text().trimmed();
     if (!QDir().mkpath(QFileInfo(outPath).absolutePath())) {
-        AppendLog(QStringLiteral("\n[cancelled] could not create output directory for %1\n")
+        AppendLog(QStringLiteral("\n[refused] could not create output directory for %1\n")
                       .arg(outPath));
         return;
     }

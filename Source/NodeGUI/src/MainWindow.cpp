@@ -1465,7 +1465,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         ShowToast(QStringLiteral(
             "Plant graphs build no firmware — use the Plant Editor / rte sim path"));
         AppendBuildLog(QStringLiteral(
-            "\n[cancelled] '%1' is a plant graph. Firmware builds start from a "
+            "\n[refused] '%1' is a plant graph. Firmware builds start from a "
             "controller graph; plant graphs belong to the Plant Editor / rte sim path.\n")
                 .arg(QString::fromStdString(currentPath_)));
         statusBar()->showMessage(
