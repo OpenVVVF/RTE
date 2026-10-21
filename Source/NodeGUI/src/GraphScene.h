@@ -27,8 +27,17 @@ namespace NodeGUI {
 // Loads a NodeAPI Graph into a QtNodes scene for display.
 class GraphScene {
 public:
-    GraphScene();
+    // An optional default domain is assigned by AddNodeAt to freshly dropped
+    // nodes that would otherwise start unassigned (used by the Plant Editor,
+    // whose graphs run the single implicit domain 'plant'; the Node Editor
+    // passes nothing and keeps the unassigned default).
+    explicit GraphScene(QString defaultDomain = {});
     ~GraphScene();
+
+    // Plant workflow: this document follows the plant pipeline's rules
+    // (single implicit domain, no bridges, cycle-feedback legalized by the
+    // plant scheduler). The Node Editor leaves this off.
+    void SetPlantWorkflow(bool on);
 
     // Disable copy.
     GraphScene(const GraphScene&) = delete;
@@ -229,6 +238,9 @@ public:
     bool selectedDomainMoved_ = false;
     std::vector<QColor> domainColors_;
     std::function<void()> changeCallback_;
+
+    // Optional default domain assigned by AddNodeAt (see the constructor).
+    QString defaultDomain_;
 
     bool PointHitsGraphContent(const QPointF& scenePos) const;
     void UpdateDomainSelectionStyle();

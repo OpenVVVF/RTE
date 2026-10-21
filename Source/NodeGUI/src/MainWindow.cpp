@@ -3,6 +3,8 @@
 #include "FrameRateMonitor.h"
 #include "InspectorPanel.h"
 #include "NodePalette.h"
+#include "PlantEditorScreen.h"  // [plant]
+#include "sim/SimulateScreen.h"     // [sim]
 
 #include "runtime/ConsolePanel.h"
 #include "runtime/FlashPanel.h"
@@ -19,11 +21,13 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFrame>
 #include <QInputDialog>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -86,6 +90,36 @@ std::filesystem::path ProjectRoot() {
 #else
     return std::filesystem::current_path();
 #endif
+}
+
+// [plant] Sibling of DefaultTemplatesDir(): the plant-side node library used
+// by plant nodegraphs (HW side of the loop; see Assets/PlantTemplates).
+std::string DefaultPlantTemplatesDir() {
+    const std::filesystem::path installed = InstalledResourceRoot()
+        / "Assets" / "PlantTemplates";
+    if (std::filesystem::is_directory(installed)) return installed.lexically_normal().string();
+    return (ProjectRoot() / "Assets" / "PlantTemplates").lexically_normal().string();
+}
+
+// [plant] A graph routes to the Plant Editor when any node's type belongs to
+// the Plant.* library (controller and plant types never mix in one document).
+bool GraphContainsPlantNodes(const std::string& path) {
+    QFile file(QString::fromStdString(path));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject()) {
+        return false;
+    }
+    const QJsonArray nodes = document.object().value(QStringLiteral("nodes")).toArray();
+    for (const QJsonValue& value : nodes) {
+        const QString type = value.toObject().value(QStringLiteral("type")).toString();
+        if (type.startsWith(QStringLiteral("Plant."))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::filesystem::path DefaultFirmwareBaseDir() {
@@ -290,6 +324,73 @@ MainWindow::MainWindow(QWidget* parent)
     screens_->addWidget(central);
     setCentralWidget(screens_);
 
+    // [plant] Plant Editor screen: first-class editing for plant nodegraphs,
+    // tabbed between the Node Editor and Runtime. Owns its own document,
+    // history, scene, palette and inspector (the Node Editor singletons
+    // stay untouched); its panels live in per-screen docks like the other
+    // tabs' panels.
+    plantScreen_ = new PlantEditorScreen(DefaultPlantTemplatesDir(), this);
+    screens_->addWidget(plantScreen_);
+    appSwitcher_->addTab(QStringLiteral("Plant Editor"));
+
+    plantToolboxDock_ = new QDockWidget(QStringLiteral("Plant Toolbox"), this);
+    plantToolboxDock_->setObjectName(QStringLiteral("plantToolboxDock"));
+    plantToolboxDock_->setWidget(plantScreen_->PalettePanel());
+    // Same usable-read floor as the node palette (2-char truncation at the
+    // default dock breadth; preferred size still wins when resized).
+    plantScreen_->PalettePanel()->setMinimumWidth(190);
+    addDockWidget(Qt::LeftDockWidgetArea, plantToolboxDock_);
+    plantToolboxDock_->hide();
+
+    plantInspectorDock_ = new QDockWidget(QStringLiteral("Plant Inspector"), this);
+    plantInspectorDock_->setObjectName(QStringLiteral("plantInspectorDock"));
+    plantInspectorDock_->setWidget(plantScreen_->InspectorPanelWidget());
+    addDockWidget(Qt::RightDockWidgetArea, plantInspectorDock_);
+    plantInspectorDock_->hide();
+
+    plantScreen_->SetUndoHistoryLimit(preferences_.undoHistoryLimit);
+    plantScreen_->SetPanMouseButton(preferences_.panMouseButton);
+    plantScreen_->onDocumentChanged = [this] {
+        UpdateWindowTitle();
+        UpdateHistoryActions();
+    };
+    plantScreen_->onStatusMessage = [this](const QString& message) {
+        if (PlantTabActive()) {
+            statusBar()->showMessage(message);
+        }
+    };
+
+    // [sim] Simulate screen (QWidget, dock-less): runs `rte sim` against the
+    // two graph documents and visualizes the produced v3 session. It lives
+    // between the Plant Editor and Runtime tabs.
+    simulateScreen_ = new sim::SimulateScreen(this);
+#ifdef RTE_CLI_DEVELOPMENT_PATH
+    simulateScreen_->SetRteBinary(QStringLiteral(RTE_CLI_DEVELOPMENT_PATH));
+#endif
+    // The Sw row's "Use current document" resolves at press time against
+    // whatever the Node Editor has open; the Plant row follows the plant
+    // document whenever it changes.
+    simulateScreen_->SetCurrentGraphProvider([this]() -> QString {
+        return currentPath_.empty() ? QString() : QString::fromStdString(currentPath_);
+    });
+    const auto plantPathToSim = [this] {
+        if (simulateScreen_ && plantScreen_) {
+            simulateScreen_->SetPlantGraphPath(
+                QString::fromStdString(plantScreen_->CurrentPath()));
+        }
+    };
+    // keep the screen's own "use current document at press time" helper
+    // and its built-in example prefill; never clobber with an empty setter
+    (void)plantPathToSim;
+    screens_->addWidget(simulateScreen_);
+    appSwitcher_->addTab(QStringLiteral("Simulate"));
+    // same hook for later plant-document changes
+    const auto priorDocHook = plantScreen_->onDocumentChanged;
+    plantScreen_->onDocumentChanged = [priorDocHook, plantPathToSim] {
+        if (priorDocHook) priorDocHook();
+        plantPathToSim();
+    };
+
     StripBrokenSceneActions();
 
     // Toast-style warning label, bottom-left of the canvas. Child of the
@@ -320,6 +421,9 @@ MainWindow::MainWindow(QWidget* parent)
     toolboxDock_ = new QDockWidget(QStringLiteral("Node Toolbox"), this);
     toolboxDock_->setObjectName(QStringLiteral("nodeToolboxDock"));
     toolboxDock_->setWidget(palette_);
+    // default dock breadth left names truncated to 2 chars; give the tree a
+    // usable-read floor (preferred size still wins when the user resizes)
+    palette_->setMinimumWidth(190);
     addDockWidget(Qt::LeftDockWidgetArea, toolboxDock_);
 
     // Inspector dock reflecting the selected node (replaces the old
@@ -361,14 +465,25 @@ MainWindow::MainWindow(QWidget* parent)
                       QStringLiteral("Switch to Node Editor"),
                       QKeySequence(QStringLiteral("Ctrl+1")),
                       0);
-    addScreenShortcut(QStringLiteral("navigation.runtime"),
-                      QStringLiteral("Switch to Runtime"),
+    // [plant] The Plant Editor sits between Node Editor and Runtime, so the
+    // runtime/firmware shortcuts shift one slot (Ctrl+2 -> Ctrl+3/Ctrl+4).
+    addScreenShortcut(QStringLiteral("navigation.plantEditor"),
+                      QStringLiteral("Switch to Plant Editor"),
                       QKeySequence(QStringLiteral("Ctrl+2")),
                       1);
-    addScreenShortcut(QStringLiteral("navigation.firmwareUpdate"),
-                      QStringLiteral("Switch to Firmware Update"),
+    addScreenShortcut(QStringLiteral("navigation.simulate"),
+                      QStringLiteral("Switch to Simulate"),
                       QKeySequence(QStringLiteral("Ctrl+3")),
                       2);
+    // [sim] runtime/firmware shortcuts shift one slot again (Ctrl+4/Ctrl+5)
+    addScreenShortcut(QStringLiteral("navigation.runtime"),
+                      QStringLiteral("Switch to Runtime"),
+                      QKeySequence(QStringLiteral("Ctrl+4")),
+                      3);
+    addScreenShortcut(QStringLiteral("navigation.firmwareUpdate"),
+                      QStringLiteral("Switch to Firmware Update"),
+                      QKeySequence(QStringLiteral("Ctrl+5")),
+                      3);
 
     buildProcess_ = new QProcess(this);
     buildProcess_->setProcessChannelMode(QProcess::SeparateChannels);
@@ -530,6 +645,13 @@ void MainWindow::SetupRuntime(const QString& serialPort,
 }
 
 bool MainWindow::OpenGraph(const std::string& path) {
+    // [plant] Route by document content: a graph holding any Plant.* node
+    // opens in the Plant Editor (its own document + history); every other
+    // graph keeps the Node Editor path below, unchanged.
+    if (plantScreen_ && GraphContainsPlantNodes(path)) {
+        return OpenPlantGraph(path);
+    }
+
     // Detach the old scene before LoadGraph destroys it and recreates it.
     if (view_) {
         view_->setScene(nullptr);
@@ -551,7 +673,7 @@ bool MainWindow::OpenGraph(const std::string& path) {
     ConnectModelSignals();
 
     currentPath_ = path;
-    setWindowTitle(QStringLiteral("RTE Studio - %1").arg(QString::fromStdString(path)));
+    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     ResetHistory();
     UpdateStatus();
     HideReloadBanner();
@@ -564,13 +686,92 @@ bool MainWindow::OpenGraph(const std::string& path) {
 }
 
 void MainWindow::FrameCanvasToContent() {
+    // [plant] Frame to Content follows the active tab's canvas.
+    if (PlantTabActive()) {
+        plantScreen_->FrameToContent();
+        return;
+    }
     if (!view_ || !graphScene_) return;
     const QRectF bounds = graphScene_->Scene()->itemsBoundingRect();
     if (bounds.isEmpty()) return;
     view_->fitInView(bounds.adjusted(-60, -60, 60, 60), Qt::KeepAspectRatio);
 }
 
+// [plant] Open a plant nodegraph in the Plant Editor screen and switch to it.
+bool MainWindow::OpenPlantGraph(const std::string& path) {
+    if (!plantScreen_) {
+        return false;
+    }
+    // Switch first so the load results (graph or error toast) show where the
+    // user is looking.
+    appSwitcher_->setCurrentIndex(screens_->indexOf(plantScreen_.data()));
+    const QString error = plantScreen_->OpenGraph(path);
+    if (!error.isEmpty()) {
+        plantScreen_->ReportError(error);
+        return false;
+    }
+    UpdateWindowTitle();
+    UpdateHistoryActions();
+    return true;
+}
+
+// [plant] Save the active plant document through the plant screen.
+bool MainWindow::DoSavePlant(const std::string& path) {
+    if (!plantScreen_) {
+        return false;
+    }
+    const QString error = plantScreen_->SaveGraph(path);
+    if (!error.isEmpty()) {
+        plantScreen_->ReportError(error);
+        return false;
+    }
+    return true;
+}
+
+// [plant] True while the Plant Editor is the active screen.
+bool MainWindow::PlantTabActive() const {
+    return appSwitcher_ && screens_ && plantScreen_
+        && appSwitcher_->currentIndex() == screens_->indexOf(plantScreen_.data());
+}
+
+// [plant] Title tracks both documents once the Plant Editor has a named one
+// ('RTE Studio - sw:<a> | plant:<b>'); with no plant document the title is
+// exactly the Node Editor's original format.
+void MainWindow::UpdateWindowTitle() {
+    const bool hasPlant = plantScreen_ && !plantScreen_->CurrentPath().empty();
+    if (!hasPlant) {
+        const QString path = QString::fromStdString(currentPath_);
+        setWindowTitle(path.isEmpty()
+                           ? QStringLiteral("RTE Studio")
+                           : QStringLiteral("RTE Studio - %1").arg(path));
+        return;
+    }
+    QStringList documents;
+    if (!currentPath_.empty()) {
+        documents << QStringLiteral("sw:%1")
+                         .arg(QFileInfo(QString::fromStdString(currentPath_)).fileName());
+    }
+    documents << QStringLiteral("plant:%1")
+                     .arg(QFileInfo(QString::fromStdString(plantScreen_->CurrentPath())).fileName());
+    setWindowTitle(QStringLiteral("RTE Studio - %1").arg(documents.join(QStringLiteral(" | "))));
+}
+
 void MainWindow::OnNew() {
+    // [plant] File>New applies to the ACTIVE tab's document.
+    if (PlantTabActive()) {
+        if (preferences_.confirmNewGraph
+            && !AskYesNo(this,
+                         QStringLiteral("New Plant Graph"),
+                         QStringLiteral("Discard the current plant graph and start a new empty one?"))) {
+            return;
+        }
+        const QString error = plantScreen_->NewGraph();
+        if (!error.isEmpty()) {
+            plantScreen_->ReportError(error);
+        }
+        return;
+    }
+
     if (preferences_.confirmNewGraph
         && !AskYesNo(this,
                      QStringLiteral("New Graph"),
@@ -592,7 +793,7 @@ void MainWindow::OnNew() {
 
     ConnectModelSignals();
     currentPath_.clear();
-    setWindowTitle(QStringLiteral("RTE Studio"));
+    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     ResetHistory();
     UpdateStatus();
     HideReloadBanner();
@@ -869,6 +1070,11 @@ void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     if (view_) {
         view_->SetPanMouseButton(preferences_.panMouseButton);
     }
+    // [plant] Keep the plant screen in step with app preferences.
+    if (plantScreen_) {
+        plantScreen_->SetPanMouseButton(preferences_.panMouseButton);
+        plantScreen_->SetUndoHistoryLimit(preferences_.undoHistoryLimit);
+    }
     if (buildLogView_) {
         buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     }
@@ -894,13 +1100,27 @@ void MainWindow::RebuildViewMenu() {
 
     const int tabIndex = appSwitcher_ ? appSwitcher_->currentIndex() : 0;
     const bool nodeTab = tabIndex == 0;
-    const bool runtimeTab = tabIndex == 1;
+    // [plant] resolve screens by widget, not fixed index.
+    const bool plantTab = plantScreen_ && screens_
+        && tabIndex == screens_->indexOf(plantScreen_.data());
+    const bool runtimeTab = runtimeTab_ && screens_
+        && tabIndex == screens_->indexOf(runtimeTab_.data());
     if (nodeTab) {
         viewMenu_->addAction(frameContentAction_);
         viewMenu_->addAction(arrangeAction_);
         viewMenu_->addSeparator();
         for (auto* dock : {toolboxDock_.data(), inspectorDock_.data(),
                            editorConsoleDock_.data()}) {
+            if (dock) {
+                viewMenu_->addAction(dock->toggleViewAction());
+            }
+        }
+    } else if (plantTab) {
+        // [plant] The plant canvas frames content too; Auto Arrange stays a
+        // Node-Editor action (plant positions are hand-authored).
+        viewMenu_->addAction(frameContentAction_);
+        viewMenu_->addSeparator();
+        for (auto* dock : {plantToolboxDock_.data(), plantInspectorDock_.data()}) {
             if (dock) {
                 viewMenu_->addAction(dock->toggleViewAction());
             }
@@ -917,25 +1137,42 @@ void MainWindow::RebuildViewMenu() {
 void MainWindow::OnTabChanged(int index) {
     // Preserve each screen's dock layout (which panels, where) across
     // switches; the first visit of a screen gets its default arrangement.
-    if (previousTab_ >= 0 && previousTab_ < 3) {
+    if (previousTab_ >= 0 && previousTab_ < 5) {  // [plant][sim] (array grew)
         screenStates_[previousTab_] = saveState();
     }
     previousTab_ = index;
 
-    if (index >= 0 && index < 3 && !screenStates_[index].isEmpty()) {
+    // [plant] resolve the plant screen by widget, not fixed index.
+    const bool plantTab = plantScreen_ && screens_
+        && index == screens_->indexOf(plantScreen_.data());
+
+    if (index >= 0 && index < 5 && !screenStates_[index].isEmpty()) {  // [plant][sim]
         restoreState(screenStates_[index]);
     } else {
-        // Defaults: node screen shows toolbox + inspector, runtime shows the
+        // Defaults: node screen shows toolbox + inspector, plant screen its
+        // own plant toolbox + inspector ( [plant] ), runtime shows the
         // signal table + telemetry console, and firmware update has no docks.
         // Panels from the other screens and the opt-in node console stay
         // hidden.
         const bool nodeTab = (index == 0);
-        const bool runtimeTab = (index == 1);
+        // [sim] resolve by widget: the Simulate screen sits between Plant and
+        // Runtime, so a numeric position is never stable
+        const bool runtimeTab = runtimeTab_ && screens_
+            && index == screens_->indexOf(runtimeTab_.data());
         if (toolboxDock_) toolboxDock_->setVisible(nodeTab);
         if (inspectorDock_) inspectorDock_->setVisible(nodeTab);
+        if (plantToolboxDock_) plantToolboxDock_->setVisible(plantTab);
+        if (plantInspectorDock_) plantInspectorDock_->setVisible(plantTab);
         if (editorConsoleDock_) editorConsoleDock_->setVisible(false);
         if (signalTableDock_) signalTableDock_->setVisible(runtimeTab);
         if (telemetryConsoleDock_) telemetryConsoleDock_->setVisible(runtimeTab);
+    }
+
+    // [plant] The status line reflects the active tab's document.
+    if (index == 0) {
+        UpdateStatus();
+    } else if (plantTab) {
+        statusBar()->showMessage(plantScreen_->StatusText());
     }
 
     RebuildViewMenu();
@@ -956,7 +1193,7 @@ bool MainWindow::DoSave(const std::string& path) {
     }
 
     currentPath_ = path;
-    setWindowTitle(QStringLiteral("RTE Studio - %1").arg(QString::fromStdString(path)));
+    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     UpdateGraphWatcher();
     QTimer::singleShot(500, this, [this] { suppressWatch_ = false; });
     return true;
@@ -1367,6 +1604,15 @@ void MainWindow::OnOpen() {
 }
 
 void MainWindow::OnSave() {
+    // [plant] File>Save saves the ACTIVE tab's document with its own path.
+    if (PlantTabActive()) {
+        if (plantScreen_->CurrentPath().empty()) {
+            OnSaveAs();
+            return;
+        }
+        DoSavePlant(plantScreen_->CurrentPath());
+        return;
+    }
     if (currentPath_.empty()) {
         OnSaveAs();
         return;
@@ -1375,6 +1621,17 @@ void MainWindow::OnSave() {
 }
 
 void MainWindow::OnSaveAs() {
+    // [plant] Save As applies to the ACTIVE tab's document.
+    if (PlantTabActive()) {
+        const QString fileName = QFileDialog::getSaveFileName(this,
+                                                              QStringLiteral("Save Plant Graph"),
+                                                              QString{},
+                                                              QStringLiteral("JSON (*.json)"));
+        if (!fileName.isEmpty()) {
+            DoSavePlant(fileName.toStdString());
+        }
+        return;
+    }
     const QString fileName = QFileDialog::getSaveFileName(this,
                                                           QStringLiteral("Save Graph"),
                                                           QString{},
@@ -1385,6 +1642,11 @@ void MainWindow::OnSaveAs() {
 }
 
 void MainWindow::OnUndo() {
+    // [plant] The Plant Editor keeps its own history stack.
+    if (PlantTabActive()) {
+        plantScreen_->Undo();
+        return;
+    }
     if (undoHistory_.empty()) {
         return;
     }
@@ -1401,6 +1663,11 @@ void MainWindow::OnUndo() {
 }
 
 void MainWindow::OnRedo() {
+    // [plant] The Plant Editor keeps its own history stack.
+    if (PlantTabActive()) {
+        plantScreen_->Redo();
+        return;
+    }
     if (redoHistory_.empty()) {
         return;
     }
@@ -1502,11 +1769,17 @@ bool MainWindow::RestoreHistorySnapshot(const std::string& snapshot) {
 
 void MainWindow::UpdateHistoryActions() {
     const bool nodeEditorActive = !appSwitcher_ || appSwitcher_->currentIndex() == 0;
+    // [plant] Undo/Redo follow the active tab's history stack.
+    const bool plantEditorActive = PlantTabActive();
     if (undoAction_) {
-        undoAction_->setEnabled(nodeEditorActive && !undoHistory_.empty());
+        undoAction_->setEnabled(
+            (nodeEditorActive && !undoHistory_.empty())
+            || (plantEditorActive && plantScreen_ && plantScreen_->CanUndo()));
     }
     if (redoAction_) {
-        redoAction_->setEnabled(nodeEditorActive && !redoHistory_.empty());
+        redoAction_->setEnabled(
+            (nodeEditorActive && !redoHistory_.empty())
+            || (plantEditorActive && plantScreen_ && plantScreen_->CanRedo()));
     }
     for (QAction* action : {cutAction_, copyAction_, deleteAction_, clearSelectionAction_}) {
         if (action) {

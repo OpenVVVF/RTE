@@ -76,10 +76,11 @@ std::optional<std::string> ReadTextFile(const std::string& path) {
 
 }  // namespace
 
-GraphScene::GraphScene()
+GraphScene::GraphScene(QString defaultDomain)
     : registry_{std::make_shared<QtNodes::NodeDelegateModelRegistry>()}
     , model_{std::make_unique<NodeGraphModel>(registry_, graph_)}
-    , scene_{std::make_unique<QtNodes::BasicGraphicsScene>(*model_)} {
+    , scene_{std::make_unique<QtNodes::BasicGraphicsScene>(*model_)}
+    , defaultDomain_{defaultDomain} {
     // Distinct colors for timing domains. The palette cycles if there are more
     // domains than colors.
     domainColors_ = {
@@ -1139,6 +1140,8 @@ QString GraphScene::RestoreSnapshot(const std::string& json) {
     return QString{};
 }
 
+void GraphScene::SetPlantWorkflow(bool on) { model_->SetPlantWorkflow(on); }
+
 void GraphScene::SetChangeCallback(std::function<void()> callback) {
     changeCallback_ = std::move(callback);
 }
@@ -1457,7 +1460,9 @@ QString GraphScene::AddNodeAt(const std::string& typeId,
     node.type = typeId;
     // New instances start unassigned unless the type is locked to a domain.
     // If the drop lands inside an existing domain's outline, the node adopts
-    // that domain instead (the outline then refits around it).
+    // that domain instead (the outline then refits around it). When the scene
+    // pins a default domain (the Plant Editor's single 'plant' domain), it
+    // applies as the final fallback.
     node.domain = nodeType->domain;
     if (node.domain.empty()) {
         for (const auto& [domain, visuals] : domainVisuals_) {
@@ -1465,6 +1470,9 @@ QString GraphScene::AddNodeAt(const std::string& typeId,
                 node.domain = domain;
                 break;
             }
+        }
+        if (node.domain.empty()) {
+            node.domain = defaultDomain_.toStdString();
         }
     }
     node.position = NodeAPI::Position{scenePos.x(), scenePos.y()};
@@ -1481,10 +1489,12 @@ QString GraphScene::AddNodeAt(const std::string& typeId,
         }
         node.id = requestedId;
     } else {
-        // Generate a unique instance id from the display name (or type id).
-        QString base = QString::fromStdString(nodeType->displayName.empty()
-                                                  ? nodeType->id
-                                                  : nodeType->displayName);
+        // Generate a unique instance id: the template's defaultName is the
+        // intended instance base ("CurrentSensor"); otherwise fall back to
+        // displayName (legacy behavior) or the type id.
+        QString base = QString::fromStdString(nodeType->defaultName.empty()
+                ? (nodeType->displayName.empty() ? nodeType->id : nodeType->displayName)
+                : nodeType->defaultName);
         base.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9]")));
         if (base.isEmpty()) {
             base = QStringLiteral("node");

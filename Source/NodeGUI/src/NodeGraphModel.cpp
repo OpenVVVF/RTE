@@ -244,11 +244,26 @@ QString NodeGraphModel::Validate(QtNodes::ConnectionId const connectionId,
         }
     }
 
-    NodeAPI::Timing::Validator validator;
-    const auto result = validator.Validate(temp);
-    if (!result.ok && !result.errors.empty()) {
-        return QString::fromStdString(result.errors.front());
+    if (plantWorkflow_ && asBridge) {
+        // the plant pipeline rejects bridges; the Plant Editor holds its
+        // document to the single implicit domain, so a domain mismatch here
+        // is a user mistake, not a bridge choice
+        return QStringLiteral(
+            "Plant graphs have exactly one implicit domain ('plant'); "
+            "cross-domain bridges are disallowed");
     }
+    if (!plantWorkflow_) {
+        NodeAPI::Timing::Validator validator;
+        const auto result = validator.Validate(temp);
+        if (!result.ok && !result.errors.empty()) {
+            return QString::fromStdString(result.errors.front());
+        }
+    }
+    // Plant workflow: the controller timing validator's cycle rule must not
+    // run - the bench's physically intended feedback ring (knee <-> machine
+    // <-> dc link) is legalized by the plant scheduler's PRE/POST and
+    // cycle-lock semantics (Assets/PlantTemplates/README.md); the checks
+    // above (endpoints, types, one-wire-per-input) still hold.
 
     return QString{};
 }

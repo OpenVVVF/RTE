@@ -24,6 +24,12 @@ class NodeGraphModel : public QtNodes::DataFlowGraphModel {
     Q_OBJECT
 
 public:
+
+    // Plant workflow (see GraphScene::SetPlantWorkflow): Validate skips the
+    // controller timing validator's cycle rule and rejects any cross-domain
+    // bridge outright (plant graphs are single-domain, no bridges).
+    void SetPlantWorkflow(bool on) { plantWorkflow_ = on; }
+    bool PlantWorkflow() const { return plantWorkflow_; }
     NodeGraphModel(std::shared_ptr<QtNodes::NodeDelegateModelRegistry> registry,
                    NodeAPI::Graph& graph);
 
@@ -95,6 +101,8 @@ private:
     std::string GenerateId() const;
     QString Validate(QtNodes::ConnectionId const connectionId,
                      bool& asBridge) const;
+
+    bool plantWorkflow_ = false;
 
     NodeAPI::Graph& graph_;
     std::unordered_map<QtNodes::NodeId, std::string> qtIdToNodeId_;

@@ -32,6 +32,8 @@ namespace NodeGUI {
 
 class InspectorPanel;
 class NodePalette;
+class PlantEditorScreen;  // [plant]
+namespace sim { class SimulateScreen; }  // [sim]
 
 namespace runtime {
 class FlashPanel;
@@ -116,6 +118,12 @@ private:
     // Rebuilds the View menu for the active tab: each screen has its own set
     // of dockable panels, and Auto Arrange only exists on the Node Editor.
     void RebuildViewMenu();
+    // [plant] Plant Editor glue: routing plant graphs to the plant tab, the
+    // per-active-tab File/Edit dispatch, and the two-document window title.
+    bool OpenPlantGraph(const std::string& path);
+    bool DoSavePlant(const std::string& path);
+    bool PlantTabActive() const;
+    void UpdateWindowTitle();
     // Right-click menu on a node: rename + pick its timing domain.
     void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
     // Forwards scene selection to the inspector dock.
@@ -154,6 +162,14 @@ private:
     QStackedWidget* screens_ = nullptr;
     QPointer<QDockWidget> toolboxDock_;
     QPointer<QDockWidget> inspectorDock_;
+    // [plant] Plant Editor screen (tab between Node Editor and Runtime): own
+    // document + undo history, own palette/inspector panels hosted in these
+    // per-screen docks.
+    QPointer<PlantEditorScreen> plantScreen_;
+    // [sim] Simulate screen instance (created after the Plant Editor).
+    QPointer<sim::SimulateScreen> simulateScreen_;
+    QPointer<QDockWidget> plantToolboxDock_;
+    QPointer<QDockWidget> plantInspectorDock_;
     // Runtime-screen docks (created in SetupRuntime).
     QPointer<QDockWidget> signalTableDock_;
     QPointer<QDockWidget> telemetryConsoleDock_;
@@ -188,7 +204,8 @@ private:
     std::string currentHistorySnapshot_;
     bool restoringHistory_ = false;
     // Per-tab QMainWindow dock layouts, saved/restored on tab switches.
-    QByteArray screenStates_[3];
+    // [plant] sized for Node + Plant + Runtime + Firmware Update screens.
+    QByteArray screenStates_[5];
     int previousTab_ = 0;
     std::unique_ptr<runtime::RuntimeController> runtimeController_;
     std::unique_ptr<runtime::LocalSessionServer> localSessionServer_;
