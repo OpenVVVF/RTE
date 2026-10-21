@@ -48,8 +48,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QLockFile>
+#include <QMenu>
 #include <QPixmap>
 #include <QPlainTextEdit>
+#include <QStatusBar>
 #include <QTextEdit>
 #include <QSurfaceFormat>
 #include <QTimer>
@@ -154,6 +156,32 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                 std::cerr << "smoke: no dumpable widget named " << arg.toStdString() << "\n";
             }
             std::cout << arg.toStdString() << "=" << value.toStdString() << "\n";
+        } else if (kind == "dumpstatus") {
+            // The main-window status bar's current message (build refusals,
+            // post-flash hints, ...).
+            std::cout << "status=" << window->statusBar()->currentMessage().toStdString() << "\n";
+        } else if (kind == "dumpmenu") {
+            // "text [shortcut] | ..." for every action of the named menu —
+            // menu-membership assertions without opening the popup.
+            if (QMenu* menu = window->findChild<QMenu*>(arg)) {
+                QStringList entries;
+                for (QAction* action : menu->actions()) {
+                    if (action->isSeparator()) {
+                        entries.push_back(QStringLiteral("--"));
+                        continue;
+                    }
+                    QString entry = action->text();
+                    if (!action->shortcut().isEmpty()) {
+                        entry += QStringLiteral(" [") + action->shortcut().toString()
+                                 + QStringLiteral("]");
+                    }
+                    entries.push_back(entry);
+                }
+                std::cout << arg.toStdString() << "="
+                          << entries.join(QStringLiteral(" | ")).toStdString() << "\n";
+            } else {
+                std::cerr << "smoke: no menu named " << arg.toStdString() << "\n";
+            }
         } else if (kind == "open") {
             if (!window->OpenGraph(arg.toStdString())) {
                 std::cerr << "smoke: open failed " << arg.toStdString() << "\n";

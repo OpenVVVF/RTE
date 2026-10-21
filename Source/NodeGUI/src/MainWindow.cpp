@@ -412,6 +412,7 @@ MainWindow::MainWindow(QWidget* parent)
                                     const QKeySequence& key,
                                     int screenIndex) {
         auto* action = new QAction(label, this);
+        action->setObjectName(id);
         action->setShortcutContext(Qt::WindowShortcut);
         connect(action, &QAction::triggered, this, [this, screenIndex] {
             if (screenIndex < appSwitcher_->count()) {
@@ -424,6 +425,8 @@ MainWindow::MainWindow(QWidget* parent)
                          QStringLiteral("Navigation"),
                          label,
                          key);
+        // Listed permanently in the View menu (see RebuildViewMenu).
+        screenActions_.push_back(action);
     };
     addScreenShortcut(QStringLiteral("navigation.nodeEditor"),
                       QStringLiteral("Switch to Node Editor"),
@@ -450,6 +453,7 @@ MainWindow::MainWindow(QWidget* parent)
     // (2026-10-21 clunk audit).
     auto* firmwareShortcut = new QAction(
         QStringLiteral("Switch to Firmware Update"), this);
+    firmwareShortcut->setObjectName(QStringLiteral("navigation.firmwareUpdate"));
     firmwareShortcut->setShortcutContext(Qt::WindowShortcut);
     connect(firmwareShortcut, &QAction::triggered, this, [this] {
         if (firmwareUpdateTab_) {
@@ -465,6 +469,7 @@ MainWindow::MainWindow(QWidget* parent)
                      QStringLiteral("Navigation"),
                      QStringLiteral("Switch to Firmware Update"),
                      QKeySequence(QStringLiteral("Ctrl+5")));
+    screenActions_.push_back(firmwareShortcut);
 
     buildProcess_ = new QProcess(this);
     buildProcess_->setProcessChannelMode(QProcess::SeparateChannels);
@@ -1016,6 +1021,7 @@ void MainWindow::SetupMenu() {
     });
 
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
+    viewMenu->setObjectName(QStringLiteral("viewMenu"));
     viewMenu_ = viewMenu;
 
     frameContentAction_ = new QAction(QStringLiteral("Frame to &Content"), this);
@@ -1202,6 +1208,16 @@ void MainWindow::RebuildViewMenu() {
             }
         }
     }
+
+    // The five screen-switching actions stay menu-discoverable on every
+    // screen (Ctrl+1..5; clunk audit item 11). The clear() at the top makes
+    // repeated rebuilds refresh rather than duplicate them.
+    if (!viewMenu_->isEmpty()) {
+        viewMenu_->addSeparator();
+    }
+    for (QAction* action : screenActions_) {
+        viewMenu_->addAction(action);
+    }
 }
 
 void MainWindow::OnTabChanged(int index) {
@@ -1332,11 +1348,9 @@ void MainWindow::ShowBuildLogs() {
         return;
     }
 
-    // Firmware operations belong to the editor workflow. Select that screen,
-    // reveal its detachable debug dock, and focus the Logs sub-tab.
-    if (appSwitcher_->currentIndex() != 0) {
-        appSwitcher_->setCurrentIndex(0);
-    }
+    // Reveal the debug dock and focus the Logs sub-tab WITHOUT switching
+    // screens: teleporting to the Node Editor mid-flow breaks the
+    // build-preview -> sim-preview loop (clunk audit item 4).
     editorConsoleDock_->show();
     editorConsoleDock_->raise();
     editorConsoleTabs_->setCurrentIndex(1);

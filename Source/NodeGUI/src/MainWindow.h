@@ -206,6 +206,9 @@ private:
     QAction* loadFramKeysAction_ = nullptr;
     QAction* frameContentAction_ = nullptr;
     QAction* arrangeAction_ = nullptr;
+    // The Ctrl+1..5 screen-switching actions, in tab order; RebuildViewMenu
+    // lists them permanently so the shortcuts are menu-discoverable.
+    QVector<QAction*> screenActions_;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
     QAction* cutAction_ = nullptr;
