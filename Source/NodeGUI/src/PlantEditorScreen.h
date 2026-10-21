@@ -86,6 +86,16 @@ public:
     // never with an empty path. The sim screen's plant row listens to this;
     // ordinary canvas edits must not move it (clunk audit item 3).
     std::function<void(const std::string&)> onPathAssigned;
+    // Routed open-requests (the header hint's "Open an example plant..." link).
+    // MainWindow installs this so every plant-open entry flows through its
+    // unsaved-changes prompt; unset means open in place (no prompt owner).
+    std::function<void(const std::string&)> onOpenRequest;
+
+    // [unsaved] Dirty state mirrors the Node Editor's: the current history
+    // snapshot is compared against the snapshot recorded at the last
+    // successful save (or load/new, which re-anchor both). Undo back to the
+    // saved snapshot reads clean again off the same comparison.
+    bool DocumentDirty() const { return currentHistorySnapshot_ != savedSnapshot_; }
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -130,6 +140,8 @@ private:
     std::vector<std::string> undoHistory_;
     std::vector<std::string> redoHistory_;
     std::string currentHistorySnapshot_;
+    // Snapshot anchored at the last successful save/load/new (DocumentDirty).
+    std::string savedSnapshot_;
     bool restoringHistory_ = false;
     int undoHistoryLimit_ = 100;
 

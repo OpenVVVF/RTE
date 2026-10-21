@@ -132,6 +132,34 @@ private:
     void UpdateStatus();
     bool DoSave(const std::string& path);
     bool EnsureGraphSaved();
+
+    // ---- Unsaved-changes model (ui_clunk_audit #1) ------------------------
+    // Per-DOCUMENT dirty state, anchored on the content-deduped history
+    // snapshots: a document is dirty while its current history snapshot
+    // differs from the snapshot recorded at the last successful save (or
+    // load/new, which re-anchor both). Undo/redo land the document on a
+    // history snapshot string, so "undo back to the saved snapshot = clean
+    // again" falls out of the same comparison - no extra bookkeeping.
+    // The window title marks each dirty document with a '*' right after its
+    // component; UpdateWindowTitle keeps the (hidden) windowTitleDump_ smoke
+    // label in step so headless runs can assert the marker.
+    bool ControllerDocumentDirty() const;
+    void MarkControllerSaved();
+    enum class UnsavedChoice { Save, Discard, Cancel };
+    // Save/Discard/Cancel prompt naming one dirty document. context names the
+    // entry point ("File>New", "close", "Open..."). Headless runs pre-answer
+    // through the documented override RTE_SMOKE_UNSAVED_CHOICE=save|
+    // discard|cancel; every offer + taken choice is mirrored into the hidden
+    // unsavedPromptDump_ label for the smoke driver's `dump`.
+    UnsavedChoice AskSaveDiscardCancel(const QString& context,
+                                       const QString& docLabel,
+                                       const QString& graphName);
+    // True when the pending discard may proceed: clean document, user picked
+    // Discard, or user picked Save and the save completed. False = cancel
+    // (abort the request before anything is reset); a failed/aborted Save
+    // also aborts.
+    bool ConfirmControllerDiscard(const QString& context);
+    bool ConfirmPlantDiscard(const QString& context);
     void StartBuildCommand(BuildCommand command);
     void StartCliFlash(const QString& firmwarePath);
     void OnBuildCancel();
@@ -150,7 +178,9 @@ private:
     void RebuildViewMenu();
     // [plant] Plant Editor glue: routing plant graphs to the plant tab, the
     // per-active-tab File/Edit dispatch, and the two-document window title.
+    bool OpenGraph(const std::string& path, bool respectDirty);
     bool OpenPlantGraph(const std::string& path);
+    bool OpenPlantGraph(const std::string& path, bool respectDirty);
     bool DoSavePlant(const std::string& path);
     bool PlantTabActive() const;
     void UpdateWindowTitle();
@@ -189,6 +219,14 @@ private:
     QTimer* toastTimer_ = nullptr;
     std::string currentPath_;
     bool connectionCreatedThisDrag_ = false;
+    // Snapshot of the controller document at the last successful save (see
+    // the unsaved-changes model block above); dirty = history head != this.
+    std::string savedSnapshotNode_;
+    // [smoke] hidden dump seams: windowTitleDump_ mirrors the composed
+    // title (incl. the dirty '*' markers), unsavedPromptDump_ records the
+    // last unsaved-changes offer and the choice that resolved it.
+    QLabel* windowTitleDump_ = nullptr;
+    QLabel* unsavedPromptDump_ = nullptr;
 
     // Application-level screen switcher. The tab bar lives in the main-window
     // chrome above all docks; the stack contains only each screen's central

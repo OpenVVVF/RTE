@@ -18,6 +18,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QAbstractButton>
 #include <QCloseEvent>
 #include <QCursor>
 #include <QDialog>
@@ -191,7 +192,9 @@ MainWindow::MainWindow(QWidget* parent)
         HideReloadBanner();
         // Capture the current graph so a mis-clicked Load is one Ctrl+Z away.
         const std::string preLoad = graphScene_ ? graphScene_->Snapshot() : std::string{};
-        if (currentPath_.empty() || !OpenGraph(currentPath_)) {
+        // The banner itself is the discard confirmation (it keeps the
+        // pre-load state one Ctrl+Z away), so skip the unsaved prompt here.
+        if (currentPath_.empty() || !OpenGraph(currentPath_, /*respectDirty=*/false)) {
             // Keep offering until the load succeeds or the user ignores.
             ShowReloadBanner();
             return;
@@ -361,6 +364,12 @@ MainWindow::MainWindow(QWidget* parent)
             simulateScreen_->SetPlantGraphPath(QString::fromStdString(path));
         }
     };
+    // [unsaved] Every plant-open entry (incl. the screen's own "Open an
+    // example" link) flows through OpenPlantGraph so the dirty-document
+    // prompt runs before the discard.
+    plantScreen_->onOpenRequest = [this](const std::string& path) {
+        OpenPlantGraph(path);
+    };
     screens_->addWidget(simulateScreen_);
     appSwitcher_->addTab(QStringLiteral("Simulate"));
 
@@ -382,6 +391,18 @@ MainWindow::MainWindow(QWidget* parent)
     toastTimer_->setSingleShot(true);
     toastTimer_->setInterval(4000);
     connect(toastTimer_, &QTimer::timeout, toast_, &QLabel::hide);
+
+    // [smoke] Hidden dump seams for the unsaved-changes model: the composed
+    // window title (dirty '*' markers included) and the most recent
+    // Save/Discard/Cancel offer + choice. findChild reaches hidden widgets,
+    // so the offscreen smoke driver's `dump` reads both.
+    windowTitleDump_ = new QLabel(this);
+    windowTitleDump_->setObjectName(QStringLiteral("windowTitleDump"));
+    windowTitleDump_->hide();
+    unsavedPromptDump_ = new QLabel(this);
+    unsavedPromptDump_->setObjectName(QStringLiteral("unsavedPromptDump"));
+    unsavedPromptDump_->setText(QStringLiteral("(no unsaved-changes offer yet)"));
+    unsavedPromptDump_->hide();
 
     // The viewport's Resize event carries the final post-layout size (and
     // covers scrollbar appear/disappear).
@@ -538,6 +559,10 @@ MainWindow::MainWindow(QWidget* parent)
     SetupMenu();
     graphScene_->SetChangeCallback([this] { RecordHistorySnapshot(); });
     ResetHistory();
+    // [unsaved] The just-built empty document starts clean; anchor the saved
+    // snapshot for the controller document (the plant screen anchors its own).
+    savedSnapshotNode_ = currentHistorySnapshot_;
+    UpdateWindowTitle();
     UpdateStatus();
 
     QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
@@ -653,13 +678,28 @@ void MainWindow::SetupRuntime(const QString& serialPort,
 }
 
 bool MainWindow::OpenGraph(const std::string& path) {
+    // Every open entry (File>Open, Recent Files, the CLI argument, the
+    // plant screen's example link) lands here with the unsaved-changes gate
+    // on; the reload banner passes respectDirty=false below because its
+    // Load/Save Copy/Ignore choice already IS the confirmation (and it keeps
+    // the pre-load state one Ctrl+Z away).
+    return OpenGraph(path, /*respectDirty=*/true);
+}
+
+bool MainWindow::OpenGraph(const std::string& path, bool respectDirty) {
     // [plant] Route by document content: a graph holding any Plant.* node
     // opens in the Plant Editor (its own document + history); every other
     // graph keeps the Node Editor path below, unchanged. Unknown-kind files
     // (unreadable / not a JSON object) also stay here — LoadGraph below
     // surfaces the real parse error.
     if (plantScreen_ && GraphKindOf(path) == GraphKind::Plant) {
-        return OpenPlantGraph(path);
+        return OpenPlantGraph(path, respectDirty);
+    }
+
+    // [unsaved] The load below replaces the controller document; offer
+    // Save/Discard/Cancel first when it has unsaved changes.
+    if (respectDirty && !ConfirmControllerDiscard(QStringLiteral("Open Graph"))) {
+        return false;
     }
 
     // Detach the old scene before LoadGraph destroys it and recreates it.
@@ -683,8 +723,12 @@ bool MainWindow::OpenGraph(const std::string& path) {
     ConnectModelSignals();
 
     currentPath_ = path;
-    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     ResetHistory();
+    // [unsaved] A freshly loaded controller document is clean; only now can
+    // the title read the settled dirty state (it compares history head vs
+    // saved anchor, so refresh after both are set).
+    savedSnapshotNode_ = currentHistorySnapshot_;
+    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     UpdateStatus();
     HideReloadBanner();
     UpdateGraphWatcher();
@@ -751,7 +795,17 @@ void MainWindow::FrameCanvasToContent() {
 
 // [plant] Open a plant nodegraph in the Plant Editor screen and switch to it.
 bool MainWindow::OpenPlantGraph(const std::string& path) {
+    return OpenPlantGraph(path, /*respectDirty=*/true);
+}
+
+bool MainWindow::OpenPlantGraph(const std::string& path, bool respectDirty) {
     if (!plantScreen_) {
+        return false;
+    }
+    // [unsaved] The load below replaces the PLANT document; prompt first
+    // when it has unsaved changes (before the tab switch, so a cancelled
+    // open changes nothing at all).
+    if (respectDirty && !ConfirmPlantDiscard(QStringLiteral("Open Graph"))) {
         return false;
     }
     // Switch first so the load results (graph or error toast) show where the
@@ -789,33 +843,178 @@ bool MainWindow::PlantTabActive() const {
 
 // [plant] Title tracks both documents once the Plant Editor has a named one
 // ('RTE Studio - sw:<a> | plant:<b>'); with no plant document the title is
-// exactly the Node Editor's original format.
+// exactly the Node Editor's original format. [unsaved] Each dirty document
+// carries a '*' right after its component; the hidden windowTitleDump_ label
+// mirrors the result for headless assertion.
 void MainWindow::UpdateWindowTitle() {
+    const QString controllerDirty = ControllerDocumentDirty() ? QStringLiteral("*")
+                                                              : QString();
+    const QString plantDirty = (plantScreen_ && plantScreen_->DocumentDirty())
+                                   ? QStringLiteral("*")
+                                   : QString();
     const bool hasPlant = plantScreen_ && !plantScreen_->CurrentPath().empty();
     if (!hasPlant) {
+        // Untitled controller documents keep the plain 'RTE Studio' contract;
+        // the marker then sits right after the app title itself.
         const QString path = QString::fromStdString(currentPath_);
         setWindowTitle(path.isEmpty()
-                           ? QStringLiteral("RTE Studio")
-                           : QStringLiteral("RTE Studio - %1").arg(path));
-        return;
+                           ? QStringLiteral("RTE Studio%1").arg(controllerDirty)
+                           : QStringLiteral("RTE Studio - %1%2").arg(path, controllerDirty));
+    } else {
+        QStringList documents;
+        if (!currentPath_.empty()) {
+            documents << QStringLiteral("sw:%1%2")
+                             .arg(QFileInfo(QString::fromStdString(currentPath_)).fileName(),
+                                  controllerDirty);
+        } else if (ControllerDocumentDirty()) {
+            // Unsaved untitled controller doc beside a named plant doc: give
+            // its marker a component to hang on (normally omitted by design).
+            documents << QStringLiteral("sw:(untitled)%1").arg(controllerDirty);
+        }
+        documents << QStringLiteral("plant:%1%2")
+                         .arg(QFileInfo(QString::fromStdString(plantScreen_->CurrentPath())).fileName(),
+                              plantDirty);
+        setWindowTitle(QStringLiteral("RTE Studio - %1").arg(documents.join(QStringLiteral(" | "))));
     }
-    QStringList documents;
-    if (!currentPath_.empty()) {
-        documents << QStringLiteral("sw:%1")
-                         .arg(QFileInfo(QString::fromStdString(currentPath_)).fileName());
+    if (windowTitleDump_) {
+        windowTitleDump_->setText(windowTitle());
     }
-    documents << QStringLiteral("plant:%1")
-                     .arg(QFileInfo(QString::fromStdString(plantScreen_->CurrentPath())).fileName());
-    setWindowTitle(QStringLiteral("RTE Studio - %1").arg(documents.join(QStringLiteral(" | "))));
+}
+
+bool MainWindow::ControllerDocumentDirty() const {
+    return currentHistorySnapshot_ != savedSnapshotNode_;
+}
+
+void MainWindow::MarkControllerSaved() {
+    // Re-anchor BOTH ends on one Snapshot(): a mid-drag SyncPositionsFromScene
+    // inside DoSave can push the persisted content one tick past the recorded
+    // history head, and the two must read identical content identical bytes.
+    savedSnapshotNode_ = graphScene_ ? graphScene_->Snapshot() : std::string{};
+    currentHistorySnapshot_ = savedSnapshotNode_;
+}
+
+MainWindow::UnsavedChoice MainWindow::AskSaveDiscardCancel(const QString& context,
+                                                           const QString& docLabel,
+                                                           const QString& graphName) {
+    const QString offer = QStringLiteral("context=%1 doc=%2 graph=%3")
+                              .arg(context, docLabel, graphName);
+
+    // [smoke] Documented headless override: RTE_SMOKE_UNSAVED_CHOICE=
+    // save|discard|cancel pre-answers the prompt (offscreen modals cannot be
+    // clicked). Real users always take the QMessageBox::exec() path below.
+    const QByteArray forced = qgetenv("RTE_SMOKE_UNSAVED_CHOICE").toLower();
+    UnsavedChoice choice;
+    bool haveChoice = true;
+    if (forced == "save") {
+        choice = UnsavedChoice::Save;
+    } else if (forced == "discard") {
+        choice = UnsavedChoice::Discard;
+    } else if (forced == "cancel") {
+        choice = UnsavedChoice::Cancel;
+    } else {
+        haveChoice = false;
+    }
+
+    if (!haveChoice) {
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(QStringLiteral("Unsaved Changes - %1").arg(context));
+        box.setText(QStringLiteral("'%1' (%2) has unsaved changes.\n"
+                                   "Save them first?")
+                        .arg(graphName, docLabel));
+        auto* saveButton = box.addButton(QStringLiteral("Save"),
+                                         QMessageBox::AcceptRole);
+        box.addButton(QStringLiteral("Discard"), QMessageBox::DestructiveRole);
+        auto* cancelButton = box.addButton(QStringLiteral("Cancel"),
+                                           QMessageBox::RejectRole);
+        box.setDefaultButton(saveButton);
+        box.setEscapeButton(cancelButton);
+        box.exec();  // modal; headless runs use the env override above.
+        QAbstractButton* clicked = box.clickedButton();
+        if (clicked == saveButton) {
+            choice = UnsavedChoice::Save;
+        } else if (clicked == cancelButton || clicked == nullptr) {
+            // Escape / window-close reads as Cancel: never discard silently.
+            choice = UnsavedChoice::Cancel;
+        } else {
+            choice = UnsavedChoice::Discard;
+        }
+    }
+
+    if (unsavedPromptDump_) {
+        const char* choiceText = choice == UnsavedChoice::Save ? "save"
+                                 : choice == UnsavedChoice::Discard ? "discard"
+                                                                    : "cancel";
+        unsavedPromptDump_->setText(
+            QStringLiteral("%1 choice=%2").arg(offer, QString::fromLatin1(choiceText)));
+    }
+    return choice;
+}
+
+bool MainWindow::ConfirmControllerDiscard(const QString& context) {
+    if (!ControllerDocumentDirty()) {
+        return true;
+    }
+    const QString name = currentPath_.empty()
+                             ? QStringLiteral("(untitled)")
+                             : QString::fromStdString(currentPath_);
+    switch (AskSaveDiscardCancel(context, QStringLiteral("Node Editor"), name)) {
+        case UnsavedChoice::Discard:
+            return true;
+        case UnsavedChoice::Cancel:
+            return false;
+        case UnsavedChoice::Save:
+            if (!currentPath_.empty()) {
+                return DoSave(currentPath_);
+            }
+            // Untitled document needs a filename first; backing out of that
+            // dialog aborts the pending action like Cancel does.
+            const QString fileName = QFileDialog::getSaveFileName(
+                this, QStringLiteral("Save Graph"), QString(),
+                QStringLiteral("JSON (*.json)"));
+            return !fileName.isEmpty() && DoSave(fileName.toStdString());
+    }
+    return false;
+}
+
+bool MainWindow::ConfirmPlantDiscard(const QString& context) {
+    if (!plantScreen_ || !plantScreen_->DocumentDirty()) {
+        return true;
+    }
+    const QString name = plantScreen_->CurrentPath().empty()
+                             ? QStringLiteral("(untitled)")
+                             : QString::fromStdString(plantScreen_->CurrentPath());
+    switch (AskSaveDiscardCancel(context, QStringLiteral("Plant Editor"), name)) {
+        case UnsavedChoice::Discard:
+            return true;
+        case UnsavedChoice::Cancel:
+            return false;
+        case UnsavedChoice::Save:
+            if (!plantScreen_->CurrentPath().empty()) {
+                return DoSavePlant(plantScreen_->CurrentPath());
+            }
+            const QString fileName = QFileDialog::getSaveFileName(
+                this, QStringLiteral("Save Plant Graph"), QString(),
+                QStringLiteral("JSON (*.json)"));
+            return !fileName.isEmpty() && DoSavePlant(fileName.toStdString());
+    }
+    return false;
 }
 
 void MainWindow::OnNew() {
     // [plant] File>New applies to the ACTIVE tab's document.
     if (PlantTabActive()) {
-        if (preferences_.confirmNewGraph
-            && !AskYesNo(this,
-                         QStringLiteral("New Plant Graph"),
-                         QStringLiteral("Discard the current plant graph and start a new empty one?"))) {
+        // [unsaved] A dirty plant document earns the Save/Discard/Cancel
+        // prompt (it subsumes the confirm-new preference); the clean path
+        // keeps the old preference-gated question.
+        if (plantScreen_->DocumentDirty()) {
+            if (!ConfirmPlantDiscard(QStringLiteral("File>New"))) {
+                return;
+            }
+        } else if (preferences_.confirmNewGraph
+                   && !AskYesNo(this,
+                                QStringLiteral("New Plant Graph"),
+                                QStringLiteral("Discard the current plant graph and start a new empty one?"))) {
             return;
         }
         const QString error = plantScreen_->NewGraph();
@@ -825,10 +1024,14 @@ void MainWindow::OnNew() {
         return;
     }
 
-    if (preferences_.confirmNewGraph
-        && !AskYesNo(this,
-                     QStringLiteral("New Graph"),
-                     QStringLiteral("Discard the current graph and start a new empty one?"))) {
+    if (ControllerDocumentDirty()) {
+        if (!ConfirmControllerDiscard(QStringLiteral("File>New"))) {
+            return;
+        }
+    } else if (preferences_.confirmNewGraph
+               && !AskYesNo(this,
+                            QStringLiteral("New Graph"),
+                            QStringLiteral("Discard the current graph and start a new empty one?"))) {
         return;
     }
 
@@ -846,8 +1049,11 @@ void MainWindow::OnNew() {
 
     ConnectModelSignals();
     currentPath_.clear();
-    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     ResetHistory();
+    // [unsaved] The new empty controller document starts clean; the title
+    // refresh follows the anchor so it reads the settled dirty state.
+    savedSnapshotNode_ = currentHistorySnapshot_;
+    UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     UpdateStatus();
     HideReloadBanner();
     UpdateGraphWatcher();
@@ -900,6 +1106,7 @@ void MainWindow::SetupMenu() {
     QMenu* fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
 
     QAction* newAction = fileMenu->addAction(QStringLiteral("&New"));
+    newAction->setObjectName(QStringLiteral("file.new"));  // smoke click seam
     RegisterShortcut(newAction,
                      QStringLiteral("file.new"),
                      QStringLiteral("File"),
@@ -908,6 +1115,7 @@ void MainWindow::SetupMenu() {
     connect(newAction, &QAction::triggered, this, &MainWindow::OnNew);
 
     QAction* openAction = fileMenu->addAction(QStringLiteral("&Open..."));
+    openAction->setObjectName(QStringLiteral("file.open"));  // smoke click seam
     RegisterShortcut(openAction,
                      QStringLiteral("file.open"),
                      QStringLiteral("File"),
@@ -939,6 +1147,7 @@ void MainWindow::SetupMenu() {
     fileMenu->addSeparator();
 
     QAction* exitAction = fileMenu->addAction(QStringLiteral("E&xit"));
+    exitAction->setObjectName(QStringLiteral("file.exit"));  // smoke click seam
     RegisterShortcut(exitAction,
                      QStringLiteral("file.exit"),
                      QStringLiteral("File"),
@@ -949,6 +1158,7 @@ void MainWindow::SetupMenu() {
     QMenu* editMenu = menuBar()->addMenu(QStringLiteral("&Edit"));
 
     undoAction_ = editMenu->addAction(QStringLiteral("&Undo"));
+    undoAction_->setObjectName(QStringLiteral("edit.undo"));  // smoke click seam
     RegisterShortcut(undoAction_,
                      QStringLiteral("edit.undo"),
                      QStringLiteral("Edit"),
@@ -957,6 +1167,7 @@ void MainWindow::SetupMenu() {
     connect(undoAction_, &QAction::triggered, this, &MainWindow::OnUndo);
 
     redoAction_ = editMenu->addAction(QStringLiteral("&Redo"));
+    redoAction_->setObjectName(QStringLiteral("edit.redo"));  // smoke click seam
     RegisterShortcut(redoAction_,
                      QStringLiteral("edit.redo"),
                      QStringLiteral("Edit"),
@@ -1349,6 +1560,7 @@ bool MainWindow::DoSave(const std::string& path) {
     }
 
     currentPath_ = path;
+    MarkControllerSaved();  // [unsaved] re-anchor the dirty baseline
     UpdateWindowTitle();  // [plant] (was an inline setWindowTitle call)
     UpdateGraphWatcher();
     QTimer::singleShot(500, this, [this] { suppressWatch_ = false; });
@@ -1805,6 +2017,14 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // [unsaved] Gate on BOTH documents before anything else runs: a Cancel
+    // leaves autosave, geometry and teardown untouched. Two dirty documents
+    // produce two named prompts in sequence (controller first).
+    if (!ConfirmControllerDiscard(QStringLiteral("close"))
+        || !ConfirmPlantDiscard(QStringLiteral("close"))) {
+        event->ignore();
+        return;
+    }
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }
@@ -1822,10 +2042,16 @@ void MainWindow::SmokeSelectScreen(int index) {
 }
 
 QString MainWindow::SmokeSaveActiveAs(const QString& path) {
+    // Route through the menu save paths: the raw scene save used to sidestep
+    // DoSave/DoSavePlant, leaving the document's current path, disk watcher,
+    // window title and [unsaved] dirty anchor untouched - a menu-free save
+    // must be semantics-equal, not just file-equal.
     if (plantScreen_ && screens_ && screens_->currentWidget() == plantScreen_.data()) {
-        return plantScreen_->SaveGraph(path.toStdString());
+        return DoSavePlant(path.toStdString()) ? QString{}
+                                               : QStringLiteral("plant save failed");
     }
-    return graphScene_->SaveGraph(path.toStdString());
+    return DoSave(path.toStdString()) ? QString{}
+                                      : QStringLiteral("save failed");
 }
 
 bool MainWindow::SmokeLoadSimSession(const QString& path) {
@@ -2018,6 +2244,9 @@ void MainWindow::OnUndo() {
     redoHistory_.push_back(std::move(currentHistorySnapshot_));
     currentHistorySnapshot_ = target;
     UpdateHistoryActions();
+    // [unsaved] Undo can land the document back on the saved snapshot
+    // (clean again); refresh the title marker alongside the history actions.
+    UpdateWindowTitle();
 }
 
 void MainWindow::OnRedo() {
@@ -2039,6 +2268,7 @@ void MainWindow::OnRedo() {
     undoHistory_.push_back(std::move(currentHistorySnapshot_));
     currentHistorySnapshot_ = target;
     UpdateHistoryActions();
+    UpdateWindowTitle();  // [unsaved] redo can re-dirty the document
 }
 
 void MainWindow::OnPreferences() {
@@ -2100,6 +2330,9 @@ void MainWindow::RecordHistorySnapshot() {
                                + static_cast<std::ptrdiff_t>(undoHistory_.size() - limit));
     }
     UpdateHistoryActions();
+    // [unsaved] Dirty-change hook: a newly recorded snapshot may have flipped
+    // the document's dirty state, so re-compose the title marker.
+    UpdateWindowTitle();
 }
 
 bool MainWindow::RestoreHistorySnapshot(const std::string& snapshot) {

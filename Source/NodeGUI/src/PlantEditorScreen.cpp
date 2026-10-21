@@ -115,6 +115,13 @@ PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
         if (path.isEmpty()) {
             return;
         }
+        // [unsaved] Route through the MainWindow's OpenPlantGraph so the
+        // dirty-document prompt runs before the discard (onOpenRequest is
+        // installed by MainWindow; fall back to a direct open without it).
+        if (onOpenRequest) {
+            onOpenRequest(path.toStdString());
+            return;
+        }
         const QString error = OpenGraph(path.toStdString());
         if (!error.isEmpty()) {
             ReportError(error);
@@ -240,6 +247,8 @@ PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
     }
 
     ResetHistory();
+    // Fresh document starts clean (its first snapshot IS the saved anchor).
+    savedSnapshot_ = currentHistorySnapshot_;
 }
 
 PlantEditorScreen::~PlantEditorScreen() {
@@ -421,6 +430,9 @@ QString PlantEditorScreen::OpenGraph(const std::string& path) {
 
     currentPath_ = path;
     ResetHistory();
+    // [unsaved] A freshly loaded document is clean; anchor before the
+    // change notification so the window title reads the settled state.
+    savedSnapshot_ = currentHistorySnapshot_;
     NotifyDocumentChanged();
     NotifyPathAssigned();
     FrameToContent();
@@ -451,6 +463,8 @@ QString PlantEditorScreen::NewGraph() {
 
     currentPath_.clear();
     ResetHistory();
+    // [unsaved] A new document starts clean.
+    savedSnapshot_ = currentHistorySnapshot_;
     NotifyDocumentChanged();
     return {};
 }
@@ -462,6 +476,11 @@ QString PlantEditorScreen::SaveGraph(const std::string& path) {
         return QStringLiteral("Failed to save plant graph: %1").arg(error);
     }
     currentPath_ = path;
+    // [unsaved] Successful save re-anchors the dirty baseline. Re-anchor the
+    // history head to the same string too (a mid-drag SyncPositionsFromScene
+    // can leave the recorded head one tick behind the persisted content).
+    currentHistorySnapshot_ = graphScene_->Snapshot();
+    savedSnapshot_ = currentHistorySnapshot_;
     NotifyDocumentChanged();
     NotifyPathAssigned();
     return {};
