@@ -333,15 +333,16 @@ matches to quantization.
 
 ### The C++-engine test landscape
 
-- `PlantCodegen_tests` (Lib/PlantCodegen, 16 gtest cases): scheduler frozen
+- `PlantCodegen_tests` (Lib/PlantCodegen, 44 gtest cases + audit v1.2): scheduler frozen
   orders (asserted equal to the python-derived schedules), the validation
   matrix (identifier/domain/maxInstances/wiring/param errors, bridges,
   combinational cycles, all three example graphs accepted), and the gen7
   golden tape — C++-generated plant vs the python reference evaluator,
   including the supply repoint and the OpenGates collapse window. The three
   example graphs are also emitted and compiled as `plant_golden_*` libraries
-  with zero warnings under `-Wall -Wextra -Wpedantic -Werror`.
-- `RTESim_tests` (Source/RTESim, 11 gtest cases): scenario/event/supply/
+  with zero warnings under the project warning set
+  (`-Wall -Wextra -Wno-missing-field-initializers`).
+- `RTESim_tests` (Source/RTESim, 14 gtest cases): scenario/event/supply/
   dyno-series parsing, session-start + record schema byte-compatibility with
   `twin/harness.py`'s TwinSession.
 - `RTESim_e2e_smoke` (landing in this round): the `rte sim` closed-loop
@@ -351,7 +352,7 @@ matches to quantization.
 - `twin/native/tools/parity.py`: the python-twin-vs-native-C++ twin gate
   (M3a), kept as the monolith-side reference for the same smoke scenario.
 
-Full suite before this review round: 123/123 ctest.
+Full suite after the review+fix rounds: 161/161 ctest (incl. the RTESim_e2e_smoke e2e label).
 
 ### What remains for closed-loop validation
 
@@ -360,7 +361,11 @@ drive, and the loop itself now runs end-to-end (`rte sim`, landed — real
 controller firmware + graph-generated plant + schema-parity v3 JSONL). What
 is still open:
 
-- **Real-firmware protection verification (F02, in flight):** fault
+- **Real-firmware protection verdict (F02, recorded):** the emitted
+  app_loop does not call FaultManager/ControlSupervisor and SimRunner links
+  only `sw/generated/*.cpp`, so the real protection layer cannot trip today;
+  the evidence scenario and the exact missing signals (FRAM Hw.* store, AWD
+  IRQ path, DESAT/UVLO pins) are documented in `Source/RTESim/hostmain/main.cpp`
   injects now raise real plant physics, but the *trip* side (gate_ready /
   control_state / fault_flags / `[FAULT]` vocabulary from the actual emitted
   firmware fault manager, diffed against recorded trip telemetry) is the

@@ -9,9 +9,13 @@ plus the small `platform_api` contract the generated code calls.
 
 This repo holds the STM32H723 base firmware image, the node-graph
 libraries, the RTE Studio editor, and the tools that turn a graph into a
-flashable firmware binary. A plant/inverter simulator based on
-[ngspice](https://ngspice.sourceforge.io/) is planned, so graphs can be
-exercised in closed loop before touching hardware.
+flashable firmware binary. Plant nodegraphs (the hardware/inverter/thermal
+side of the loop) live in `Assets/PlantTemplates` and are emitted by
+`Lib/PlantCodegen`; `rte sim` (Source/RTESim) runs the controller graph and
+the plant graph in closed loop headlessly, writing the same v3 session
+JSONL as the recorded bench sessions - see `docs/plant-nodegraph.md`. A
+switch-level (sub-cycle, ngspice) plant for the fault classes the averaged
+model cannot resolve is on the longer roadmap.
 
 Hardware designs and safety documentation live in
 [OpenVVVF/Hardware](https://github.com/OpenVVVF/Hardware).
@@ -24,20 +28,24 @@ Hardware designs and safety documentation live in
 RTE/
 ├── Assets/
 │   ├── Examples/           # Example NodeAPI graphs
-│   └── NodeTemplates/      # Reusable node types for GUI + codegen
+│   ├── NodeTemplates/      # Reusable node types for GUI + codegen
+│   ├── PlantTemplates/     # Plant-side node library (machine/DC-bus/thermal/sensors/faults)
+│   └── PlantExamples/      # Example plant graphs (gen7 bench, TECO V/Hz, Zero DSR placeholder)
 ├── Images/
 │   └── Gen6FW/             # STM32H7 base firmware image (HAL, startup, linker)
 ├── Lib/
 │   ├── NodeAPI/            # Graph/node serialization and timing validation
 │   ├── InverterCodegen/    # Graph -> C++ code generation engine
+│   ├── PlantCodegen/       # Plant graph -> C++ simulator step function
 │   ├── RTELogger/          # Shared logging used by the host tools
 │   └── InverterProtocol/   # Shared host/device telemetry + command protocol
 └── Source/
     ├── NodeGUI/            # RTE Studio (Qt6 + QtNodes; source path kept stable)
     ├── RTEAutomation/      # Portable generation/build/flash/session library
-    ├── RTECLI/             # Unified `rte` automation and MCP executable
+    ├── RTECLI/             # Unified `rte` automation and MCP executable (`rte sim` closed-loop)
     ├── RTECodeEmitter/     # Inserts generated code into a base firmware tree
-    └── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
+    ├── RTEFirmwareBuilder/ # Builds the STM32 firmware from a firmware tree
+    └── RTESim/             # Host runtime for closed-loop sw+hw simulation
 ```
 
 - `Assets/` holds graphs and node-type templates shared by NodeGUI and codegen.
@@ -289,8 +297,9 @@ Next up, roughly in priority order:
 - Current-loop tuning from measured motor parameters: run the R/L
   calibrators, compute PI gains for a target bandwidth, slew-limit the
   current references (the `control.slew` node exists, unwired)
-- ngspice-based plant/inverter simulator for closed-loop graph testing
-  before hardware
+- switch-level (ngspice) region for sub-cycle fault physics the averaged
+  plant cannot resolve; the closed-loop averaged simulator itself is landed
+  (`rte sim`, plant nodegraphs in `Assets/PlantTemplates`)
 - Sensorless (observer-based) angle path for high-speed operation
 - Zip-based project format: a library that packages project assets (node
   templates as folders with `index.json` + separate `.cpp`/`.h` files, no
