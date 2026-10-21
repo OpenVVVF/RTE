@@ -82,11 +82,113 @@ double DistanceToSegment(const QPointF& p, const QPointF& a, const QPointF& b) {
     return std::sqrt(QPointF::dotProduct(d, d));
 }
 
+// True when the segment passes through the interior of rect (boundary
+// touches count as clear; manually routed tracks hug node edges).
+bool SegmentCrossesRect(const QPointF& a, const QPointF& b, const QRectF& rect) {
+    constexpr double eps = 1e-6;
+    auto strictlyInside = [&](const QPointF& p) {
+        return p.x() > rect.left() + eps && p.x() < rect.right() - eps &&
+               p.y() > rect.top() + eps && p.y() < rect.bottom() - eps;
+    };
+    if (strictlyInside(a) || strictlyInside(b)) {
+        return true;
+    }
+
+    const double dx = b.x() - a.x();
+    const double dy = b.y() - a.y();
+    // Parametric slab test; intersect strictly against the rect walls.
+    double t0 = 0.0, t1 = 1.0;
+    auto clipAxis = [&](double p, double d, double lo, double hi) {
+        if (std::abs(d) < eps) {
+            return p > lo + eps && p < hi - eps;
+        }
+        double ta = (lo - p) / d;
+        double tb = (hi - p) / d;
+        if (ta > tb) {
+            std::swap(ta, tb);
+        }
+        t0 = std::max(t0, ta);
+        t1 = std::min(t1, tb);
+        return t1 > t0 + 1e-9;
+    };
+    return clipAxis(a.x(), dx, rect.left(), rect.right()) &&
+           clipAxis(a.y(), dy, rect.top(), rect.bottom());
+}
+
+int PolylineNodeCrossings(const QPolygonF& poly, const std::vector<QRectF>& obstacles) {
+    int crossings = 0;
+    for (int s = 0; s + 1 < poly.size(); ++s) {
+        for (const QRectF& rect : obstacles) {
+            if (SegmentCrossesRect(poly[s], poly[s + 1], rect)) {
+                ++crossings;
+            }
+        }
+    }
+    return crossings;
+}
+
+// Proper segment intersection (crossing interiors; shared/parallel endpoint
+// touches do not count).
+bool SegmentsCross(const QPointF& a1, const QPointF& a2,
+                   const QPointF& b1, const QPointF& b2) {
+    auto orient = [](const QPointF& p, const QPointF& q, const QPointF& r) {
+        return (q.x() - p.x()) * (r.y() - p.y()) - (q.y() - p.y()) * (r.x() - p.x());
+    };
+    const double d1 = orient(b1, b2, a1);
+    const double d2 = orient(b1, b2, a2);
+    const double d3 = orient(a1, a2, b1);
+    const double d4 = orient(a1, a2, b2);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+           ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+int PolylineWireCrossings(const QPolygonF& poly, const std::vector<QPolygonF>& routed) {
+    int crossings = 0;
+    for (const QPolygonF& other : routed) {
+        for (int s = 0; s + 1 < poly.size(); ++s) {
+            const QRectF segBox = QRectF(poly[s], poly[s + 1]).normalized();
+            for (int o = 0; o + 1 < other.size(); ++o) {
+                if (!segBox.intersects(QRectF(other[o], other[o + 1]).normalized())) {
+                    continue;
+                }
+                if (SegmentsCross(poly[s], poly[s + 1], other[o], other[o + 1])) {
+                    ++crossings;
+                }
+            }
+        }
+    }
+    return crossings;
+}
+
 }  // namespace
 
 QPointF SnapToGrid(const QPointF& p) {
     return QPointF(std::round(p.x() / kGridPitch) * kGridPitch,
                    std::round(p.y() / kGridPitch) * kGridPitch);
+}
+
+double RoundUpToGrid(double v) {
+    return std::ceil(v / kGridPitch) * kGridPitch;
+}
+
+QPolygonF SampleCubic(const QPointF& from,
+                      const QPointF& ctrl1,
+                      const QPointF& ctrl2,
+                      const QPointF& to,
+                      int segments) {
+    QPolygonF samples;
+    samples.reserve(segments + 1);
+    samples << from;
+    for (int i = 1; i < segments; ++i) {
+        const double t = static_cast<double>(i) / segments;
+        const double u = 1.0 - t;
+        samples << u * u * u * from +
+                     3.0 * u * u * t * ctrl1 +
+                     3.0 * u * t * t * ctrl2 +
+                     t * t * t * to;
+    }
+    samples << to;
+    return samples;
 }
 
 QPolygonF BuildRoute(const QPointF& out,
@@ -146,6 +248,99 @@ int NearestRouteLeg(const QPointF& out,
         *distance = bestDistance;
     }
     return bestLeg;
+}
+
+AutoRouteChoice PlanAutoRoute(const QPointF& rawOut,
+                              const QPointF& rawIn,
+                              const QPolygonF& legacySamples,
+                              const AutoRouteContext& environment) {
+    const QPointF out = SnapToGrid(rawOut);
+    const QPointF in = SnapToGrid(rawIn);
+
+    // Fast path: a clean legacy cubic survives verbatim.
+    if (PolylineNodeCrossings(legacySamples, environment.obstacles) == 0 &&
+        PolylineWireCrossings(legacySamples, environment.routed) == 0) {
+        return {true, legacySamples};
+    }
+
+    // Ordered candidates; later = more aggressive shape (ties lose on index).
+    std::vector<QPolygonF> candidates;
+    const bool axisAligned =
+        std::abs(out.y() - in.y()) < 0.5 || std::abs(out.x() - in.x()) < 0.5;
+    if (axisAligned) {
+        candidates.push_back(QPolygonF{out, in});
+    } else {
+        // The two single-bend Ls (leave horizontally, or arrive horizontally).
+        candidates.push_back(QPolygonF{out, QPointF(in.x(), out.y()), in});
+        candidates.push_back(QPolygonF{out, QPointF(out.x(), in.y()), in});
+
+        // S corridors: one vertical run toward the input, horizontal port
+        // stubs at both ends (measured from the out side, then the in side).
+        const double track = in.x() >= out.x() ? kGridPitch : -kGridPitch;
+        auto distinct = [](const QPointF& a, const QPointF& b) {
+            return std::abs(a.x() - b.x()) > 0.5 || std::abs(a.y() - b.y()) > 0.5;
+        };
+        for (const bool fromIn : {false, true}) {
+            for (int k = 1; k <= 3; ++k) {
+                const double midX = fromIn ? in.x() - track * k : out.x() + track * k;
+                if (distinct(QPointF(midX, out.y()), out) &&
+                    distinct(QPointF(midX, in.y()), in)) {
+                    candidates.push_back(QPolygonF{out,
+                                                   QPointF(midX, out.y()),
+                                                   QPointF(midX, in.y()),
+                                                   in});
+                }
+            }
+        }
+
+        // Wrap corridors above/below the obstacles blocking the endpoint
+        // span (tightest clearance first).
+        QRectF span = QRectF(out, in).normalized();
+        span = span.adjusted(-kGridPitch, -kGridPitch, kGridPitch, kGridPitch);
+        double minTop = std::numeric_limits<double>::max();
+        double maxBottom = std::numeric_limits<double>::lowest();
+        for (const QRectF& rect : environment.obstacles) {
+            if (rect.intersects(span)) {
+                minTop = std::min(minTop, rect.top());
+                maxBottom = std::max(maxBottom, rect.bottom());
+            }
+        }
+        if (minTop != std::numeric_limits<double>::max()) {
+            for (int k = 1; k <= 3; ++k) {
+                const double clearY = minTop - k * kGridPitch;
+                candidates.push_back(QPolygonF{out,
+                                               QPointF(out.x(), clearY),
+                                               QPointF(in.x(), clearY),
+                                               in});
+            }
+            for (int k = 1; k <= 3; ++k) {
+                const double clearY = maxBottom + k * kGridPitch;
+                candidates.push_back(QPolygonF{out,
+                                               QPointF(out.x(), clearY),
+                                               QPointF(in.x(), clearY),
+                                               in});
+            }
+        }
+    }
+
+    int bestIndex = -1;
+    int bestWireCrossings = std::numeric_limits<int>::max();
+    for (int i = 0; i < static_cast<int>(candidates.size()); ++i) {
+        const QPolygonF& candidate = candidates[static_cast<std::size_t>(i)];
+        if (PolylineNodeCrossings(candidate, environment.obstacles) > 0) {
+            continue;
+        }
+        const int wireCrossings = PolylineWireCrossings(candidate, environment.routed);
+        if (wireCrossings < bestWireCrossings) {
+            bestWireCrossings = wireCrossings;
+            bestIndex = i;
+        }
+    }
+
+    if (bestIndex < 0) {
+        return {true, legacySamples};
+    }
+    return {false, candidates[static_cast<std::size_t>(bestIndex)]};
 }
 
 }  // namespace NodeGUI::WireRoute

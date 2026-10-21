@@ -4,6 +4,7 @@
 #include "NodeGlyphs.h"
 #include "NodeGraphModel.h"
 #include "ParameterBlock.h"
+#include "ParameterNodeGeometry.h"
 #include "PortStyle.h"
 
 #include <QtNodes/Definitions>
@@ -175,28 +176,26 @@ void TypedNodePainter::DrawTypeGlyph(QPainter* painter,
         return;
     }
 
-    auto& geometry = ngo.nodeScene()->nodeGeometry();
+    auto* geometry =
+        dynamic_cast<ParameterNodeGeometry*>(&ngo.nodeScene()->nodeGeometry());
+    if (!geometry) {
+        return;
+    }
     const QtNodes::NodeId nodeId = ngo.nodeId();
-    const QSize size = geometry.size(nodeId);
-    const double spacing = geometry.getPortSpacing();
+    const QSize size = geometry->size(nodeId);
+    const double spacing = 10.0;   // ParameterNodeGeometry's kSpacing
 
     GlyphAreaInput input;
     input.nodeWidth = size.width();
     input.spacing = spacing;
-
-    double top = spacing + geometry.captionRect(nodeId).height();
-    if (ngo.graphModel().nodeData(nodeId, QtNodes::NodeRole::LabelVisible).toBool()) {
-        top += geometry.labelRect(nodeId).height() + spacing / 2.0;
-    }
-    input.areaTop = top + spacing;
-
+    input.areaTop = geometry->HeaderBand(nodeId) + spacing;
     input.areaBottom = size.height() - spacing;
     if (!delegate->ParameterBlock().size.isNull()) {
         input.areaBottom = ParameterBlockRect(delegate->ParameterBlock(), size).top() - 6.0;
     }
 
     const QFontMetricsF metrics(QFont{});
-    input.rowHeight = metrics.height();
+    input.rowHeight = geometry->PortRowPitch() - spacing;
     input.inRows = delegate->nPorts(QtNodes::PortType::In);
     input.outRows = delegate->nPorts(QtNodes::PortType::Out);
     auto columnWidth = [&](QtNodes::PortType portType) {
