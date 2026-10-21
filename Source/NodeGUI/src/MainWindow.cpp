@@ -1702,6 +1702,11 @@ bool MainWindow::SmokeMoveNode(const std::string& nodeId, double dx, double dy) 
     return active && active->TranslateNode(nodeId, QPointF(dx, dy));
 }
 
+bool MainWindow::SmokeDragNode(const std::string& nodeId, double dx, double dy) {
+    GraphScene* active = ActiveGraphScene();
+    return active && active->DragNodeAsUser(nodeId, QPointF(dx, dy));
+}
+
 QString MainWindow::SmokeDumpNodeGeometry(const std::string& nodeId) {
     GraphScene* active = ActiveGraphScene();
     if (!active) {

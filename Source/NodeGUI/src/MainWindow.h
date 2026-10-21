@@ -73,6 +73,7 @@ public:
     // [smoke] shift a node by (dx, dy) through the drag-complete path (snaps
     // when the grid preference is on). Returns false for unknown nodes.
     bool SmokeMoveNode(const std::string& nodeId, double dx, double dy);
+    bool SmokeDragNode(const std::string& nodeId, double dx, double dy);
     // [smoke] node origin + port socket scene positions for grid asserts.
     QString SmokeDumpNodeGeometry(const std::string& nodeId);
     // [smoke] save the ACTIVE editor tab's document to a path (menu-free).

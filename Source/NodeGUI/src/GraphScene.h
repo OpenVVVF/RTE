@@ -172,6 +172,11 @@ public:
     // user drag (snap + outlines + position sync + change notification).
     // Used by the offscreen smoke driver. Returns false for unknown nodes.
     bool TranslateNode(const std::string& nodeId, const QPointF& delta);
+    // Smoke: emulate a REAL-mouse drag (move the graphics object directly,
+    // bypassing the model exactly like a manual drag does, then the
+    // release-side nodeClicked). Verifies the 2026-10-21 nodeClicked snap
+    // hook through the chain that previously swallowed the completion.
+    bool DragNodeAsUser(const std::string& nodeId, const QPointF& delta);
 
     // "<id>=x,y;<id>.<port>=x,y;..." — node origin and port socket scene
     // positions, rounded to 0.01; serves grid-compliance smoke assertions.

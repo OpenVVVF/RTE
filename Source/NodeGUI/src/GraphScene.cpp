@@ -339,6 +339,21 @@ void GraphScene::RebuildScene() {
                          OnNodeMoved(qtId);
                      });
 
+    // REAL-mouse drag completion is only observable through nodeClicked:
+    // QtNodes moves the ORIGIN graphics object directly during manual drags
+    // and never pushes Position into the model, so onNodePositionUpdated
+    // (BasicGraphicsScene's _nodeDrag gate) never fires and no nodeMoved
+    // follows on release (2026-10-21: reported as 'grid snap does
+    // nothing'). nodeClicked fires on EVERY NGO mouse release - drag or
+    // plain click - so route the same completion through it; plain clicks
+    // degenerate to no-ops (snap aligns nothing, sync writes back the same
+    // positions, NotifyChanged dedupes on content).
+    QObject::connect(scene_.get(),
+                     &QtNodes::BasicGraphicsScene::nodeClicked,
+                     [this](QtNodes::NodeId qtId) {
+                         OnNodeMoved(qtId);
+                     });
+
     // Keep our id maps and the domain outlines in sync when a node is
     // deleted (the model has already removed it from the graph at this
     // point).
@@ -1637,6 +1652,23 @@ bool GraphScene::TranslateNode(const std::string& nodeId, const QPointF& delta) 
     }
     ngo->setPos(ngo->pos() + delta);
     OnNodeMoved(it->second);
+    return true;
+}
+
+bool GraphScene::DragNodeAsUser(const std::string& nodeId, const QPointF& delta) {
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end()) {
+        return false;
+    }
+    auto* ngo = scene_->nodeGraphicsObject(it->second);
+    if (!ngo) {
+        return false;
+    }
+    // Drag-completion fidelity: move ONLY the graphics object (no model
+    // write, no OnNodeMoved) then fire the release-side nodeClicked - the
+    // exact chain manual QtNodes drags produce.
+    ngo->setPos(ngo->pos() + delta);
+    scene_->nodeClicked(it->second);
     return true;
 }
 

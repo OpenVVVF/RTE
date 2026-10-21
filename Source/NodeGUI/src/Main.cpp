@@ -106,6 +106,11 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                                                   parts.value(2).toDouble(),
                                                   parts.value(3).toDouble());
             std::cout << "movenode " << arg.toStdString() << "=" << (ok ? "ok" : "failed") << "\n";
+        } else if (kind == "dragnode") {
+            const bool ok = window->SmokeDragNode(arg.toStdString(),
+                                                  parts.value(2).toDouble(),
+                                                  parts.value(3).toDouble());
+            std::cout << "dragnode " << arg.toStdString() << "=" << (ok ? "ok" : "failed") << "\n";
         } else if (kind == "dumppos") {
             std::cout << window->SmokeDumpNodeGeometry(arg.toStdString()).toStdString();
         } else if (kind == "click") {
