@@ -58,6 +58,12 @@ FlashPanel::FlashPanel(RuntimeController* controller, QWidget* parent)
     flashButton_ = new QPushButton(QStringLiteral("Flash"), this);
     connect(flashButton_, &QPushButton::clicked, this, &FlashPanel::OnFlashClicked);
     flashRow->addWidget(flashButton_);
+    cancelButton_ = new QPushButton(QStringLiteral("Cancel"), this);
+    cancelButton_->setObjectName(QStringLiteral("flashCancel"));
+    cancelButton_->setEnabled(false);
+    cancelButton_->setToolTip(QStringLiteral("Abort the running flash."));
+    connect(cancelButton_, &QPushButton::clicked, this, &FlashPanel::OnCancel);
+    flashRow->addWidget(cancelButton_);
     autoGpioCheck_ = new QCheckBox(QStringLiteral("Auto GPIO (MCP2221A)"), this);
     autoGpioCheck_->setChecked(true);
     flashRow->addWidget(autoGpioCheck_);
@@ -82,6 +88,8 @@ FlashPanel::FlashPanel(RuntimeController* controller, QWidget* parent)
     errorLabel_->setWordWrap(true);
     layout->addWidget(errorLabel_);
     logView_ = new QPlainTextEdit(this);
+    // Tab leaves the field; the all-text-edit Tab trap ends keyboard nav.
+    logView_->setTabChangesFocus(true);
     logView_->setReadOnly(true);
     logView_->setMaximumBlockCount(500);
     layout->addWidget(logView_, 1);
@@ -113,13 +121,25 @@ void FlashPanel::OnFlashClicked() {
     stateLabel_->setText(QStringLiteral("State: Starting"));
     progressBar_->setRange(0, 0);
     progressBar_->show();
+    cancelledByUser_ = false;
     flashButton_->setEnabled(false);
+    cancelButton_->setEnabled(true);
     controller_->SuspendForFlash();
     process_->start(RteCliPath(), arguments);
     if (!process_->waitForStarted(1000)) {
         errorLabel_->setText(QStringLiteral("Could not start rte: %1").arg(process_->errorString()));
         Finish(-1);
     }
+}
+
+void FlashPanel::OnCancel() {
+    if (process_->state() == QProcess::NotRunning) return;
+    // The kill runs through the normal finished wiring; the flag makes
+    // Finish() report a cancellation instead of a failure.
+    cancelledByUser_ = true;
+    logView_->appendPlainText(QStringLiteral("[cancelled] flash aborted by the user"));
+    cancelButton_->setEnabled(false);
+    process_->kill();
 }
 
 void FlashPanel::OnBrowse() {
@@ -165,7 +185,14 @@ void FlashPanel::AppendJsonLine(const QByteArray& line) {
 void FlashPanel::Finish(int exitCode) {
     controller_->ResumeAfterFlash();
     flashButton_->setEnabled(true);
+    cancelButton_->setEnabled(false);
     progressBar_->setRange(0, 100);
+    if (cancelledByUser_) {
+        cancelledByUser_ = false;
+        progressBar_->hide();
+        stateLabel_->setText(QStringLiteral("State: Cancelled"));
+        return;
+    }
     if (exitCode == 0) {
         progressBar_->setValue(100);
         stateLabel_->setText(QStringLiteral("State: Complete"));

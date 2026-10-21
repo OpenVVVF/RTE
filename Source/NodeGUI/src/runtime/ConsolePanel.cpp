@@ -61,6 +61,8 @@ ConsolePanel::ConsolePanel(RuntimeController* controller, QWidget* parent)
     layout->addLayout(buttonsRow);
 
     consoleView_ = new QPlainTextEdit(this);
+    // Tab leaves the field; the all-text-edit Tab trap ends keyboard nav.
+    consoleView_->setTabChangesFocus(true);
     consoleView_->setReadOnly(true);
     consoleView_->setMaximumBlockCount(static_cast<int>(TelemetryStore::kConsoleCapLines));
     layout->addWidget(consoleView_, 1);

@@ -513,6 +513,10 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     eventsEdit_ = new QPlainTextEdit(settingsBox);
     eventsEdit_->setObjectName(QStringLiteral("simEvents"));
     eventsEdit_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    // Tab leaves the field instead of swallowing focus: a multi-line text
+    // edit that traps Tab is a keyboard-navigation dead end for the whole
+    // Simulate form (accessibility persona 2026-10-21, top fix row).
+    eventsEdit_->setTabChangesFocus(true);
     eventsEdit_->setPlaceholderText(QStringLiteral(
         "t=0.1 kind=reset\nt=0.5 kind=start\nt=1.0 kind=var-set arg=IqVar=150"));
     eventsEdit_->setPlainText(QStringLiteral(
@@ -569,6 +573,7 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     logView_ = new QPlainTextEdit(bottomTabs_);
     logView_->setObjectName(QStringLiteral("simLog"));
     logView_->setReadOnly(true);
+    logView_->setTabChangesFocus(true);
     logView_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     logView_->setMaximumBlockCount(4000);
     bottomTabs_->addTab(logView_, QStringLiteral("Run log"));

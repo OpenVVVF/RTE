@@ -616,14 +616,27 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     auto* logsPage = new QWidget(editorConsoleTabs_);
     auto* logsLayout = new QVBoxLayout(logsPage);
     logsLayout->setContentsMargins(0, 0, 0, 0);
+    auto* logsHeader = new QHBoxLayout;
     auto* clearLogsButton = new QPushButton(QStringLiteral("Clear Logs"), logsPage);
     connect(clearLogsButton, &QPushButton::clicked, this, [this] {
         if (buildLogView_) {
             buildLogView_->clear();
         }
     });
-    logsLayout->addWidget(clearLogsButton, 0, Qt::AlignLeft);
+    logsHeader->addWidget(clearLogsButton);
+    buildCancelButton_ = new QPushButton(QStringLiteral("Cancel"), logsPage);
+    buildCancelButton_->setObjectName(QStringLiteral("buildCancel"));
+    buildCancelButton_->setEnabled(false);
+    buildCancelButton_->setToolTip(QStringLiteral(
+        "Abort the running firmware operation."));
+    connect(buildCancelButton_, &QPushButton::clicked, this, &MainWindow::OnBuildCancel);
+    logsHeader->addWidget(buildCancelButton_);
+    logsHeader->addStretch(1);
+    logsLayout->addLayout(logsHeader);
     buildLogView_ = new QPlainTextEdit(logsPage);
+    // Tab leaves the field; the all-text-edit Tab trap ends keyboard nav.
+    buildLogView_->setTabChangesFocus(true);
+    buildLogView_->setObjectName(QStringLiteral("buildLogView"));
     buildLogView_->setReadOnly(true);
     buildLogView_->setMaximumBlockCount(preferences_.buildLogLineLimit);
     logsLayout->addWidget(buildLogView_, 1);
@@ -1381,6 +1394,7 @@ void MainWindow::SetBuildActionsEnabled(bool enabled) {
     if (generateAction_) generateAction_->setEnabled(enabled);
     if (flashAction_) flashAction_->setEnabled(enabled);
     if (generateFlashAction_) generateFlashAction_->setEnabled(enabled);
+    if (buildCancelButton_) buildCancelButton_->setEnabled(!enabled);
 }
 
 void MainWindow::StartBuildCommand(BuildCommand command) {
@@ -1485,6 +1499,7 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
 
     activeBuildCommand_ = command;
     pendingFirmwarePath_ = QString::fromStdString(firmwareBinary.string());
+    cancelRequested_ = false;
     SetBuildActionsEnabled(false);
     statusBar()->showMessage(QStringLiteral("%1 in progress...").arg(operationName));
     if (command == BuildCommand::Flash) {
@@ -1548,6 +1563,20 @@ void MainWindow::StartCliFlash(const QString& firmwarePath) {
     buildProcess_->start(RteCliPath(), arguments);
 }
 
+void MainWindow::OnBuildCancel() {
+    if (!buildProcess_ || buildProcess_->state() == QProcess::NotRunning) {
+        return;
+    }
+    // The kill runs through the normal finished wiring; the flag makes
+    // FinishCliOperation report a cancellation instead of a failure.
+    cancelRequested_ = true;
+    AppendBuildLog(QStringLiteral("\n[cancelled] operation cancelled by user\n"));
+    if (buildCancelButton_) {
+        buildCancelButton_->setEnabled(false);
+    }
+    buildProcess_->kill();
+}
+
 void MainWindow::HandleCliOutput() {
     if (!buildProcess_) return;
     cliOutputBuffer_ += buildProcess_->readAllStandardOutput();
@@ -1580,6 +1609,8 @@ void MainWindow::HandleCliOutput() {
 
 void MainWindow::FinishCliOperation(bool success, int exitCode) {
     const CliStage finishedStage = cliStage_;
+    const bool cancelled = cancelRequested_;
+    cancelRequested_ = false;
     if (finishedStage == CliStage::Flash && runtimeController_) {
         runtimeController_->ResumeAfterFlash();
     }
@@ -1589,6 +1620,12 @@ void MainWindow::FinishCliOperation(bool success, int exitCode) {
         return;
     }
     cliStage_ = CliStage::None;
+    if (cancelled) {
+        AppendBuildLog(QStringLiteral("\n[finished] Operation cancelled by user.\n"));
+        statusBar()->showMessage(QStringLiteral("Firmware operation cancelled"), 5000);
+        SetBuildActionsEnabled(true);
+        return;
+    }
     AppendBuildLog(success
         ? QStringLiteral("\n[finished] Operation completed successfully.\n")
         : QStringLiteral("\n[finished] Operation failed (exit code %1).\n").arg(exitCode));
