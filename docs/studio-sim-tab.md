@@ -34,6 +34,30 @@ scout runs from the progress list. On the headless offscreen test platform
 structure and the table still render - see `Source/NodeGUI/src/sim/` for
 the implementation.
 
+### Live-behavior caveats (dogfood-proven)
+
+- **FRAM config policy:** graph config nodes (`config.*` / `Values.Config`
+  with `Key`/`DefaultValue`) seed the scenario FRAM: a value the graph names
+  wins over the twin-calibrated baselines, exactly like hardware FRAM-create
+  semantics - this is what makes tuning e.g. `Ctrl.Iq.SlewAps` from the GUI
+  actually move the ramp (verified 25.4 -> 2.9 A/s for DefaultValue 50->5).
+  Keys the graph never names keep the twin-replica defaults so recorded
+  campaign parity is untouched.
+- **`control start` resets runtime vars to graph defaults** (the emitted
+  code's Start() runs at every control start). A scripted ramp must re-issue
+  `var-set` events after each `start` - references don't survive a stop on
+  real firmware either.
+- **Excluded nodes keep their telemetry channels**, flatlined at 0 (the
+  session vocabulary is channel-stable across variants so diffs line up;
+  the real firmware emits fewer keys there too).
+- **`tw_p_*` are the fitted-law diagnostics** - they respond to current,
+  speed and bus voltage by the calibrated v2 law, not to knee/IGBT params
+  (deadtime/knee affect the voltage-side shaping only, which the law is
+  not parametric in - by design of the calibration evidence).
+- **CAN path in the sim is a stub** (`platform_can_*` no-ops): CAN-FD
+  drive-control emulation is the twin ROADMAP M6 item; the living CAN path
+  today is FD hardware + SocketCAN + `rte trace record`.
+
 ## Layout
 
 - **Two views of one canvas.** The existing graph canvas is reused twice —
