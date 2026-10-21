@@ -55,6 +55,11 @@ public:
                       bool simulate,
                       runtime::Protocol protocol = runtime::Protocol::Legacy);
 
+    // Smoke-driver seams (headless visual verification; see the RTE_SMOKE_DIR
+    // env hook in Main.cpp): screen switching + count for scripted grabs.
+    int SmokeScreenCount() const;
+    void SmokeSelectScreen(int index);
+
 private slots:
     void OnOpen();
     void OnNew();

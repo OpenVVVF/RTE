@@ -4,11 +4,56 @@
 
 #include <QApplication>
 #include <QLockFile>
+#include <QPixmap>
 #include <QSurfaceFormat>
+#include <QTimer>
 
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
+
+namespace {
+
+// Headless visual smoke driver: RTE_SMOKE_DIR=<dir> makes the app step
+// through its screens, grab each as <dir>/<screenIndex>.png with a
+// manifest, then exit(0). Used for the offscreen dog-food loop; on a normal
+// run nothing happens unless the env var is set.
+struct SmokeState {
+    std::ofstream manifest;
+    int stage = 0;
+    bool grabNextTick = false;
+};
+
+void RunSmokeSequence(NodeGUI::MainWindow* window, const std::filesystem::path& dir) {
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    auto* state = new SmokeState;
+    state->manifest.open(dir / "manifest.txt", std::ios::out | std::ios::trunc);
+    const int screens = window->SmokeScreenCount();
+    auto* timer = new QTimer(window);
+    timer->setInterval(500);
+    QObject::connect(timer, &QTimer::timeout, window, [window, state, dir, screens]() {
+        if (!state->grabNextTick) {
+            window->SmokeSelectScreen(state->stage);
+            state->grabNextTick = true;
+            return;
+        }
+        const QPixmap shot = window->grab();
+        const std::string name = dir.string() + "/" + std::to_string(state->stage) + ".png";
+        shot.save(QString::fromStdString(name));
+        state->manifest << state->stage << " " << (shot.isNull() ? "NULL" : "ok")
+                        << " " << shot.width() << "x" << shot.height() << "\n";
+        state->manifest.flush();
+        ++state->stage;
+        state->grabNextTick = false;
+        if (state->stage >= screens) QApplication::exit(0);
+    });
+    timer->start();
+}
+
+}  // namespace
 
 namespace {
 
@@ -103,6 +148,10 @@ int main(int argc, char* argv[]) {
             std::cerr << "Could not open graph: " << graphPath << std::endl;
             return 1;
         }
+    }
+
+    if (const char* smokeDir = std::getenv("RTE_SMOKE_DIR"); smokeDir && *smokeDir) {
+        RunSmokeSequence(&window, smokeDir);
     }
 
     return app.exec();

@@ -1322,6 +1322,12 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     QMainWindow::closeEvent(event);
 }
 
+int MainWindow::SmokeScreenCount() const { return screens_->count(); }
+
+void MainWindow::SmokeSelectScreen(int index) {
+    if (index >= 0 && index < screens_->count()) appSwitcher_->setCurrentIndex(index);
+}
+
 void MainWindow::UpdateStatus() {
     const auto& graph = graphScene_->Graph();
     const QString message =
