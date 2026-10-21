@@ -141,8 +141,16 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
             }
         }
         std::unordered_map<std::string, std::string> nodeTypeById;
+        std::unordered_map<std::string, std::unordered_set<std::string>> paramsById;
         for (const auto& n : graphJson["nodes"]) {
-            nodeTypeById[n.value("id", std::string())] = n.value("type", std::string());
+            const std::string nid = n.value("id", std::string());
+            nodeTypeById[nid] = n.value("type", std::string());
+            if (n.contains("parameters") && n["parameters"].is_object()) {
+                for (const auto& [k, v] : n["parameters"].items()) {
+                    (void)v;
+                    paramsById[nid].insert(k);
+                }
+            }
         }
         if (graphJson.contains("connections") && graphJson["connections"].is_array()) {
             std::unordered_set<std::string> connIds;
@@ -165,10 +173,17 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
                         const std::string port = ref.value("portName", std::string());
                         for (const auto& p : type->inputPorts) portOk |= p.name == port;
                         for (const auto& p : type->outputPorts) portOk |= p.name == port;
+                        // controller format: a wire may land on a PARAMETER
+                        // (parameterInputs: Kp/Ki/config keys), not only on ports
+                        for (const auto& [pname, wtype] : type->parameterTypes) {
+                            (void)wtype;
+                            portOk |= pname == port;
+                        }
+                        portOk |= paramsById[nid].count(port) != 0;
                         if (!portOk) {
                             problems.push_back(QString::fromStdString(
                                 std::string("connection '") + cid + "' " + dir +
-                                " endpoint '" + nid + "' has no port '" + port +
+                                " endpoint '" + nid + "' has no port/parameter '" + port +
                                 "' on type '" + nodeTypeById[nid] + "'"));
                         }
                     }

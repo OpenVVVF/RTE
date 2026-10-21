@@ -296,6 +296,10 @@ QString PlantEditorScreen::OpenGraph(const std::string& path) {
                             bool ok = false;
                             for (const auto& p : t->inputPorts) ok |= p.name == port;
                             for (const auto& p : t->outputPorts) ok |= p.name == port;
+                            for (const auto& [pname, wtype] : t->parameterTypes) {
+                                (void)wtype;
+                                ok |= pname == port;
+                            }
                             if (!ok) {
                                 problems.push_back(QString::fromStdString(
                                     std::string("connection '") + cid + "' '" + dir + "' endpoint '" + nid +
