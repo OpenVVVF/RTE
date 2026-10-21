@@ -34,9 +34,11 @@
  *      4. MAX22530 SPI device model (Ov/Uv/Adc/Comm/Field sources).
  *      5. Temp-sensor front-end open/short detection (TempSensor) and
  *         encoder DMA fault (EncoderDma) hooks.
- *  - The OC monitor smoke (IqVar well above the 500 A threshold) produces
- *    plant-side currents > 500 A with zero trip vocabulary in the session —
- *    evidence in the v1.1 review report. TODO list tracked there.
+ *  - Evidence collected 2026-10-20: a 24 s IqVar=2000 @ 500 rpm scenario
+ *    sustained plant-side currents > 500 A for 69 telemetry frames (peak
+ *    571.5 A) while the session kept pwm_moe=1 / control_state RUNNING /
+ *    fault_flags_hex = 0x00000000 - zero trip vocabulary. The next step is
+ *    picking items off the TODO list above (FRAM store first).
  * --------------------------------------------------------------------------- */
 
 #include <algorithm>
@@ -374,7 +376,9 @@ int main(int argc, char** argv) {
             std::snprintf(buf, sizeof buf,
                           "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=%.0f "
                           "offset=%.3f deg sign=1 R=%.4f ohm kp=0.0300 ki=10.0000",
-                          bootPoles, bootOff, bootRs);
+                          bootPoles * 2.0, bootOff, bootRs);
+            /* graph Poles convention is pole PAIRS (node.json); the recorded
+             * boot vocabulary prints physical poles (Motor.Poles = 10 on gen7) */
         } else {
             std::snprintf(buf, sizeof buf,
                           "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=10 "
@@ -551,7 +555,15 @@ int main(int argc, char** argv) {
                 } else if (ev.arg == "OpenGates") {
                     userOpenGates = false;
                 } else {
-                    plant::PlantSetFault(plantState, ev.arg.c_str(), false);
+                    const bool known =
+                        plant::PlantSetFault(plantState, ev.arg.c_str(), false);
+                    if (!known) {
+                        char note[160];
+                        std::snprintf(note, sizeof note,
+                                      "[PLANT] warning: unknown fault name '%s' (no-op)",
+                                      ev.arg.c_str());
+                        sess.console(t, note);
+                    }
                 }
                 char line[160];
                 std::snprintf(line, sizeof line, "[PLANT] fault cleared: %s", which.c_str());

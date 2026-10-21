@@ -138,6 +138,13 @@ def main():
     heat = window("tw_p_heat_w", 1.2, 3.2)
     if not heat or mean(heat) <= 100.0:
         fail(f"tw_p_heat_w load mean {mean(heat):.3f} <= 100 (diag channel dead?)")
+    # the idle floor (IdleHeat_W=120) alone satisfies the window mean, so also
+    # require an excursion of the ACTUAL loss law (recovery overshoot region,
+    # or any load point where the fitted law exceeds the floor):
+    heat_all = [v for (_t, v) in series("tw_p_heat_w")]
+    if heat_all and max(heat_all) < 200.0:
+        fail(f"tw_p_heat_w never rises above the idle floor "
+             f"(max={max(heat_all):.1f}) - is the loss law actually evaluated?")
     pdc = window("tw_p_dc_w", 1.2, 3.2)
     psh = window("tw_p_shaft_em_w", 1.2, 3.2)
     if not pdc or max(abs(v) for v in pdc) < 200.0:

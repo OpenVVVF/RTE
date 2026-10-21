@@ -61,7 +61,7 @@ if(Python3_Interpreter_FOUND)
         LABELS e2e
         SKIP_RETURN_CODE 77
         TIMEOUT 900
-        ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/.."
+        ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/..;RTESIM_PLANT_TEMPLATES=${CMAKE_SOURCE_DIR}/Assets/PlantTemplates"
     )
 else()
     message(STATUS "RTESim_e2e_smoke NOT registered (no python3 interpreter found)")

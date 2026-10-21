@@ -219,25 +219,24 @@ uint32_t encCountsOrMid(double counts, uint32_t mid, bool& noted) {
         if (!noted) {
             noted = true;
             std::fprintf(stderr,
-                         "note: encoder-less plant detected (unwired Enc channels); "
+                         "warning: encoder-less plant detected (unwired Enc channels); "
                          "substituting healthy-bounds mid counts\n");
         }
         return mid;
     }
     return static_cast<uint32_t>(counts);
 }
+bool g_encMidNoted = false;   // one startup note for both channels
 } // namespace
 
 extern "C" uint32_t platform_get_encoder_raw_sin(void) {
-    static bool noted = false;
     return encCountsOrMid(meas_Enc_Sin(std::numeric_limits<double>::quiet_NaN()),
-                          32643u, noted);   // kEncMidSin (meas_access.h)
+                          32643u, g_encMidNoted);   // kEncMidSin (meas_access.h)
 }
 
 extern "C" uint32_t platform_get_encoder_raw_cos(void) {
-    static bool noted = false;
     return encCountsOrMid(meas_Enc_Cos(std::numeric_limits<double>::quiet_NaN()),
-                          32536u, noted);   // kEncMidCos (meas_access.h)
+                          32536u, g_encMidNoted);   // kEncMidCos (meas_access.h)
 }
 
 extern "C" float platform_get_dc_link_current(void) {
