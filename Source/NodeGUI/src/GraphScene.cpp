@@ -351,7 +351,6 @@ void GraphScene::RebuildScene() {
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeClicked,
                      [this](QtNodes::NodeId qtId) {
-                         std::cerr << "[dragtrace] nodeClicked fired qtId=" << qtId << "\n";
                          OnNodeMoved(qtId);
                      });
 
@@ -1619,12 +1618,8 @@ void GraphScene::SetGridSnap(bool on) {
 
 void GraphScene::SnapNodeToGrid(QtNodes::NodeId qtId) {
     if (auto* ngo = scene_->nodeGraphicsObject(qtId)) {
-        const QPointF before = ngo->pos();
-        const QPointF snapped = WireRoute::SnapToGrid(before);
-        std::cerr << "[dragtrace] Snap qtId=" << qtId << " before=" << before.x()
-                  << "," << before.y() << " snapped=" << snapped.x() << ","
-                  << snapped.y() << "\n";
-        if (snapped != before) {
+        const QPointF snapped = WireRoute::SnapToGrid(ngo->pos());
+        if (snapped != ngo->pos()) {
             ngo->setPos(snapped);
         }
     }
@@ -1638,7 +1633,6 @@ void GraphScene::SnapAllNodesToGrid() {
 }
 
 void GraphScene::OnNodeMoved(QtNodes::NodeId qtId) {
-    std::cerr << "[dragtrace] OnNodeMoved qtId=" << qtId << " gridSnap=" << gridSnap_ << "\n";
     if (gridSnap_) {
         SnapNodeToGrid(qtId);
     }
