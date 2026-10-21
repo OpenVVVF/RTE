@@ -482,10 +482,27 @@ MainWindow::MainWindow(QWidget* parent)
                       QStringLiteral("Switch to Runtime"),
                       QKeySequence(QStringLiteral("Ctrl+4")),
                       3);
-    addScreenShortcut(QStringLiteral("navigation.firmwareUpdate"),
-                      QStringLiteral("Switch to Firmware Update"),
-                      QKeySequence(QStringLiteral("Ctrl+5")),
-                      3);
+    // Resolve the firmware screen's position at trigger time: SetupRuntime
+    // appends it screens-side AFTER the runtime - the old literal '3' pinned
+    // Ctrl+5 onto Runtime and the shortcut was dead on arrival
+    // (2026-10-21 clunk audit).
+    auto* firmwareShortcut = new QAction(
+        QStringLiteral("Switch to Firmware Update"), this);
+    firmwareShortcut->setShortcutContext(Qt::WindowShortcut);
+    connect(firmwareShortcut, &QAction::triggered, this, [this] {
+        if (firmwareUpdateTab_) {
+            const int idx = screens_->indexOf(firmwareUpdateTab_);
+            if (idx >= 0) {
+                appSwitcher_->setCurrentIndex(idx);
+            }
+        }
+    });
+    addAction(firmwareShortcut);
+    RegisterShortcut(firmwareShortcut,
+                     QStringLiteral("navigation.firmwareUpdate"),
+                     QStringLiteral("Navigation"),
+                     QStringLiteral("Switch to Firmware Update"),
+                     QKeySequence(QStringLiteral("Ctrl+5")));
 
     buildProcess_ = new QProcess(this);
     buildProcess_->setProcessChannelMode(QProcess::SeparateChannels);
@@ -1705,6 +1722,47 @@ bool MainWindow::SmokeMoveNode(const std::string& nodeId, double dx, double dy) 
 bool MainWindow::SmokeDragNode(const std::string& nodeId, double dx, double dy) {
     GraphScene* active = ActiveGraphScene();
     return active && active->DragNodeAsUser(nodeId, QPointF(dx, dy));
+}
+
+bool MainWindow::SmokeMouseDragNode(const std::string& nodeId, double dx, double dy) {
+    // Event-level mouse drag emulation: post press/move/release QMouseEvents
+    // at the active view's viewport, aimed at the node's body - the full
+    // widget chain a physical drag produces (2026-10-21 OCD drag-snap
+    // diagnosis tool).
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return false;
+    }
+    GraphView* view = (plantScreen_ && PlantTabActive())
+                          ? plantScreen_->View()
+                          : view_.get();
+    if (!view) {
+        return false;
+    }
+    const QPointF center = active->NodeCenterForSmoke(nodeId);
+    if (center.isNull()) {
+        return false;
+    }
+    view->centerOn(center);
+    QCoreApplication::processEvents();
+    const QPoint start = view->mapFromScene(center);
+    const QPoint target = start + QPoint(std::lround(dx), std::lround(dy));
+    auto postToViewport = [&](QEvent::Type type, const QPoint& pos) {
+        QMouseEvent ev(type, QPointF(pos), view->mapToGlobal(pos),
+                       Qt::LeftButton,
+                       type == QEvent::MouseButtonRelease ? Qt::NoButton
+                                                          : Qt::LeftButton,
+                       Qt::NoModifier);
+        QCoreApplication::sendEvent(view->viewport(), &ev);
+        QCoreApplication::processEvents();
+    };
+    postToViewport(QEvent::MouseButtonPress, start);
+    for (int i = 1; i <= 4; ++i) {
+        const QPoint cur = start + (target - start) * (i / 4.0);
+        postToViewport(QEvent::MouseMove, cur);
+    }
+    postToViewport(QEvent::MouseButtonRelease, target);
+    return true;
 }
 
 QString MainWindow::SmokeDumpNodeGeometry(const std::string& nodeId) {
