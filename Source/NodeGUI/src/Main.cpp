@@ -1,8 +1,47 @@
+// RTE Studio entry point: single-instance lock, runtime wiring, and the
+// headless smoke driver (RTE_SMOKE_DIR / RTE_SMOKE_ACTIONS, see below).
+
+// ---- GUI architecture notes (routing + node glyph layer) -----------------
+//
+// Manual wire routing ("waypoints"):
+//   Connections render with the QtNodes cubic default UNTIL the user places
+//   manual bends, so untouched graphs save and render byte-identical. User
+//   bends live ONLY in the GUI layer (NodeGraphModel::connectionWaypoints_,
+//   keyed by QtNodes connection id, scene coordinates); NodeAPI never sees
+//   them. GraphScene merges them into the document on save/snapshot as an
+//   OPTIONAL per-connection key, and re-applies them on load/undo:
+//       {"id":"c3","from":{...},"to":{...},
+//        "waypoints":[{"x":120.0,"y":40.0}, ...]}
+//   Unknown keys here are safe: NodeAPI's ConnectionFromJson/BridgeFromJson
+//   read named fields only, and both code generators consume the parsed
+//   Graph object. Wires with bends render rectilinear (WireRoute::BuildRoute:
+//   horizontal port stubs, single elbows per leg); the auto-elbow only exists
+//   at paint time and is never serialized. Gestures (GraphView): drag a wire
+//   to insert/move a bend (grid-snapped, dominant-axis lock), Ctrl+click or
+//   right-click a bend handle to delete it. The Edit-menu route.addPoint /
+//   route.removePoint verbs (also smoke-clickable) bend/remove on the single
+//   selected wire. BridgeConnectionPainter::routeBounds extends the item
+//   bounding rect via a small QtNodes hook (AbstractConnectionPainter::
+//   routeBounds) so routed wires repaint correctly.
+//
+// Domain node glyphs (painter layer only, no model/geometry changes):
+//   TypedNodePainter::DrawTypeGlyph paints a type-driven icon into the node
+//   center (between the port text columns, above the parameter block).
+//   NodeGlyphs keeps the registry (exact type id wins over prefix match):
+//   Plant.Machine.* -> motor, Plant.Inverter.* -> bridge, Plant.DcBus ->
+//   dc rail, Plant.Thermal.* -> heatsink, Plant.Sensor.* -> hall ring /
+//   encoder disc / voltmeter, Plant.Shaft.* -> shaft block, Plant.DcDc.* ->
+//   transformer, Control.Pi -> PI block, Transforms.Svpwm -> PWM carrier.
+//   Glyph colors come from the node's style (FontColor family), i.e. they
+//   follow MainWindow::ApplyThemeMode instead of hardcoding a light look.
+// ---------------------------------------------------------------------------
+
 #include "MainWindow.h"
 
 #include <RTEAutomation/CachePaths.h>
 
 #include <QAbstractButton>
+#include <QAction>
 #include <QApplication>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -60,9 +99,13 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             window->SmokeSelectScreen(arg.toInt());
         } else if (kind == "pick") {
             window->SmokePickNode(arg.toStdString());
+        } else if (kind == "pickconn") {
+            window->SmokePickConnection(arg.toStdString());
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
                 button->click();
+            } else if (QAction* action = window->findChild<QAction*>(arg)) {
+                action->trigger();
             } else {
                 std::cerr << "smoke: no button named " << arg.toStdString() << "\n";
             }

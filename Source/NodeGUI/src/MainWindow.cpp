@@ -969,6 +969,24 @@ void MainWindow::SetupMenu() {
     view_->addAction(clearSelectionAction_);
 
     editMenu->addSeparator();
+    QAction* addBendAction = editMenu->addAction(QStringLiteral("Add Wire &Bend"));
+    addBendAction->setObjectName(QStringLiteral("route.addPoint"));
+    addBendAction->setStatusTip(QStringLiteral(
+        "Insert a manual routing bend on the selected wire"));
+    connect(addBendAction, &QAction::triggered, this, [this] {
+        OnWireBendAction(true);
+    });
+
+    QAction* removeBendAction =
+        editMenu->addAction(QStringLiteral("Remove Last Wire &Bend"));
+    removeBendAction->setObjectName(QStringLiteral("route.removePoint"));
+    removeBendAction->setStatusTip(QStringLiteral(
+        "Drop the selected wire's last manual routing bend"));
+    connect(removeBendAction, &QAction::triggered, this, [this] {
+        OnWireBendAction(false);
+    });
+
+    editMenu->addSeparator();
     QAction* preferencesAction =
         editMenu->addAction(QStringLiteral("&Preferences..."));
     RegisterShortcut(preferencesAction,
@@ -1666,6 +1684,35 @@ void MainWindow::SmokePickNode(const std::string& nodeId) {
     active->Scene()->clearSelection();
     if (auto* ngo = active->Scene()->nodeGraphicsObject(it->second)) {
         ngo->setSelected(true);   // selectionChanged fires -> inspector panels feed
+    }
+}
+
+bool MainWindow::SmokePickConnection(const std::string& graphId) {
+    GraphScene* active = ActiveGraphScene();
+    return active && active->SelectConnection(graphId);
+}
+
+GraphScene* MainWindow::ActiveGraphScene() {
+    if (plantScreen_ && PlantTabActive()) {
+        return plantScreen_->Scene();
+    }
+    return graphScene_.get();
+}
+
+void MainWindow::OnWireBendAction(bool add) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return;
+    }
+    const std::vector<QtNodes::ConnectionId> selection = active->SelectedConnections();
+    if (selection.size() != 1) {
+        ShowToast(QStringLiteral("Select exactly one wire to bend"));
+        return;
+    }
+    const QString error = add ? active->AddWireBend(selection.front())
+                              : active->RemoveLastWireBend(selection.front());
+    if (!error.isEmpty()) {
+        ShowToast(error);
     }
 }
 

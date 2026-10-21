@@ -1,13 +1,19 @@
 #include "GraphView.h"
 
 #include "NodeDataModel.h"
+#include "NodeGraphModel.h"
 #include "NodePalette.h"
 #include "ParameterBlock.h"
+#include "WireRoute.h"
 
 #include <QtNodes/internal/AbstractNodeGeometry.hpp>
+#include <QtNodes/internal/BasicGraphicsScene.hpp>
+#include <QtNodes/internal/ConnectionGraphicsObject.hpp>
+#include <QtNodes/internal/ConnectionState.hpp>
 #include <QtNodes/internal/DataFlowGraphModel.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
+#include <QApplication>
 #include <QContextMenuEvent>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
@@ -22,6 +28,8 @@
 #include <QGraphicsProxyWidget>
 #include <QScrollBar>
 #include <QToolTip>
+
+#include <cmath>
 
 namespace NodeGUI {
 
@@ -52,6 +60,67 @@ QtNodes::NodeGraphicsObject* MovableNodeAncestor(QGraphicsItem* item) {
         }
     }
     return nullptr;
+}
+
+// The topmost complete connection under the cursor, but only if no node sits
+// above it (a node overlapping a wire wins the press, as it does today).
+QtNodes::ConnectionGraphicsObject* WireItemAt(QGraphicsView* view,
+                                              const QPoint& viewportPos) {
+    for (QGraphicsItem* item : view->items(viewportPos)) {
+        if (qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+            return nullptr;
+        }
+        if (auto* cgo = qgraphicsitem_cast<QtNodes::ConnectionGraphicsObject*>(item)) {
+            return cgo;
+        }
+    }
+    return nullptr;
+}
+
+NodeGraphModel* WireModel(QtNodes::ConnectionGraphicsObject& cgo) {
+    return dynamic_cast<NodeGraphModel*>(&cgo.graphModel());
+}
+
+// Half-size of the square a bend accepts grabs in (scene units).
+constexpr double kWaypointPickRadius = 6.0;
+
+int WaypointHandleAt(QtNodes::ConnectionGraphicsObject& cgo,
+                     const NodeGraphModel& model,
+                     const QPointF& scenePos) {
+    const std::vector<QPointF>* waypoints = model.ConnectionWaypoints(cgo.connectionId());
+    if (!waypoints) {
+        return -1;
+    }
+    int best = -1;
+    double bestDistance = kWaypointPickRadius;
+    for (int i = 0; i < static_cast<int>(waypoints->size()); ++i) {
+        const QPointF d = (*waypoints)[static_cast<std::size_t>(i)] - scenePos;
+        const double distance = std::sqrt(QPointF::dotProduct(d, d));
+        if (distance <= bestDistance) {
+            bestDistance = distance;
+            best = i;
+        }
+    }
+    return best;
+}
+
+// Drops one bend from the wire and notifies the scene change pipeline.
+void RemoveWireBendAt(QtNodes::ConnectionGraphicsObject& cgo,
+                      NodeGraphModel& model,
+                      int index) {
+    const std::vector<QPointF>* stored = model.ConnectionWaypoints(cgo.connectionId());
+    if (!stored || index < 0 || static_cast<std::size_t>(index) >= stored->size()) {
+        return;
+    }
+    std::vector<QPointF> points = *stored;
+    points.erase(points.begin() + index);
+
+    cgo.move();
+    model.SetConnectionWaypoints(cgo.connectionId(), std::move(points));
+    cgo.update();
+    if (model.onGraphChanged) {
+        model.onGraphChanged();
+    }
 }
 
 }  // namespace
@@ -118,6 +187,21 @@ void GraphView::dropEvent(QDropEvent* event) {
 }
 
 void GraphView::contextMenuEvent(QContextMenuEvent* event) {
+    // Right-click on a bend handle removes it.
+    if (scene()) {
+        if (auto* cgo = WireItemAt(this, event->pos())) {
+            if (auto* model = WireModel(*cgo);
+                model && !cgo->connectionState().requiresPort()) {
+                const int handle =
+                    WaypointHandleAt(*cgo, *model, mapToScene(event->pos()));
+                if (handle >= 0) {
+                    RemoveWireBendAt(*cgo, *model, handle);
+                    event->accept();
+                    return;
+                }
+            }
+        }
+    }
     if (onNodeContextMenu) {
         // Walk up from the hit item so clicks on the painted parameter block
         // region (or any child) resolve to the node.
@@ -149,6 +233,42 @@ void GraphView::mousePressEvent(QMouseEvent* event) {
         return;
     }
 
+    // Left press on a wire (its stroke, via the scene hit shape): Ctrl+click
+    // on a bend handle deletes that bend; unmodified press click-selects and
+    // arms a bend drag that the move handler materializes past the platform
+    // drag threshold.
+    if (event->button() == Qt::LeftButton && scene()) {
+        if (auto* cgo = WireItemAt(this, event->position().toPoint())) {
+            auto* model = WireModel(*cgo);
+            const auto& cstate = cgo->connectionState();
+            if (model && !cstate.requiresPort() && !cstate.frozen()) {
+                const QPointF scenePos = mapToScene(event->position().toPoint());
+                const int handle = WaypointHandleAt(*cgo, *model, scenePos);
+                if (event->modifiers() & Qt::ControlModifier) {
+                    if (handle >= 0) {
+                        RemoveWireBendAt(*cgo, *model, handle);
+                        event->accept();
+                        return;
+                    }
+                } else {
+                    if (event->modifiers() & Qt::ShiftModifier) {
+                        cgo->setSelected(!cgo->isSelected());
+                    } else if (!cgo->isSelected()) {
+                        scene()->clearSelection();
+                        cgo->setSelected(true);
+                    }
+                    wireDragPending_ = true;
+                    wireDragConnection_ = cgo->connectionId();
+                    wireDragHandleAtPress_ = handle;
+                    wireDragPressViewport_ = event->position().toPoint();
+                    wireDragPressScene_ = scenePos;
+                    event->accept();
+                    return;
+                }
+            }
+        }
+    }
+
     // QtNodes already implements left-button background panning while still
     // allowing normal node selection and dragging. Only intercept the middle
     // button; delegating the Left Mouse preference preserves those semantics.
@@ -174,6 +294,34 @@ void GraphView::mousePressEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseMoveEvent(QMouseEvent* event) {
+    if (wireDragActive_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            FinishWireDrag(false);
+            event->accept();
+            return;
+        }
+        UpdateWireDrag(mapToScene(event->position().toPoint()));
+        event->accept();
+        return;
+    }
+    if (wireDragPending_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            wireDragPending_ = false;
+            event->accept();
+            return;
+        }
+        if ((event->position().toPoint() - wireDragPressViewport_).manhattanLength()
+            >= QApplication::startDragDistance()) {
+            if (BeginWireDrag()) {
+                UpdateWireDrag(mapToScene(event->position().toPoint()));
+            }
+            event->accept();
+            return;
+        }
+        event->accept();
+        return;
+    }
+
     if (domainDragging_) {
         if (!(event->buttons() & Qt::LeftButton)) {
             domainDragging_ = false;
@@ -232,6 +380,12 @@ void GraphView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseReleaseEvent(QMouseEvent* event) {
+    if ((wireDragActive_ || wireDragPending_) && event->button() == Qt::LeftButton) {
+        const bool commit = wireDragActive_;
+        FinishWireDrag(commit);
+        event->accept();
+        return;
+    }
     if (domainDragging_ && event->button() == Qt::LeftButton) {
         domainDragging_ = false;
         viewport()->unsetCursor();
@@ -300,6 +454,111 @@ void GraphView::keyReleaseEvent(QKeyEvent* event) {
         event->key() == Qt::Key_Shift) {
         // QtNodes restores ScrollHandDrag when rubber-band selection ends.
         setDragMode(QGraphicsView::RubberBandDrag);
+    }
+}
+
+bool GraphView::BeginWireDrag() {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene
+                    ? basicScene->connectionGraphicsObject(wireDragConnection_)
+                    : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    if (!model) {
+        wireDragPending_ = false;
+        return false;
+    }
+
+    std::vector<QPointF> points;
+    if (const auto* stored = model->ConnectionWaypoints(wireDragConnection_)) {
+        points = *stored;
+    }
+
+    if (wireDragHandleAtPress_ >= 0 &&
+        static_cast<std::size_t>(wireDragHandleAtPress_) < points.size()) {
+        // Grabbed an existing bend.
+        wireDragWaypointIndex_ = wireDragHandleAtPress_;
+        wireDragAnchor_ = points[static_cast<std::size_t>(wireDragWaypointIndex_)];
+    } else {
+        // Grabbed bare wire: split the nearest rendered leg with a new bend
+        // at the grab point, then drag that bend.
+        const QPointF out = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::Out));
+        const QPointF in = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::In));
+        const int leg = WireRoute::NearestRouteLeg(out, in, points, wireDragPressScene_, nullptr);
+        if (leg < 0) {
+            wireDragPending_ = false;
+            return false;
+        }
+        wireDragWaypointIndex_ = leg;
+        wireDragAnchor_ = WireRoute::SnapToGrid(wireDragPressScene_);
+        points.insert(points.begin() + leg, wireDragAnchor_);
+        cgo->move();
+        model->SetConnectionWaypoints(wireDragConnection_, points);
+        cgo->update();
+    }
+
+    wireDragPending_ = false;
+    wireDragActive_ = true;
+    viewport()->setCursor(Qt::SizeAllCursor);
+    return true;
+}
+
+void GraphView::UpdateWireDrag(const QPointF& scenePos) {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene
+                    ? basicScene->connectionGraphicsObject(wireDragConnection_)
+                    : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    const std::vector<QPointF>* stored =
+        model ? model->ConnectionWaypoints(wireDragConnection_) : nullptr;
+    if (!stored || wireDragWaypointIndex_ < 0 ||
+        static_cast<std::size_t>(wireDragWaypointIndex_) >= stored->size()) {
+        FinishWireDrag(false);
+        return;
+    }
+
+    QPointF target = WireRoute::SnapToGrid(scenePos);
+
+    // Axis lock: when the pull direction is dominantly one axis, keep the
+    // other axis pinned at the drag-start reference so legs born orthogonal
+    // stay orthogonal. The dominant axis is measured from the press point
+    // (unclamped), so wobble around the snap grid does not flip the lock.
+    const QPointF direction = scenePos - wireDragPressScene_;
+    if (std::abs(direction.x()) >= 2.0 * std::abs(direction.y()) &&
+        std::abs(direction.x()) > 1e-3) {
+        target.setY(wireDragAnchor_.y());
+    } else if (std::abs(direction.y()) >= 2.0 * std::abs(direction.x())) {
+        target.setX(wireDragAnchor_.x());
+    }
+
+    std::vector<QPointF> points = *stored;
+    QPointF& current = points[static_cast<std::size_t>(wireDragWaypointIndex_)];
+    if (current == target) {
+        return;
+    }
+    current = target;
+
+    cgo->move();
+    model->SetConnectionWaypoints(wireDragConnection_, std::move(points));
+    cgo->update();
+}
+
+void GraphView::FinishWireDrag(bool commit) {
+    wireDragActive_ = false;
+    wireDragPending_ = false;
+    wireDragHandleAtPress_ = -1;
+    wireDragWaypointIndex_ = -1;
+    viewport()->unsetCursor();
+
+    if (!commit) {
+        return;
+    }
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene
+                    ? basicScene->connectionGraphicsObject(wireDragConnection_)
+                    : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    if (model && model->onGraphChanged) {
+        model->onGraphChanged();
     }
 }
 

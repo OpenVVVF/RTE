@@ -60,6 +60,14 @@ private:
     void TrackNodeDragAfterPress(QMouseEvent* event);
     void ClearNodeDragCursor();
 
+    // Manual wire routing: a left press on a wire arms the gesture; dragging
+    // past the platform threshold drags the bend that was grabbed (or inserts
+    // a new one at the grab point). Release commits via the model's
+    // onGraphChanged so the undo history sees one entry per gesture.
+    bool BeginWireDrag();
+    void UpdateWireDrag(const QPointF& scenePos);
+    void FinishWireDrag(bool commit);
+
     bool firstShow_ = true;
     Qt::MouseButton panMouseButton_ = Qt::MiddleButton;
     bool mousePanning_ = false;
@@ -68,6 +76,14 @@ private:
     bool nodeRubberBandSelecting_ = false;
     bool nodeDragPending_ = false;
     bool nodeDragCursorActive_ = false;
+    bool wireDragPending_ = false;
+    bool wireDragActive_ = false;
+    QtNodes::ConnectionId wireDragConnection_{};
+    int wireDragHandleAtPress_ = -1;
+    int wireDragWaypointIndex_ = -1;
+    QPoint wireDragPressViewport_;
+    QPointF wireDragPressScene_;
+    QPointF wireDragAnchor_;
     QPoint panLastPosition_;
     QPointF domainDragLastScenePosition_;
 };

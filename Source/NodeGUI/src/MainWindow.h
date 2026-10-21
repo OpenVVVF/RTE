@@ -68,6 +68,8 @@ public:
     // [smoke] select+inspect a node by API id on the ACTIVE editor tab's
     // scene exactly like a user click would (fires the panel wiring).
     void SmokePickNode(const std::string& nodeId);
+    // [smoke] select a wire by its graph id on the ACTIVE editor tab's scene.
+    bool SmokePickConnection(const std::string& graphId);
     // [smoke] save the ACTIVE editor tab's document to a path (menu-free).
     QString SmokeSaveActiveAs(const QString& path);
 
@@ -130,6 +132,11 @@ private:
     bool DoSavePlant(const std::string& path);
     bool PlantTabActive() const;
     void UpdateWindowTitle();
+    // The scene the user is looking at right now (plant tab vs node tab).
+    GraphScene* ActiveGraphScene();
+    // Edit-menu route.* verbs: add/remove a manual bend on the single
+    // selected wire of the active editor.
+    void OnWireBendAction(bool add);
     // Right-click menu on a node: rename + pick its timing domain.
     void ShowNodeDomainMenu(const QPointF& globalPos, QtNodes::NodeId qtId);
     // Forwards scene selection to the inspector dock.
