@@ -633,7 +633,7 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     addDockWidget(Qt::LeftDockWidgetArea, signalTableDock_);
     signalTableDock_->hide();
 
-    telemetryConsoleDock_ = new QDockWidget(QStringLiteral("Console"), this);
+    telemetryConsoleDock_ = new QDockWidget(QStringLiteral("Runtime Console"), this);
     telemetryConsoleDock_->setObjectName(QStringLiteral("telemetryConsoleDock"));
     telemetryConsoleDock_->setWidget(runtimeTab_->GetConsole());
     addDockWidget(Qt::LeftDockWidgetArea, telemetryConsoleDock_);
@@ -642,7 +642,7 @@ void MainWindow::SetupRuntime(const QString& serialPort,
     // Node-screen debug dock: device console and build logs share tabs inside
     // one detachable dock. It stays off by default and is enabled via View or
     // automatically when a firmware operation starts.
-    editorConsoleDock_ = new QDockWidget(QStringLiteral("Console"), this);
+    editorConsoleDock_ = new QDockWidget(QStringLiteral("Editor Console"), this);
     editorConsoleDock_->setObjectName(QStringLiteral("editorConsoleDock"));
     editorConsoleTabs_ = new QTabWidget(editorConsoleDock_);
     editorConsoleTabs_->addTab(
