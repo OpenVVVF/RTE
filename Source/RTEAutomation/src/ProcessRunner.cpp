@@ -10,8 +10,12 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <csignal>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #endif
 
 namespace RTEAutomation {
@@ -137,6 +141,9 @@ ProcessResult RunProcess(const ProcessSpec& spec, ProcessOutput output) {
         }
         SetEnvironmentVariableW(wideKey.c_str(), ToWide(value).c_str());
     }
+    // NOTE (_WIN32): no process-group / job-object containment here — a
+    // killed rte leaves Windows children running, unlike the posix branch
+    // (setpgid + PR_SET_PDEATHSIG). Job-object containment is TODO.
     const BOOL created = CreateProcessW(
         executable.c_str(), mutableCommand.data(), nullptr, nullptr, TRUE,
         CREATE_NO_WINDOW, nullptr, cwd.empty() ? nullptr : cwd.c_str(), &startup, &process);
@@ -179,6 +186,26 @@ ProcessResult RunProcess(const ProcessSpec& spec, ProcessOutput output) {
         return result;
     }
     if (pid == 0) {
+        // Orphan containment. Dogfood evidence: killing rte (or the GUI)
+        // mid-compile left an orphaned g++ finishing a full ~9 s link, and
+        // killing it mid-sim left sim_host appending to the session for
+        // minutes. Both legs below run pre-exec so they cover every child:
+        //  - setpgid(0,0) puts the child in its own process group so a
+        //    future smart-cancel can kill(-pid) the whole pipeline instead
+        //    of just the first process;
+        //  - PR_SET_PDEATHSIG delivers SIGKILL when the LAUNCHER dies. The
+        //    launcher here is rte itself (no intermediate shell), and
+        //    pdeath is preserved across execve for non-setuid binaries.
+        //    SIGKILL (not SIGTERM) is deliberate: the child holds the
+        //    write end of our output pipe, so a lingering child keeps the
+        //    pipe (and the session file) alive past the user's intent to
+        //    kill the whole run; nothing here wants to outlive `rte`.
+        //    Residual race (parent dies between fork and prctl) is a
+        //    handful of microseconds and shrinks nothing else.
+        setpgid(0, 0);
+#ifdef __linux__
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+#endif
         dup2(pipes[1], STDOUT_FILENO);
         dup2(pipes[1], STDERR_FILENO);
         close(pipes[0]);

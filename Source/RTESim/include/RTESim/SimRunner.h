@@ -10,7 +10,9 @@
  *      (PlantCodegenLib), or stage the built-in fallback plant when that
  *      library is not part of this build;
  *   3. stage the fixed host runtime (scheduler main + platform shim +
- *      shared scenario/format code) into the work dir;
+ *      shared scenario/format code) into the work dir, and write
+ *      sim_config_seed.inc — the FRAM config seed derived from the sw
+ *      graph's Values.Config nodes (see DeriveConfigSeed below);
  *   4. compile the scenario binary with the host system compiler;
  *   5. execute it; it writes a v3 rte-runtime-session-jsonl identical in
  *      schema to twin/harness.py's TwinSession.
@@ -59,6 +61,36 @@ struct SimLayout {
 };
 
 SimLayout LayoutForWorkDir(const std::filesystem::path& workDir);
+
+/* --------------------------------------------------------------------------
+ * FRAM config seed derivation (bug: the scenario host used to seed its fake
+ * FRAM from a verbatim hardcoded table, so tuning a graph's Values.Config
+ * DefaultValue in the GUI changed nothing under `rte sim`).
+ *
+ * The scenario host's FRAM seed is now derived from the controller graph the
+ * user actually runs: every config node (type "Values.Config" or "config.*",
+ * the same rule RTECodeEmitter uses for the g_<domain>_configs[] registry)
+ * contributes its "Key" parameter (FRAM key string) and "DefaultValue"
+ * parameter. Keys the graph mentions override the baseline; keys it does not
+ * mention keep the baseline below (the old verbatim twin/native table, i.e.
+ * FocController.DEFAULTS parity), so nothing twin-compatible regresses when
+ * the graph is silent.
+ * -------------------------------------------------------------------------- */
+
+struct ConfigSeedEntry {
+    std::string key;    // FRAM key, e.g. "Ctrl.Iq.SlewAps"
+    double value = 0.0;
+};
+
+// The baseline table (was: inline literal in hostmain/main.cpp).
+std::vector<ConfigSeedEntry> ConfigSeedBaseline();
+
+// Baseline merged with the graph's config-node defaults; on unparseable JSON
+// the baseline is returned unchanged (the emitter already validated it).
+std::vector<ConfigSeedEntry> DeriveConfigSeed(const std::string& graphJsonText);
+
+// The staged include written next to the host sources (kGraphConfigSeed[]).
+std::string RenderConfigSeedInclude(const std::vector<ConfigSeedEntry>& seed);
 
 class SimRunner {
 public:

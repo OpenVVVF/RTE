@@ -46,6 +46,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,6 +63,11 @@
 #include "domain_app_loop_generated.h"
 #include "domain_tim_isr_generated.h"
 #include "domain_vsense_generated.h"
+
+// FRAM config seed, generated next to this file by RTESim::SimRunner at
+// staging (sim_config_seed.inc): kGraphConfigSeed[] = twin baseline table
+// overlaid with the sw graph's Values.Config defaults.
+#include "sim_config_seed.inc"
 
 RTESIM_MEAS_ACCESSOR(Iu_A)
 RTESIM_MEAS_ACCESSOR(Iv_A)
@@ -289,7 +296,7 @@ void PlantSetAllFaults(plant::PlantState& plant, bool active) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int RunScenario(int argc, char** argv) {
     HostArgs args;
     if (!ParseArgs(argc, argv, args)) { Usage(); return 2; }
 
@@ -328,23 +335,13 @@ int main(int argc, char** argv) {
     rtesim_host::ShimRuntime& shim = rtesim_host::ShimRuntime::instance();
     shim.plant = &plantState;
     shim.meas = &meas;
-    // FRAM seed: same controller parameters the python replica believes in
-    // (FocController.DEFAULTS), so both engines run identical control law inputs.
-    // (verbatim from twin/native/src/main.cpp)
-    shim.config = {
-        {"Motor.Encoder.SinCos.Sign", 1.0f},
-        {"Motor.Encoder.SinCos.OffsetDeg", 33.034f},
-        {"Motor.Poles", 10.0f},
-        {"Ctrl.PiQ.Kp", 0.03f},
-        {"Ctrl.PiQ.Ki", 10.0f},
-        {"Ctrl.PiD.Kp", 0.03f},
-        {"Ctrl.PiD.Ki", 10.0f},
-        {"Ctrl.Iq.SlewAps", 50.0f},
-        {"Ctrl.ThrottleEnable", 1.0f},
-        {"Motor.Ld", 100e-6f},
-        {"Motor.Lq", 100e-6f},
-        {"Motor.Lambda", 0.040f},
-    };
+    // FRAM seed: derived from the sw graph the user actually runs
+    // (Values.Config Key/DefaultValue, merged over the twin/native
+    // baseline by SimRunner at staging — see sim_config_seed.inc), so both
+    // engines run identical control law inputs AND GUI tuning of a config
+    // default changes the sim. Baseline keys keep the python replica's
+    // FocController.DEFAULTS values when the graph is silent on them.
+    for (const auto& seed : kGraphConfigSeed) shim.config[seed.first] = seed.second;
 
     SessionWriter sess;
     if (!sess.open(args.outPath.c_str(), args.name, args.plantFlavor)) {
@@ -702,4 +699,20 @@ int main(int argc, char** argv) {
     sess.finish();
     std::fprintf(stderr, "wrote %s (%ld records)\n", args.outPath.c_str(), sess.n_records);
     return 0;
+}
+
+int main(int argc, char** argv) {
+    // Exit-4 uniformity: an uncreatable --out must surface as a diagnostic
+    // (the fopen-based sess.open path below already returns 4), never as
+    // an uncaught-exception abort (exit 134) — any std::exception escaping
+    // plant boot, the writer, or the loop lands here with its what() text.
+    try {
+        return RunScenario(argc, argv);
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::fprintf(stderr, "sim_host: filesystem error: %s\n", e.what());
+        return 4;
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "sim_host: fatal: %s\n", e.what());
+        return 4;
+    }
 }

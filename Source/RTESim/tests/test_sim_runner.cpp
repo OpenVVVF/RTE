@@ -209,4 +209,118 @@ TEST(SimStaging, HostSourcesPresent) {
     }
 }
 
+/* --------------------------------------------------------------------------
+ * FRAM config seed derivation (graph-derived seed over the twin baseline)
+ * -------------------------------------------------------------------------- */
+
+namespace {
+
+const RTESim::ConfigSeedEntry* FindSeed(const std::vector<RTESim::ConfigSeedEntry>& seed,
+                                        const std::string& key) {
+    for (const auto& e : seed) {
+        if (e.key == key) return &e;
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST(ConfigSeed, BaselineIsTheLegacyTable) {
+    const auto seed = RTESim::ConfigSeedBaseline();
+    // the 12 keys today's hardcoded host literal pinned, in its order
+    const std::vector<std::pair<std::string, double>> expected = {
+        {"Motor.Encoder.SinCos.Sign", 1.0},
+        {"Motor.Encoder.SinCos.OffsetDeg", 33.034},
+        {"Motor.Poles", 10.0},
+        {"Ctrl.PiQ.Kp", 0.03},
+        {"Ctrl.PiQ.Ki", 10.0},
+        {"Ctrl.PiD.Kp", 0.03},
+        {"Ctrl.PiD.Ki", 10.0},
+        {"Ctrl.Iq.SlewAps", 50.0},
+        {"Ctrl.ThrottleEnable", 1.0},
+        {"Motor.Ld", 100e-6},
+        {"Motor.Lq", 100e-6},
+        {"Motor.Lambda", 0.040},
+    };
+    ASSERT_EQ(seed.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(seed[i].key, expected[i].first);
+        EXPECT_DOUBLE_EQ(seed[i].value, expected[i].second) << seed[i].key;
+    }
+}
+
+TEST(ConfigSeed, GraphSilentOnConfigsKeepsBaseline) {
+    // fallback case: no Values.Config nodes (and malformed input) must both
+    // leave the baseline untouched — nothing twin-compatible may change.
+    const auto empty_graph = RTESim::DeriveConfigSeed(R"({"nodes": []})");
+    const auto baseline = RTESim::ConfigSeedBaseline();
+    ASSERT_EQ(empty_graph.size(), baseline.size());
+    for (size_t i = 0; i < baseline.size(); ++i) {
+        EXPECT_EQ(empty_graph[i].key, baseline[i].key);
+        EXPECT_DOUBLE_EQ(empty_graph[i].value, baseline[i].value);
+    }
+    // motor-graph-shaped input whose nodes are not config nodes
+    const auto other = RTESim::DeriveConfigSeed(
+        R"({"nodes":[{"id":"X","type":"Values.Var","parameters":{"Key":"Ctrl.PiQ.Kp","DefaultValue":"99"}}]})");
+    EXPECT_DOUBLE_EQ(FindSeed(other, "Ctrl.PiQ.Kp")->value, 0.03);
+    // unparseable JSON: conservatively baseline (the emitter errors separately)
+    EXPECT_EQ(RTESim::DeriveConfigSeed("not json {").size(), baseline.size());
+}
+
+TEST(ConfigSeed, GraphOverridesBaselineKeysAndAppendsNew) {
+    // override case: a graph's Values.Config DefaultValue must land in the
+    // seed at the SAME slot (baseline keys keep order), and graph-only keys
+    // append in graph order. Mirrors the CfgIqSlew dogfood edit.
+    const auto seed = RTESim::DeriveConfigSeed(R"({
+        "nodes": [
+          {"id": "CfgIqSlew", "type": "Values.Config",
+           "parameters": {"Cached": "0.0", "DefaultValue": "5.0", "Key": "Ctrl.Iq.SlewAps"}},
+          {"id": "Trim1", "type": "config.trim",
+           "parameters": {"Cached": "0.0", "DefaultValue": "7.5", "Key": "Ctrl.Trim"}},
+          {"id": "Poles", "type": "Values.Config",
+           "parameters": {"Cached": "0.0", "DefaultValue": "8.0", "Key": "Motor.Poles"}}
+        ]})");
+    const auto baseline = RTESim::ConfigSeedBaseline();
+    ASSERT_EQ(seed.size(), baseline.size() + 1);
+    EXPECT_DOUBLE_EQ(FindSeed(seed, "Ctrl.Iq.SlewAps")->value, 5.0);
+    EXPECT_DOUBLE_EQ(FindSeed(seed, "Motor.Poles")->value, 8.0);
+    // unmentioned keys keep baseline values
+    EXPECT_DOUBLE_EQ(FindSeed(seed, "Ctrl.PiQ.Kp")->value, 0.03);
+    EXPECT_DOUBLE_EQ(FindSeed(seed, "Motor.Lambda")->value, 0.040);
+    // baseline slots keep their order; the graph-only key appended last
+    for (size_t i = 0; i < baseline.size(); ++i) {
+        EXPECT_EQ(seed[i].key, baseline[i].key);
+    }
+    EXPECT_EQ(seed.back().key, "Ctrl.Trim");
+    EXPECT_DOUBLE_EQ(seed.back().value, 7.5);
+}
+
+TEST(ConfigSeed, IgnoresMalformedConfigNodes) {
+    const auto seed = RTESim::DeriveConfigSeed(R"({
+        "nodes": [
+          {"id": "A", "type": "Values.Config",
+           "parameters": {"Cached": "0.0", "DefaultValue": "9"}},
+          {"id": "B", "type": "Values.Config",
+           "parameters": {"Key": "", "DefaultValue": "9"}},
+          {"id": "C", "type": "Values.Config",
+           "parameters": {"Key": "Ctrl.Bad", "DefaultValue": "abc"}},
+          {"id": "D", "type": "Values.Config",
+           "parameters": {"Key": "Ctrl.NoDefault"}},
+          {"id": "E", "type": "Values.Config",
+           "parameters": {"Key": "Ctrl.Quoted\"Key", "DefaultValue": "9"}}
+        ]})");
+    const auto baseline = RTESim::ConfigSeedBaseline();
+    ASSERT_EQ(seed.size(), baseline.size());
+    EXPECT_EQ(FindSeed(seed, "Ctrl.Bad"), nullptr);
+}
+
+TEST(ConfigSeed, RenderIncludeShape) {
+    const auto inc = RTESim::RenderConfigSeedInclude(RTESim::ConfigSeedBaseline());
+    EXPECT_NE(inc.find("kGraphConfigSeed[]"), std::string::npos);
+    EXPECT_NE(inc.find("{\"Ctrl.Iq.SlewAps\", 50.0f}"), std::string::npos);
+    EXPECT_NE(inc.find("{\"Motor.Encoder.SinCos.OffsetDeg\", 33.034f}"), std::string::npos);
+    EXPECT_NE(inc.find("{\"Motor.Ld\", 0.0001f}"), std::string::npos);
+    EXPECT_NE(inc.find("std::pair<const char*, float>"), std::string::npos);
+}
+
 } // namespace
