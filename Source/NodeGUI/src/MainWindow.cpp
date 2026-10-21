@@ -559,7 +559,15 @@ bool MainWindow::OpenGraph(const std::string& path) {
     if (!graphScene_->LoadWarning().isEmpty()) {
         ShowToast(graphScene_->LoadWarning());
     }
+    FrameCanvasToContent();
     return true;
+}
+
+void MainWindow::FrameCanvasToContent() {
+    if (!view_ || !graphScene_) return;
+    const QRectF bounds = graphScene_->Scene()->itemsBoundingRect();
+    if (bounds.isEmpty()) return;
+    view_->fitInView(bounds.adjusted(-60, -60, 60, 60), Qt::KeepAspectRatio);
 }
 
 void MainWindow::OnNew() {
@@ -805,6 +813,15 @@ void MainWindow::SetupMenu() {
     QMenu* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu_ = viewMenu;
 
+    frameContentAction_ = new QAction(QStringLiteral("Frame to &Content"), this);
+    RegisterShortcut(frameContentAction_,
+                     QStringLiteral("view.frameContent"),
+                     QStringLiteral("View"),
+                     QStringLiteral("Frame to Content"),
+                     QKeySequence(QStringLiteral("Ctrl+0")));
+    connect(frameContentAction_, &QAction::triggered,
+            this, &MainWindow::FrameCanvasToContent);
+
     arrangeAction_ = new QAction(QStringLiteral("&Auto Arrange"), this);
     RegisterShortcut(arrangeAction_,
                      QStringLiteral("view.autoArrange"),
@@ -879,6 +896,7 @@ void MainWindow::RebuildViewMenu() {
     const bool nodeTab = tabIndex == 0;
     const bool runtimeTab = tabIndex == 1;
     if (nodeTab) {
+        viewMenu_->addAction(frameContentAction_);
         viewMenu_->addAction(arrangeAction_);
         viewMenu_->addSeparator();
         for (auto* dock : {toolboxDock_.data(), inspectorDock_.data(),

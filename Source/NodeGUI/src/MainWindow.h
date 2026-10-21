@@ -47,6 +47,10 @@ public:
     // Open a graph file at startup.
     bool OpenGraph(const std::string& path);
 
+    // Frame the editor canvas to the full document content (called after
+    // every successful load; also exposed in the View menu).
+    void FrameCanvasToContent();
+
     GraphScene* Scene() const { return graphScene_.get(); }
 
     // Adds the top-level Runtime and Firmware Update tabs, then starts the
@@ -161,6 +165,7 @@ private:
     QMenu* runtimeMenu_ = nullptr;
     QAction* saveFramKeysAction_ = nullptr;
     QAction* loadFramKeysAction_ = nullptr;
+    QAction* frameContentAction_ = nullptr;
     QAction* arrangeAction_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
