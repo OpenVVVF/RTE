@@ -2,7 +2,7 @@
 
 #include "RuntimeController.h"
 
-#include <QCheckBox>
+#include <QComboBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -12,6 +12,12 @@
 #include <QVBoxLayout>
 
 namespace NodeGUI::runtime {
+
+namespace {
+constexpr int kSignalColumn = 0;
+constexpr int kTargetColumn = 1;
+constexpr int kValueColumn = 2;
+}  // namespace
 
 SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* parent)
     : QWidget(parent)
@@ -32,19 +38,14 @@ SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* paren
     controlsRow->addWidget(filterEdit_, 1);
     layout->addLayout(controlsRow);
 
-    signalTable_ = new QTableWidget(0, 5, this);
+    signalTable_ = new QTableWidget(0, 3, this);
     signalTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("G1"), QStringLiteral("G2"), QStringLiteral("G3"),
-         QStringLiteral("Signal"), QStringLiteral("Value")});
-    // User-adjustable columns with sensible starting widths; the Value column
-    // soaks up extra width when the dock is resized.
+        {QStringLiteral("Signal"), QStringLiteral("Graph"), QStringLiteral("Value")});
     signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     signalTable_->horizontalHeader()->setStretchLastSection(true);
-    signalTable_->setColumnWidth(0, 30);
-    signalTable_->setColumnWidth(1, 30);
-    signalTable_->setColumnWidth(2, 30);
-    signalTable_->setColumnWidth(3, 170);
-    signalTable_->setColumnWidth(4, 90);
+    signalTable_->setColumnWidth(kSignalColumn, 170);
+    signalTable_->setColumnWidth(kTargetColumn, 120);
+    signalTable_->setColumnWidth(kValueColumn, 90);
     signalTable_->verticalHeader()->setVisible(false);
     signalTable_->setSelectionMode(QAbstractItemView::NoSelection);
     layout->addWidget(signalTable_, 1);
@@ -53,14 +54,45 @@ SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* paren
             this, &SignalTablePanel::OnStoreChanged);
 }
 
-std::array<QStringList, 3> SignalTablePanel::GraphSignalSets() const {
+std::vector<QStringList> SignalTablePanel::GraphSignalSets() const {
     return graphSignals_;
 }
 
-void SignalTablePanel::SetGraphSignalSets(const std::array<QStringList, 3>& sets) {
+void SignalTablePanel::SetGraphSignalSets(const std::vector<QStringList>& sets) {
     graphSignals_ = sets;
     RebuildSignalTable();
     emit graphSignalsChanged(graphSignals_);
+}
+
+void SignalTablePanel::SetGraphCount(int count) {
+    count = std::max(1, count);
+    while (static_cast<int>(graphSignals_.size()) < count) {
+        graphSignals_.emplace_back();
+    }
+    if (static_cast<int>(graphSignals_.size()) > count) {
+        // Removed graphs drop their sets: their signals revert to
+        // unassigned (the combo falls back to "--" on rebuild).
+        graphSignals_.resize(count);
+        emit graphSignalsChanged(graphSignals_);
+    }
+    RebuildSignalTable();
+}
+
+void SignalTablePanel::PopulateTargetCombo(QComboBox* combo) const {
+    combo->clear();
+    combo->addItem(QStringLiteral("\u2014"));   // em dash = unassigned
+    for (int i = 0; i < static_cast<int>(graphSignals_.size()); ++i) {
+        combo->addItem(QStringLiteral("G%1").arg(i + 1));
+    }
+}
+
+int SignalTablePanel::AssignedGraph(const QString& name) const {
+    for (int i = 0; i < static_cast<int>(graphSignals_.size()); ++i) {
+        if (graphSignals_[i].contains(name)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void SignalTablePanel::OnStoreChanged() {
@@ -68,10 +100,11 @@ void SignalTablePanel::OnStoreChanged() {
 
     // Refresh the Value column in place.
     for (int row = 0; row < signalTable_->rowCount(); ++row) {
-        const auto key = signalTable_->item(row, 3)->text().toStdString();
+        const auto key = signalTable_->item(row, kSignalColumn)->text().toStdString();
         float value = 0.0f;
         if (controller_->Store().LatestValue(key, value)) {
-            signalTable_->item(row, 4)->setText(QString::asprintf("% .6f", value));
+            signalTable_->item(row, kValueColumn)
+                ->setText(QString::asprintf("% .6f", value));
         }
     }
 }
@@ -86,7 +119,9 @@ void SignalTablePanel::OnViewSecondsChanged(int value) {
 
 void SignalTablePanel::RebuildSignalTable() {
     // Only rebuild when the visible name set changes; otherwise rows would
-    // reset their scroll position and checkboxes every refresh.
+    // reset their scroll position and assignments every refresh. The graph
+    // count no longer participates naturally in that check, so it is
+    // handled by an explicit combo repopulation below.
     const auto namesStd = controller_->Store().SignalNames();
     QStringList names;
     names.reserve(static_cast<qsizetype>(namesStd.size()));
@@ -101,51 +136,60 @@ void SignalTablePanel::RebuildSignalTable() {
     QStringList current;
     current.reserve(signalTable_->rowCount());
     for (int row = 0; row < signalTable_->rowCount(); ++row) {
-        current.push_back(signalTable_->item(row, 3)->text());
+        current.push_back(signalTable_->item(row, kSignalColumn)->text());
     }
-    if (current == names) {
-        return;
-    }
-
-    rebuildingTable_ = true;
-    signalTable_->setRowCount(0);
-    signalTable_->setRowCount(static_cast<int>(names.size()));
-    for (int row = 0; row < names.size(); ++row) {
-        for (int col = 0; col < 3; ++col) {
-            // A real centered QCheckBox: a QTableWidgetItem checkbox would
-            // leave an empty ghost text element next to the box.
-            auto* check = new QCheckBox(signalTable_);
-            check->setChecked(graphSignals_[col].contains(names[row]));
-            auto* cell = new QWidget(signalTable_);
-            auto* cellLayout = new QHBoxLayout(cell);
-            cellLayout->setContentsMargins(0, 0, 0, 0);
-            cellLayout->setAlignment(Qt::AlignCenter);
-            cellLayout->addWidget(check);
-            signalTable_->setCellWidget(row, col, cell);
-
-            connect(check, &QCheckBox::toggled, this,
-                    [this, row, col](bool checked) {
+    const bool sameNames = current == names;
+    if (!sameNames) {
+        rebuildingTable_ = true;
+        signalTable_->setRowCount(0);
+        signalTable_->setRowCount(static_cast<int>(names.size()));
+        for (int row = 0; row < names.size(); ++row) {
+            auto* combo = new QComboBox(signalTable_);
+            combo->setObjectName(QStringLiteral("target.%1").arg(names[row]));
+            PopulateTargetCombo(combo);
+            const int assigned = AssignedGraph(names[row]);
+            combo->setCurrentIndex(assigned + 1);
+            signalTable_->setCellWidget(row, kTargetColumn, combo);
+            connect(combo, &QComboBox::currentIndexChanged, this,
+                    [this, row](int index) {
                         if (rebuildingTable_) {
                             return;
                         }
-                        const QString name = signalTable_->item(row, 3)->text();
-                        auto& set = graphSignals_[col];
-                        if (checked) {
-                            if (!set.contains(name)) {
-                                set.push_back(name);
-                            }
-                        } else {
+                        const QString name =
+                            signalTable_->item(row, kSignalColumn)->text();
+                        for (QStringList& set : graphSignals_) {
                             set.removeAll(name);
+                        }
+                        if (index > 0 && index <= static_cast<int>(graphSignals_.size())) {
+                            graphSignals_[index - 1].push_back(name);
                         }
                         emit graphSignalsChanged(graphSignals_);
                     });
+
+            auto* nameItem = new QTableWidgetItem(names[row]);
+            nameItem->setFlags(Qt::ItemIsEnabled);
+            signalTable_->setItem(row, kSignalColumn, nameItem);
+            auto* valueItem = new QTableWidgetItem;
+            valueItem->setFlags(Qt::ItemIsEnabled);
+            signalTable_->setItem(row, kValueColumn, valueItem);
         }
-        auto* nameItem = new QTableWidgetItem(names[row]);
-        nameItem->setFlags(Qt::ItemIsEnabled);
-        signalTable_->setItem(row, 3, nameItem);
-        auto* valueItem = new QTableWidgetItem;
-        valueItem->setFlags(Qt::ItemIsEnabled);
-        signalTable_->setItem(row, 4, valueItem);
+        rebuildingTable_ = false;
+        return;
+    }
+
+    // Same names: just re-sync the combos against the current assignment
+    // state (graph count changes land here without a full rebuild).
+    rebuildingTable_ = true;
+    for (int row = 0; row < signalTable_->rowCount(); ++row) {
+        auto* combo = qobject_cast<QComboBox*>(
+            signalTable_->cellWidget(row, kTargetColumn));
+        if (!combo) {
+            continue;
+        }
+        const QString name = signalTable_->item(row, kSignalColumn)->text();
+        PopulateTargetCombo(combo);
+        const int assigned = AssignedGraph(name);
+        combo->setCurrentIndex(assigned + 1);
     }
     rebuildingTable_ = false;
 }

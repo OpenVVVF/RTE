@@ -6,14 +6,17 @@
 
 #include <QWidget>
 
-#include <array>
 #include <memory>
+#include <vector>
+#include <QStringList>
 
-class QCheckBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
+class QScrollArea;
 class QStackedWidget;
 class QTableWidget;
+class QVBoxLayout;
 
 namespace NodeGUI::runtime {
 class SignalPlotWidget;
@@ -21,14 +24,15 @@ class SignalPlotWidget;
 
 namespace NodeGUI::sim {
 
-// Telemetry region of the Simulate screen: signal list with G1/G2/G3
-// check-box assignment on the left, the three runtime plot leaf widgets
-// center-right, and the session summary line underneath.
+// Telemetry region of the Simulate screen: signal list with a per-signal
+// target-graph dropdown on the left, N runtime plot leaf widgets in a
+// scrolling column center-right (add/remove toolbar; default 3 like the
+// historical layout), and the session summary line underneath.
 //
 // Data path: SimSession (v3 jsonl on disk) -> runtime::TelemetryStore ->
 // runtime::SignalPlotWidget — the same contract the live Runtime tab uses,
-// so sim and recorded sessions render identically. Composition mirrors
-// runtime/TelemetryPanel + SignalTablePanel.
+// so sim and recorded sessions render identically. Mirrors the runtime
+// TelemetryPanel + SignalTablePanel machinery.
 class SimTelemetryView : public QWidget {
     Q_OBJECT
 
@@ -42,11 +46,18 @@ public:
     const SimSession* Session() const { return session_.get(); }
     NodeGUI::runtime::TelemetryStore& Store() { return store_; }
 
+private slots:
+    void AddGraph();
+    void RemoveLastGraph();
+
 private:
     void RebuildSignalTable();
     void ApplyAssignments();
     void ApplyDefaultAssignments();
     void UpdateStatusLine();
+    NodeGUI::runtime::SignalPlotWidget* MakePlot();
+    void UpdateGraphCount();
+    int AssignedGraph(const QString& name) const;
 
     NodeGUI::runtime::TelemetryStore store_;
     std::unique_ptr<SimSession> session_;
@@ -54,10 +65,14 @@ private:
     QStackedWidget* stack_ = nullptr;  // empty-state page vs content page
     QLineEdit* filterEdit_ = nullptr;
     QTableWidget* signalTable_ = nullptr;
-    std::array<NodeGUI::runtime::SignalPlotWidget*, 3> plots_{};
+    QScrollArea* scroll_ = nullptr;
+    QWidget* plotsContainer_ = nullptr;
+    QVBoxLayout* plotsLayout_ = nullptr;
+    QLabel* countLabel_ = nullptr;
     QLabel* statusLabel_ = nullptr;
 
-    std::array<QStringList, 3> graphSignals_;
+    std::vector<NodeGUI::runtime::SignalPlotWidget*> plots_;
+    std::vector<QStringList> graphSignals_{QStringList{}, QStringList{}, QStringList{}};
     bool rebuildingTable_ = false;
 };
 

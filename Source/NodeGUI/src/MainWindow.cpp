@@ -20,6 +20,8 @@
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QPalette>
+#include <QStyleFactory>
 #include <QDockWidget>
 #include <QFile>
 #include <QFileDialog>
@@ -1065,8 +1067,69 @@ void MainWindow::RegisterShortcut(QAction* action,
     shortcutBindings_.push_back({id, category, label, defaultSequence, action});
 }
 
+namespace {
+
+// Startup-captured platform defaults: after a Dark cycle, style()->
+// standardPalette() stays mutated, so System restore needs these originals.
+QVariantMap StartupLook() {
+    static const QVariantMap captured = {
+        {QStringLiteral("palette"), QApplication::palette()},
+        {QStringLiteral("style"), QApplication::style()->objectName()},
+    };
+    return captured;
+}
+
+}  // namespace
+
+void MainWindow::ApplyThemeMode(int mode) {
+    const QVariantMap startup = StartupLook();
+    if (mode == 2) {
+        QApplication::setStyle(
+            QStyleFactory::create(QStringLiteral("Fusion")));
+        // Fusion-based dark palette (Qt docs "Dark Theme" recipe)
+        QPalette dark;
+        dark.setColor(QPalette::Window, QColor(53, 53, 53));
+        dark.setColor(QPalette::WindowText, Qt::white);
+        dark.setColor(QPalette::Base, QColor(35, 35, 35));
+        dark.setColor(QPalette::AlternateBase, QColor(53, 53, 53));
+        dark.setColor(QPalette::ToolTipBase, QColor(25, 25, 25));
+        dark.setColor(QPalette::ToolTipText, Qt::white);
+        dark.setColor(QPalette::Text, Qt::white);
+        dark.setColor(QPalette::Button, QColor(53, 53, 53));
+        dark.setColor(QPalette::ButtonText, Qt::white);
+        dark.setColor(QPalette::BrightText, Qt::red);
+        dark.setColor(QPalette::Link, QColor(42, 130, 218));
+        dark.setColor(QPalette::Highlight, QColor(42, 130, 218));
+        dark.setColor(QPalette::HighlightedText, QColor(35, 35, 35));
+        dark.setColor(QPalette::Disabled, QPalette::Text,
+                      QColor(127, 127, 127));
+        dark.setColor(QPalette::Disabled, QPalette::WindowText,
+                      QColor(127, 127, 127));
+        dark.setColor(QPalette::Disabled, QPalette::ButtonText,
+                      QColor(127, 127, 127));
+        QApplication::setPalette(dark);
+        qApp->setStyleSheet(QStringLiteral(
+            "QToolTip { color: #ffffff; background-color: #232323; "
+            "border: 1px solid #767676; }"));
+        return;
+    }
+    QApplication::setStyle(
+        QStyleFactory::create(startup.value(QStringLiteral("style")).toString()));
+    QApplication::setPalette(
+        startup.value(QStringLiteral("palette")).value<QPalette>());
+    qApp->setStyleSheet(QString());
+    if (mode == 1) {
+        // Forced light on a dark host: Fusion without the dark palette is
+        // the dependable light look.
+        QApplication::setStyle(
+            QStyleFactory::create(QStringLiteral("Fusion")));
+        QApplication::setPalette(QApplication::style()->standardPalette());
+    }
+}
+
 void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     preferences_ = preferences;
+    ApplyThemeMode(preferences_.themeMode);
     if (view_) {
         view_->SetPanMouseButton(preferences_.panMouseButton);
     }

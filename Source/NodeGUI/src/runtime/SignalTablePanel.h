@@ -2,9 +2,10 @@
 
 #include <QWidget>
 
-#include <array>
+#include <vector>
 #include <QStringList>
 
+class QComboBox;
 class QLineEdit;
 class QSlider;
 class QTableWidget;
@@ -14,20 +15,25 @@ namespace NodeGUI::runtime {
 class RuntimeController;
 
 // Signal-assignment panel: plot-view slider, filter, and the live signal
-// table with G1/G2/G3 checkboxes and current values. Dockable counterpart of
-// the plot widgets — emits when assignments or the view window change.
+// table with a per-signal target-graph dropdown ("—" = unassigned, G1..Gn
+// = that graph) plus current values. Generalized from the fixed G1/G2/G3
+// checkbox columns: TelemetryPanel owns the graph count and emits
+// graphCountChanged -> SetGraphCount here.
 class SignalTablePanel : public QWidget {
     Q_OBJECT
 
 public:
     explicit SignalTablePanel(RuntimeController* controller, QWidget* parent = nullptr);
 
-    // The signal sets assigned to each of the three graphs (layout presets).
-    std::array<QStringList, 3> GraphSignalSets() const;
-    void SetGraphSignalSets(const std::array<QStringList, 3>& sets);
+    // Assigned signal sets per graph (size == graph count).
+    std::vector<QStringList> GraphSignalSets() const;
+    void SetGraphSignalSets(const std::vector<QStringList>& sets);
+
+public slots:
+    void SetGraphCount(int count);
 
 signals:
-    void graphSignalsChanged(const std::array<QStringList, 3>& sets);
+    void graphSignalsChanged(const std::vector<QStringList>& sets);
     void viewSecondsChanged(double seconds);
 
 private slots:
@@ -37,6 +43,8 @@ private slots:
 
 private:
     void RebuildSignalTable();
+    void PopulateTargetCombo(QComboBox* combo) const;
+    int AssignedGraph(const QString& name) const;
 
     RuntimeController* controller_;
 
@@ -44,7 +52,7 @@ private:
     QLineEdit* filterEdit_ = nullptr;
     QTableWidget* signalTable_ = nullptr;
 
-    std::array<QStringList, 3> graphSignals_;
+    std::vector<QStringList> graphSignals_{QStringList{}, QStringList{}, QStringList{}};
     bool rebuildingTable_ = false;
 };
 

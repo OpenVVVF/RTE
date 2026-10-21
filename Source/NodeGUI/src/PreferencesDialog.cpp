@@ -72,6 +72,8 @@ AppPreferences LoadAppPreferences() {
     preferences.panMouseButton = static_cast<Qt::MouseButton>(
         settings.value(QStringLiteral("panMouseButton"),
                        static_cast<int>(Qt::MiddleButton)).toInt());
+    preferences.themeMode = std::clamp(
+        settings.value(QStringLiteral("themeMode"), 0).toInt(), 0, 2);
     settings.endGroup();
 
     const QStringList supportedBuildTypes = {
@@ -106,6 +108,7 @@ void SaveAppPreferences(const AppPreferences& preferences) {
                       preferences.firmwareBuildType);
     settings.setValue(QStringLiteral("panMouseButton"),
                       static_cast<int>(preferences.panMouseButton));
+    settings.setValue(QStringLiteral("themeMode"), preferences.themeMode);
     settings.endGroup();
 }
 
@@ -154,6 +157,14 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
                       generalPage);
     rememberWindowGeometryCheck_->setChecked(preferences.rememberWindowGeometry);
     generalLayout->addRow(QStringLiteral("Window"), rememberWindowGeometryCheck_);
+
+    themeCombo_ = new QComboBox(generalPage);
+    themeCombo_->setObjectName(QStringLiteral("pref.themeMode"));
+    themeCombo_->addItems({QStringLiteral("System default"),
+                           QStringLiteral("Light"),
+                           QStringLiteral("Dark")});
+    themeCombo_->setCurrentIndex(preferences.themeMode);
+    generalLayout->addRow(QStringLiteral("Theme"), themeCombo_);
 
     undoHistoryLimitSpin_ = new QSpinBox(generalPage);
     undoHistoryLimitSpin_->setRange(kMinimumHistoryLimit, kMaximumHistoryLimit);
@@ -296,6 +307,7 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.firmwareBuildType = buildTypeCombo_->currentText();
     preferences.panMouseButton = static_cast<Qt::MouseButton>(
         panMouseButtonCombo_->currentData().toInt());
+    preferences.themeMode = themeCombo_->currentIndex();
     return preferences;
 }
 

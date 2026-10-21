@@ -105,6 +105,7 @@ private:
                           const QString& label,
                           const QKeySequence& defaultSequence);
     void ApplyPreferences(const AppPreferences& preferences);
+    void ApplyThemeMode(int mode);
     void UpdateStatus();
     bool DoSave(const std::string& path);
     bool EnsureGraphSaved();

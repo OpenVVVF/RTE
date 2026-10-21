@@ -2,12 +2,14 @@
 
 #include "runtime/SignalPlotWidget.h"
 
-#include <QCheckBox>
 #include <QColor>
+#include <QComboBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
@@ -20,24 +22,17 @@ namespace NodeGUI::sim {
 
 namespace {
 
-constexpr int kSignalColumn = 3;
-constexpr int kValueColumn = 4;
+constexpr int kSignalColumn = 0;
+constexpr int kTargetColumn = 1;
+constexpr int kValueColumn = 2;
 
-// First-load favorites, checked in order: G1 currents, G2 DC link, G3 speed.
-// Applied only when the user's sets come up empty for the new session.
-const std::array<QStringList, 3> kDefaultSignals = {
+// First-load favorites, checked in order: G1 currents, G2 DC link, G3
+// speed (additional graphs start empty). Applied only when the user's
+// sets come up empty for the new session.
+const std::vector<QStringList> kDefaultSignals = {
     QStringList{QStringLiteral("cg_id_a"), QStringLiteral("cg_iq_a")},
     QStringList{QStringLiteral("vdc_v")},
     QStringList{QStringLiteral("Mech_RPM"), QStringLiteral("Elec_RPM")}};
-
-QWidget* CenteredCheckCell(QTableWidget* table, QCheckBox* check) {
-    auto* cell = new QWidget(table);
-    auto* layout = new QHBoxLayout(cell);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setAlignment(Qt::AlignCenter);
-    layout->addWidget(check);
-    return cell;
-}
 
 }  // namespace
 
@@ -69,31 +64,57 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
             [this] { RebuildSignalTable(); });
     leftLayout->addWidget(filterEdit_);
 
-    signalTable_ = new QTableWidget(0, 5, leftPanel);
+    signalTable_ = new QTableWidget(0, 3, leftPanel);
     signalTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("G1"), QStringLiteral("G2"), QStringLiteral("G3"),
-         QStringLiteral("Signal"), QStringLiteral("Value")});
+        {QStringLiteral("Signal"), QStringLiteral("Graph"), QStringLiteral("Value")});
     signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     signalTable_->horizontalHeader()->setStretchLastSection(true);
-    signalTable_->setColumnWidth(0, 30);
-    signalTable_->setColumnWidth(1, 30);
-    signalTable_->setColumnWidth(2, 30);
-    signalTable_->setColumnWidth(3, 170);
-    signalTable_->setColumnWidth(4, 90);
+    signalTable_->setColumnWidth(kSignalColumn, 170);
+    signalTable_->setColumnWidth(kTargetColumn, 110);
+    signalTable_->setColumnWidth(kValueColumn, 90);
     signalTable_->verticalHeader()->setVisible(false);
     signalTable_->setSelectionMode(QAbstractItemView::NoSelection);
     leftLayout->addWidget(signalTable_, 1);
     splitter->addWidget(leftPanel);
 
-    auto* rightSplit = new QSplitter(Qt::Vertical, splitter);
+    auto* rightPanel = new QWidget(splitter);
+    auto* rightLayout = new QVBoxLayout(rightPanel);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto* topRow = new QHBoxLayout;
+    topRow->setContentsMargins(4, 2, 4, 2);
+    topRow->addWidget(new QLabel(QStringLiteral("Graphs"), rightPanel));
+    countLabel_ = new QLabel(rightPanel);
+    topRow->addWidget(countLabel_);
+    topRow->addStretch(1);
+    auto* addButton = new QPushButton(QStringLiteral("+ Graph"), rightPanel);
+    addButton->setObjectName(QStringLiteral("simAddGraph"));
+    addButton->setToolTip(QStringLiteral("Add another telemetry graph"));
+    connect(addButton, &QPushButton::clicked, this, &SimTelemetryView::AddGraph);
+    topRow->addWidget(addButton);
+    auto* removeButton = new QPushButton(QStringLiteral("- Graph"), rightPanel);
+    removeButton->setObjectName(QStringLiteral("simRemoveGraph"));
+    removeButton->setToolTip(QStringLiteral(
+        "Remove the last graph (its signals unassign)"));
+    connect(removeButton, &QPushButton::clicked, this,
+            &SimTelemetryView::RemoveLastGraph);
+    topRow->addWidget(removeButton);
+    rightLayout->addLayout(topRow);
+
+    plotsContainer_ = new QWidget(rightPanel);
+    plotsLayout_ = new QVBoxLayout(plotsContainer_);
+    plotsLayout_->setContentsMargins(0, 0, 0, 0);
+    scroll_ = new QScrollArea(rightPanel);
+    scroll_->setWidgetResizable(true);
+    scroll_->setWidget(plotsContainer_);
+    rightLayout->addWidget(scroll_, 1);
+    splitter->addWidget(rightPanel);
+
     for (int i = 0; i < 3; ++i) {
-        plots_[i] = new runtime::SignalPlotWidget(
-            QStringLiteral("Graph %1").arg(i + 1), rightSplit);
-        plots_[i]->SetStore(&store_);
-        rightSplit->addWidget(plots_[i]);
+        plots_.push_back(MakePlot());
     }
-    rightSplit->setSizes({160, 160, 160});
-    splitter->addWidget(rightSplit);
+    UpdateGraphCount();
+
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({370, 620});
@@ -107,6 +128,57 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(stack_);
+}
+
+NodeGUI::runtime::SignalPlotWidget* SimTelemetryView::MakePlot() {
+    auto* plot = new runtime::SignalPlotWidget(
+        QStringLiteral("Graph %1").arg(plots_.size() + 1), plotsContainer_);
+    plot->SetStore(&store_);
+    plot->setMinimumHeight(160);
+    if (session_) {
+        plot->SetViewSeconds(std::clamp(session_->Meta().durationS, 0.5, 60.0));
+    }
+    plotsLayout_->addWidget(plot);
+    return plot;
+}
+
+void SimTelemetryView::UpdateGraphCount() {
+    while (graphSignals_.size() < plots_.size()) {
+        graphSignals_.emplace_back();
+    }
+    if (graphSignals_.size() > plots_.size()) {
+        // Removed graphs drop their sets: those signals revert to
+        // unassigned (rows re-sync on RebuildSignalTable).
+        graphSignals_.resize(plots_.size());
+    }
+    countLabel_->setText(QStringLiteral("(%1)").arg(plots_.size()));
+}
+
+void SimTelemetryView::AddGraph() {
+    plots_.push_back(MakePlot());
+    UpdateGraphCount();
+    RebuildSignalTable();
+}
+
+void SimTelemetryView::RemoveLastGraph() {
+    if (plots_.size() <= 1) {
+        return;
+    }
+    auto* plot = plots_.back();
+    plots_.pop_back();
+    plotsLayout_->removeWidget(plot);
+    plot->deleteLater();
+    UpdateGraphCount();
+    RebuildSignalTable();
+}
+
+int SimTelemetryView::AssignedGraph(const QString& name) const {
+    for (int i = 0; i < static_cast<int>(graphSignals_.size()); ++i) {
+        if (graphSignals_[i].contains(name)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
@@ -130,8 +202,10 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
                                  }),
                   set.end());
     }
-    if (graphSignals_[0].isEmpty() && graphSignals_[1].isEmpty()
-        && graphSignals_[2].isEmpty()) {
+    const bool anyAssigned = std::any_of(
+        graphSignals_.begin(), graphSignals_.end(),
+        [](const QStringList& set) { return !set.isEmpty(); });
+    if (!anyAssigned) {
         ApplyDefaultAssignments();
     }
     ApplyAssignments();
@@ -148,7 +222,9 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
 }
 
 void SimTelemetryView::ApplyDefaultAssignments() {
-    for (int group = 0; group < 3; ++group) {
+    for (int group = 0;
+         group < static_cast<int>(std::min(graphSignals_.size(), kDefaultSignals.size()));
+         ++group) {
         QStringList& set = graphSignals_[group];
         for (const QString& favorite : kDefaultSignals[group]) {
             const SimChannelStats stats = session_->ChannelStats(favorite);
@@ -160,8 +236,10 @@ void SimTelemetryView::ApplyDefaultAssignments() {
 }
 
 void SimTelemetryView::ApplyAssignments() {
-    for (int i = 0; i < 3; ++i) {
-        plots_[i]->SetSignals(graphSignals_[i]);
+    for (std::size_t i = 0; i < plots_.size(); ++i) {
+        plots_[i]->SetSignals(i < graphSignals_.size()
+                                  ? graphSignals_[i]
+                                  : QStringList{});
         plots_[i]->Refresh();
     }
 }
@@ -207,7 +285,26 @@ void SimTelemetryView::RebuildSignalTable() {
     for (int row = 0; row < signalTable_->rowCount(); ++row) {
         current.push_back(signalTable_->item(row, kSignalColumn)->text());
     }
-    if (current == names) {
+    const bool sameNames = current == names;
+    if (sameNames) {
+        // Just re-sync the assignment dropdowns (graph count changes and
+        // load-time pruning land here without a full rebuild).
+        rebuildingTable_ = true;
+        for (int row = 0; row < signalTable_->rowCount(); ++row) {
+            auto* combo = qobject_cast<QComboBox*>(
+                signalTable_->cellWidget(row, kTargetColumn));
+            if (!combo) {
+                continue;
+            }
+            const QString name = signalTable_->item(row, kSignalColumn)->text();
+            combo->clear();
+            combo->addItem(QStringLiteral("\u2014"));
+            for (int i = 0; i < static_cast<int>(graphSignals_.size()); ++i) {
+                combo->addItem(QStringLiteral("G%1").arg(i + 1));
+            }
+            combo->setCurrentIndex(AssignedGraph(name) + 1);
+        }
+        rebuildingTable_ = false;
         return;
     }
 
@@ -219,34 +316,34 @@ void SimTelemetryView::RebuildSignalTable() {
         const SimChannelStats stats = session_->ChannelStats(name);
         const bool dead = stats.finiteSamples == 0;
 
-        for (int col = 0; col < 3; ++col) {
-            auto* check = new QCheckBox(signalTable_);
-            check->setChecked(graphSignals_[col].contains(name));
-            check->setEnabled(!dead);
-            if (dead) {
-                check->setToolTip(QStringLiteral(
-                    "Every sample in this channel is null — nothing to plot."));
-            }
-            signalTable_->setCellWidget(row, col,
-                                        CenteredCheckCell(signalTable_, check));
-            connect(check, &QCheckBox::toggled, this,
-                    [this, row, col](bool checked) {
-                        if (rebuildingTable_) {
-                            return;
-                        }
-                        const QString key =
-                            signalTable_->item(row, kSignalColumn)->text();
-                        QStringList& set = graphSignals_[col];
-                        if (checked) {
-                            if (!set.contains(key)) {
-                                set.push_back(key);
-                            }
-                        } else {
-                            set.removeAll(key);
-                        }
-                        ApplyAssignments();
-                    });
+        auto* combo = new QComboBox(signalTable_);
+        combo->setObjectName(QStringLiteral("target.%1").arg(name));
+        combo->addItem(QStringLiteral("\u2014"));
+        for (int i = 0; i < static_cast<int>(graphSignals_.size()); ++i) {
+            combo->addItem(QStringLiteral("G%1").arg(i + 1));
         }
+        combo->setCurrentIndex(AssignedGraph(name) + 1);
+        combo->setEnabled(!dead);
+        if (dead) {
+            combo->setToolTip(QStringLiteral(
+                "Every sample in this channel is null — nothing to plot."));
+        }
+        signalTable_->setCellWidget(row, kTargetColumn, combo);
+        connect(combo, &QComboBox::currentIndexChanged, this,
+                [this, row](int index) {
+                    if (rebuildingTable_) {
+                        return;
+                    }
+                    const QString key =
+                        signalTable_->item(row, kSignalColumn)->text();
+                    for (QStringList& set : graphSignals_) {
+                        set.removeAll(key);
+                    }
+                    if (index > 0 && index <= static_cast<int>(graphSignals_.size())) {
+                        graphSignals_[index - 1].push_back(key);
+                    }
+                    ApplyAssignments();
+                });
 
         auto* nameItem = new QTableWidgetItem(name);
         nameItem->setFlags(Qt::ItemIsEnabled);

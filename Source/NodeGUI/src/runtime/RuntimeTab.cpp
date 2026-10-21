@@ -97,6 +97,8 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
             telemetryPanel_, &TelemetryPanel::SetGraphSignals);
     connect(signalTablePanel_, &SignalTablePanel::viewSecondsChanged,
             telemetryPanel_, &TelemetryPanel::SetViewSeconds);
+    connect(telemetryPanel_, &TelemetryPanel::graphCountChanged,
+            signalTablePanel_, &SignalTablePanel::SetGraphCount);
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &RuntimeTab::OnStoreChanged);
@@ -142,7 +144,9 @@ void RuntimeTab::OnSavePreset() {
     auto settings = MakeSettings();
     const auto sets = signalTablePanel_->GraphSignalSets();
     settings.beginGroup(QStringLiteral("runtime/presets/") + name);
-    for (int i = 0; i < 3; ++i) {
+    settings.setValue(QStringLiteral("graphCount"),
+                      static_cast<int>(sets.size()));
+    for (std::size_t i = 0; i < sets.size(); ++i) {
         settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);
     }
     settings.endGroup();
@@ -170,12 +174,15 @@ void RuntimeTab::OnLoadPreset() {
 
     auto settings = MakeSettings();
     settings.beginGroup(QStringLiteral("runtime/presets/") + name);
-    std::array<QStringList, 3> sets;
-    for (int i = 0; i < 3; ++i) {
-        sets[i] = settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList();
+    const int count = settings.value(QStringLiteral("graphCount"), 3).toInt();
+    std::vector<QStringList> sets;
+    for (int i = 0; i < std::max(1, count); ++i) {
+        sets.push_back(
+            settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList());
     }
     settings.endGroup();
 
+    telemetryPanel_->SetGraphCount(static_cast<int>(sets.size()));
     signalTablePanel_->SetGraphSignalSets(sets);
     presetStatus_->setText(QStringLiteral("loaded '%1'").arg(name));
 }
@@ -258,11 +265,14 @@ void RuntimeTab::RefreshRecentCombo() {
 void RuntimeTab::LoadAutosave() {
     auto settings = MakeSettings();
     settings.beginGroup(QStringLiteral("runtime/autosave"));
-    std::array<QStringList, 3> sets;
-    for (int i = 0; i < 3; ++i) {
-        sets[i] = settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList();
+    const int count = settings.value(QStringLiteral("graphCount"), 3).toInt();
+    std::vector<QStringList> sets;
+    for (int i = 0; i < std::max(1, count); ++i) {
+        sets.push_back(
+            settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList());
     }
     settings.endGroup();
+    telemetryPanel_->SetGraphCount(static_cast<int>(sets.size()));
     signalTablePanel_->SetGraphSignalSets(sets);
 }
 
@@ -270,7 +280,9 @@ void RuntimeTab::SaveAutosave() {
     auto settings = MakeSettings();
     const auto sets = signalTablePanel_->GraphSignalSets();
     settings.beginGroup(QStringLiteral("runtime/autosave"));
-    for (int i = 0; i < 3; ++i) {
+    settings.setValue(QStringLiteral("graphCount"),
+                      static_cast<int>(sets.size()));
+    for (std::size_t i = 0; i < sets.size(); ++i) {
         settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);
     }
     settings.endGroup();

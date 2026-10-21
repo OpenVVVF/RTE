@@ -25,6 +25,11 @@ struct AppPreferences {
     int buildLogLineLimit = 5000;
     QString firmwareBuildType = QStringLiteral("Release");
     Qt::MouseButton panMouseButton = Qt::MiddleButton;
+    // 0 = follow the system palette (previous behavior), 1 = forced light,
+    // 2 = forced dark (single-document dark palette applied app-wide; the
+    // XCB/XWayland platform does not pick up the KDE/portal dark scheme,
+    // so an explicit mode is the deterministic answer on that path).
+    int themeMode = 0;
 };
 
 struct ShortcutBinding {
@@ -67,6 +72,7 @@ private:
     QSpinBox* buildLogLineLimitSpin_ = nullptr;
     QComboBox* buildTypeCombo_ = nullptr;
     QComboBox* panMouseButtonCombo_ = nullptr;
+    QComboBox* themeCombo_ = nullptr;
     QLabel* shortcutErrorLabel_ = nullptr;
 };
 
