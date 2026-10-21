@@ -133,12 +133,30 @@ QPolygonF BridgeConnectionPainter::routePolygon(QtNodes::ConnectionGraphicsObjec
 
 QPainterPath BridgeConnectionPainter::wirePath(QtNodes::ConnectionGraphicsObject const& connection) const {
     const QPolygonF routed = routePolygon(connection);
-    if (routed.isEmpty()) {
+    QPolygonF source = routed;
+    if (source.isEmpty()) {
+        // Waypoint-free: honor the mini-router's polyline when it displaced
+        // the legacy cubic; legacy keeps today's smooth bezier.
+        if (const auto* model = TryGetNodeModel(connection)) {
+            if (const auto* choice = model->AutoRoute(connection.connectionId());
+                choice && !choice->legacy && !choice->line.isEmpty()) {
+                const QTransform toLocal = connection.sceneTransform().inverted();
+                QPolygonF local;
+                local.reserve(choice->line.size());
+                for (const QPointF& p : choice->line) {
+                    local << toLocal.map(p);
+                }
+                source = local;
+            }
+        }
+    }
+    if (source.isEmpty()) {
         return cubicPath(connection);
     }
-    QPainterPath path(routed.constFirst());
-    for (int i = 1; i < routed.size(); ++i) {
-        path.lineTo(routed[i]);
+
+    QPainterPath path(source.constFirst());
+    for (int i = 1; i < source.size(); ++i) {
+        path.lineTo(source[i]);
     }
     return path;
 }
@@ -295,16 +313,18 @@ void BridgeConnectionPainter::drawWaypointHandles(QPainter* painter,
 
 QPainterPath BridgeConnectionPainter::getPainterStroke(
     QtNodes::ConnectionGraphicsObject const& cgo) const {
-    const QPolygonF routed = routePolygon(cgo);
-    if (!routed.isEmpty()) {
-        QPainterPath path(routed.constFirst());
-        for (int i = 1; i < routed.size(); ++i) {
-            path.lineTo(routed[i]);
-        }
-
+    if (!routePolygon(cgo).isEmpty()) {
         QPainterPathStroker stroker;
         stroker.setWidth(10.0);
-        return stroker.createStroke(path);
+        return stroker.createStroke(wirePath(cgo));
+    }
+    if (const auto* model = TryGetNodeModel(cgo)) {
+        if (const auto* choice = model->AutoRoute(cgo.connectionId());
+            choice && !choice->legacy && !choice->line.isEmpty()) {
+            QPainterPathStroker stroker;
+            stroker.setWidth(10.0);
+            return stroker.createStroke(wirePath(cgo));
+        }
     }
 
     auto cubic = cubicPath(cgo);
@@ -330,19 +350,28 @@ QRectF BridgeConnectionPainter::routeBounds(QtNodes::ConnectionGraphicsObject co
         return {};
     }
     const std::vector<QPointF>* waypoints = model->ConnectionWaypoints(cgo.connectionId());
-    if (!waypoints || waypoints->empty()) {
-        return {};
+    if (waypoints && !waypoints->empty()) {
+        const QTransform toLocal = cgo.sceneTransform().inverted();
+        QPolygonF local;
+        local.reserve(static_cast<int>(waypoints->size()));
+        for (const QPointF& p : *waypoints) {
+            local << toLocal.map(p);
+        }
+        // Slack covers the waypoint handles and the pen width.
+        return local.boundingRect().adjusted(-8.0, -8.0, 8.0, 8.0);
     }
 
-    const QTransform toLocal = cgo.sceneTransform().inverted();
-    QPolygonF local;
-    local.reserve(static_cast<int>(waypoints->size()));
-    for (const QPointF& p : *waypoints) {
-        local << toLocal.map(p);
+    if (const auto* choice = model->AutoRoute(cgo.connectionId());
+        choice && !choice->legacy && !choice->line.isEmpty()) {
+        const QTransform toLocal = cgo.sceneTransform().inverted();
+        QPolygonF local;
+        local.reserve(choice->line.size());
+        for (const QPointF& p : choice->line) {
+            local << toLocal.map(p);
+        }
+        return local.boundingRect().adjusted(-4.0, -4.0, 4.0, 4.0);
     }
-
-    // Slack covers the waypoint handles and the pen width.
-    return local.boundingRect().adjusted(-8.0, -8.0, 8.0, 8.0);
+    return {};
 }
 
 }  // namespace NodeGUI
