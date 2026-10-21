@@ -677,17 +677,26 @@ TEST(PlantCodegenValidation, DynoStartRpmFallbackWarns) {
     EXPECT_NE(result.warnings.front().find("StartRpm"), std::string::npos)
         << result.warnings.front();
 
-    // The canonical Rpm0 spelling wins when both are present, silently.
+    // The canonical Rpm0 spelling wins when both are present; the legacy key
+    // lingers only as an unreferenced-param warning.
     params["Rpm0"] = "60";
     ASSERT_TRUE(graph.SetNodeParameters("Dyno", params));
     const auto canonical = GenerateCapturing(graph, "dyno_rpm0_wins");
     ASSERT_TRUE(canonical.ok) << canonical.error;
-    EXPECT_TRUE(canonical.warnings.empty());
+    // the legacy ctor body (StartRpm) was canonicalized to Rpm0; the leftover
+    // StartRpm instance key is now a never-referenced param -> D2 warning
+    ASSERT_EQ(canonical.warnings.size(), 1u);
+    EXPECT_NE(canonical.warnings.front().find("StartRpm"), std::string::npos)
+        << canonical.warnings.front();
+    EXPECT_NE(canonical.warnings.front().find("not declared by template"), std::string::npos)
+        << canonical.warnings.front();
     std::ifstream file(canonical.dir / "plant_generated.cpp");
     std::ostringstream text;
     text << file.rdbuf();
-    EXPECT_NE(text.str().find("constexpr double StartRpm = 60;"), std::string::npos)
-        << "canonical Rpm0 value must feed the legacy-bodied constructor";
+    EXPECT_NE(text.str().find("constexpr double Rpm0 = 60;"), std::string::npos)
+        << "canonical Rpm0 value must reach the Dyno constructor";
+    EXPECT_EQ(text.str().find("constexpr double StartRpm"), std::string::npos)
+        << "the deprecated spelling must not materialize an alias when Rpm0 is used";
 }
 
 // --- D7: PlantSetInput emits an assignment for EVERY unwired match.
