@@ -159,6 +159,11 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , graphScene_{std::make_unique<GraphScene>()} {
     preferences_ = LoadAppPreferences();
+    // Apply the saved theme at startup: ApplyThemeMode used to run only from
+    // the Preferences-accept path, so a saved dark/light choice silently
+    // never came into effect on relaunch (access audit 2026-10-21, seeded
+    // themeMode images were bit-identical).
+    ApplyThemeMode(preferences_.themeMode);
 
     setWindowTitle(QStringLiteral("RTE Studio"));
     resize(1280, 800);
