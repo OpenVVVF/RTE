@@ -1,10 +1,13 @@
 #include "SimTelemetryView.h"
 
+#include "SimSessionSeriesSource.h"
 #include "runtime/SignalPlotWidget.h"
 
 #include <QColor>
 #include <QComboBox>
 #include <QCryptographicHash>
+#include <QDoubleSpinBox>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -164,6 +167,67 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     topRow->addWidget(removeButton);
     rightLayout->addLayout(topRow);
 
+    // Recorded-session overlay row (backlog P1-8): load/clear the reference
+    // set + the per-overlay time offset (spin in seconds, slider in
+    // centiseconds) + the info label that doubles as the headless smoke
+    // dump. Nothing here is ever persisted — same convention as the cursor.
+    auto* overlayRow = new QHBoxLayout;
+    overlayRow->setContentsMargins(4, 0, 4, 2);
+    overlayRow->addWidget(new QLabel(QStringLiteral("Overlay"), rightPanel));
+    auto* overlayLoadButton =
+        new QPushButton(QStringLiteral("Load\u2026"), rightPanel);
+    overlayLoadButton->setObjectName(QStringLiteral("simOverlayLoad"));
+    overlayLoadButton->setToolTip(QStringLiteral(
+        "Load a recorded session as an overlay reference (dashed traces)"));
+    connect(overlayLoadButton, &QPushButton::clicked, this, [this] {
+        const QString startDir = MakeSimSettings()
+                                     .value(QStringLiteral("sim/lastSessionDir"))
+                                     .toString();
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Load Overlay Session"), startDir,
+            QStringLiteral("RTE Runtime Session (*.jsonl);;All Files (*)"));
+        if (!path.isEmpty()) {
+            LoadOverlay(path);
+        }
+    });
+    overlayRow->addWidget(overlayLoadButton);
+    auto* overlayClearButton =
+        new QPushButton(QStringLiteral("Clear"), rightPanel);
+    overlayClearButton->setObjectName(QStringLiteral("simOverlayClear"));
+    overlayClearButton->setToolTip(QStringLiteral("Unload the overlay set"));
+    connect(overlayClearButton, &QPushButton::clicked, this,
+            &SimTelemetryView::ClearOverlay);
+    overlayRow->addWidget(overlayClearButton);
+    overlayRow->addWidget(new QLabel(QStringLiteral("offset (s)"), rightPanel));
+    overlayOffsetSpin_ = new QDoubleSpinBox(rightPanel);
+    overlayOffsetSpin_->setObjectName(QStringLiteral("simOverlayOffsetSpin"));
+    overlayOffsetSpin_->setRange(-100000.0, 100000.0);
+    overlayOffsetSpin_->setDecimals(3);
+    overlayOffsetSpin_->setSingleStep(0.1);
+    overlayOffsetSpin_->setToolTip(QStringLiteral(
+        "Shift the overlay reference against the primary time axis"));
+    connect(overlayOffsetSpin_,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this](double value) {
+                if (!overlaySyncGuard_) {
+                    SetOverlayOffset(value);
+                }
+            });
+    overlayRow->addWidget(overlayOffsetSpin_);
+    overlayOffsetSlider_ = new QSlider(Qt::Horizontal, rightPanel);
+    overlayOffsetSlider_->setObjectName(QStringLiteral("simOverlayOffsetSlider"));
+    overlayOffsetSlider_->setRange(-600, 600);  // ±6 s in centiseconds; widened on load
+    overlayOffsetSlider_->setValue(0);
+    connect(overlayOffsetSlider_, &QSlider::valueChanged, this,
+            &SimTelemetryView::ApplyOverlayOffsetFromSlider);
+    overlayRow->addWidget(overlayOffsetSlider_, 1);
+    overlayInfo_ = new QLabel(rightPanel);
+    overlayInfo_->setObjectName(QStringLiteral("simOverlayInfo"));
+    overlayInfo_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    overlayRow->addWidget(overlayInfo_);
+    rightLayout->addLayout(overlayRow);
+    UpdateOverlayInfo();
+
     plotsContainer_ = new QWidget(rightPanel);
     plotsLayout_ = new QVBoxLayout(plotsContainer_);
     plotsLayout_->setContentsMargins(0, 0, 0, 0);
@@ -300,6 +364,100 @@ void SimTelemetryView::ApplyViewSeconds() {
     }
     UpdateStatusLine();
     UpdateCursorInfo();
+}
+
+bool SimTelemetryView::LoadOverlay(const QString& path) {
+    SimSessionSeriesSource source;
+    QString error;
+    if (!source.Load(path, error)) {
+        if (overlayInfo_) {
+            overlayInfo_->setText(QStringLiteral("overlay load failed: %1").arg(error));
+        }
+        return false;
+    }
+    source.RegisterWith(store_);
+    overlayName_ = QFileInfo(path).completeBaseName();
+    // A new reference starts aligned 1:1 (offset 0), slider widened to its
+    // span so the whole overlay range can be phase-swept.
+    overlaySyncGuard_ = true;
+    if (overlayOffsetSpin_) {
+        overlayOffsetSpin_->setValue(0.0);
+    }
+    if (overlayOffsetSlider_) {
+        const int cs =
+            std::max(600, static_cast<int>(std::ceil(source.SpanSeconds() * 100.0)));
+        overlayOffsetSlider_->setRange(-cs, cs);
+        overlayOffsetSlider_->setValue(0);
+    }
+    overlaySyncGuard_ = false;
+    store_.SetOverlayOffset(0.0);
+    for (auto* plot : plots_) {
+        plot->Refresh();
+    }
+    UpdateValueColumn();
+    UpdateOverlayInfo();
+    return true;
+}
+
+void SimTelemetryView::SetOverlayOffset(double tsec) {
+    store_.SetOverlayOffset(tsec);
+    overlaySyncGuard_ = true;
+    if (overlayOffsetSpin_) {
+        overlayOffsetSpin_->setValue(tsec);
+    }
+    if (overlayOffsetSlider_) {
+        overlayOffsetSlider_->setValue(qRound(tsec * 100.0));
+    }
+    overlaySyncGuard_ = false;
+    for (auto* plot : plots_) {
+        plot->Refresh();
+    }
+    UpdateValueColumn();
+    UpdateOverlayInfo();
+}
+
+void SimTelemetryView::ApplyOverlayOffsetFromSlider(int centiseconds) {
+    if (overlaySyncGuard_) {
+        return;
+    }
+    SetOverlayOffset(centiseconds / 100.0);
+}
+
+void SimTelemetryView::ClearOverlay() {
+    store_.ClearOverlay();
+    overlayName_.clear();
+    overlaySyncGuard_ = true;
+    if (overlayOffsetSpin_) {
+        overlayOffsetSpin_->setValue(0.0);
+    }
+    if (overlayOffsetSlider_) {
+        overlayOffsetSlider_->setRange(-600, 600);
+        overlayOffsetSlider_->setValue(0);
+    }
+    overlaySyncGuard_ = false;
+    for (auto* plot : plots_) {
+        plot->Refresh();
+    }
+    UpdateValueColumn();
+    UpdateOverlayInfo();
+}
+
+void SimTelemetryView::UpdateOverlayInfo() {
+    if (!overlayInfo_) {
+        return;
+    }
+    if (!store_.HasOverlay()) {
+        overlayInfo_->setText(QStringLiteral("overlay: none"));
+        return;
+    }
+    const double offset = store_.OverlayOffsetTsec();
+    overlayInfo_->setText(
+        QStringLiteral("overlay %1 \u00b7 %2 ch \u00b7 %3 s \u00b7 offset %4%5 s")
+            .arg(overlayName_)
+            .arg(store_.OverlayChannelCount())
+            .arg(store_.OverlaySpanSeconds(), 0, 'f', 1)
+            .arg(offset >= 0.0 ? QStringLiteral("+") : QStringLiteral("-"))
+            .arg(std::abs(offset), 0, 'f', 3));
 }
 
 void SimTelemetryView::UpdateGraphCount() {
@@ -611,7 +769,24 @@ void SimTelemetryView::UpdateValueColumn() {
         if (hasCursor_
             && store_.ValueAt(name.toStdString(),
                               static_cast<float>(cursorTsec_), value)) {
-            valueItem->setText(QString::number(value, 'g', 6));
+            // Delta readout at the cursor: when the overlay set carries this
+            // channel, the cell extends to "live (ref R, Δ ±D)" — the ref
+            // sampled under the current overlay offset. Channels the overlay
+            // does not name keep the wave-5 plain value, byte-identical.
+            float ref = 0.0f;
+            if (store_.OverlayValueAt(name.toStdString(),
+                                      static_cast<float>(cursorTsec_), ref)) {
+                const double delta = static_cast<double>(value) - ref;
+                valueItem->setText(
+                    QStringLiteral("%1 (ref %2, \u0394 %3%4)")
+                        .arg(QString::number(value, 'g', 6),
+                             QString::number(ref, 'g', 6),
+                             delta >= 0.0 ? QStringLiteral("+")
+                                          : QStringLiteral("-"),
+                             QString::number(std::abs(delta), 'f', 3)));
+            } else {
+                valueItem->setText(QString::number(value, 'g', 6));
+            }
         } else {
             valueItem->setText(QString::number(stats.lastFinite, 'g', 6));
         }

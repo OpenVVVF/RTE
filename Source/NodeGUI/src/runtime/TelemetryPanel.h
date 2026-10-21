@@ -4,8 +4,10 @@
 
 #include <vector>
 
+class QDoubleSpinBox;
 class QLabel;
 class QScrollArea;
+class QSlider;
 class QVBoxLayout;
 
 namespace NodeGUI::runtime {
@@ -25,6 +27,16 @@ class SignalPlotWidget;
 // cursor holds the window span while the live stream keeps running behind
 // it; clearing re-tails. The small cursorInfo_ label doubles as the
 // headless-smoke read dump.
+//
+// Recorded-session overlay (backlog P1-8): same store overlay seam as the
+// sim surface — "Load…" registers a recorded session via
+// sim::SimSessionSeriesSource into the live store, and the leaf draws the
+// reference dashed on the assigned signals with the offset row for
+// phase-locked comparison. The Value-column delta stays sim-side (the
+// runtime Value column lives in SignalTablePanel); this panel owns
+// load/offset/clear plus the rtOverlayInfo smoke dump. Overlay state is
+// never persisted and survives Clear Session (the reference is independent
+// of the live ring).
 class TelemetryPanel : public QWidget {
     Q_OBJECT
 
@@ -48,6 +60,12 @@ public slots:
     void ClearCursor();
     void PanWindowBy(double deltaTsec);
 
+    // Recorded-session overlay (see the class comment): same entry points
+    // the headless smoke driver pokes by surface name.
+    bool LoadOverlay(const QString& path);
+    void SetOverlayOffset(double tsec);
+    void ClearOverlay();
+
 signals:
     void graphCountChanged(int count);
     void cursorChanged(bool hasCursor, double tsec);
@@ -58,6 +76,8 @@ private slots:
 private:
     SignalPlotWidget* MakePlot();
     void UpdateCursorInfo();
+    void UpdateOverlayInfo();
+    void ApplyOverlayOffsetFromSlider(int centiseconds);
 
     RuntimeController* controller_;
 
@@ -66,6 +86,13 @@ private:
     QVBoxLayout* plotsLayout_ = nullptr;
     QLabel* countLabel_ = nullptr;
     QLabel* cursorInfo_ = nullptr;
+
+    // Overlay row: spin in seconds, slider in centiseconds, sync-guarded.
+    QLabel* overlayInfo_ = nullptr;
+    QDoubleSpinBox* overlayOffsetSpin_ = nullptr;
+    QSlider* overlayOffsetSlider_ = nullptr;
+    QString overlayName_;
+    bool overlaySyncGuard_ = false;
 
     std::vector<SignalPlotWidget*> plots_;
     bool hasCursor_ = false;

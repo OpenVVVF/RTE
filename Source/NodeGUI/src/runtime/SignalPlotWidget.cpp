@@ -7,6 +7,7 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
 #include <QPainter>
+#include <QPen>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -273,9 +274,22 @@ void SignalPlotWidget::Refresh()
         }
     }
     if (store_) {
-        for (Series& s : series_) {
-            store_->CopyHistoryInto(s.name.toStdString(), s.t, s.y);
+        overlaySeries_.resize(series_.size());
+        for (std::size_t i = 0; i < series_.size(); ++i) {
+            store_->CopyHistoryInto(series_[i].name.toStdString(),
+                                    series_[i].t, series_[i].y);
+            overlaySeries_[i].name = series_[i].name;
+            if (!store_->CopyOverlayHistoryInto(series_[i].name.toStdString(),
+                                                overlaySeries_[i].t,
+                                                overlaySeries_[i].y)) {
+                // No overlay channel under this name (or no overlay at all):
+                // keep the slot aligned but empty.
+                overlaySeries_[i].t.clear();
+                overlaySeries_[i].y.clear();
+            }
         }
+    } else {
+        overlaySeries_.clear();
     }
     update();
 }
@@ -328,13 +342,23 @@ void SignalPlotWidget::paintGL()
     const double x1 = WindowEndTsec();
     const double x0 = x1 - viewSeconds_;
 
-    // Y autorange over the visible data with 5% padding.
+    // Y autorange over the visible data with 5% padding. Overlay snapshots
+    // participate so the reference trace never silently clips out of frame.
     double y0 = 0.0;
     double y1 = 1.0;
     if (haveData) {
         double lo = std::numeric_limits<double>::max();
         double hi = std::numeric_limits<double>::lowest();
         for (const Series& s : series_) {
+            for (std::size_t i = 0; i < s.t.size(); ++i) {
+                if (s.t[i] < x0) {
+                    continue;
+                }
+                lo = std::min(lo, static_cast<double>(s.y[i]));
+                hi = std::max(hi, static_cast<double>(s.y[i]));
+            }
+        }
+        for (const Series& s : overlaySeries_) {
             for (std::size_t i = 0; i < s.t.size(); ++i) {
                 if (s.t[i] < x0) {
                     continue;
@@ -527,6 +551,43 @@ void SignalPlotWidget::paintGL()
     painter.setPen(QColor(190, 190, 190));
     painter.drawText(QRect(kMarginLeft + pw - 80, h - kMarginBottom + 5, 80, 16),
                      Qt::AlignRight, QStringLiteral("Time (s)"));
+
+    // Recorded-session overlay: one dashed, thinner trace per assigned signal
+    // whose name exists in the overlay set, desaturated against the same
+    // palette color so the GL live trace stays primary. Shares the axis
+    // mapping above with the live traces; clipped to the plot area.
+    if (haveData && !overlaySeries_.empty()) {
+        painter.save();
+        painter.setClipRect(plotRect);
+        for (std::size_t si = 0;
+             si < overlaySeries_.size() && si < series_.size(); ++si) {
+            const Series& s = overlaySeries_[si];
+            if (s.t.empty()) {
+                continue;
+            }
+            QColor overlayColor = SignalColor(static_cast<int>(si)).darker(135);
+            overlayColor.setAlpha(190);
+            painter.setPen(QPen(overlayColor, 1.0, Qt::DashLine));
+            QPointF previous;
+            bool havePrevious = false;
+            for (std::size_t i = 0; i < s.t.size(); ++i) {
+                if (s.t[i] < x0) {
+                    continue;
+                }
+                const double fx = (static_cast<double>(s.t[i]) - x0) / viewSeconds_;
+                const double fy = (static_cast<double>(s.y[i]) - y0) / (y1 - y0);
+                const QPointF point(
+                    kMarginLeft + fx * pw,
+                    kMarginTop + ph - fy * ph);
+                if (havePrevious) {
+                    painter.drawLine(previous, point);
+                }
+                previous = point;
+                havePrevious = true;
+            }
+        }
+        painter.restore();
+    }
 
     // Playback cursor: one pinned vertical line at the shared cursor time
     // (drawn only while inside the visible window) plus its absolute-time

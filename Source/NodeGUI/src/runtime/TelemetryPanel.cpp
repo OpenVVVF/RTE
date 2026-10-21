@@ -2,14 +2,30 @@
 
 #include "RuntimeController.h"
 #include "SignalPlotWidget.h"
+#include "sim/SimSessionSeriesSource.h"
 
+#include <QDoubleSpinBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
+#include <QSlider>
 #include <QVBoxLayout>
 
+#include <cmath>
+
 namespace NodeGUI::runtime {
+
+namespace {
+
+QSettings MakeOverlaySettings() {
+    return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+}
+
+}  // namespace
 
 TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
     : QWidget(parent)
@@ -37,6 +53,64 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
     cursorInfo_->setObjectName(QStringLiteral("rtCursorInfo"));
     topRow->addWidget(cursorInfo_);
 
+    // Recorded-session overlay row (backlog P1-8): load/clear + offset
+    // (spin seconds, slider centiseconds) + the rtOverlayInfo dump label.
+    // Nothing is persisted — same convention as the cursor.
+    auto* overlayRow = new QHBoxLayout;
+    overlayRow->setContentsMargins(4, 0, 4, 2);
+    overlayRow->addWidget(new QLabel(QStringLiteral("Overlay"), this));
+    auto* overlayLoadButton =
+        new QPushButton(QStringLiteral("Load\u2026"), this);
+    overlayLoadButton->setObjectName(QStringLiteral("rtOverlayLoad"));
+    overlayLoadButton->setToolTip(QStringLiteral(
+        "Load a recorded session as an overlay reference (dashed traces)"));
+    connect(overlayLoadButton, &QPushButton::clicked, this, [this] {
+        const QString startDir = MakeOverlaySettings()
+                                     .value(QStringLiteral("sim/lastSessionDir"))
+                                     .toString();
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Load Overlay Session"), startDir,
+            QStringLiteral("RTE Runtime Session (*.jsonl);;All Files (*)"));
+        if (!path.isEmpty()) {
+            LoadOverlay(path);
+        }
+    });
+    overlayRow->addWidget(overlayLoadButton);
+    auto* overlayClearButton = new QPushButton(QStringLiteral("Clear"), this);
+    overlayClearButton->setObjectName(QStringLiteral("rtOverlayClear"));
+    overlayClearButton->setToolTip(QStringLiteral("Unload the overlay set"));
+    connect(overlayClearButton, &QPushButton::clicked, this,
+            &TelemetryPanel::ClearOverlay);
+    overlayRow->addWidget(overlayClearButton);
+    overlayRow->addWidget(new QLabel(QStringLiteral("offset (s)"), this));
+    overlayOffsetSpin_ = new QDoubleSpinBox(this);
+    overlayOffsetSpin_->setObjectName(QStringLiteral("rtOverlayOffsetSpin"));
+    overlayOffsetSpin_->setRange(-100000.0, 100000.0);
+    overlayOffsetSpin_->setDecimals(3);
+    overlayOffsetSpin_->setSingleStep(0.1);
+    overlayOffsetSpin_->setToolTip(QStringLiteral(
+        "Shift the overlay reference against the live time axis"));
+    connect(overlayOffsetSpin_,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this](double value) {
+                if (!overlaySyncGuard_) {
+                    SetOverlayOffset(value);
+                }
+            });
+    overlayRow->addWidget(overlayOffsetSpin_);
+    overlayOffsetSlider_ = new QSlider(Qt::Horizontal, this);
+    overlayOffsetSlider_->setObjectName(QStringLiteral("rtOverlayOffsetSlider"));
+    overlayOffsetSlider_->setRange(-600, 600);  // ±6 s; widened on load
+    overlayOffsetSlider_->setValue(0);
+    connect(overlayOffsetSlider_, &QSlider::valueChanged, this,
+            &TelemetryPanel::ApplyOverlayOffsetFromSlider);
+    overlayRow->addWidget(overlayOffsetSlider_, 1);
+    overlayRow->addStretch(1);
+    overlayInfo_ = new QLabel(this);
+    overlayInfo_->setObjectName(QStringLiteral("rtOverlayInfo"));
+    overlayInfo_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    overlayRow->addWidget(overlayInfo_);
+
     plotsContainer_ = new QWidget(this);
     plotsLayout_ = new QVBoxLayout(plotsContainer_);
     plotsLayout_->setContentsMargins(0, 0, 0, 0);
@@ -52,11 +126,13 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addLayout(topRow);
+    layout->addLayout(overlayRow);
     layout->addWidget(scroll_, 1);
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &TelemetryPanel::OnStoreChanged);
     UpdateCursorInfo();
+    UpdateOverlayInfo();
 }
 
 SignalPlotWidget* TelemetryPanel::MakePlot() {
@@ -152,6 +228,97 @@ void TelemetryPanel::PanWindowBy(double deltaTsec) {
         plot->PanWindowBy(deltaTsec);
     }
     UpdateCursorInfo();
+}
+
+bool TelemetryPanel::LoadOverlay(const QString& path) {
+    sim::SimSessionSeriesSource source;
+    QString error;
+    if (!source.Load(path, error)) {
+        if (overlayInfo_) {
+            overlayInfo_->setText(QStringLiteral("overlay load failed: %1").arg(error));
+        }
+        return false;
+    }
+    source.RegisterWith(controller_->Store());
+    overlayName_ = QFileInfo(path).completeBaseName();
+    // A new reference starts aligned 1:1, slider widened to its span.
+    overlaySyncGuard_ = true;
+    if (overlayOffsetSpin_) {
+        overlayOffsetSpin_->setValue(0.0);
+    }
+    if (overlayOffsetSlider_) {
+        const int cs =
+            std::max(600, static_cast<int>(std::ceil(source.SpanSeconds() * 100.0)));
+        overlayOffsetSlider_->setRange(-cs, cs);
+        overlayOffsetSlider_->setValue(0);
+    }
+    overlaySyncGuard_ = false;
+    controller_->Store().SetOverlayOffset(0.0);
+    for (auto* plot : plots_) {
+        plot->Refresh();
+    }
+    UpdateOverlayInfo();
+    return true;
+}
+
+void TelemetryPanel::SetOverlayOffset(double tsec) {
+    controller_->Store().SetOverlayOffset(tsec);
+    overlaySyncGuard_ = true;
+    if (overlayOffsetSpin_) {
+        overlayOffsetSpin_->setValue(tsec);
+    }
+    if (overlayOffsetSlider_) {
+        overlayOffsetSlider_->setValue(qRound(tsec * 100.0));
+    }
+    overlaySyncGuard_ = false;
+    for (auto* plot : plots_) {
+        plot->Refresh();
+    }
+    UpdateOverlayInfo();
+}
+
+void TelemetryPanel::ApplyOverlayOffsetFromSlider(int centiseconds) {
+    if (overlaySyncGuard_) {
+        return;
+    }
+    SetOverlayOffset(centiseconds / 100.0);
+}
+
+void TelemetryPanel::ClearOverlay() {
+    controller_->Store().ClearOverlay();
+    overlayName_.clear();
+    overlaySyncGuard_ = true;
+    if (overlayOffsetSpin_) {
+        overlayOffsetSpin_->setValue(0.0);
+    }
+    if (overlayOffsetSlider_) {
+        overlayOffsetSlider_->setRange(-600, 600);
+        overlayOffsetSlider_->setValue(0);
+    }
+    overlaySyncGuard_ = false;
+    for (auto* plot : plots_) {
+        plot->Refresh();
+    }
+    UpdateOverlayInfo();
+}
+
+void TelemetryPanel::UpdateOverlayInfo() {
+    if (!overlayInfo_) {
+        return;
+    }
+    const TelemetryStore& store = controller_->Store();
+    if (!store.HasOverlay()) {
+        overlayInfo_->setText(QStringLiteral("overlay: none"));
+        return;
+    }
+    const double offset = store.OverlayOffsetTsec();
+    overlayInfo_->setText(
+        QStringLiteral("overlay %1 \u00b7 %2 ch \u00b7 %3 s \u00b7 offset %4%5 s")
+            .arg(overlayName_)
+            .arg(store.OverlayChannelCount())
+            .arg(store.OverlaySpanSeconds(), 0, 'f', 1)
+            .arg(offset >= 0.0 ? QStringLiteral("+") : QStringLiteral("-"))
+            .arg(std::abs(offset), 0, 'f', 3));
 }
 
 void TelemetryPanel::UpdateCursorInfo() {

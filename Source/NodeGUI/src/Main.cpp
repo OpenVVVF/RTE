@@ -260,6 +260,30 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             }
             if (!ok) std::cerr << "smoke: no telemetry surface for " << kind.toStdString() << " " << arg.toStdString() << "\n";
             else std::cout << kind.toStdString() << " " << arg.toStdString() << "=ok\n";
+        } else if (kind == "overlayload" || kind == "overlayoffset" || kind == "overlayclear") {
+            // Recorded-session overlay pokes (sim | runtime): drive the same
+            // surface hub methods the "Load…"/offset row reaches; read back
+            // through the simOverlayInfo / rtOverlayInfo dumps.
+            NodeGUI::sim::SimTelemetryView* simView = nullptr;
+            NodeGUI::runtime::TelemetryPanel* runtimePanel = nullptr;
+            if (arg == "sim") {
+                simView = window->findChild<NodeGUI::sim::SimTelemetryView*>();
+            } else if (arg == "runtime") {
+                runtimePanel = window->findChild<NodeGUI::runtime::TelemetryPanel*>();
+            }
+            bool ok = simView || runtimePanel;
+            if (ok && kind == "overlayload") {
+                const QString path = QString::fromStdString(parts.value(2).toStdString());
+                ok = simView ? simView->LoadOverlay(path)
+                             : runtimePanel->LoadOverlay(path);
+            } else if (ok && kind == "overlayoffset") {
+                const double tsec = parts.value(2).toDouble();
+                if (simView) simView->SetOverlayOffset(tsec); else runtimePanel->SetOverlayOffset(tsec);
+            } else if (ok) {
+                if (simView) simView->ClearOverlay(); else runtimePanel->ClearOverlay();
+            }
+            if (!ok) std::cerr << "smoke: overlay op failed " << kind.toStdString() << " " << arg.toStdString() << "\n";
+            else std::cout << kind.toStdString() << " " << arg.toStdString() << "=ok\n";
         } else if (kind == "dumpstatus") {
             // The main-window status bar's current message (build refusals,
             // post-flash hints, ...).

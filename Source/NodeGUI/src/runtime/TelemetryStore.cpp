@@ -5,6 +5,49 @@
 
 namespace NodeGUI::runtime {
 
+namespace {
+
+// Shared lower_bound + linear-interpolation walk behind ValueAt and
+// OverlayValueAt: edge-clamped outside the span, zero-width steps from
+// duplicated timestamps fall back to the earlier sample. Works for both the
+// live ring (deque) and overlay channels (vector) — anything with random
+// access iterators, operator[] and empty().
+template <typename TContainer, typename YContainer>
+bool InterpolatedValueAt(const TContainer& t,
+                         const YContainer& y,
+                         double tsec,
+                         float& value) {
+    if (t.empty()) {
+        return false;
+    }
+    const auto upper = std::lower_bound(t.begin(), t.end(),
+                                        static_cast<float>(tsec));
+    if (upper == t.begin() && tsec < static_cast<double>(t.front())) {
+        value = y.front();
+        return true;
+    }
+    if (upper == t.end()) {
+        value = y.back();
+        return true;
+    }
+    const std::size_t i =
+        static_cast<std::size_t>(std::distance(t.begin(), upper));
+    if (static_cast<double>(t[i]) == tsec) {
+        value = y[i];
+        return true;
+    }
+    const float dt = t[i] - t[i - 1];
+    if (dt <= 0.0f) {
+        value = y[i - 1];
+        return true;
+    }
+    const double alpha = (tsec - static_cast<double>(t[i - 1])) / dt;
+    value = y[i - 1] + static_cast<float>(alpha * (y[i] - y[i - 1]));
+    return true;
+}
+
+}  // namespace
+
 void TelemetryStore::AddF32(const std::string& key, float value, float tsec) {
     std::lock_guard lock(mtx_);
     auto& hist = snap_.hist[key];
@@ -219,36 +262,94 @@ bool TelemetryStore::ValueAt(const std::string& key, float tsec, float& value) c
     if (it == snap_.hist.end() || it->second.t.empty()) {
         return false;
     }
-    const SignalHistory& hist = it->second;
-    const auto upper =
-        std::lower_bound(hist.t.begin(), hist.t.end(), tsec);
-    if (upper == hist.t.begin() && tsec < hist.t.front()) {
-        value = hist.y.front();
-        return true;
+    return InterpolatedValueAt(it->second.t, it->second.y,
+                               static_cast<double>(tsec), value);
+}
+
+void TelemetryStore::SetOverlayChannels(
+    std::unordered_map<std::string, OverlayChannelHistory> channels) {
+    std::lock_guard lock(mtx_);
+    overlayChannels_ = std::move(channels);
+    overlaySpanSeconds_ = 0.0;
+    for (const auto& [name, channel] : overlayChannels_) {
+        (void)name;
+        if (!channel.t.empty()) {
+            overlaySpanSeconds_ =
+                std::max(overlaySpanSeconds_,
+                         static_cast<double>(channel.t.back() - channel.t.front()));
+        }
     }
-    if (upper == hist.t.end()) {
-        value = hist.y.back();
-        return true;
+}
+
+void TelemetryStore::ClearOverlay() {
+    std::lock_guard lock(mtx_);
+    overlayChannels_.clear();
+    overlayOffsetTsec_ = 0.0;
+    overlaySpanSeconds_ = 0.0;
+}
+
+bool TelemetryStore::HasOverlay() const {
+    std::lock_guard lock(mtx_);
+    return !overlayChannels_.empty();
+}
+
+int TelemetryStore::OverlayChannelCount() const {
+    std::lock_guard lock(mtx_);
+    return static_cast<int>(overlayChannels_.size());
+}
+
+double TelemetryStore::OverlaySpanSeconds() const {
+    std::lock_guard lock(mtx_);
+    return overlaySpanSeconds_;
+}
+
+bool TelemetryStore::OverlayHasChannel(const std::string& key) const {
+    std::lock_guard lock(mtx_);
+    return overlayChannels_.find(key) != overlayChannels_.end();
+}
+
+void TelemetryStore::SetOverlayOffset(double tsec) {
+    std::lock_guard lock(mtx_);
+    overlayOffsetTsec_ = tsec;
+}
+
+double TelemetryStore::OverlayOffsetTsec() const {
+    std::lock_guard lock(mtx_);
+    return overlayOffsetTsec_;
+}
+
+bool TelemetryStore::OverlayValueAt(const std::string& key,
+                                    float liveTsec,
+                                    float& value) const {
+    std::lock_guard lock(mtx_);
+    const auto it = overlayChannels_.find(key);
+    if (it == overlayChannels_.end() || it->second.t.empty()) {
+        return false;
     }
-    const std::size_t i =
-        static_cast<std::size_t>(std::distance(hist.t.begin(), upper));
-    if (hist.t[i] == tsec) {
-        value = hist.y[i];
-        return true;
+    const double overlayTsec =
+        static_cast<double>(liveTsec) - overlayOffsetTsec_;
+    return InterpolatedValueAt(it->second.t, it->second.y, overlayTsec, value);
+}
+
+bool TelemetryStore::CopyOverlayHistoryInto(const std::string& key,
+                                            std::vector<float>& t,
+                                            std::vector<float>& y) const {
+    std::lock_guard lock(mtx_);
+    const auto it = overlayChannels_.find(key);
+    if (it == overlayChannels_.end()) {
+        return false;
     }
-    // Bracket (i-1, i): interpolate; the sample clock rises monotonically,
-    // but zero-width steps from duplicated timestamps fall back to the
-    // earlier sample.
-    const float dt = hist.t[i] - hist.t[i - 1];
-    if (dt <= 0.0f) {
-        value = hist.y[i - 1];
-        return true;
+    // Shift into live-axis coordinates under the same lock so a paint
+    // snapshot can never mix data with a stale offset.
+    const float shift = static_cast<float>(overlayOffsetTsec_);
+    t.resize(it->second.t.size());
+    for (std::size_t i = 0; i < it->second.t.size(); ++i) {
+        t[i] = it->second.t[i] + shift;
     }
-    const double alpha = (static_cast<double>(tsec) - hist.t[i - 1]) / dt;
-    value = hist.y[i - 1]
-            + static_cast<float>(alpha * (hist.y[i] - hist.y[i - 1]));
+    y = it->second.y;
     return true;
 }
+
 
 std::vector<std::string> TelemetryStore::SignalNames() const {
     std::lock_guard lock(mtx_);

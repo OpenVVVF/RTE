@@ -34,6 +34,14 @@ namespace NodeGUI::runtime {
 // running behind the hold); clearing the cursor plus FollowTail returns the
 // window to the newest edge. Wheel pans the window off the tail; wheeling
 // back onto the newest edge re-engages following (unless a cursor holds).
+//
+// Recorded-session overlay: when the store carries an overlay set, Refresh()
+// additionally snapshots the overlay history of each assigned signal (the
+// store returns it offset-mapped into the live time axis), so the reference
+// trace for exactly the user's picked signals rides along in the same QPainter
+// pass as the cursor — dashed, thinner, and desaturated against the same
+// palette color. The leaf keeps no overlay state of its own beyond those
+// snapshots; load/clear/offset all flow through the store + a Refresh.
 class SignalPlotWidget : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
 
@@ -112,6 +120,11 @@ private:
 
     // History snapshots refreshed by Refresh() (GUI thread only).
     std::vector<Series> series_;
+    // Parallel to series_: the overlay (recorded reference) snapshot of the
+    // same signal, times already shifted by the overlay offset. Empty when
+    // the store has no overlay channel under that name. View-only: rebuilt
+    // wholesale on every Refresh().
+    std::vector<Series> overlaySeries_;
 
     bool hasCursor_ = false;
     double cursorTsec_ = 0.0;

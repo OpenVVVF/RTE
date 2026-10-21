@@ -11,6 +11,7 @@
 #include <QStringList>
 
 class QComboBox;
+class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
 class QScrollArea;
@@ -48,6 +49,16 @@ namespace NodeGUI::sim {
 // along its full span. The view-seconds slider's maximum is sampled from
 // the loaded session's duration (was a hard 60), so a long recording can
 // fill one window; wheel-pan + cursor freeze run on the leaf.
+//
+// Recorded-session overlay (backlog P1-8): "Load overlay…" parses a v3 jsonl
+// through SimSessionSeriesSource into the store's overlay set; the plot leaf
+// then draws the reference trace for every assigned signal (per-signal
+// opt-in = graph assignment), dashed/desaturated on the same time base. The
+// offset row shifts the reference against the primary axis for phase-locked
+// comparison, and with a cursor pinned the Value column reads
+// "live (ref R, Δ ±D)" on channels the overlay carries. Like the cursor,
+// overlay state is never persisted and survives a primary LoadSession (that
+// is exactly the run-N-1-vs-run-N comparison flow).
 class SimTelemetryView : public QWidget {
     Q_OBJECT
 
@@ -69,6 +80,15 @@ public slots:
     void ClearCursor();
     void PanWindowBy(double deltaTsec);
 
+    // Recorded-session overlay (see the class comment). LoadOverlay replaces
+    // the overlay set with the file's finite channels; SetOverlayOffset
+    // slides it against the primary time axis; ClearOverlay unloads. The
+    // headless smoke driver pokes LoadOverlay / SetOverlayOffset by surface
+    // name. LoadOverlay keeps the current primary session on failure.
+    bool LoadOverlay(const QString& path);
+    void SetOverlayOffset(double tsec);
+    void ClearOverlay();
+
 private slots:
     void AddGraph();
     void RemoveLastGraph();
@@ -81,6 +101,8 @@ private:
     void UpdateStatusLine();
     void UpdateCursorInfo();
     void ApplyViewSeconds();
+    void UpdateOverlayInfo();
+    void ApplyOverlayOffsetFromSlider(int centiseconds);
     NodeGUI::runtime::SignalPlotWidget* MakePlot();
     void UpdateGraphCount();
     int AssignedGraph(const QString& name) const;
@@ -113,6 +135,15 @@ private:
     bool hasCursor_ = false;
     double cursorTsec_ = 0.0;
     double viewCapTsec_ = 60.0;  // sampled up to the loaded session's span
+
+    // Overlay row (see the class comment): the info label doubles as the
+    // headless smoke read dump (simOverlayInfo); spin in seconds, slider in
+    // centiseconds, sync-guarded against each other's feedback.
+    QLabel* overlayInfo_ = nullptr;
+    QDoubleSpinBox* overlayOffsetSpin_ = nullptr;
+    QSlider* overlayOffsetSlider_ = nullptr;
+    QString overlayName_;       // filename stem of the loaded overlay set
+    bool overlaySyncGuard_ = false;
 
     QTimer* layoutSaveTimer_ = nullptr;
     QString layoutStem_;         // sanitized filename stem of the loaded session

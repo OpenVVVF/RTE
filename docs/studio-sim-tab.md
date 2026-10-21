@@ -95,6 +95,42 @@ session's span, so e.g. a 3685 s recording can be widened into one window
 0.5..60 s range are unchanged, as is the initial view after a load
 (min(duration, 60 s)).
 
+### Recorded-session overlay (shipped, backlog P1-8)
+
+Both telemetry surfaces (this tab's Telemetry view and the Runtime tab's
+telemetry panel) can overlay one recorded v3 session on top of whatever is
+showing - another loaded session or the live stream.
+
+- **"Overlay: Load…"** parses the reference file through
+  `sim::SimSessionSeriesSource` (the dossier's design-B seam) into an overlay
+  set in the surface's `runtime::TelemetryStore` (`SetOverlayChannels` et al.
+  - additive store API only; the live ring and `ClearSession` semantics are
+  untouched). The info label (`simOverlayInfo` / `rtOverlayInfo`,
+  smoke-dumpable) reads `overlay <stem> · N ch · D s · offset ±x s`.
+- **Per-signal opt-in is the existing graph assignment**: the reference trace
+  renders only for signals the user assigned to a plot, drawn in the same
+  QPainter pass as the cursor - dashed, thinner, desaturated against the
+  same palette color. Autorange includes the overlay so it never clips.
+- **Per-overlay time offset** (numeric spin + slider, seconds / centiseconds;
+  slider range widens to the overlay span on load): a lookup at axis time T
+  samples overlay time T − offset, so a positive offset shifts the reference
+  toward newer time for phase-locked comparison.
+- **Delta readout at cursor**: while a cursor is pinned, the sim value table
+  shows `live (ref R, Δ ±D)` on rows whose channel the overlay carries (ref
+  sampled under the current offset through the same interpolated lookup);
+  channels not in the overlay keep the plain wave-5 value cell. The runtime
+  Value column is unchanged this wave (no delta column there).
+- **Overlay state is never persisted** (same convention as the cursor) - BUT
+  it survives loading a different primary session in the sim view, which is
+  exactly the run-N-1-vs-run-N comparison flow: load run N-1 as overlay, run
+  / load run N as primary, look.
+- Offscreen smoke verbs: `overlayload` / `overlayoffset` / `overlayclear`
+  (`sim|runtime`), with the `simOverlayInfo` / `rtOverlayInfo` label dumps
+  and the offset slider dumps for read-back.
+- Deferred garnish (deliberately not this wave): multiple overlay sets,
+  per-series styling UI, auto cross-correlation alignment, and the
+  `twin.metrics` embedding from "Diff vs recorded" below.
+
 ## Layout
 
 - **Two views of one canvas.** The existing graph canvas is reused twice —

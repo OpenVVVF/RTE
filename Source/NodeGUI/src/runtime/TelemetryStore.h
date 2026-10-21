@@ -41,6 +41,15 @@ struct SessionSignalHistory {
     std::vector<float> y;
 };
 
+// One channel of a recorded REFERENCE session (the overlay set): a static,
+// non-rolling vector history kept alongside the live ring. Overlay reads map
+// live-time lookups into overlay time via the set's offset. Entries are
+// NaN-stripped at registration so the plot leaf never sees null samples.
+struct OverlayChannelHistory {
+    std::vector<float> t;
+    std::vector<float> y;
+};
+
 struct SessionStringSample {
     double tsec = 0.0;
     std::string value;
@@ -164,6 +173,37 @@ public:
                          std::vector<float>& t,
                          std::vector<float>& y) const;
 
+    // ---- Recorded-session overlay (reference vs live comparison) ---------
+    // One named overlay set at a time, registered by the owning surface
+    // (sim::SimSessionSeriesSource does the jsonl parsing). Deliberately
+    // independent of ClearSession: comparing run N against run N-1 needs the
+    // baseline to survive the load/clear of the run under inspection; drop it
+    // explicitly with ClearOverlay. Never persisted (same convention as the
+    // playback cursor). All reads apply the offset: a lookup at live time T
+    // samples overlay time T - offset, so a positive offset draws the
+    // reference shifted toward newer live time.
+    void SetOverlayChannels(
+        std::unordered_map<std::string, OverlayChannelHistory> channels);
+    void ClearOverlay();
+    bool HasOverlay() const;
+    int OverlayChannelCount() const;
+    // Longest per-channel span in the set (seconds); 0 when no overlay.
+    double OverlaySpanSeconds() const;
+    bool OverlayHasChannel(const std::string& key) const;
+    void SetOverlayOffset(double tsec);
+    double OverlayOffsetTsec() const;
+    // Offset-mapped counterparts of ValueAt / CopyHistoryInto for overlay
+    // data. CopyOverlayHistoryInto returns times ALREADY shifted by the
+    // current offset (live-axis coordinates, ready to draw); both are
+    // atomic under the store lock so paint/Value-column snapshots never mix
+    // data from two offset settings.
+    bool OverlayValueAt(const std::string& key,
+                        float liveTsec,
+                        float& value) const;
+    bool CopyOverlayHistoryInto(const std::string& key,
+                                std::vector<float>& t,
+                                std::vector<float>& y) const;
+
     // Latest float value of one signal. Returns false if unknown.
     bool LatestValue(const std::string& key, float& value) const;
 
@@ -196,6 +236,12 @@ private:
         sessionStringSignals_;
     std::vector<SessionConsoleLine> sessionConsole_;
     std::vector<SessionCommand> sessionCommands_;
+    // Overlay map (see the API block above): static recorded-session copy,
+    // never trimmed by the live-ring retention rules, cleared only by
+    // ClearOverlay / SetOverlayChannels — NOT by ClearSession.
+    std::unordered_map<std::string, OverlayChannelHistory> overlayChannels_;
+    double overlayOffsetTsec_ = 0.0;
+    double overlaySpanSeconds_ = 0.0;
     // Retention applied by TrimHistoryLocked: the live rolling defaults
     // unless SetRetentionLimit raised the floor (recorded-session playback
     // only, never the live ring).

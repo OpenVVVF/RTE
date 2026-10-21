@@ -38,6 +38,8 @@ add_executable(RTEStudio
     src/sim/SimulateScreen.h
     src/sim/SimSession.cpp
     src/sim/SimSession.h
+    src/sim/SimSessionSeriesSource.cpp
+    src/sim/SimSessionSeriesSource.h
     src/sim/SimTelemetryView.cpp
     src/sim/SimTelemetryView.h
     src/PortStyle.cpp
