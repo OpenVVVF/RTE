@@ -24,6 +24,11 @@ public:
     // Rebuilds the tree from the graph's node-type database.
     void SetNodeTypes(const std::vector<NodeAPI::NodeType>& nodeTypes);
 
+    // Substring filter (case-insensitive, display + id): leaves not matching
+    // hide along with any category that has no visible children left.
+    // Empty filter restores everything. The host provides the edit widget.
+    void SetFilter(const QString& substring);
+
     // Category prefix of a type id: text before the first dot, or "Other".
     // Also used by GraphView's empty-canvas "Add node here" menu so the menu
     // grouping always matches the palette's family taxonomy.
@@ -43,6 +48,8 @@ private:
     // Emits nodeTypeActivated for an activated type entry (leaf item with a
     // UserRole type id); category headers carry no id and are ignored.
     void ActivateItem(const QTreeWidgetItem* item);
+
+    QString filterText_;
 };
 
 }  // namespace NodeGUI

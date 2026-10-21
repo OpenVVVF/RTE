@@ -34,6 +34,14 @@ QString NodePalette::CategoryOf(const std::string& typeId) {
 }
 
 void NodePalette::SetNodeTypes(const std::vector<NodeAPI::NodeType>& nodeTypes) {
+    // Preserve per-category expansion across rebuilds (was: clear() +
+    // expandAll() collapsed state on every load AND every undo restore -
+    // clunk dossier palette row).
+    std::map<QString, bool> expanded;
+    for (int i = 0; i < topLevelItemCount(); ++i) {
+        auto* top = topLevelItem(i);
+        expanded[top->text(0)] = top->isExpanded();
+    }
     clear();
 
     std::map<QString, QTreeWidgetItem*> categories;
@@ -71,7 +79,35 @@ void NodePalette::SetNodeTypes(const std::vector<NodeAPI::NodeType>& nodeTypes) 
         parent->sortChildren(0, Qt::AscendingOrder);
     }
     expandAll();
+    for (const auto& [name, wasExpanded] : expanded) {
+        const auto it = categories.find(name);
+        if (it != categories.end() && !wasExpanded) {
+            it->second->setExpanded(false);
+        }
+    }
+    SetFilter(filterText_);
 }
+
+void NodePalette::SetFilter(const QString& substring) {
+    filterText_ = substring;
+    for (int i = 0; i < topLevelItemCount(); ++i) {
+        auto* category = topLevelItem(i);
+        int visible = 0;
+        for (int j = 0; j < category->childCount(); ++j) {
+            auto* leaf = category->child(j);
+            const QString id = leaf->data(0, Qt::UserRole).toString();
+            const bool match = filterText_.isEmpty()
+                || leaf->text(0).contains(filterText_, Qt::CaseInsensitive)
+                || id.contains(filterText_, Qt::CaseInsensitive);
+            leaf->setHidden(!match);
+            if (match) {
+                ++visible;
+            }
+        }
+        category->setHidden(filterText_.isEmpty() ? false : visible == 0);
+    }
+}
+
 
 QMimeData* NodePalette::mimeData(const QList<QTreeWidgetItem*>& items) const {
     auto* mime = new QMimeData;
