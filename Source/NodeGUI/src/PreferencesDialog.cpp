@@ -177,7 +177,7 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     gridSnapCheck_->setChecked(preferences.gridSnap);
     gridSnapCheck_->setToolTip(
         QStringLiteral("Node origins, port rows and wire bends snap to the "
-                       "10-unit scene grid; turn off for free-form placement"));
+                       "15-unit scene grid (the background texture pitch); turn off for free-form placement"));
     generalLayout->addRow(QStringLiteral("Editor grid"), gridSnapCheck_);
 
     undoHistoryLimitSpin_ = new QSpinBox(generalPage);
