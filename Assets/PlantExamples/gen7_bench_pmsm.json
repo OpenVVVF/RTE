@@ -1,7 +1,7 @@
 {
   "name": "gen7_bench_pmsm",
   "schemaVersion": 1,
-  "description": "Plant graph for the Gen7 'Size 2' bench article: ZF75-10 PMSM held by the dyno, CM600DY knee inverter, 19.8 mF DC link with bench CV supply, two-node heatsink plant (defaults = pasted-interface net), hall/MAX22530/sin-cos sensor views, fault point for gate-kill and guardrails. Mirrors the calibration targets proven against the steady-state + fault campaigns. Ch2 NTC uses the load-dependent offset law; halls carry the recorded rail-collapse artifact values; phase-ADC view wired from Knee's pre-distortion taps; Meas exports the truth-side power diagnostics.",
+  "description": "Plant graph for the Gen7 'Size 2' bench article: ZF75-10 PMSM held by the dyno, CM600DY knee inverter, 19.8 mF DC link with bench CV supply, two-node heatsink plant (defaults = pasted-interface net), hall/MAX22530/sin-cos sensor views, fault point for gate-kill and guardrails. Mirrors the calibration targets proven against the steady-state + fault campaigns. Ch2 NTC uses the load-dependent offset law; halls carry the recorded rail-collapse artifact values; phase-ADC view wired from Knee's pre-distortion taps; Meas exports the truth-side power diagnostics. | Hardware-default caution: bench-class guardrails only; before driving real hardware verify the protection/limit params (phase limits, MaxTorqueCurrentA, hall rails) against your own board - a zero value in these fields DISABLES that protection path.",
   "bridges": [],
   "nodes": [
     {
