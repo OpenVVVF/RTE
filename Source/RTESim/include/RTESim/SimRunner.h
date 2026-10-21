@@ -13,7 +13,15 @@
  *      shared scenario/format code) into the work dir, and write
  *      sim_config_seed.inc — the FRAM config seed derived from the sw
  *      graph's Values.Config nodes (see DeriveConfigSeed below);
- *   4. compile the scenario binary with the host system compiler;
+ *   4. compile the scenario binary with the host system compiler, SKIPPED
+ *      when the fingerprint of the staged inputs (hash of every staged
+ *      sw/plant/host file byte post steps 1-3 plus the compiler identity —
+ *      everything steps 1-3 derive from the sw graph, plant graph, base
+ *      source tree and config seed) matches the stamp in
+ *      <workDir>/.input_hash AND the staged binary still exists; the skip is
+ *      logged on the progress stream as its own line
+ *      ("compile_host_skipped_fresh: ..."). forceCompile /
+ *      RTESIM_FORCE_COMPILE=1 always recompiles and re-stamps;
  *   5. execute it; it writes a v3 rte-runtime-session-jsonl identical in
  *      schema to twin/harness.py's TwinSession.
  */
@@ -50,6 +58,11 @@ struct SimOptions {
     // F15: without PlantCodegenLib the run is refused unless this opt-in is
     // set (the fallback plant is a physics substitute, not the graph's).
     bool allowFallbackPlant = false;
+    // Step-4 compile cache override: ignore a fresh <workDir>/.input_hash
+    // stamp and always recompile + re-stamp. Same effect as the
+    // RTESIM_FORCE_COMPILE=1 environment variable (the two OR together, so
+    // CLI/GUI callers inherit the env escape hatch with no new switch).
+    bool forceCompile = false;
 };
 
 // Directory layout used inside workDir; exposed for structural tests.

@@ -1,7 +1,12 @@
 #include "RTESim/SimRunner.h"
 
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <system_error>
 
@@ -73,6 +78,188 @@ std::string FloatLiteral(double v) {
     if (s.find_first_of(".eE") == std::string::npos) s += ".0";
     s += "f";
     return s;
+}
+
+/* --------------------------------------------------------------------------
+ * Step-4 compile cache: fingerprint of everything the scenario-host build
+ * consumes. CompileHost recompiles ONLY when this changes, or when forced.
+ *
+ * Inputs hashed (post EmitSw/GeneratePlant/StageHostSources, i.e. the very
+ * bytes the compiler sees):
+ *   - every regular file under layout.sw   (emitted firmware tree — the sw
+ *     graph + base-source product),
+ *   - every regular file under layout.plant (plant codegen output — the
+ *     plant graph product),
+ *   - every regular file under layout.host  (fixed runtime + the
+ *     graph-derived sim_config_seed.inc),
+ *   - the compiler identity: the RTESIM_CXX spelling AND the first
+ *     `cxx --version` line, so a toolchain swap invalidates instead of
+ *     reusing an ABI-stale binary.
+ * The built sim_host binary is EXCLUDED: it is the cached OUTPUT, not an
+ * input. Runtime knobs (duration, dt-sub, supply, dyno, events, telemetry)
+ * are sim_host argv — they never reach the compile, so they are deliberately
+ * NOT hashed (GUI iterations over them must reuse the binary).
+ *
+ * The stamp file lives at <workDir>/.input_hash (outside the three hashed
+ * trees, so it never feeds its own fingerprint).
+ * -------------------------------------------------------------------------- */
+
+const char* const kFingerprintScheme = "rtesim-sim-host-cache/1";
+const char* const kStampFileName = ".input_hash";
+
+// SHA-256 over in-memory bytes; the exact proven core of
+// RTEAutomation/src/CachePaths.cpp (that copy is anonymous-namespace over
+// there — duplicating the ~40 lines keeps RTESim out of RTEAutomation
+// internals).
+constexpr std::array<std::uint32_t, 64> kSha256K = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
+
+std::string Sha256(std::string input) {
+    const std::uint64_t bitLength = static_cast<std::uint64_t>(input.size()) * 8;
+    input.push_back(static_cast<char>(0x80));
+    while ((input.size() % 64) != 56) input.push_back('\0');
+    for (int shift = 56; shift >= 0; shift -= 8)
+        input.push_back(static_cast<char>((bitLength >> shift) & 0xff));
+    std::array<std::uint32_t, 8> h = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+                                      0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+    for (std::size_t offset = 0; offset < input.size(); offset += 64) {
+        std::array<std::uint32_t, 64> w{};
+        for (int i = 0; i < 16; ++i) {
+            const auto* p = reinterpret_cast<const unsigned char*>(input.data() + offset + i * 4);
+            w[i] = (std::uint32_t(p[0]) << 24) | (std::uint32_t(p[1]) << 16)
+                 | (std::uint32_t(p[2]) << 8) | std::uint32_t(p[3]);
+        }
+        for (int i = 16; i < 64; ++i) {
+            const auto s0 = std::rotr(w[i-15],7) ^ std::rotr(w[i-15],18) ^ (w[i-15] >> 3);
+            const auto s1 = std::rotr(w[i-2],17) ^ std::rotr(w[i-2],19) ^ (w[i-2] >> 10);
+            w[i] = w[i-16] + s0 + w[i-7] + s1;
+        }
+        auto [a,b,c,d,e,f,g,hh] = h;
+        for (int i = 0; i < 64; ++i) {
+            const auto s1 = std::rotr(e,6) ^ std::rotr(e,11) ^ std::rotr(e,25);
+            const auto ch = (e & f) ^ (~e & g);
+            const auto t1 = hh + s1 + ch + kSha256K[i] + w[i];
+            const auto s0 = std::rotr(a,2) ^ std::rotr(a,13) ^ std::rotr(a,22);
+            const auto maj = (a & b) ^ (a & c) ^ (b & c);
+            const auto t2 = s0 + maj;
+            hh=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
+        }
+        h[0]+=a; h[1]+=b; h[2]+=c; h[3]+=d; h[4]+=e; h[5]+=f; h[6]+=g; h[7]+=hh;
+    }
+    std::ostringstream out;
+    out << std::hex << std::setfill('0');
+    for (auto value : h) out << std::setw(8) << value;
+    return out.str();
+}
+
+std::string HostCompiler() {
+    const char* cxxEnv = std::getenv("RTESIM_CXX");
+    return cxxEnv && *cxxEnv ? cxxEnv : "g++";
+}
+
+bool ForceCompileRequested() {
+    const char* env = std::getenv("RTESIM_FORCE_COMPILE");
+    return env && *env && std::string(env) != "0";
+}
+
+// First `cxx --version` line; ok=false when the compiler could not even be
+// probed (CompileHost then produces the honest "could not start" error).
+std::string CompilerVersionLine(const std::string& cxx, bool& ok) {
+    RTEAutomation::ProcessSpec probe;
+    probe.executable = cxx;
+    probe.arguments.push_back("--version");
+    std::string first;
+    const auto result = RTEAutomation::RunProcess(probe, [&](const std::string& line) {
+        if (first.empty()) first = line;
+    });
+    ok = result.started && result.exitCode == 0 && !first.empty();
+    return first;
+}
+
+// digest = sha256 over a canonical blob of: compiler identity, then per
+// staged file (sorted, paths relative to the work dir) its relative path,
+// byte size and sha256 of its bytes. Per-file hashes keep peak memory at the
+// largest single staged file, not the tree sum.
+bool ComputeHostInputFingerprint(const SimLayout& layout, const fs::path& workDir,
+                                 const std::string& cxx, std::string& digest,
+                                 std::string& error) {
+    bool versionOk = false;
+    const std::string version = CompilerVersionLine(cxx, versionOk);
+    if (!versionOk) {
+        error = "could not run '" + cxx + " --version'";
+        return false;
+    }
+    std::string blob = "rtesim-sim-host-inputs/1\n";
+    blob += "cxx\0";
+    blob += cxx;
+    blob += "\0cxx-version\0";
+    blob += version;
+    blob.push_back('\0');
+    for (const fs::path* root : {&layout.sw, &layout.plant, &layout.host}) {
+        std::vector<fs::path> files;
+        std::error_code ec;
+        for (const auto& entry : fs::recursive_directory_iterator(*root, ec)) {
+            if (!entry.is_regular_file(ec)) continue;
+            if (entry.path() == layout.binary) continue;   // cached output, not an input
+            files.push_back(entry.path());
+        }
+        if (ec) {
+            error = "could not walk " + root->string() + ": " + ec.message();
+            return false;
+        }
+        std::sort(files.begin(), files.end());
+        for (const auto& p : files) {
+            std::ifstream f(p, std::ios::binary);
+            if (!f) {
+                error = "could not read " + p.string();
+                return false;
+            }
+            std::ostringstream bytes;
+            bytes << f.rdbuf();
+            blob += "file\0";
+            blob += p.lexically_relative(workDir).generic_string();
+            blob.push_back('\0');
+            blob += std::to_string(bytes.str().size());
+            blob.push_back('\0');
+            blob += Sha256(bytes.str());
+            blob.push_back('\0');
+        }
+    }
+    digest = Sha256(std::move(blob));
+    return true;
+}
+
+bool StampMatches(const fs::path& stampPath, const std::string& fingerprint) {
+    std::string text;
+    if (!ReadTextFile(stampPath, text)) return false;
+    const nlohmann::json stamp = nlohmann::json::parse(text, nullptr, false);
+    if (stamp.is_discarded()) return false;
+    return stamp.value("scheme", std::string()) == kFingerprintScheme &&
+           stamp.value("fingerprint", std::string()) == fingerprint;
+}
+
+bool WriteStamp(const fs::path& stampPath, const std::string& fingerprint,
+                std::string& error) {
+    std::ofstream f(stampPath, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        error = "could not write " + stampPath.string();
+        return false;
+    }
+    f << nlohmann::json{{"scheme", kFingerprintScheme},
+                        {"fingerprint", fingerprint}}.dump(2) << '\n';
+    f.flush();
+    if (!f) {
+        error = "could not write " + stampPath.string();
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -380,10 +567,46 @@ bool SimRunner::StageHostSources(std::string& error) {
 }
 
 /* --------------------------------------------------------------------------
- * 4. Compile the scenario binary with the host system compiler
+ * 4. Compile the scenario binary with the host system compiler — SKIPPED
+ *    when the staged-input fingerprint still matches <workDir>/.input_hash
+ *    (see the cache block above); the stamp is only written after a compile
+ *    that produced a binary, so an interrupted/failed run never poisons it.
  * -------------------------------------------------------------------------- */
 
 bool SimRunner::CompileHost(std::string& error) {
+    const std::string cxx = HostCompiler();
+    const bool forced = options_.forceCompile || ForceCompileRequested();
+
+    std::string fingerprint;
+    std::string fingerprintError;
+    const bool fingerprinted =
+        ComputeHostInputFingerprint(layout_, options_.workDir, cxx, fingerprint,
+                                    fingerprintError);
+    if (!fingerprinted && logger_) {
+        // Degrades to pre-cache behavior: always build; the stamp stays
+        // unwritten and the next run simply re-tries.
+        logger_("input fingerprint unavailable (" + fingerprintError +
+                "); compile cache bypassed");
+    }
+
+    const fs::path stampPath = options_.workDir / kStampFileName;
+    {
+        std::error_code ec;
+        if (fingerprinted && !forced && fs::is_regular_file(layout_.binary, ec) &&
+            StampMatches(stampPath, fingerprint)) {
+            if (logger_) {
+                logger_("compile_host_skipped_fresh: staged host inputs "
+                        "unchanged; reusing " + layout_.binary.string() +
+                        " (set RTESIM_FORCE_COMPILE=1 to force a rebuild)");
+            }
+            return true;
+        }
+    }
+    if (forced && logger_) {
+        logger_("force-compile requested (forceCompile/RTESIM_FORCE_COMPILE); "
+                "recompiling scenario host");
+    }
+
     std::vector<std::string> sources;
     std::error_code ec;
     for (const auto& entry : fs::directory_iterator(layout_.sw / "generated", ec)) {
@@ -398,9 +621,6 @@ bool SimRunner::CompileHost(std::string& error) {
     sources.push_back((layout_.host / "platform_shim.cpp").string());
     sources.push_back((layout_.host / "Scenario.cpp").string());
     sources.push_back((layout_.plant / "plant_generated.cpp").string());
-
-    const char* cxxEnv = std::getenv("RTESIM_CXX");
-    const std::string cxx = cxxEnv && *cxxEnv ? cxxEnv : "g++";
 
     RTEAutomation::ProcessSpec proc;
     proc.executable = cxx;
@@ -434,6 +654,12 @@ bool SimRunner::CompileHost(std::string& error) {
     if (!fs::is_regular_file(layout_.binary, ec)) {
         error = "compile succeeded but " + layout_.binary.string() + " is missing";
         return false;
+    }
+    if (fingerprinted) {
+        std::string stampError;
+        if (!WriteStamp(stampPath, fingerprint, stampError) && logger_) {
+            logger_("warning: " + stampError + "; compile cache will miss next run");
+        }
     }
     return true;
 }
