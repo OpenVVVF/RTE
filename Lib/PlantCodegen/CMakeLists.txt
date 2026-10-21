@@ -77,12 +77,21 @@ plantcodegen_golden_ex(plant_golden_gen7_alt
 plantcodegen_golden_ex(plant_golden_cvclamp
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/gen7_cvclamp.json"
     plant_cvclamp cvclamp_generated)
+# DC/DC converter-family goldens (D1 namespaces per graph; the rigs run no
+# machine, the tests drive duty/phase through the PlantSetInput seam).
+plantcodegen_golden_ex(plant_golden_buckboost
+    "${RTE_SOURCE_DIR}/Assets/PlantExamples/buckboost_charger_example.json"
+    plant_buckboost_charger_example buckboost_generated)
+plantcodegen_golden_ex(plant_golden_dab
+    "${RTE_SOURCE_DIR}/Assets/PlantExamples/dab_pack_example.json"
+    plant_dab_pack_example dab_generated)
 
 add_executable(PlantCodegen_tests
     tests/test_plant_generator.cpp
     tests/test_golden_gen7.cpp
     tests/test_dual_plant.cpp
     tests/test_golden_teco.cpp
+    tests/test_golden_dcdd.cpp
     tests/test_plant_contract.cpp
 )
 
@@ -93,6 +102,8 @@ target_link_libraries(PlantCodegen_tests
             plant_golden_teco
             plant_golden_zero
             plant_golden_cvclamp
+            plant_golden_buckboost
+            plant_golden_dab
             GTest::gtest_main
             project_warnings
 )

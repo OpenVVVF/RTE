@@ -1,7 +1,7 @@
 {
   "name": "buckboost_charger_example",
   "schemaVersion": 1,
-  "description": "PROVISIONAL - synchronous two-quadrant buck/boost charger rig: bench-fed HV bus (96 V, 60/20 A supply class with the real series-R) steps down through the converter into a stiff-capacitor LV pack (0.50 F at 48 V nominal; the pack's own source/sink is current-blocked, so charge it absorbs shows up as pack voltage rise). Duty is driven per control period by the scenario host (plant-input / set_input); this rig carries no machine - the loss-law chain stays out (its constants are bridge-machine-calibrated, not converter-calibrated), so the only power accounting is the winding-distortion path the model tracks itself. Hall anchors on the inductor and the high-side draw; both buses measured. All constants here are calibration targets with no recorded evidence yet.",
+  "description": "PROVISIONAL - synchronous two-quadrant buck/boost charger rig: bench-fed HV bus (96 V, 60/20 A supply class with the real series-R) steps down through the converter into a stiff-capacitor LV pack (5.0 F at 48 V nominal; the pack's own source/sink is current-blocked, so charge it absorbs shows up as pack voltage rise). Duty is driven per control period by the scenario host (plant-input / set_input); this rig carries no machine - the loss-law chain stays out (its constants are bridge-machine-calibrated, not converter-calibrated), so the only power accounting is the winding-distortion path the model tracks itself. Hall anchors on the inductor and the high-side draw; both buses measured. All constants here are calibration targets with no recorded evidence yet.",
   "bridges": [],
   "nodes": [
     {

@@ -171,10 +171,10 @@ diagnostics out, collected into the `PlantMeas` the host reads per step).
 See the contract's §Host interface for the exact semantics and the
 python/C++/CLI spellings.
 
-## The v1.1 template library (17 nodes)
+## The v1.1 template library (22 nodes)
 
 Namespace `Plant.<Group>.<Name>`; groups: `Io`, `Inverter`, `Machine`,
-`Shaft`, `Loss`, `Thermal`, `Sensor`, `Fault`, `Util` — with `Plant.DcBus`
+`DcDc`, `Shaft`, `Loss`, `Thermal`, `Sensor`, `Fault`, `Util` — with `Plant.DcBus`
 as the single documented two-segment exception. Authoritative
 parameter lists (with per-parameter descriptions, units in the text) live in
 each folder's `node.json`.
@@ -182,10 +182,15 @@ each folder's `node.json`.
 | Node | Semantics |
 |---|---|
 | `Plant.Io.DutyIn` | du/dv/dw external duty inputs (host-assigned; boot default 50/50/50) |
-| `Plant.Io.MeasOut` | measurement collector (PlantMeas seam): 17 platform channels + `P_Heat_W`/`P_Dc_W`/`P_ShaftEm_W` truth-side diag ports; encoder channels optional (encoder-less rigs read `null`); unwired channels are NaN, not 0 |
+| `Plant.Io.MeasOut` | measurement collector (PlantMeas seam): 17 platform channels + `P_Heat_W`/`P_Dc_W`/`P_ShaftEm_W` truth-side diag ports; unwired channels are NaN, not 0 — optional (unpopulated -> `null`) per the 2026-10-21 widening: `Enc_Sin`/`Enc_Cos`, `Vu_V`/`Vv_V`/`Vw_V`, `Temp_Inv1..3_C`/`Temp_Motor_C`, `Mech_Rpm`, `Elec_Rpm`, and the truth-diag three |
 | `Plant.Inverter.Knee3ph` | duty+vdc -> phase volts with IGBT knee + deadtime + Rce; optional `OpenGates` input floats the legs (all voltage views zero); `V_U_Raw/V_V_Raw/V_W_Raw` pre-distortion taps wired to the phase-ADC sense chain |
-| `Plant.Machine.PmsmDq` | PMSM dq-Euler, torque, angle, abc currents, open-gate collapse |
+| `Plant.Machine.PmsmDq` | PMSM dq-Euler (IPM), torque, angle, abc currents, open-gate collapse |
+| `Plant.Machine.SpmsmDq` | surface-PM machine (SPMSM): single per-phase inductance `L_H` (Ld == Lq by construction), torque strictly 1.5·pp·Λ·Iq — no reluctance term can creep in |
+| `Plant.Machine.SynRelPmsm` | PM-assisted synchronous reluctance (PMa-SyRM, Energica bike class): full PMSM dq-Euler with saliency (Ld != Lq; the (Ld−Lq)·Id·Iq reluctance product is often the dominant torque share) — same physics as PmsmDq, distinct template so the family isn't mistaken for non-salient |
+| `Plant.Machine.SwitchedReluctance` | analytic flux-map SRM (3-phase / N-tooth, Asgar/Ellis form): algebraic ψ(i,θ), per-phase winding drive (no dq frame), exact coenergy torque; `Omega_Elec` carries MECHANICAL rad/s |
 | `Plant.Machine.InductDq` | induction machine, stationary-frame coupled-L (V/Hz); `Omega_Elec` machine speed + `Omega_Cmd` controller-pushed command speed |
+| `Plant.DcDc.BuckBoost2Q` | two-quadrant synchronous buck/boost cell (average model): inductor integrates the duty-windowed leg voltage with knee-class distortion; high-bus draw = duty·i_L, buck and boost by current sign; OpenGates freewheel-collapse on the family 2 ms tau; `Duty` is a controller-side external (unwired zero-binds) |
+| `Plant.DcDc.DualActiveBridge` | dual active bridge (average square-wave law P = V_H·(V_L·Ratio)·φ·(π−|φ|) / (2π²·f_sw·L_k), φ the signed bridge phase shift via unwired `PhaseShift`): zero at φ=0, clamped at |φ|=π; combinational — gate kill zeroes the transfer outright |
 | `Plant.Shaft.Dyno` | external rotor-speed input (host-assigned; `Rpm0` canonical, legacy `StartRpm` tolerated) |
 | `Plant.Shaft.FreeInertia` | J/B shaft integration from machine torque |
 | `Plant.DcBus` | link capacitor + bench supply (CV / source / sink / CV-clamp); all seven supply params runtime-mutable |
@@ -199,14 +204,32 @@ each folder's `node.json`.
 | `Plant.Util.Hypot` | Out = hypot(A, B) |
 | `Plant.Util.AbsOmega` | Om = abs(Omega_Elec)/Poles |
 
+**Machine-family conventions.** The dq variants (PmsmDq/IPM,
+SynRelPmsm/PMa-SyRM, SpmsmDq/SPM) carry the `Poles` **pole-pair**
+convention throughout; `SpmsmDq` is the single-inductance form (Ld == Lq
+by construction, torque strictly PM), `SynRelPmsm` the saliency-forward
+form. The SRM has no synchronous frame at all: `Omega_Elec` on
+`SwitchedReluctance` carries **mechanical** rad/s, position maps onto
+rotor teeth (`RotorTeeth`), and shaft nodes wired into an SRM graph must
+run **`Poles=1`** to express mechanical speed. The `DcDc` converter rigs
+have **no shaft**: there is no DutyIn/Dyno in those graphs, duty or bridge
+phase shift arrives through the unwired-input seam (`set_input` /
+`PlantSetInput` / `rte sim` `kind=plant-input`), and the speed/encoder/
+temperature channels stay unpopulated — legal since the 2026-10-21
+MeasOut optionality widening (the optional set: `Enc_Sin`/`Enc_Cos`,
+`Vu_V`/`Vv_V`/`Vw_V`, `Temp_Inv1_C`..`Temp_Inv3_C`/`Temp_Motor_C`,
+`Mech_Rpm`/`Elec_Rpm`, and the truth-diag three
+`P_Heat_W`/`P_Dc_W`/`P_ShaftEm_W`; required remain `Iu/Iv/Iw_A`, `Vdc_V`,
+`Dclink_I_A`/`Dclink_P_W`).
+
 Physics sources of truth: `twin/plant/plant.py`, `twin/plant/induction.py`
 (python reference), and the recorded campaign data
 (`Documentation/Docs/Safety-and-Compliance/Testing/`).
 
-## The three example plants
+## The eight example plants
 
 All in `Assets/PlantExamples/`; none use bridges (plant graphs never do).
-All three wire the phase-ADC sense chain (Knee `V_*_Raw` -> 1.5 ms-lag
+The three machine benches wire the phase-ADC sense chain (Knee `V_*_Raw` -> 1.5 ms-lag
 `VoltageSense` per phase -> `Meas.Vu_V/Vv_V/Vw_V`) and the truth-side
 diagnostics (`Loss.P_Plate -> P_Heat_W`, `Draw.Out -> P_Dc_W`,
 `Machine.P_Elec -> P_ShaftEm_W`); unwired channels (`Temp_Inv3_C`,
@@ -239,6 +262,37 @@ road peaks including the 900 A runs. Parameters are marked TBD until the
 riding telemetry lands in `twin/recordings/`; once it does, replace the
 parameter pack and thermal assembly with the bike's measured values.
 
+**`spmsm_bench_example.json`** — the Gen7-shaped bench chain (dyno hold,
+CM600DY-class knee, 19.8 mF CV-supplied link, two-node thermal, hall +
+MAX22530 + sin/cos views, truth-diag seams) driving a generic surface-PM
+machine class (7 pole pairs, 0.014 Wb): the SPM variant of the bench.
+
+**`energica_synrelpmsm.json`** — PROVISIONAL Energica motorcycle-class rig:
+PMa-SyRM machine (synchronous-reluctance-dominant; literature placeholder
+parameters — Lq/Ld = 2.5, 0.052 Wb, 8 pole pairs) on a 350 V bike-pack link
+(4.08 mF, 450 V-class), pending machine-report calibration evidence.
+
+**`srm_bench_small.json`** — PROVISIONAL small switched-reluctance bench:
+3-phase / 6-tooth analytic flux-map machine on a 96 V / 60 A bench CV source.
+Shares the machine-family chain (knee bridge, halls, fault point, phase-ADC
+view, truth diags) with the loss law fed |I_U|+|I_V| — SRM windings are not a
+dq pair.
+
+**`buckboost_charger_example.json`** — PROVISIONAL two-quadrant buck/boost
+charger rig: bench-fed 96 V HV bus (60/20 A source/sink class, real series-R)
+through the converter into a stiff-capacitor 48 V LV pack whose own
+source/sink is current-blocked (absorbed charge shows up as pack voltage
+rise). Duty is driven per control period by the scenario host
+(`plant-input`); the loss-law chain stays out (its constants are
+bridge-machine-calibrated, not converter-calibrated). All constants are
+calibration targets with no recorded evidence yet.
+
+**`dab_pack_example.json`** — PROVISIONAL dual-active-bridge pack: 350 V
+bench-fed HV side (4.08 mF link) to a stiff 96 V LV pack, the bridge phase
+shift (radians) driven per control period through `plant-input`. Both buses
+carry supplies; the average model excludes winding losses and transformer
+saturation — constants are provisional stand-ins pending real measurements.
+
 ## Name-mapping glossary (python / C++ / rte sim / twin harness)
 
 The same external reached from four surfaces (see the contract §Host
@@ -260,18 +314,33 @@ interface for the semantics):
 The python reference evaluator `twin/plantgraph/plantgraph.py`
 (`PlantGraphSim`, `_run_pass`) implements the contract above and is
 **format-proven against the certified monolithic plant** — the same plant that
-reproduces all 22 recorded fault-campaign scenarios (twin ROADMAP M5). Two
-proofs, both currently **PASS** (extended coverage since v1.1):
+reproduces all 22 recorded fault-campaign scenarios (twin ROADMAP M5). Three
+proofs, all currently **PASS** (machine/DC-DC coverage landed 2026-10-20/21):
 
 ```bash
 # run from the workspace root (not from twin/):
 PYTHONPATH=. python3 -m twin.plantgraph.proof_bench_parity
 PYTHONPATH=. python3 -m twin.plantgraph.proof_teco_parity
+PYTHONPATH=. python3 -m twin.plantgraph.proof_machines_parity
 ```
 
 Reports land in `twin/out/plantgraph_proof.json` and
 `twin/out/plantgraph_proof_teco.json` (regenerated artifacts — the gate is
 the PASS verdict, not the bytes).
+
+**Machine/DC-DC parity** (`proof_machines_parity`, graphs
+`spmsm_bench_example` / `energica_synrelpmsm` / `srm_bench_small` /
+`buckboost_charger_example` / `dab_pack_example`): a scripted dyno drive
+(the SPMSM/SyRM/SRM machine packs), plus the two converter rigs driven
+through the unwired-input seam (duty / bridge phase shift per segment) —
+the rigs carry no machine, so truth checkpoints read the converter/bus
+state fields directly. Pins: SRM analytic properties (torque zero at 0 A and
+at alignment; coenergy-vs-finite-difference ≤ 7.28e-04 rel) and the DAB
+transfer law engine-isolated over a six-case phi sweep (state-fed bus
+volts, worst rel diff 6.59e-05). Current committed verdicts: buck/boost vs
+cpp 0.047 abs / 6e-4 rel (worst channel `P_High`); DAB pack trajectory
+inside the documented 10 % stiff-bus attractor band. **ALL_PASS** on the
+five-graph gate.
 
 **Bench parity** (`proof_bench_parity`, graph `gen7_bench_pmsm.json` vs
 `twin.plant.plant.Plant`, current committed report): an identical scripted
@@ -333,14 +402,18 @@ matches to quantization.
 
 ### The C++-engine test landscape
 
-- `PlantCodegen_tests` (Lib/PlantCodegen, 44 gtest cases + audit v1.2): scheduler frozen
+- `PlantCodegen_tests` (Lib/PlantCodegen, 54 gtest cases + audit v1.2): scheduler frozen
   orders (asserted equal to the python-derived schedules), the validation
   matrix (identifier/domain/maxInstances/wiring/param errors, bridges,
-  combinational cycles, all three example graphs accepted), and the gen7
-  golden tape — C++-generated plant vs the python reference evaluator,
-  including the supply repoint and the OpenGates collapse window. The three
-  example graphs are also emitted and compiled as `plant_golden_*` libraries
-  with zero warnings under the project warning set
+  combinational cycles, the three machine-bench example graphs accepted), and
+  the golden tapes — C++-generated plant vs the python reference evaluator:
+  gen7 (bench campaign, supply repoint, OpenGates collapse), teco (V/Hz IM
+  tape + rail artifacts), and the DC/DC converter rigs (buck-boost duty
+  trajectory incl. the boost window and the 2 ms freewheel collapse; DAB
+  isolated-law pins with state-fed bus volts, clamp, reversal, gate kill).
+  The gen7/teco/zero/cvclamp/buckboost/dab graphs are also emitted at build
+  time and compiled as `plant_golden_*` libraries (seven targets) with zero
+  warnings under the project warning set
   (`-Wall -Wextra -Wno-missing-field-initializers`).
 - `RTESim_tests` (Source/RTESim, 14 gtest cases): scenario/event/supply/
   dyno-series parsing, session-start + record schema byte-compatibility with
@@ -352,7 +425,9 @@ matches to quantization.
 - `twin/native/tools/parity.py`: the python-twin-vs-native-C++ twin gate
   (M3a), kept as the monolith-side reference for the same smoke scenario.
 
-Full suite after the review+fix rounds: 161/161 ctest (incl. the RTESim_e2e_smoke e2e label).
+Full suite: **170/170 ctest** (incl. the RTESim_e2e_smoke e2e label; the
+161/161 line in earlier revisions predates the v1.1 machine packs and the
+DC/DC golden tapes).
 
 ### What remains for closed-loop validation
 

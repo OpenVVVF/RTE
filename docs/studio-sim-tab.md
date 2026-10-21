@@ -136,6 +136,23 @@ spellings are in `docs/plant-nodegraph.md`'s glossary table):
   expressible from the CLI; a scripted ramp is the `var_series` follow-up
   (not yet on the timeline, with `config set` and `reboot`).
 
+The DC/DC converter rigs drive their externals through the same
+`kind=plant-input` event — those graphs carry no `DutyIn`/`Dyno`, so duty
+(BuckBoost2Q) or bridge phase shift (DualActiveBridge) is a named unwired
+input scriptable on the timeline:
+
+```bash
+rte sim --plant-graph Assets/PlantExamples/buckboost_charger_example.json \
+        ... --event 't=0.5 kind=plant-input arg=Duty=55'
+rte sim --plant-graph Assets/PlantExamples/dab_pack_example.json \
+        ... --event 't=0.5 kind=plant-input arg=PhaseShift=0.05'
+```
+
+Both converter packs are **provisional**: every constant is a stand-in
+calibration target with no recorded evidence yet (what is proven today is the
+dual-polarity converter semantics, per the graphs' description strings and
+`twin/plantgraph/proof_machines_parity.py`).
+
 Nothing is scheduled inside Studio: the runner applies events at sim time;
 Studio only edits a declarative timeline.
 
