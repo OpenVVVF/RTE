@@ -2,12 +2,15 @@
 
 #include <NodeAPI/Graph.h>
 
+#include "WireRoute.h"
+
 #include <QtNodes/DataFlowGraphModel>
 #include <QtNodes/Definitions>
 #include <QtNodes/internal/ConnectionIdHash.hpp>
 
 #include <QObject>
 #include <QPointF>
+#include <QPolygonF>
 #include <QString>
 
 #include <functional>
@@ -69,6 +72,14 @@ public:
     void SetConnectionWaypoints(QtNodes::ConnectionId const connectionId,
                                 std::vector<QPointF> scenePoints);
 
+    // The mini-router's choice for a waypoint-free connection (scene
+    // coordinates for the non-legacy line). nullptr when the cache has no
+    // entry for the connection. GraphScene fills it per recompute pass.
+    const WireRoute::AutoRouteChoice* AutoRoute(QtNodes::ConnectionId const connectionId) const;
+    void SetAutoRoutes(std::unordered_map<QtNodes::ConnectionId,
+                                          WireRoute::AutoRouteChoice> routes);
+    void ClearAutoRoutes();
+
     // Returns true when either endpoint node of the connection is excluded
     // from compile (used to grey out the wire).
     bool IsExcluded(QtNodes::ConnectionId const connectionId) const;
@@ -124,6 +135,7 @@ private:
     std::unordered_map<QtNodes::NodeId, std::string> qtIdToNodeId_;
     mutable std::unordered_map<QtNodes::ConnectionId, GraphConnection> connectionMap_;
     std::unordered_map<QtNodes::ConnectionId, std::vector<QPointF>> connectionWaypoints_;
+    std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> autoRoutes_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;
     // Effective exclusion set (NodeAPI node ids), refreshed by GraphScene.

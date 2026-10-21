@@ -471,6 +471,15 @@ void PlantEditorScreen::SetPanMouseButton(Qt::MouseButton button) {
     }
 }
 
+void PlantEditorScreen::SetGridSnap(bool on) {
+    if (view_) {
+        view_->SetGridSnap(on);
+    }
+    if (graphScene_) {
+        graphScene_->SetGridSnap(on);
+    }
+}
+
 void PlantEditorScreen::ConnectSceneSignals() {
     if (!graphScene_->Model() || !graphScene_->Scene()) {
         return;

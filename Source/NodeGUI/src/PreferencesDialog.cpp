@@ -58,6 +58,8 @@ AppPreferences LoadAppPreferences() {
         settings.value(QStringLiteral("rememberWindowGeometry"), true).toBool();
     preferences.allowExternalDeviceWrites =
         settings.value(QStringLiteral("allowExternalDeviceWrites"), false).toBool();
+    preferences.gridSnap =
+        settings.value(QStringLiteral("gridSnap"), true).toBool();
     preferences.undoHistoryLimit =
         std::clamp(settings.value(QStringLiteral("undoHistoryLimit"), 100).toInt(),
                    kMinimumHistoryLimit,
@@ -101,6 +103,7 @@ void SaveAppPreferences(const AppPreferences& preferences) {
                       preferences.rememberWindowGeometry);
     settings.setValue(QStringLiteral("allowExternalDeviceWrites"),
                       preferences.allowExternalDeviceWrites);
+    settings.setValue(QStringLiteral("gridSnap"), preferences.gridSnap);
     settings.setValue(QStringLiteral("undoHistoryLimit"), preferences.undoHistoryLimit);
     settings.setValue(QStringLiteral("buildLogLineLimit"),
                       preferences.buildLogLineLimit);
@@ -165,6 +168,16 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
                            QStringLiteral("Dark")});
     themeCombo_->setCurrentIndex(preferences.themeMode);
     generalLayout->addRow(QStringLiteral("Theme"), themeCombo_);
+
+    gridSnapCheck_ =
+        new QCheckBox(QStringLiteral("Snap nodes and wires to the scene grid"),
+                      generalPage);
+    gridSnapCheck_->setObjectName(QStringLiteral("pref.gridSnap"));
+    gridSnapCheck_->setChecked(preferences.gridSnap);
+    gridSnapCheck_->setToolTip(
+        QStringLiteral("Node origins, port rows and wire bends snap to the "
+                       "10-unit scene grid; turn off for free-form placement"));
+    generalLayout->addRow(QStringLiteral("Editor grid"), gridSnapCheck_);
 
     undoHistoryLimitSpin_ = new QSpinBox(generalPage);
     undoHistoryLimitSpin_->setRange(kMinimumHistoryLimit, kMaximumHistoryLimit);
@@ -302,6 +315,7 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.automaticallyShowBuildLogs = showBuildLogsCheck_->isChecked();
     preferences.rememberWindowGeometry = rememberWindowGeometryCheck_->isChecked();
     preferences.allowExternalDeviceWrites = allowExternalDeviceWritesCheck_->isChecked();
+    preferences.gridSnap = gridSnapCheck_->isChecked();
     preferences.undoHistoryLimit = undoHistoryLimitSpin_->value();
     preferences.buildLogLineLimit = buildLogLineLimitSpin_->value();
     preferences.firmwareBuildType = buildTypeCombo_->currentText();

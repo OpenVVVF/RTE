@@ -163,6 +163,20 @@ public:
     // Copy the current scene positions back into the NodeAPI graph model.
     void SyncPositionsFromScene();
 
+    // Grid-snap preference: node origins and wire bends snap to
+    // WireRoute::kGridPitch multiples. Default on.
+    void SetGridSnap(bool on);
+    bool GridSnap() const { return gridSnap_; }
+
+    // Programmatic translation that ends in the same completion path as a
+    // user drag (snap + outlines + position sync + change notification).
+    // Used by the offscreen smoke driver. Returns false for unknown nodes.
+    bool TranslateNode(const std::string& nodeId, const QPointF& delta);
+
+    // "<id>=x,y;<id>.<port>=x,y;..." — node origin and port socket scene
+    // positions, rounded to 0.01; serves grid-compliance smoke assertions.
+    QString DumpNodeGeometry(const std::string& nodeId) const;
+
 private:
     // Applies the greyed (excluded) or normal style to a node.
     void ApplyNodeExcludedVisual(QtNodes::NodeId qtId, bool exclude);
@@ -248,6 +262,16 @@ public:
     // Repaints a wire after its waypoint list changed.
     void RepaintConnection(QtNodes::ConnectionId qtId);
 
+    // The drag-complete path (shared by the QtNodes nodeMoved signal and the
+    // programmatic smoke move): snap, outlines, sync, notifications.
+    void OnNodeMoved(QtNodes::NodeId qtId);
+    void SnapNodeToGrid(QtNodes::NodeId qtId);
+    void SnapAllNodesToGrid();
+    // Refills the mini-router's per-connection route table (obstacle mask
+    // from live node bounds, wire crossings counted in deterministic order).
+    // Runs from NotifyChanged, i.e. after every drained graph mutation.
+    void RecomputeAutoRoutes();
+
     NodeAPI::Graph graph_;
     std::shared_ptr<QtNodes::NodeDelegateModelRegistry> registry_;
     std::unique_ptr<NodeGraphModel> model_;
@@ -287,6 +311,8 @@ public:
 
     // Optional default domain assigned by AddNodeAt (see the constructor).
     QString defaultDomain_;
+
+    bool gridSnap_ = true;
 
     // Non-schema top-level keys of the loaded source document, stashed at
     // LoadGraph for the save-time merge (description etc.; the NodeAPI JSON

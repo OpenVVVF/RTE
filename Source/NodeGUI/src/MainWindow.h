@@ -70,6 +70,11 @@ public:
     void SmokePickNode(const std::string& nodeId);
     // [smoke] select a wire by its graph id on the ACTIVE editor tab's scene.
     bool SmokePickConnection(const std::string& graphId);
+    // [smoke] shift a node by (dx, dy) through the drag-complete path (snaps
+    // when the grid preference is on). Returns false for unknown nodes.
+    bool SmokeMoveNode(const std::string& nodeId, double dx, double dy);
+    // [smoke] node origin + port socket scene positions for grid asserts.
+    QString SmokeDumpNodeGeometry(const std::string& nodeId);
     // [smoke] save the ACTIVE editor tab's document to a path (menu-free).
     QString SmokeSaveActiveAs(const QString& path);
 

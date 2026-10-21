@@ -21,6 +21,9 @@ struct AppPreferences {
     bool automaticallyShowBuildLogs = true;
     bool rememberWindowGeometry = true;
     bool allowExternalDeviceWrites = false;
+    // Snap node origins, port rows and wire bends to the scene grid
+    // (WireRoute::kGridPitch). Disabling restores free-form placement.
+    bool gridSnap = true;
     int undoHistoryLimit = 100;
     int buildLogLineLimit = 5000;
     QString firmwareBuildType = QStringLiteral("Release");
@@ -68,6 +71,7 @@ private:
     QCheckBox* showBuildLogsCheck_ = nullptr;
     QCheckBox* rememberWindowGeometryCheck_ = nullptr;
     QCheckBox* allowExternalDeviceWritesCheck_ = nullptr;
+    QCheckBox* gridSnapCheck_ = nullptr;
     QSpinBox* undoHistoryLimitSpin_ = nullptr;
     QSpinBox* buildLogLineLimitSpin_ = nullptr;
     QComboBox* buildTypeCombo_ = nullptr;

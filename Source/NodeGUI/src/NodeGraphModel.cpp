@@ -410,9 +410,9 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
         }
         connectionMap_.erase(it);
     }
-    connectionWaypoints_.erase(connectionId);
-
     const bool result = DataFlowGraphModel::deleteConnection(connectionId);
+    connectionWaypoints_.erase(connectionId);
+    autoRoutes_.erase(connectionId);
 
     if (consumerRef) {
         RefreshOptionalPortVisibility(consumerRef->nodeId);
@@ -475,6 +475,21 @@ void NodeGraphModel::SetConnectionWaypoints(QtNodes::ConnectionId const connecti
     } else {
         connectionWaypoints_[connectionId] = std::move(scenePoints);
     }
+}
+
+const WireRoute::AutoRouteChoice* NodeGraphModel::AutoRoute(
+    QtNodes::ConnectionId const connectionId) const {
+    const auto it = autoRoutes_.find(connectionId);
+    return it != autoRoutes_.end() ? &it->second : nullptr;
+}
+
+void NodeGraphModel::SetAutoRoutes(
+    std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> routes) {
+    autoRoutes_ = std::move(routes);
+}
+
+void NodeGraphModel::ClearAutoRoutes() {
+    autoRoutes_.clear();
 }
 
 bool NodeGraphModel::IsExcluded(QtNodes::ConnectionId const connectionId) const {

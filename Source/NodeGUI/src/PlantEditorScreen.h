@@ -52,6 +52,8 @@ public:
     bool CanUndo() const { return !undoHistory_.empty(); }
     bool CanRedo() const { return !redoHistory_.empty(); }
     void SetUndoHistoryLimit(int limit);
+    // Grid preference passthrough (nodes/wires snap; see GraphScene).
+    void SetGridSnap(bool on);
 
     QString StatusText() const;
 

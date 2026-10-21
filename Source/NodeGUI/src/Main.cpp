@@ -101,6 +101,13 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             window->SmokePickNode(arg.toStdString());
         } else if (kind == "pickconn") {
             window->SmokePickConnection(arg.toStdString());
+        } else if (kind == "movenode") {
+            const bool ok = window->SmokeMoveNode(arg.toStdString(),
+                                                  parts.value(2).toDouble(),
+                                                  parts.value(3).toDouble());
+            std::cout << "movenode " << arg.toStdString() << "=" << (ok ? "ok" : "failed") << "\n";
+        } else if (kind == "dumppos") {
+            std::cout << window->SmokeDumpNodeGeometry(arg.toStdString()).toStdString();
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
                 button->click();

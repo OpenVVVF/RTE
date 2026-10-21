@@ -1150,10 +1150,15 @@ void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
     ApplyThemeMode(preferences_.themeMode);
     if (view_) {
         view_->SetPanMouseButton(preferences_.panMouseButton);
+        view_->SetGridSnap(preferences_.gridSnap);
+    }
+    if (graphScene_) {
+        graphScene_->SetGridSnap(preferences_.gridSnap);
     }
     // [plant] Keep the plant screen in step with app preferences.
     if (plantScreen_) {
         plantScreen_->SetPanMouseButton(preferences_.panMouseButton);
+        plantScreen_->SetGridSnap(preferences_.gridSnap);
         plantScreen_->SetUndoHistoryLimit(preferences_.undoHistoryLimit);
     }
     if (buildLogView_) {
@@ -1690,6 +1695,19 @@ void MainWindow::SmokePickNode(const std::string& nodeId) {
 bool MainWindow::SmokePickConnection(const std::string& graphId) {
     GraphScene* active = ActiveGraphScene();
     return active && active->SelectConnection(graphId);
+}
+
+bool MainWindow::SmokeMoveNode(const std::string& nodeId, double dx, double dy) {
+    GraphScene* active = ActiveGraphScene();
+    return active && active->TranslateNode(nodeId, QPointF(dx, dy));
+}
+
+QString MainWindow::SmokeDumpNodeGeometry(const std::string& nodeId) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("no scene");
+    }
+    return active->DumpNodeGeometry(nodeId);
 }
 
 GraphScene* MainWindow::ActiveGraphScene() {

@@ -489,7 +489,9 @@ bool GraphView::BeginWireDrag() {
             return false;
         }
         wireDragWaypointIndex_ = leg;
-        wireDragAnchor_ = WireRoute::SnapToGrid(wireDragPressScene_);
+        wireDragAnchor_ = gridSnap_
+                              ? WireRoute::SnapToGrid(wireDragPressScene_)
+                              : wireDragPressScene_;
         points.insert(points.begin() + leg, wireDragAnchor_);
         cgo->move();
         model->SetConnectionWaypoints(wireDragConnection_, points);
@@ -516,7 +518,7 @@ void GraphView::UpdateWireDrag(const QPointF& scenePos) {
         return;
     }
 
-    QPointF target = WireRoute::SnapToGrid(scenePos);
+    QPointF target = gridSnap_ ? WireRoute::SnapToGrid(scenePos) : scenePos;
 
     // Axis lock: when the pull direction is dominantly one axis, keep the
     // other axis pinned at the drag-start reference so legs born orthogonal

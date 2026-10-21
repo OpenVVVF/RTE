@@ -27,6 +27,10 @@ public:
     void SetPanMouseButton(Qt::MouseButton button);
     Qt::MouseButton PanMouseButton() const { return panMouseButton_; }
 
+    // Whether wire-bend positions snap to the scene grid (shared preference,
+    // default on).
+    void SetGridSnap(bool on) { gridSnap_ = on; }
+
     // Called with the dragged node-type id and the drop position in scene
     // coordinates.
     std::function<void(const QString& typeId, const QPointF& scenePos)> onNodeTypeDropped;
@@ -78,6 +82,7 @@ private:
     bool nodeDragCursorActive_ = false;
     bool wireDragPending_ = false;
     bool wireDragActive_ = false;
+    bool gridSnap_ = true;
     QtNodes::ConnectionId wireDragConnection_{};
     int wireDragHandleAtPress_ = -1;
     int wireDragWaypointIndex_ = -1;

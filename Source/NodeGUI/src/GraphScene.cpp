@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include <QtNodes/Definitions>
+#include <QtNodes/internal/AbstractNodeGeometry.hpp>
 #include <QtNodes/internal/ConnectionGraphicsObject.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
@@ -334,10 +335,8 @@ void GraphScene::RebuildScene() {
 
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeMoved,
-                     [this](QtNodes::NodeId) {
-                         UpdateDomainOutlines();
-                         SyncPositionsFromScene();
-                         NotifyChanged();
+                     [this](QtNodes::NodeId qtId) {
+                         OnNodeMoved(qtId);
                      });
 
     // Keep our id maps and the domain outlines in sync when a node is
@@ -376,6 +375,7 @@ void GraphScene::RebuildScene() {
     };
 
     RefreshExclusionVisuals();
+    RecomputeAutoRoutes();
 }
 
 GraphScene::Adjacency GraphScene::BuildAdjacency() const {
@@ -776,6 +776,9 @@ void GraphScene::AutoArrange() {
             y += rowHeights[r] + verticalGap;
         }
         UpdateDomainOutlines();
+        if (gridSnap_) {
+            SnapAllNodesToGrid();
+        }
         SyncPositionsFromScene();
         NotifyChanged();
         return;
@@ -890,6 +893,9 @@ void GraphScene::AutoArrange() {
     }
 
     UpdateDomainOutlines();
+    if (gridSnap_) {
+        SnapAllNodesToGrid();
+    }
     SyncPositionsFromScene();
     NotifyChanged();
 }
@@ -1208,6 +1214,9 @@ void GraphScene::EndSelectedDomainDrag() {
         return;
     }
     selectedDomainMoved_ = false;
+    if (gridSnap_) {
+        SnapAllNodesToGrid();
+    }
     UpdateDomainOutlines();
     SyncPositionsFromScene();
     NotifyChanged();
@@ -1317,6 +1326,116 @@ void GraphScene::RepaintConnection(QtNodes::ConnectionId qtId) {
     if (auto* cgo = scene_->connectionGraphicsObject(qtId)) {
         cgo->move();    // prepareGeometryChange + endpoint refresh
         cgo->update();
+    }
+}
+
+void GraphScene::RecomputeAutoRoutes() {
+    if (!model_ || !scene_) {
+        return;
+    }
+
+    // Obstacle mask: live node bounds, inflated by half a grid pitch. A route
+    // hugging the inflated rim counts as clearing the node (corridors live
+    // one pitch off node bodies). Evaluation per connection EXCLUDES its own
+    // endpoint nodes — their sockets sit exactly on the node edge, inside
+    // the inflated rim.
+    struct Obstacle {
+        QtNodes::NodeId nodeId;
+        QRectF rect;
+    };
+    std::vector<Obstacle> obstacles;
+    obstacles.reserve(nodeIdMap_.size());
+    for (const auto& [nodeId, qtId] : nodeIdMap_) {
+        (void)nodeId;
+        auto* ngo = scene_->nodeGraphicsObject(qtId);
+        if (!ngo) {
+            continue;
+        }
+        const QSize size = NodeSize(nodeId);
+        QRectF rect(ngo->pos(), QSizeF(size));
+        rect.adjust(-WireRoute::kGridPitch / 2.0,
+                    -WireRoute::kGridPitch / 2.0,
+                    WireRoute::kGridPitch / 2.0,
+                    WireRoute::kGridPitch / 2.0);
+        obstacles.push_back(Obstacle{qtId, rect});
+    }
+
+    struct RouteJob {
+        QtNodes::ConnectionId qtId;
+        std::string graphId;
+        QPointF out;
+        QPointF in;
+    };
+    std::vector<RouteJob> jobs;
+    auto collect = [&](const std::string& graphId) {
+        const QtNodes::ConnectionId qtId = FindQtConnectionId(graphId);
+        auto* cgo = qtId.outNodeId == QtNodes::InvalidNodeId
+                        ? nullptr
+                        : scene_->connectionGraphicsObject(qtId);
+        if (!cgo) {
+            return;
+        }
+        jobs.push_back(RouteJob{qtId,
+                                graphId,
+                                cgo->mapToScene(cgo->endPoint(QtNodes::PortType::Out)),
+                                cgo->mapToScene(cgo->endPoint(QtNodes::PortType::In))});
+    };
+    for (const auto& connection : graph_.GetConnections()) {
+        collect(connection.id);
+    }
+    for (const auto& bridge : graph_.GetBridges()) {
+        collect(bridge.id);
+    }
+
+    // Source-near order with graph-id ties: the wire-crossing penalties see
+    // the same provisional routes on every deterministic pass.
+    std::sort(jobs.begin(), jobs.end(), [](const RouteJob& a, const RouteJob& b) {
+        if (a.out.y() != b.out.y()) {
+            return a.out.y() < b.out.y();
+        }
+        if (a.out.x() != b.out.x()) {
+            return a.out.x() < b.out.x();
+        }
+        return a.graphId < b.graphId;
+    });
+
+    WireRoute::AutoRouteContext environment;
+    environment.routed.reserve(jobs.size());
+    std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> routes;
+    for (const RouteJob& job : jobs) {
+        // User-authored bends always win and also count as wire traffic the
+        // auto routes must avoid.
+        if (const std::vector<QPointF>* wps = model_->ConnectionWaypoints(job.qtId);
+            wps && !wps->empty()) {
+            environment.routed.push_back(WireRoute::BuildRoute(job.out, job.in, *wps));
+            continue;
+        }
+
+        environment.obstacles.clear();
+        environment.obstacles.reserve(obstacles.size());
+        for (const Obstacle& obstacle : obstacles) {
+            if (obstacle.nodeId != job.qtId.outNodeId &&
+                obstacle.nodeId != job.qtId.inNodeId) {
+                environment.obstacles.push_back(obstacle.rect);
+            }
+        }
+
+        auto* cgo = scene_->connectionGraphicsObject(job.qtId);
+        const auto c1c2 = cgo->pointsC1C2();
+        const QPolygonF legacy = WireRoute::SampleCubic(job.out,
+                                                        cgo->mapToScene(c1c2.first),
+                                                        cgo->mapToScene(c1c2.second),
+                                                        job.in,
+                                                        24);
+        WireRoute::AutoRouteChoice choice =
+            WireRoute::PlanAutoRoute(job.out, job.in, legacy, environment);
+        environment.routed.push_back(choice.legacy ? legacy : choice.line);
+        routes.emplace(job.qtId, std::move(choice));
+    }
+    model_->SetAutoRoutes(std::move(routes));
+
+    for (const RouteJob& job : jobs) {
+        RepaintConnection(job.qtId);
     }
 }
 
@@ -1463,9 +1582,106 @@ void GraphScene::SetChangeCallback(std::function<void()> callback) {
 
 void GraphScene::NotifyChanged() {
     RefreshExclusionVisuals();
+    RecomputeAutoRoutes();
     if (changeCallback_) {
         changeCallback_();
     }
+}
+
+void GraphScene::SetGridSnap(bool on) {
+    if (gridSnap_ == on) {
+        return;
+    }
+    gridSnap_ = on;
+    if (on && scene_) {
+        SnapAllNodesToGrid();
+        UpdateDomainOutlines();
+        SyncPositionsFromScene();
+        NotifyChanged();
+    }
+}
+
+void GraphScene::SnapNodeToGrid(QtNodes::NodeId qtId) {
+    if (auto* ngo = scene_->nodeGraphicsObject(qtId)) {
+        const QPointF snapped = WireRoute::SnapToGrid(ngo->pos());
+        if (snapped != ngo->pos()) {
+            ngo->setPos(snapped);
+        }
+    }
+}
+
+void GraphScene::SnapAllNodesToGrid() {
+    for (const auto& [nodeId, qtId] : nodeIdMap_) {
+        (void)nodeId;
+        SnapNodeToGrid(qtId);
+    }
+}
+
+void GraphScene::OnNodeMoved(QtNodes::NodeId qtId) {
+    if (gridSnap_) {
+        SnapNodeToGrid(qtId);
+    }
+    UpdateDomainOutlines();
+    SyncPositionsFromScene();
+    NotifyChanged();
+}
+
+bool GraphScene::TranslateNode(const std::string& nodeId, const QPointF& delta) {
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end()) {
+        return false;
+    }
+    auto* ngo = scene_->nodeGraphicsObject(it->second);
+    if (!ngo) {
+        return false;
+    }
+    ngo->setPos(ngo->pos() + delta);
+    OnNodeMoved(it->second);
+    return true;
+}
+
+QString GraphScene::DumpNodeGeometry(const std::string& nodeId) const {
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end() || !scene_) {
+        return QStringLiteral("unknown node");
+    }
+    const QtNodes::NodeId qtId = it->second;
+    auto* ngo = scene_->nodeGraphicsObject(qtId);
+    if (!ngo) {
+        return QStringLiteral("unknown node");
+    }
+
+    auto fmtP = [](const QPointF& p) {
+        return QStringLiteral("%1,%2")
+            .arg(p.x(), 0, 'f', 2)
+            .arg(p.y(), 0, 'f', 2);
+    };
+    QStringList fields;
+    fields << QStringLiteral("%1=%2")
+                  .arg(QString::fromStdString(nodeId), fmtP(ngo->pos()));
+
+    const auto node = graph_.FindNode(nodeId);
+    const auto nodeType = node ? graph_.FindNodeType(node->type) : std::nullopt;
+    if (nodeType) {
+        auto emitPorts = [&](QtNodes::PortType portType,
+                             const std::vector<NodeAPI::Port>& ports) {
+            for (const auto& port : ports) {
+                const QtNodes::PortIndex index = FindPortIndex(nodeId, port.name, portType);
+                if (index == QtNodes::InvalidPortIndex) {
+                    continue;   // hidden optional / parameter-backed port
+                }
+                const QPointF scenePos = scene_->nodeGeometry().portScenePosition(
+                    qtId, portType, index, ngo->sceneTransform());
+                fields << QStringLiteral("%1.%2=%3")
+                              .arg(QString::fromStdString(nodeId),
+                                   QString::fromStdString(port.name),
+                                   fmtP(scenePos));
+            }
+        };
+        emitPorts(QtNodes::PortType::In, nodeType->inputPorts);
+        emitPorts(QtNodes::PortType::Out, nodeType->outputPorts);
+    }
+    return fields.join(QStringLiteral(";")) + QStringLiteral("\n");
 }
 
 void GraphScene::RegisterNodeTypes() {
@@ -1791,6 +2007,10 @@ QString GraphScene::AddNodeAt(const std::string& typeId,
         }
     }
     node.position = NodeAPI::Position{scenePos.x(), scenePos.y()};
+    if (gridSnap_) {
+        const QPointF snapped = WireRoute::SnapToGrid(scenePos);
+        node.position = NodeAPI::Position{snapped.x(), snapped.y()};
+    }
     // Instances start with the type's declared parameters left empty; they
     // are filled in via the node's parameter editor (double-click).
     for (const auto& [name, wireType] : nodeType->parameterTypes) {
