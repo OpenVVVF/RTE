@@ -1,3 +1,8 @@
+# Legacy scratch notes (pre-plant-graph era)
+
+Kept for history; the living roadmap for the plant/simulation work is in
+`docs/plant-nodegraph.md` ("What remains") and the twin repo ROADMAP M6.
+
 add compiler toolchain, and build a toolchain setup script that allows us to compile fw
 create simple tool that wraps those and allows us to go from node + base to full fw binary - planned for simulator too, codegen will emit into simulator base not fw base is only difference.
 
