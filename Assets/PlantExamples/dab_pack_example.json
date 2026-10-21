@@ -1,0 +1,293 @@
+{
+  "name": "dab_pack_example",
+  "schemaVersion": 1,
+  "description": "PROVISIONAL - Dual Active Bridge between a 350 V bench-fed HV side (450 V-class 4.08 mF link) and a stiff-capacitor 96 V LV pack. Both bridges modeled average: the phase shift (radians) is driven per control period by the scenario host via set_input / plant-input. Both buses carry their own supplies: the HV side also sources/sinks from a bench unit like a traction-bus emulator; the LV pack absorbs transfer as voltage change. Winding losses and transformer saturation are not part of this average model - every constant here is a provisional stand-in pending real measurements (dual polarity incl. the LV receive convention is the machinery being proven, not the magnitudes).",
+  "bridges": [],
+  "nodes": [
+    {
+      "id": "Dab",
+      "type": "Plant.DcDc.DualActiveBridge",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {
+        "Ratio_HL": "2.0",
+        "Lk_H": "0.000002",
+        "Fsw_Hz": "20000"
+      },
+      "position": {
+        "x": 440,
+        "y": 40
+      }
+    },
+    {
+      "id": "HVBus",
+      "type": "Plant.DcBus",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {
+        "Cap_F": "0.00408",
+        "SeriesR_mOhm": "15",
+        "VSet_V": "350.0",
+        "ILimit_A": "250",
+        "CanSink": "1",
+        "SinkLimit_A": "80",
+        "CvClamp_V": "0",
+        "CvClampSink_A": "0",
+        "V0_V": "350.0"
+      },
+      "position": {
+        "x": 660,
+        "y": -80
+      }
+    },
+    {
+      "id": "LVPack",
+      "type": "Plant.DcBus",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {
+        "Cap_F": "5.0",
+        "SeriesR_mOhm": "25",
+        "VSet_V": "96.0",
+        "ILimit_A": "0",
+        "CanSink": "0",
+        "SinkLimit_A": "0",
+        "CvClamp_V": "0",
+        "CvClampSink_A": "0",
+        "V0_V": "96.0"
+      },
+      "position": {
+        "x": 660,
+        "y": 160
+      }
+    },
+    {
+      "id": "VSenseH",
+      "type": "Plant.Sensor.VoltageSense",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {
+        "Lsb_V": "0.44",
+        "LagTau_S": "0.0"
+      },
+      "position": {
+        "x": 860,
+        "y": -80
+      }
+    },
+    {
+      "id": "VSenseL",
+      "type": "Plant.Sensor.VoltageSense",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {
+        "Lsb_V": "0.24",
+        "LagTau_S": "0.0"
+      },
+      "position": {
+        "x": 860,
+        "y": 160
+      }
+    },
+    {
+      "id": "Fault",
+      "type": "Plant.Fault.Point",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {},
+      "position": {
+        "x": 220,
+        "y": 420
+      }
+    },
+    {
+      "id": "Meas",
+      "type": "Plant.Io.MeasOut",
+      "domain": "plant",
+      "displayName": "",
+      "parameters": {},
+      "position": {
+        "x": 1100,
+        "y": 100
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1",
+      "from": {
+        "nodeId": "HVBus",
+        "portName": "Vdc"
+      },
+      "to": {
+        "nodeId": "Dab",
+        "portName": "V_High"
+      }
+    },
+    {
+      "id": "c2",
+      "from": {
+        "nodeId": "LVPack",
+        "portName": "Vdc"
+      },
+      "to": {
+        "nodeId": "Dab",
+        "portName": "V_Low"
+      }
+    },
+    {
+      "id": "c3",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "P_DrawHigh"
+      },
+      "to": {
+        "nodeId": "HVBus",
+        "portName": "P_Draw"
+      }
+    },
+    {
+      "id": "c4",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "P_DrawLow"
+      },
+      "to": {
+        "nodeId": "LVPack",
+        "portName": "P_Draw"
+      }
+    },
+    {
+      "id": "c5",
+      "from": {
+        "nodeId": "Fault",
+        "portName": "OpenGates"
+      },
+      "to": {
+        "nodeId": "Dab",
+        "portName": "OpenGates"
+      }
+    },
+    {
+      "id": "c6",
+      "from": {
+        "nodeId": "HVBus",
+        "portName": "Vdc"
+      },
+      "to": {
+        "nodeId": "VSenseH",
+        "portName": "V_True"
+      }
+    },
+    {
+      "id": "c7",
+      "from": {
+        "nodeId": "LVPack",
+        "portName": "Vdc"
+      },
+      "to": {
+        "nodeId": "VSenseL",
+        "portName": "V_True"
+      }
+    },
+    {
+      "id": "c8",
+      "from": {
+        "nodeId": "VSenseH",
+        "portName": "V_Meas"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Vdc_V"
+      }
+    },
+    {
+      "id": "c9",
+      "from": {
+        "nodeId": "VSenseL",
+        "portName": "V_Meas"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Vu_V"
+      }
+    },
+    {
+      "id": "c10",
+      "from": {
+        "nodeId": "HVBus",
+        "portName": "I_Link"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Dclink_I_A"
+      }
+    },
+    {
+      "id": "c11",
+      "from": {
+        "nodeId": "HVBus",
+        "portName": "P_Link"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Dclink_P_W"
+      }
+    },
+    {
+      "id": "c13",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "P_Transfer"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "P_Dc_W"
+      }
+    },
+    {
+      "id": "c14",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "I_High"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Iu_A"
+      }
+    },
+    {
+      "id": "c15",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "I_Low"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Iv_A"
+      }
+    },
+    {
+      "id": "c16",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "P_Transfer"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "P_ShaftEm_W"
+      }
+    },
+    {
+      "id": "c_iwA",
+      "from": {
+        "nodeId": "Dab",
+        "portName": "I_Low"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Iw_A"
+      }
+    }
+  ]
+}

@@ -6,26 +6,220 @@
   "maxInstances": 1,
   "isEntryPoint": true,
   "inputPorts": [
-    {"name": "Iu_A", "description": "Measured phase current U, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Iv_A", "description": "Measured phase current V, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Iw_A", "description": "Measured phase current W, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Vdc_V", "description": "Measured DC link voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Vu_V", "description": "Measured phase voltage U, V (MAX22530 view).", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Vv_V", "description": "Measured phase voltage V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Vw_V", "description": "Measured phase voltage W.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Enc_Sin", "description": "Encoder sin raw counts (optional: unpopulated rigs collect NaN->null).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Enc_Cos", "description": "Encoder cos raw counts (optional: unpopulated rigs collect NaN->null).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Temp_Inv1_C", "description": "NTC baseplate reading TS1, C.", "direction": "input", "type": {"quantity": "temperature", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Temp_Inv2_C", "description": "NTC baseplate reading TS2, C.", "direction": "input", "type": {"quantity": "temperature", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Temp_Inv3_C", "description": "NTC baseplate reading TS3, C (often null/unpopulated).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Temp_Motor_C", "description": "Motor thermistor reading, C (often null).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "Mech_Rpm", "description": "Mechanical speed, RPM.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Elec_Rpm", "description": "Electrical speed, RPM (mech*pp).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Dclink_I_A", "description": "DC-link current (regen-feed sign), A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
-    {"name": "Dclink_P_W", "description": "DC-link power (regen-feed sign), W.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "P_Heat_W", "description": "Truth: heat into the baseplate NTC chain (Loss.P_Plate), W.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "P_Dc_W", "description": "Truth: power drawn from the link (machine air-gap + total losses), W.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
-    {"name": "P_ShaftEm_W", "description": "Truth: machine air-gap electromechanical power (P_Elec), W.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+    {
+      "name": "Iu_A",
+      "description": "Measured phase current U, A.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Iv_A",
+      "description": "Measured phase current V, A.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Iw_A",
+      "description": "Measured phase current W, A.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Vdc_V",
+      "description": "Measured DC link voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Vu_V",
+      "description": "Measured phase voltage U, V (MAX22530 view).",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Vv_V",
+      "description": "Measured phase voltage V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Vw_V",
+      "description": "Measured phase voltage W.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Enc_Sin",
+      "description": "Encoder sin raw counts (optional: unpopulated rigs collect NaN->null).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Enc_Cos",
+      "description": "Encoder cos raw counts (optional: unpopulated rigs collect NaN->null).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Temp_Inv1_C",
+      "description": "NTC baseplate reading TS1, C. (optional: bare-rail rigs have no NTC strip; unwired -> NaN/null).",
+      "direction": "input",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Temp_Inv2_C",
+      "description": "NTC baseplate reading TS2, C. (optional: bare-rail rigs have no NTC strip; unwired -> NaN/null).",
+      "direction": "input",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Temp_Inv3_C",
+      "description": "NTC baseplate reading TS3, C (often null/unpopulated).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Temp_Motor_C",
+      "description": "Motor thermistor reading, C (often null).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Mech_Rpm",
+      "description": "Mechanical speed, RPM. (optional: no-shaft rigs; unwired -> NaN/null).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Elec_Rpm",
+      "description": "Electrical speed, RPM (mech*pp). (optional: no-shaft rigs; unwired -> NaN/null).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "Dclink_I_A",
+      "description": "DC-link current (regen-feed sign), A.",
+      "direction": "input",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Dclink_P_W",
+      "description": "DC-link power (regen-feed sign), W.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_Heat_W",
+      "description": "Truth: heat into the baseplate NTC chain (Loss.P_Plate), W.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "P_Dc_W",
+      "description": "Truth: power drawn from the link (machine air-gap + total losses), W.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "P_ShaftEm_W",
+      "description": "Truth: machine air-gap electromechanical power (P_Elec), W.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
   ],
   "outputPorts": [],
   "parameterTypes": {}

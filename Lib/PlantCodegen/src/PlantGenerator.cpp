@@ -306,6 +306,7 @@ std::pair<NodeClass, bool> Classify(const std::string& typeId) {
         "Plant.Machine.PmsmDq", "Plant.Machine.SpmsmDq",
         "Plant.Machine.SynRelPmsm", "Plant.Machine.SwitchedReluctance",
         "Plant.Machine.InductDq",
+        "Plant.DcDc.BuckBoost2Q",
         "Plant.Shaft.FreeInertia", "Plant.DcBus",
         "Plant.Thermal.TwoNodeCauer", "Plant.Sensor.VoltageSense",
     };
@@ -316,7 +317,7 @@ std::pair<NodeClass, bool> Classify(const std::string& typeId) {
     static const std::set<std::string> kComb = {
         "Plant.Io.MeasOut", "Plant.Inverter.Knee3ph", "Plant.Loss.FittedLaw",
         "Plant.Sensor.Hall", "Plant.Sensor.SinCosEncoder", "Plant.Util.Sum",
-        "Plant.Util.Hypot", "Plant.Util.AbsOmega",
+        "Plant.Util.Hypot", "Plant.Util.AbsOmega", "Plant.DcDc.DualActiveBridge",
     };
     return {NodeClass::kCombinational, kComb.count(typeId) > 0};
 }

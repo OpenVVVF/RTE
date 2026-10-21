@@ -1,0 +1,156 @@
+{
+  "id": "Plant.DcDc.BuckBoost2Q",
+  "displayName": "Buck/Boost DC/DC (2-quadrant sync)",
+  "defaultName": "Converter",
+  "description": "Synchronous two-quadrant DC/DC buck/boost cell: average model at the plant timescale (switching ripple below our dt resolution, ignored). The inductor integrates from the duty-windowed effective leg voltage with the inverter-class knee + deadtime + Rce distortion on the winding side; the average draw from the high bus is duty * i_L and handles buck and boost directions by current sign. OpenGates freewheel-collapses with the family 2 ms evidence time constant. Duty is a controller-side external (host-assigned per control period; unwired zero-binds for open-loop scripts via set_input / PlantSetInput / rte sim 'plant-input').",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "Duty",
+      "description": "High-side switch on-time fraction, percent (0-100). Controller-side external (unwired zero-binds; script per period via set_input).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "V_High",
+      "description": "High-side bus voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Low",
+      "description": "Low-side bus/battery voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "OpenGates",
+      "description": ">=0.5 freewheel-collapses the inductor; <0.5 = live.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "I_L",
+      "description": "Inductor current, A (signed: positive = high -> low).",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_High",
+      "description": "Average draw from the high bus, A (= duty * i_L).",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_Low",
+      "description": "Current into the low side, A (= i_L).",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_High",
+      "description": "Power leaving the high bus, W (= V_High * I_High; DEcBus P_Draw sink for the high side).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_Low",
+      "description": "Power into the low side, W (= V_Low * I_Low).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_Draw",
+      "description": "Alias of P_High for DcBus wiring.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_DrawLow",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "description": "Alias of -P_Low for direct-wiring an LV-side DcBus P_Draw."
+    }
+  ],
+  "parameterTypes": {
+    "L_H": {
+      "description": "Phase inductor, H.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Rs_Winding": {
+      "description": "Winding+trace series resistance, ohm.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Vce0_V": {
+      "description": "Effective switch knee forward drop, V.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Rce_Ohm": {
+      "description": "Effective switch-path resistance, ohm.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "TdOverhead": {
+      "description": "Deadtime distortion overhead (td_dead * f_sw), dimensionless.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    }
+  }
+}

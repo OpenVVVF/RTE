@@ -279,6 +279,8 @@ new graphs must do the same.
 | Plant.Machine.SpmsmDq | SPMSM (surface, non-salient): single inductance L_H, torque strictly PM (Ld==Lq by construction) |
 | Plant.Machine.SynRelPmsm | PM-assisted synchronous reluctance (PMa-SyRM, e.g. Energica bike class): full PMSM dq-Euler incl. the saliency torque term |
 | Plant.Machine.SwitchedReluctance | SRM analytic flux-map machine (3-phase/N-tooth): algebraic psi(i,theta), per-phase winding drive, MECHANICAL rad/s shaft semantics (shaft nodes use Poles=1) |
+| Plant.DcDc.BuckBoost2Q | two-quadrant synchronous buck/boost converter (average model + knee-class distortion) |
+| Plant.DcDc.DualActiveBridge | Dual-Active-Bridge DC/DC (average square-wave power law with bridge phase shift) |
 | Plant.Machine.InductDq | induction machine, stationary-frame coupled-L - serves BOTH scalar (V/Hz) and vector/FOC drive (the 5th-order model is control-agnostic; `teco_vhz_induction.json` exercises the scalar path, an FOC sw graph drives the same node unchanged); Omega_Elec machine speed + Omega_Cmd command-speed external (host set_input) |
 | Plant.Shaft.Dyno | external rotor-speed input (host-assigned); Rpm0 canonical initial RPM, derived views republish on assignment |
 | Plant.Shaft.FreeInertia | J/B shaft integration from machine torque (Rpm0 initial) |

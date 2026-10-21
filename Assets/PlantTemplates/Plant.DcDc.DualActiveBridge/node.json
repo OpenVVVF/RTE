@@ -1,0 +1,124 @@
+{
+  "id": "Plant.DcDc.DualActiveBridge",
+  "displayName": "Dual Active Bridge (DAB)",
+  "defaultName": "Converter",
+  "description": "Dual Active Bridge DC/DC: two full bridges through an HF transformer with the standard square-wave average power law  P = V_HV * (V_LV * Ratio) * phi * (pi - |phi|) / (2 * pi^2 * f_sw * L_k) , phase phi in radians between bridge switching midpoints (controller-side external via set_input; unwired zero-binds). Power flows from the leading bridge; zero at phi=0, clamped at |phi|=pi. Gate kill stops both bridges (no freewheel integrator - the transfer dies with the bridges). No internal dynamic state: I_High/I_Low are the algebraic side currents consistent with P (Ratio is the HV:LV turns ratio, Lk_H the primary-referred leakage inductance). Ripple and winding resistance are excluded from this average model; efficiency evidence lands in the loss layer when calibrated.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "V_High",
+      "description": "HV-side bus voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_Low",
+      "description": "LV-side bus voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "PhaseShift",
+      "description": "Bridge phase shift, radians (lead-sign = HV leads LV); controller-side external (unwired zero-binds).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    },
+    {
+      "name": "OpenGates",
+      "description": ">=0.5 stops both bridges (transfer killed).",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "P_Transfer",
+      "description": "Transferred power (signed: positive = HV -> LV), W.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_High",
+      "description": "Current out of the HV side into the bridge, A.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_Low",
+      "description": "Current out of the LV bus into the bridge, A (signed: NEGATIVE while the HV side delivers, i.e. the LV pack receives).",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_DrawHigh",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "description": "Alias of P_Transfer: direct-wire draw for the HV-side DcBus."
+    },
+    {
+      "name": "P_DrawLow",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "description": "Alias of -P_Transfer: direct-wire draw for the LV-side DcBus."
+    }
+  ],
+  "parameterTypes": {
+    "Ratio_HL": {
+      "description": "HV:LV turns ratio (transformer).",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Lk_H": {
+      "description": "Leakage inductance seen at the HV (primary) side, H.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Fsw_Hz": {
+      "description": "Switching frequency, Hz.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    }
+  }
+}
