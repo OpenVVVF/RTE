@@ -583,6 +583,37 @@ MainWindow::MainWindow(QWidget* parent)
     } else if (QScreen* screen = QApplication::primaryScreen()) {
         move(screen->availableGeometry().center() - frameGeometry().center());
     }
+
+    // Per-screen dock layouts persist across restarts too (the in-memory
+    // screenStates_ array used to die with the process - dossier P2-9):
+    // window/screenState.<i> mirrors what OnTabChanged saves per switch; the
+    // initial screen's state applies eagerly below, each later switch applies
+    // through the existing OnTabChanged restore hook.
+    for (int i = 0; i < 5; ++i) {
+        const QByteArray state = settings.value(
+            QStringLiteral("window/screenState.%1").arg(i)).toByteArray();
+        if (!state.isEmpty()) {
+            screenStates_[i] = state;
+        }
+    }
+    if (!screenStates_[0].isEmpty()) {
+        restoreState(screenStates_[0]);
+    }
+}
+
+void MainWindow::SaveScreenStates() {
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    // The active screen's layout lives in screenStates_[previousTab_] - write
+    // that fresh first so a never-switched-before exit isn't stale.
+    if (previousTab_ >= 0 && previousTab_ < 5) {
+        screenStates_[previousTab_] = saveState();
+    }
+    for (int i = 0; i < 5; ++i) {
+        if (!screenStates_[i].isEmpty()) {
+            settings.setValue(QStringLiteral("window/screenState.%1").arg(i),
+                              screenStates_[i]);
+        }
+    }
 }
 
 void MainWindow::SetupRuntime(const QString& serialPort,
@@ -2039,6 +2070,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (runtimeTab_) {
         runtimeTab_->SaveAutosave();
     }
+    SaveScreenStates();
     if (preferences_.rememberWindowGeometry) {
         QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
         settings.setValue(QStringLiteral("window/geometry"), saveGeometry());

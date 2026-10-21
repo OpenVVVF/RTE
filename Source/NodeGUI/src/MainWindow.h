@@ -62,6 +62,8 @@ public:
     // Frame the editor canvas to the full document content (called after
     // every successful load; also exposed in the View menu).
     void FrameCanvasToContent();
+    // Per-tab dock layouts persisted under window/screenState.<i> (P2-9).
+    void SaveScreenStates();
 
     GraphScene* Scene() const { return graphScene_.get(); }
 
