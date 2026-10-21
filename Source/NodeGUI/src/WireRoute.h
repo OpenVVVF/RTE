@@ -14,8 +14,12 @@
 
 namespace NodeGUI::WireRoute {
 
-// Grid pitch for waypoint snapping (scene units).
-inline constexpr double kGridPitch = 10.0;
+// Grid pitch for waypoint snapping (scene units). MUST equal the background
+// grid texture's fine pitch (QtNodes GraphicsView::drawBackground draws fine
+// lines at 15 / coarse at 150), so snapped geometry lands exactly on the
+// visible grid lines — meshing snap to a private grid reads as 'not
+// snapping' to the user (2026-10-21 OCD report).
+inline constexpr double kGridPitch = 15.0;
 
 QPointF SnapToGrid(const QPointF& p);
 // Rounds a measurement (port pitch, node height, ...) UP to a grid multiple.
