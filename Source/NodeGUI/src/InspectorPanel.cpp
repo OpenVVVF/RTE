@@ -8,8 +8,12 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPalette>
+#include <QPointer>
+#include <QTimer>
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 
 namespace NodeGUI {
@@ -17,6 +21,64 @@ namespace NodeGUI {
 namespace {
 
 constexpr char kNoDomainLabel[] = "(no domain)";
+
+// Commit-flash duration: long enough to register, short enough to not be
+// mistaken for a persistent state.
+constexpr int kCommitFlashDurationMs = 1000;
+
+// Qt palettes carry no error role, so red is adapted to the base luminance:
+// lighter red on dark themes (incl. themeMode 2), deeper red on light ones.
+QColor ErrorColor(const QPalette& palette) {
+    return palette.color(QPalette::Base).lightness() < 128
+               ? QColor(255, 104, 104)
+               : QColor(192, 0, 0);
+}
+
+// Commit-flash tint: the editor's Base washed toward Highlight — derived
+// from the live palette, so it tracks both light and dark themes instead of
+// hard-coding a hue that clashes with one of them.
+QColor CommitFlashColor(const QPalette& palette) {
+    const QColor base = palette.color(QPalette::Base);
+    const QColor highlight = palette.color(QPalette::Highlight);
+    constexpr double kBaseWeight = 0.78;
+    return QColor::fromRgbF(kBaseWeight * base.redF() + (1.0 - kBaseWeight) * highlight.redF(),
+                            kBaseWeight * base.greenF() + (1.0 - kBaseWeight) * highlight.greenF(),
+                            kBaseWeight * base.blueF() + (1.0 - kBaseWeight) * highlight.blueF());
+}
+
+// Validates a committed parameter text against the declared descriptor type.
+// Returns empty when acceptable or when no validation claim can be made
+// (parameter without a declared type, or a free-text (string) parameter).
+// Booleans accept the literal 0/1 the codegen emits; f32 requires the whole
+// trimmed text to parse as a finite float.
+QString ParameterValidationError(const std::optional<NodeAPI::WireType>& declaredType,
+                                 const QString& text) {
+    if (!declaredType) {
+        return QString{};
+    }
+    const QString trimmed = text.trimmed();
+    if (declaredType->quantity == NodeAPI::Quantity::Boolean) {
+        if (trimmed != QStringLiteral("0") && trimmed != QStringLiteral("1")) {
+            return QStringLiteral("expected a boolean constant (0 or 1), got '%1'")
+                .arg(trimmed);
+        }
+        return QString{};
+    }
+    if (declaredType->quantity == NodeAPI::Quantity::String) {
+        return QString{};
+    }
+    switch (declaredType->dtype) {
+        case NodeAPI::DType::F32: {
+            bool ok = false;
+            const float value = trimmed.toFloat(&ok);
+            if (!ok || !std::isfinite(value)) {
+                return QStringLiteral("expected a number (f32), got '%1'").arg(trimmed);
+            }
+            return QString{};
+        }
+    }
+    return QString{};
+}
 
 }  // namespace
 
@@ -210,7 +272,14 @@ void InspectorPanel::Rebuild() {
         rowLabel->setToolTip(parameterToolTip);
         formLayout->addRow(rowLabel, rowWidget);
 
-        paramRows_.push_back({name, edit, wireInput});
+        ParamRow row;
+        row.name = name;
+        row.edit = edit;
+        row.wireInput = wireInput;
+        row.declaredType = nodeType ? nodeType->FindParameterType(name)
+                                    : std::nullopt;
+        row.baseToolTip = parameterToolTip;
+        paramRows_.push_back(std::move(row));
         connect(edit, &QLineEdit::editingFinished, this, &InspectorPanel::ApplyParameters);
         connect(wireInput, &QCheckBox::toggled, this, &InspectorPanel::ApplyParameterInputs);
     }
@@ -271,14 +340,112 @@ void InspectorPanel::ApplyParameters() {
     if (!scene_) {
         return;
     }
-    std::map<std::string, std::string> updated;
-    for (const auto& row : paramRows_) {
-        updated[row.name] = row.edit->text().toStdString();
+    const std::string nodeId = scene_->NodeApiId(qtId_);
+    const auto node = nodeId.empty() ? std::nullopt : scene_->Graph().FindNode(nodeId);
+    if (!node) {
+        return;
+    }
+
+    // Start from the stored values; only rows whose text actually differs
+    // from the stored value are validated and take part in the commit
+    // (untouched rows are never flagged — fresh instances legitimately seed
+    // empty fields). Invalid rows revert to the stored value, exactly like
+    // the rename path reverts a rejected id. Disabled wire-driven rows are
+    // not value sources.
+    std::map<std::string, std::string> updated = node->parameters;
+    bool anyChanged = false;
+    std::vector<std::size_t> committedRows;
+    for (std::size_t i = 0; i < paramRows_.size(); ++i) {
+        ParamRow& row = paramRows_[i];
+        if (!row.edit->isEnabled()) {
+            continue;  // wire-driven row: the text is not a value source
+        }
+        const std::string& stored = node->parameters.at(row.name);
+        const QString text = row.edit->text().trimmed();
+        if (text.toStdString() == stored) {
+            continue;  // untouched: no validation claim, no styling churn
+        }
+        const QString error = ParameterValidationError(row.declaredType, text);
+        if (!error.isEmpty()) {
+            row.edit->setText(QString::fromStdString(stored));
+            MarkRowInvalid(i, error);
+            continue;
+        }
+        ClearRowState(i);
+        updated[row.name] = text.toStdString();
+        anyChanged = true;
+        committedRows.push_back(i);
+    }
+
+    // Revert-only (and re-committing the already stored values) leaves the
+    // document untouched: skip the write path so undo history records
+    // exactly one snapshot per real change.
+    if (!anyChanged) {
+        return;
     }
     const QString error = scene_->SetNodeParameters(qtId_, updated);
-    if (!error.isEmpty() && onError) {
-        onError(error);
+    if (!error.isEmpty()) {
+        if (onError) onError(error);
+        for (std::size_t i = 0; i < paramRows_.size(); ++i) {
+            ParamRow& row = paramRows_[i];
+            row.edit->setText(QString::fromStdString(node->parameters.at(row.name)));
+            ClearRowState(i);
+        }
+        return;
     }
+    for (const std::size_t row : committedRows) {
+        FlashRowCommitted(row);
+    }
+}
+
+void InspectorPanel::MarkRowInvalid(std::size_t row, const QString& reason) {
+    ParamRow& paramRow = paramRows_[row];
+    // Invalidate any pending flash restore so it cannot wipe the outline.
+    paramRow.edit->setProperty("flashToken",
+                               paramRow.edit->property("flashToken").toInt() + 1);
+    paramRow.edit->setProperty("paramCommitted", false);
+    paramRow.edit->setProperty("paramInvalid", true);
+    paramRow.edit->setStyleSheet(
+        QStringLiteral("QLineEdit { border: 2px solid %1; border-radius: 3px; }")
+            .arg(ErrorColor(paramRow.edit->palette()).name()));
+    paramRow.edit->setToolTip(reason + (paramRow.baseToolTip.isEmpty()
+                                            ? QString{}
+                                            : QStringLiteral("\n") + paramRow.baseToolTip));
+}
+
+void InspectorPanel::ClearRowState(std::size_t row) {
+    ParamRow& paramRow = paramRows_[row];
+    if (!paramRow.edit->property("paramInvalid").toBool()
+        && !paramRow.edit->property("paramCommitted").toBool()) {
+        return;  // nothing to clear: keep the default styling
+    }
+    // Invalidate any pending flash restore so it cannot fight the (re)set
+    // styles below.
+    paramRow.edit->setProperty("flashToken",
+                               paramRow.edit->property("flashToken").toInt() + 1);
+    paramRow.edit->setProperty("paramInvalid", false);
+    paramRow.edit->setProperty("paramCommitted", false);
+    paramRow.edit->setStyleSheet(QString());
+    paramRow.edit->setToolTip(paramRow.baseToolTip);
+}
+
+void InspectorPanel::FlashRowCommitted(std::size_t row) {
+    ParamRow& paramRow = paramRows_[row];
+    QLineEdit* edit = paramRow.edit;
+    edit->setProperty("paramInvalid", false);
+    edit->setProperty("paramCommitted", true);
+    const int token = edit->property("flashToken").toInt() + 1;
+    edit->setProperty("flashToken", token);
+    edit->setStyleSheet(QStringLiteral("QLineEdit { background-color: %1; }")
+                            .arg(CommitFlashColor(edit->palette()).name()));
+    QPointer<QLineEdit> guard(edit);
+    QTimer::singleShot(kCommitFlashDurationMs, this, [guard, token]() {
+        if (!guard || guard->property("flashToken").toInt() != token) {
+            return;
+        }
+        guard->setProperty("paramCommitted", false);
+        guard->setStyleSheet(QString());
+    });
 }
 
 void InspectorPanel::ApplyParameterInputs() {
