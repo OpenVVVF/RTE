@@ -4,16 +4,20 @@
 
 #include <QColor>
 #include <QComboBox>
+#include <QCryptographicHash>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSlider>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -28,12 +32,55 @@ constexpr int kTargetColumn = 1;
 constexpr int kValueColumn = 2;
 
 // First-load favorites, checked in order: G1 currents, G2 DC link, G3
-// speed (additional graphs start empty). Applied only when the user's
-// sets come up empty for the new session.
+// speed (additional graphs start empty). Applied only when neither a
+// persisted layout nor the in-memory carry-over covers the new session.
 const std::vector<QStringList> kDefaultSignals = {
     QStringList{QStringLiteral("cg_id_a"), QStringLiteral("cg_iq_a")},
     QStringList{QStringLiteral("vdc_v")},
     QStringList{QStringLiteral("Mech_RPM"), QStringLiteral("Elec_RPM")}};
+
+// Corrupt-settings guard for the restored graph count (the runtime autosave
+// LoadAutosave reads the same shape without a cap; the sim side caps).
+constexpr int kMaxPersistedGraphs = 12;
+
+// Same factory idiom as SimulateScreen::MakeSimSettings /
+// RuntimeTab::MakeSettings (per-TU copies of the 3-liner).
+QSettings MakeSimSettings() {
+    return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+}
+
+// QSettings group components nest on '/', so the session-file stem is
+// reduced to a filename-ish alphabet first (OnSavePreset does the same to
+// layout names with name.replace('/', '_')).
+QString SanitizeLayoutStem(const QString& stem) {
+    QString clean = stem;
+    for (QChar& ch : clean) {
+        if (!ch.isLetterOrNumber() && ch != u'-' && ch != u'_' && ch != u'.') {
+            ch = u'_';
+        }
+    }
+    return clean.isEmpty() ? QStringLiteral("session") : clean;
+}
+
+// Session-class discriminator: two files that share a stem but carry
+// different channel sets (a foc_demo run vs a DSR replay) keep separate
+// layouts. SHA-1 because qHash is salted per process and therefore useless
+// across restarts; 12 hex chars is ample here.
+QString ChannelSetHash(const QStringList& sortedNames) {
+    QCryptographicHash digest(QCryptographicHash::Sha1);
+    for (const QString& name : sortedNames) {
+        digest.addData(name.toUtf8() + '\n');
+    }
+    return QString::fromLatin1(digest.result().toHex().left(12));
+}
+
+QString LayoutGroupFor(const QString& sanitizedStem, const QString& channelHash) {
+    return QStringLiteral("sim/layouts/") + sanitizedStem + u'/' + channelHash;
+}
+
+QString LayoutStemHashKey(const QString& channelHash) {
+    return QStringLiteral("sim/layoutsByHash/") + channelHash;
+}
 
 }  // namespace
 
@@ -88,6 +135,7 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     topRow->setContentsMargins(4, 2, 4, 2);
     topRow->addWidget(new QLabel(QStringLiteral("Graphs"), rightPanel));
     countLabel_ = new QLabel(rightPanel);
+    countLabel_->setObjectName(QStringLiteral("simGraphCount"));
     topRow->addWidget(countLabel_);
     topRow->addStretch(1);
     topRow->addWidget(new QLabel(QStringLiteral("Plot view (sec)"), rightPanel));
@@ -142,6 +190,22 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(stack_);
+
+    // Write-through debounce for the per-session-class layout autosave
+    // (combo edits, graph add/remove); ~500 ms quiet window, then save.
+    layoutSaveTimer_ = new QTimer(this);
+    layoutSaveTimer_->setSingleShot(true);
+    layoutSaveTimer_->setInterval(500);
+    connect(layoutSaveTimer_, &QTimer::timeout, this, &SimTelemetryView::SaveLayout);
+}
+
+SimTelemetryView::~SimTelemetryView() {
+    // A change pending in the debounce window must still land on teardown
+    // (the runtime side likewise saves from MainWindow::closeEvent).
+    if (layoutSaveTimer_->isActive()) {
+        layoutSaveTimer_->stop();
+        SaveLayout();
+    }
 }
 
 NodeGUI::runtime::SignalPlotWidget* SimTelemetryView::MakePlot() {
@@ -180,6 +244,7 @@ void SimTelemetryView::AddGraph() {
     plots_.push_back(MakePlot());
     UpdateGraphCount();
     RebuildSignalTable();
+    ScheduleLayoutSave();
 }
 
 void SimTelemetryView::RemoveLastGraph() {
@@ -192,6 +257,7 @@ void SimTelemetryView::RemoveLastGraph() {
     plot->deleteLater();
     UpdateGraphCount();
     RebuildSignalTable();
+    ScheduleLayoutSave();
 }
 
 int SimTelemetryView::AssignedGraph(const QString& name) const {
@@ -226,8 +292,13 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
                              static_cast<std::size_t>(maxChannelSamples) + 16);
     session_->PopulateStore(store_);
 
+    // Restore the persisted layout for this session class (file stem +
+    // channel-set hash) ahead of the carry-over/default chain.
+    const bool restoredLayout = TryRestoreLayout();
+
     // Keep only assignments that still exist in this session; when that
-    // leaves every graph empty, fall back to the card-reader defaults.
+    // leaves every graph empty, fall back to the card-reader defaults
+    // (skipped when a restored layout deliberately assigns nothing).
     const QStringList names = session_->ChannelNames();
     for (QStringList& set : graphSignals_) {
         set.erase(std::remove_if(set.begin(), set.end(),
@@ -239,7 +310,7 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
     const bool anyAssigned = std::any_of(
         graphSignals_.begin(), graphSignals_.end(),
         [](const QStringList& set) { return !set.isEmpty(); });
-    if (!anyAssigned) {
+    if (!anyAssigned && !restoredLayout) {
         ApplyDefaultAssignments();
     }
     ApplyAssignments();
@@ -269,6 +340,87 @@ void SimTelemetryView::ApplyDefaultAssignments() {
             }
         }
     }
+}
+
+bool SimTelemetryView::TryRestoreLayout() {
+    // The save key always tracks the currently loaded session, even when no
+    // persisted entry exists yet: later edits land under THIS session class.
+    layoutStem_ = SanitizeLayoutStem(QFileInfo(sessionPath_).completeBaseName());
+    layoutChannelHash_ = ChannelSetHash(session_->ChannelNames());
+
+    auto settings = MakeSimSettings();
+    QString group = LayoutGroupFor(layoutStem_, layoutChannelHash_);
+    if (!settings.contains(group + QStringLiteral("/graphCount"))) {
+        // A renamed copy of an earlier session keeps the channel set: borrow
+        // the layout most recently stored under the same channel-set hash
+        // (read-only — the next edit re-keys it to this stem).
+        const QString borrowed =
+            settings.value(LayoutStemHashKey(layoutChannelHash_)).toString();
+        if (!borrowed.isEmpty() && borrowed != layoutStem_) {
+            const QString alt = LayoutGroupFor(borrowed, layoutChannelHash_);
+            if (settings.contains(alt + QStringLiteral("/graphCount"))) {
+                group = alt;
+            }
+        }
+    }
+    if (!settings.contains(group + QStringLiteral("/graphCount"))) {
+        return false;
+    }
+
+    // Same storage shape as RuntimeTab::LoadAutosave: graphCount + graphN
+    // QStringLists inside the group.
+    settings.beginGroup(group);
+    const int count = std::clamp(
+        settings.value(QStringLiteral("graphCount"), 3).toInt(),
+        1, kMaxPersistedGraphs);
+    std::vector<QStringList> sets;
+    for (int i = 0; i < count; ++i) {
+        sets.push_back(
+            settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList());
+    }
+    settings.endGroup();
+
+    graphSignals_ = std::move(sets);
+    // Resize the plot row through the same widget add/remove semantics as
+    // AddGraph / RemoveLastGraph, then UpdateGraphCount re-syncs; the
+    // LoadSession prune right after this drops channels the stored layout
+    // names but this session does not carry.
+    while (static_cast<int>(plots_.size()) < count) {
+        plots_.push_back(MakePlot());
+    }
+    while (static_cast<int>(plots_.size()) > count) {
+        auto* plot = plots_.back();
+        plots_.pop_back();
+        plotsLayout_->removeWidget(plot);
+        plot->deleteLater();
+    }
+    UpdateGraphCount();
+    return true;
+}
+
+void SimTelemetryView::ScheduleLayoutSave() {
+    if (layoutSaveTimer_ && session_) {
+        layoutSaveTimer_->start();  // single-shot: restarts the quiet window
+    }
+}
+
+void SimTelemetryView::SaveLayout() {
+    if (!session_ || layoutStem_.isEmpty() || layoutChannelHash_.isEmpty()) {
+        return;
+    }
+    auto settings = MakeSimSettings();
+    // Same graphCount + graphN shape as RuntimeTab::SaveAutosave, one group
+    // per session class.
+    settings.beginGroup(LayoutGroupFor(layoutStem_, layoutChannelHash_));
+    settings.setValue(QStringLiteral("graphCount"),
+                      static_cast<int>(graphSignals_.size()));
+    for (std::size_t i = 0; i < graphSignals_.size(); ++i) {
+        settings.setValue(QStringLiteral("graph%1").arg(i + 1),
+                          graphSignals_[i]);
+    }
+    settings.endGroup();
+    // Pointer for the renamed-copy borrow in TryRestoreLayout.
+    settings.setValue(LayoutStemHashKey(layoutChannelHash_), layoutStem_);
 }
 
 void SimTelemetryView::ApplyAssignments() {
@@ -406,6 +558,7 @@ void SimTelemetryView::RebuildSignalTable() {
                         graphSignals_[index - 1].push_back(key);
                     }
                     ApplyAssignments();
+                    ScheduleLayoutSave();
                 });
 
         auto* nameItem = new QTableWidgetItem(name);
