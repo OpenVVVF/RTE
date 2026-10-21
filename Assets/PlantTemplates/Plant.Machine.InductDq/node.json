@@ -2,7 +2,7 @@
   "id": "Plant.Machine.InductDq",
   "displayName": "Induction Machine (stationary frame)",
   "defaultName": "Induction",
-  "description": "Three-phase induction machine solved in the stationary frame (wf=0) for numerical robustness at line frequency: slip enters via machine speed; air-gap power returns at the command (synchronous) speed on the Omega_Cmd input. Matches twin/plant/induction.py.",
+  "description": "Three-phase induction machine (5th-order coupled-L) solved in the stationary frame (wf=0) for numerical robustness at line frequency - control-agnostic model that serves both scalar (V/Hz) and vector/FOC drive; slip enters via machine speed; air-gap power returns at the command (synchronous) speed on the Omega_Cmd input. Matches twin/plant/induction.py.",
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [

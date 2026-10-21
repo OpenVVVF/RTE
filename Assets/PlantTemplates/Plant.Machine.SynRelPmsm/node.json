@@ -1,0 +1,193 @@
+{
+  "id": "Plant.Machine.SynRelPmsm",
+  "displayName": "PM-SynRel machine (PMa-SyRM)",
+  "defaultName": "Machine",
+  "description": "PM-assisted synchronous reluctance machine (PMa-SyRM, the Energica bike class): the complete hybrid form of the PMSM dq Euler - PM flux Lambda with strong saliency (Ld != Lq, the reluctance product (Ld-Lq)*Id*Iq is often the dominant share of torque). Physics is byte-equivalent to Plant.Machine.PmsmDq; the separate template keeps library users from mistaking the family for a non-salient PMSM. Defaults pack: PMa-SyRM tendencies (Lambda small, saliency ratio Lq/Ld > 1 in bike class or Ld/Lq > 1 reluctance-dominant - instance params decide).",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {
+      "name": "V_U",
+      "description": "Phase U winding voltage (post-distortion), V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_V",
+      "description": "Phase V winding voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "V_W",
+      "description": "Phase W winding voltage, V.",
+      "direction": "input",
+      "type": {
+        "quantity": "voltage",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Omega_Elec",
+      "description": "Electrical rotor speed, rad/s, from Plant.Shaft.* nodes.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "OpenGates",
+      "description": ">=0.5 routes the machine into the six-switch-open freewheel collapse (gate-reset / power-cut / PWM gate-off); <0.5 = live. Defaults to 0 when unconnected.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "optional": true
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "I_U",
+      "description": "Phase U current, A (peak convention).",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_V",
+      "description": "Phase V current, A.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "I_W",
+      "description": "Phase W current, A.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Id",
+      "description": "d-axis current, A.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Iq",
+      "description": "q-axis current, A.",
+      "direction": "output",
+      "type": {
+        "quantity": "current",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "ThetaE",
+      "description": "Electrical rotor angle, rad.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Torque",
+      "description": "Electromechanical torque, N m.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "P_Elec",
+      "description": "Electrical air-gap power drawn from/into the winding, W (positive = absorbed).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Rs": {
+      "description": "Winding resistance per phase, ohm.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Ld": {
+      "description": "d-axis inductance, H (PMa-SyRM saliency: differs strongly from Lq).",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Lq": {
+      "description": "q-axis inductance, H.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Lambda": {
+      "description": "PM flux linkage, Wb (small vs classic IPM - SyRM characteristics are saliency-driven).",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Poles": {
+      "description": "Pole PAIRS.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Id0": {
+      "description": "Initial d current, A.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Iq0": {
+      "description": "Initial q current, A.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Theta0": {
+      "description": "Initial electrical angle, rad.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    }
+  }
+}

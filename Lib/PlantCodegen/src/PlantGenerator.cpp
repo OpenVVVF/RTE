@@ -303,7 +303,9 @@ std::pair<NodeClass, bool> Classify(const std::string& typeId) {
         "Plant.Io.DutyIn", "Plant.Fault.Point", "Plant.Shaft.Dyno",
     };
     static const std::set<std::string> kStateful = {
-        "Plant.Machine.PmsmDq", "Plant.Machine.InductDq",
+        "Plant.Machine.PmsmDq", "Plant.Machine.SpmsmDq",
+        "Plant.Machine.SynRelPmsm", "Plant.Machine.SwitchedReluctance",
+        "Plant.Machine.InductDq",
         "Plant.Shaft.FreeInertia", "Plant.DcBus",
         "Plant.Thermal.TwoNodeCauer", "Plant.Sensor.VoltageSense",
     };
@@ -339,6 +341,13 @@ std::optional<double> TemplateDefault(const std::string& typeId,
         {{"Plant.Machine.PmsmDq", "Id0"}, 0.0},                // .get(...,0.0)
         {{"Plant.Machine.PmsmDq", "Iq0"}, 0.0},                // .get(...,0.0)
         {{"Plant.Machine.PmsmDq", "Theta0"}, 0.0},             // .get(...,0.0)
+        {{"Plant.Machine.SpmsmDq", "Id0"}, 0.0},               // same dq seeds, surface class
+        {{"Plant.Machine.SpmsmDq", "Iq0"}, 0.0},
+        {{"Plant.Machine.SpmsmDq", "Theta0"}, 0.0},
+        {{"Plant.Machine.SynRelPmsm", "Id0"}, 0.0},            // and the hybrid class
+        {{"Plant.Machine.SynRelPmsm", "Iq0"}, 0.0},
+        {{"Plant.Machine.SynRelPmsm", "Theta0"}, 0.0},
+        {{"Plant.Machine.SwitchedReluctance", "Theta0"}, 0.0}, // rotor angle seed
         {{"Plant.Sensor.VoltageSense", "LagTau_S"}, 0.0},      // .get(...,0.0)
     };
     const auto it = kDefaults.find({typeId, param});

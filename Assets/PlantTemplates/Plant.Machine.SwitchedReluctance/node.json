@@ -1,0 +1,31 @@
+{
+  "id": "Plant.Machine.SwitchedReluctance",
+  "displayName": "Switched Reluctance (SRM)",
+  "defaultName": "Machine",
+  "description": "Analytic macroscopic switched reluctance machine: algebraic flux map psi(i, theta) from aligned/unaligned curves with a (1+cos(Nr*theta))/2 tooth profile (Asgar/Ellis form); currents integrate per-phase from the winding voltages with the position-varying incremental inductance and motion back-EMF; torque is the exact analytic coenergy derivative (validated finite-difference to 1e-4 relative). Unipolar per-phase drive family: each phase winding takes one voltage input directly (no dq frame, no pole-pair map). OpenGates freewheel-collapses with the same 2 ms time constant as the other machines. Omega_Elec carries MECHANICAL rad/s here (no synchronous frame exists in an SRM; shaft nodes must use Poles=1 to express mechanical speed). Teeth-phases stagger 2*pi/(phases*Nr); 3-phase default in v1.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "V_U", "description": "Phase U winding voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_V", "description": "Phase V winding voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_W", "description": "Phase W winding voltage, V (optional - leave unwired for 2-phase setups).", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Omega_Elec", "description": "MECHANICAL shaft speed, rad/s (port-name compatibility with the machine family; an SRM has no synchronous frame).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "OpenGates", "description": ">=0.5 freewheel-collapses all windings; <0.5 = live.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+  ],
+  "outputPorts": [
+    {"name": "I_U", "description": "Phase U current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_V", "description": "Phase V current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_W", "description": "Phase W current, A.", "direction": "output", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Torque", "description": "Total electromechanical torque over the phases, N m.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "PsiAligned", "description": "Flux linkage of the most-energized phase's aligned curve at its current, Wb (truth tap for the saturation map).", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "P_Elec", "description": "Instantaneous electrical winding input power (sum v*i over active phases), W; zero while gates are open.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Rs":        {"description": "Winding resistance per phase, ohm.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "LU_H":      {"description": "Unaligned inductance, H (lambda_u(i) = L_u * i - the unaligned tooth position is nearly linear).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "LambdaSat": {"description": "Aligned saturated flux linkage level, Wb (lambda_a(i) = LambdaSat * (1 - e^{-Ka*i})).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Ka":        {"description": "Aligned saturation constant, 1/A (aligned unsaturated slope = LambdaSat*Ka = L_unsat).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "RotorTeeth":{"description": "Rotor pole count (teeth); the tooth period is 2*pi/Nr mechanical.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Theta0":    {"description": "Initial mechanical angle, rad.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}

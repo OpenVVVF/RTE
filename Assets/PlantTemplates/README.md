@@ -96,7 +96,21 @@ by **template id** — `Plant.Io.DutyIn`, `Plant.Io.MeasOut`, plus the scenario
 hosts `Plant.Shaft.Dyno` and `Plant.Fault.Point`; a node kind today lives in
 the engines' classify tables mirrored against this library, and the C++
 emitter hard-rejects a loaded type that the tables don't classify (D3)
-(kind-in-schema is a v2 candidate, see twin ROADMAP M6). The `isEntryPoint`
+(kind-in-schema is a v2 candidate, see twin ROADMAP M6). Any new template
+added to this library MUST be registered in the classify table in
+`Lib/PlantCodegen/src/PlantGenerator.cpp` (host/stateful/combinational;
+machines are stateful) AND mirrored in `twin/plantgraph/plantgraph.py`'s
+NODE_CLASSES with the same equations.
+
+**Machine-family conventions.** dq variants (PmsmDq/IPM, SpmsmDq/SPM,
+SynRelPmsm/PMa-SyRM) carry the `Poles` pole-PAIR convention throughout;
+the physical pole count appears only in the `[CFG]` boot print. SRM
+(SwitchedReluctance) has no synchronous frame: `Omega_Elec` on that
+machine carries MECHANICAL rad/s, position is per rotor teeth
+(`RotorTeeth`), and shaft nodes wired into an SRM graph must use
+`Poles=1` to express mechanical speed. Induction (InductDq) is
+control-agnostic: the same node serves scalar (V/Hz) and vector/FOC
+drive. The `isEntryPoint`
 flag is metadata inherited from the controller format; it is informational
 here, not the binding key (F-18).
 
@@ -261,8 +275,11 @@ new graphs must do the same.
 | Plant.Io.DutyIn | du/dv/dw external duty inputs (host-assigned; boot default 50/50/50 zero vector) |
 | Plant.Io.MeasOut | measurement collector: 17 platform channels + P_Heat_W/P_Dc_W/P_ShaftEm_W truth diag ports; Enc_Sin/Enc_Cos optional; unwired channels collect NaN -> JSON null (PlantMeas seam) |
 | Plant.Inverter.Knee3ph | duty+vdc -> phase volts w/ IGBT knee + deadtime + Rce; optional OpenGates input floats the legs (every voltage view zeroes); V_U_Raw/V_V_Raw/V_W_Raw pre-distortion taps = the phase-ADC view |
-| Plant.Machine.PmsmDq | PMSM dq-Euler, torque, angle, abc currents, open-gate collapse (OpenGates optional input) |
-| Plant.Machine.InductDq | induction machine, stationary-frame coupled-L (V/Hz); Omega_Elec machine speed + Omega_Cmd command-speed external (host set_input) |
+| Plant.Machine.PmsmDq | PMSM dq-Euler (IPM), torque, angle, abc currents, open-gate collapse |
+| Plant.Machine.SpmsmDq | SPMSM (surface, non-salient): single inductance L_H, torque strictly PM (Ld==Lq by construction) |
+| Plant.Machine.SynRelPmsm | PM-assisted synchronous reluctance (PMa-SyRM, e.g. Energica bike class): full PMSM dq-Euler incl. the saliency torque term |
+| Plant.Machine.SwitchedReluctance | SRM analytic flux-map machine (3-phase/N-tooth): algebraic psi(i,theta), per-phase winding drive, MECHANICAL rad/s shaft semantics (shaft nodes use Poles=1) |
+| Plant.Machine.InductDq | induction machine, stationary-frame coupled-L - serves BOTH scalar (V/Hz) and vector/FOC drive (the 5th-order model is control-agnostic; `teco_vhz_induction.json` exercises the scalar path, an FOC sw graph drives the same node unchanged); Omega_Elec machine speed + Omega_Cmd command-speed external (host set_input) |
 | Plant.Shaft.Dyno | external rotor-speed input (host-assigned); Rpm0 canonical initial RPM, derived views republish on assignment |
 | Plant.Shaft.FreeInertia | J/B shaft integration from machine torque (Rpm0 initial) |
 | Plant.DcBus | link capacitor + bench supply (CV/source/sink/CV-clamp); seven supply params runtime-mutable |
