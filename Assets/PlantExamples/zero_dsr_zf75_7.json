@@ -1,7 +1,7 @@
 {
   "name": "zero_dsr_zf75_7",
   "schemaVersion": 1,
-  "description": "Placeholder plant graph for the 2018 Zero DSR road pack (Zero ZF75-7 PMSM motor; dyno substituted by drive-cycle replay). Parameters marked TBD await the riding telemetry (rail voltage class ~ 100 V, up to road peaks incl. the 900 A runs). Use gen7_bench_pmsm.json's structure; replace parameter packs + the thermal assembly with the bike's measured values once the dataset lands in twin/recordings. Ch2 offset constant until bike calibration lands (slope 0).",
+  "description": "Plant graph for the 2018 Zero DSR road pack (Zero ZF75-7 PMSM motor; dyno substituted by drive-cycle replay). 2026-10-21: machine constants FITTED from the test-11 ride (joint physics fit over launch/cruise delivered voltages + deep-FW dips + dc-power torque: Rs 8.7 mOhm, Ld 25.7 uH (high-saturation incremental class), Lq 65.7 uH, Lambda 0.0237; poles=5 verified in-data). Pack battery model from the sag anchors; TS3 channel of the three-strip NTC assembly wired; thermal strip constants being identified against the replay (twin/calib/fit_thermal_zf75.py). Encoder count bounds KEEP the bench identity - the bike's wider spread trips the replica EncoderLoss detector (per-card detector-bounds config is a follow-up; see twin/calib/cal_log.md item 10). The controller-side voltage-budget class for this build is Svpwm.MaxFrac 0.425 (fitted per-card; bike build diverges from the template 2/3 default).",
   "bridges": [],
   "nodes": [
     {
@@ -36,11 +36,11 @@
       "domain": "plant",
       "displayName": "",
       "parameters": {
-        "Rs": "0.030",
-        "Ld": "0.000180",
-        "Lq": "0.000180",
-        "Lambda": "0.032",
-        "Poles": "16",
+        "Rs": "0.0087",
+        "Ld": "0.0000257",
+        "Lq": "0.0000657",
+        "Lambda": "0.0237",
+        "Poles": "5",
         "Id0": "0",
         "Iq0": "0",
         "Theta0": "0"
@@ -56,7 +56,7 @@
       "domain": "plant",
       "displayName": "",
       "parameters": {
-        "Poles": "16",
+        "Poles": "5",
         "Rpm0": "0"
       },
       "position": {
@@ -99,7 +99,7 @@
       "domain": "plant",
       "displayName": "",
       "parameters": {
-        "Poles": "16"
+        "Poles": "5"
       },
       "position": {
         "x": 540,
@@ -123,15 +123,15 @@
       "domain": "plant",
       "displayName": "",
       "parameters": {
-        "Cap_F": "0.0068",
-        "SeriesR_mOhm": "40",
-        "VSet_V": "102.0",
-        "ILimit_A": "300",
+        "Cap_F": "0.00408",
+        "SeriesR_mOhm": "35",
+        "VSet_V": "114.7",
+        "ILimit_A": "900",
         "CanSink": "1",
-        "SinkLimit_A": "60",
+        "SinkLimit_A": "600",
         "CvClamp_V": "0",
         "CvClampSink_A": "0",
-        "V0_V": "102.0"
+        "V0_V": "114.4"
       },
       "position": {
         "x": 960,
@@ -148,13 +148,14 @@
         "C1_JK": "900",
         "R2_KW": "0.09",
         "C2_JK": "18000",
-        "TAmb_C": "22.5",
-        "T1_0_C": "22.5",
-        "T2_0_C": "22.5",
+        "TAmb_C": "24.0",
+        "T1_0_C": "24.6",
+        "T2_0_C": "24.0",
         "Off1": "0.3",
         "Off2Idle": "0.55",
         "Off2Slope": "0",
-        "Off2Knee_C": "4.9"
+        "Off2Knee_C": "4.9",
+        "Off3": "2.6"
       },
       "position": {
         "x": 660,
@@ -230,7 +231,7 @@
       "displayName": "",
       "parameters": {
         "OffsetDeg": "33.034",
-        "Poles": "16",
+        "Poles": "5",
         "MidSin": "32643.5",
         "AmpSin": "21220.5",
         "MidCos": "32536.5",
@@ -899,6 +900,17 @@
       "to": {
         "nodeId": "Knee",
         "portName": "OpenGates"
+      }
+    },
+    {
+      "id": "c_t3",
+      "from": {
+        "nodeId": "Thermal",
+        "portName": "T_Meas3"
+      },
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Temp_Inv3_C"
       }
     }
   ]
