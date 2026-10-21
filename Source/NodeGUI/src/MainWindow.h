@@ -50,6 +50,15 @@ public:
     // Open a graph file at startup.
     bool OpenGraph(const std::string& path);
 
+    // MRU (most-recently-used) graph files, shown in the File menu's
+    // "Recent Files" submenu and persisted under file/recentFiles.
+    // NoteRecentFile is called from every successful open path (both
+    // editors); the submenu rebuilds from the settings each time the File
+    // menu opens (persona + clunk dossier MRU-files row).
+    QMenu* recentFilesMenu_ = nullptr;
+    void NoteRecentFile(const QString& path);
+    void RebuildRecentFilesMenu();
+
     // Frame the editor canvas to the full document content (called after
     // every successful load; also exposed in the View menu).
     void FrameCanvasToContent();

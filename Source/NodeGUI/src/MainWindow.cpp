@@ -692,7 +692,49 @@ bool MainWindow::OpenGraph(const std::string& path) {
         ShowToast(graphScene_->LoadWarning());
     }
     FrameCanvasToContent();
+    NoteRecentFile(QString::fromStdString(path));
     return true;
+}
+
+void MainWindow::NoteRecentFile(const QString& path) {
+    if (path.isEmpty()) {
+        return;
+    }
+    const QString absolute = QFileInfo(path).absoluteFilePath();
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    QStringList recent = settings.value(QStringLiteral("file/recentFiles")).toStringList();
+    recent.removeAll(absolute);
+    recent.prepend(absolute);
+    constexpr int kMaxRecent = 10;
+    while (recent.size() > kMaxRecent) {
+        recent.removeLast();
+    }
+    settings.setValue(QStringLiteral("file/recentFiles"), recent);
+}
+
+void MainWindow::RebuildRecentFilesMenu() {
+    recentFilesMenu_->clear();
+    QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    const QStringList recent =
+        settings.value(QStringLiteral("file/recentFiles")).toStringList();
+    if (recent.isEmpty()) {
+        recentFilesMenu_->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);
+        return;
+    }
+    int position = 1;
+    for (const QString& path : recent) {
+        const QFileInfo info(path);
+        // "name (parentdir)" keeps the list skimmable; tooltip = full path.
+        const QString label = QStringLiteral("%1\t%2")
+                                  .arg(info.fileName(), info.dir().absolutePath());
+        QAction* entry = recentFilesMenu_->addAction(label);
+        entry->setToolTip(path);
+        const bool exists = info.exists();
+        entry->setEnabled(exists);
+        connect(entry, &QAction::triggered, this, [this, path] {
+            OpenGraph(path.toStdString());
+        });
+    }
 }
 
 void MainWindow::FrameCanvasToContent() {
@@ -722,6 +764,7 @@ bool MainWindow::OpenPlantGraph(const std::string& path) {
     }
     UpdateWindowTitle();
     UpdateHistoryActions();
+    NoteRecentFile(QString::fromStdString(path));
     return true;
 }
 
@@ -871,6 +914,11 @@ void MainWindow::SetupMenu() {
                      QStringLiteral("Open Graph"),
                      QKeySequence(QKeySequence::Open));
     connect(openAction, &QAction::triggered, this, &MainWindow::OnOpen);
+
+    recentFilesMenu_ = fileMenu->addMenu(QStringLiteral("Recent Files"));
+    recentFilesMenu_->setObjectName(QStringLiteral("fileRecentMenu"));
+    connect(recentFilesMenu_, &QMenu::aboutToShow, this,
+            &MainWindow::RebuildRecentFilesMenu);
 
     QAction* saveAction = fileMenu->addAction(QStringLiteral("&Save"));
     RegisterShortcut(saveAction,
