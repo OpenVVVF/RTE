@@ -12,6 +12,8 @@ add_executable(RTEStudio
     src/NodeDataModel.h
     src/NodeGraphModel.cpp
     src/NodeGraphModel.h
+    src/NodeGlyphs.cpp
+    src/NodeGlyphs.h
     src/BridgeConnectionPainter.cpp
     src/BridgeConnectionPainter.h
     src/TypedNodePainter.cpp

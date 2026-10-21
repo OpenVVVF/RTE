@@ -34,6 +34,10 @@ private:
     void drawConnectionPoints(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
     void drawFilledConnectionPoints(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
     void DrawParameterBlock(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
+    // Per-type domain glyph (motor, inverter bridge, ...) painted into the
+    // node's center between the port columns. Driven purely by the node type;
+    // no-op for unregistered types.
+    void DrawTypeGlyph(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const;
 
     void DrawPortShape(QPainter* painter,
                        const QPointF& center,

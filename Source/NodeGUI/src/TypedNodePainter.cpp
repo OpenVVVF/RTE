@@ -1,6 +1,7 @@
 #include "TypedNodePainter.h"
 
 #include "NodeDataModel.h"
+#include "NodeGlyphs.h"
 #include "NodeGraphModel.h"
 #include "ParameterBlock.h"
 #include "PortStyle.h"
@@ -19,6 +20,9 @@
 #include <QPainter>
 #include <QPainterPath>
 
+#include <QFontMetricsF>
+
+#include <algorithm>
 #include <cmath>
 
 namespace NodeGUI {
@@ -160,8 +164,73 @@ void TypedNodePainter::DrawPortShape(QPainter* painter,
     painter->setBrush(originalBrush);
 }
 
+void TypedNodePainter::DrawTypeGlyph(QPainter* painter,
+                                     QtNodes::NodeGraphicsObject& ngo) const {
+    auto* model = dynamic_cast<QtNodes::DataFlowGraphModel*>(&ngo.graphModel());
+    if (!model) {
+        return;
+    }
+    const auto* delegate = model->delegateModel<NodeInstanceModel>(ngo.nodeId());
+    if (!delegate || !HasTypeGlyph(delegate->name())) {
+        return;
+    }
+
+    auto& geometry = ngo.nodeScene()->nodeGeometry();
+    const QtNodes::NodeId nodeId = ngo.nodeId();
+    const QSize size = geometry.size(nodeId);
+    const double spacing = geometry.getPortSpacing();
+
+    GlyphAreaInput input;
+    input.nodeWidth = size.width();
+    input.spacing = spacing;
+
+    double top = spacing + geometry.captionRect(nodeId).height();
+    if (ngo.graphModel().nodeData(nodeId, QtNodes::NodeRole::LabelVisible).toBool()) {
+        top += geometry.labelRect(nodeId).height() + spacing / 2.0;
+    }
+    input.areaTop = top + spacing;
+
+    input.areaBottom = size.height() - spacing;
+    if (!delegate->ParameterBlock().size.isNull()) {
+        input.areaBottom = ParameterBlockRect(delegate->ParameterBlock(), size).top() - 6.0;
+    }
+
+    const QFontMetricsF metrics(QFont{});
+    input.rowHeight = metrics.height();
+    input.inRows = delegate->nPorts(QtNodes::PortType::In);
+    input.outRows = delegate->nPorts(QtNodes::PortType::Out);
+    auto columnWidth = [&](QtNodes::PortType portType) {
+        double width = 0.0;
+        for (QtNodes::PortIndex i = 0;
+             i < delegate->nPorts(portType);
+             ++i) {
+            const QString text =
+                delegate->portCaptionVisible(portType, i)
+                    ? delegate->portCaption(portType, i)
+                    : delegate->dataType(portType, i).name;
+            width = std::max(width, metrics.horizontalAdvance(text));
+        }
+        return width;
+    };
+    input.inColumnWidth = columnWidth(QtNodes::PortType::In);
+    input.outColumnWidth = columnWidth(QtNodes::PortType::Out);
+
+    const QRectF area = GlyphArea(input);
+    if (area.isNull()) {
+        return;
+    }
+
+    const QtNodes::NodeStyle& style = delegate->nodeStyle();
+    QColor fill = style.FontColor;
+    fill.setAlpha(36);
+    const GlyphColors colors{style.FontColor, fill, style.FontColor};
+    PaintTypeGlyph(painter, delegate->name(), area, colors);
+}
+
 void TypedNodePainter::paint(QPainter* painter, QtNodes::NodeGraphicsObject& ngo) const {
     defaultPainter_.drawNodeRect(painter, ngo);
+
+    DrawTypeGlyph(painter, ngo);
 
     DrawParameterBlock(painter, ngo);
 
