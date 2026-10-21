@@ -74,6 +74,11 @@ private:
     void UpdateOutPathDefault();
     void RefreshEventsBadge();
     void RefreshSupplyBadge();
+    // Scenario form persistence (dossier J3-dead-end: every sim field
+    // died per relaunch). Keys: sim/scenario/*; saved on each actual run,
+    // restored at construction.
+    void SaveScenarioState();
+    void RestoreScenarioState();
     // Wrong-kind graph in a picker row (plant file in the Controller row or
     // vice versa): red border + tooltip + badge on the field, Run disabled,
     // and the status line naming the fix until the fields are right again.

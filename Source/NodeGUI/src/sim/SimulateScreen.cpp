@@ -599,6 +599,7 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     RefreshSupplyBadge();
     RefreshGraphKindBadges();
     RefreshSessionMruCombo();
+    RestoreScenarioState();
 }
 
 SimulateScreen::~SimulateScreen() {
@@ -606,6 +607,36 @@ SimulateScreen::~SimulateScreen() {
         process_->kill();
         process_->waitForFinished(2000);
     }
+}
+
+void SimulateScreen::SaveScenarioState() {
+    auto settings = MakeSimSettings();
+    settings.beginGroup(QStringLiteral("sim/scenario"));
+    settings.setValue(QStringLiteral("duration"), durationSpin_->value());
+    settings.setValue(QStringLiteral("dtSub"), dtSubCombo_->currentText());
+    settings.setValue(QStringLiteral("dynoRpm"), dynoRpmEdit_->text());
+    settings.setValue(QStringLiteral("dynoSeries"), dynoSeriesEdit_->text());
+    settings.setValue(QStringLiteral("supply"), supplyEdit_->text());
+    settings.setValue(QStringLiteral("events"), eventsEdit_->toPlainText());
+    settings.setValue(QStringLiteral("name"), nameEdit_->text());
+    settings.endGroup();
+}
+
+void SimulateScreen::RestoreScenarioState() {
+    auto settings = MakeSimSettings();
+    settings.beginGroup(QStringLiteral("sim/scenario"));
+    if (!settings.contains(QStringLiteral("duration"))) {
+        settings.endGroup();
+        return;
+    }
+    durationSpin_->setValue(settings.value(QStringLiteral("duration")).toDouble());
+    dtSubCombo_->setCurrentText(settings.value(QStringLiteral("dtSub")).toString());
+    dynoRpmEdit_->setText(settings.value(QStringLiteral("dynoRpm")).toString());
+    dynoSeriesEdit_->setText(settings.value(QStringLiteral("dynoSeries")).toString());
+    supplyEdit_->setText(settings.value(QStringLiteral("supply")).toString());
+    eventsEdit_->setPlainText(settings.value(QStringLiteral("events")).toString());
+    nameEdit_->setText(settings.value(QStringLiteral("name")).toString());
+    settings.endGroup();
 }
 
 void SimulateScreen::SetSwGraphPath(const QString& path) {
@@ -950,6 +981,9 @@ void SimulateScreen::OnRun() {
         bottomTabs_->setCurrentWidget(logView_);
         return;
     }
+    // Persist the scenario that actually runs (J3 dead-end fix: relaunch
+    // restores exactly what you last ran with).
+    SaveScenarioState();
 
     // The runner keeps <out>.work next to the session file; make sure its
     // parent exists first.
