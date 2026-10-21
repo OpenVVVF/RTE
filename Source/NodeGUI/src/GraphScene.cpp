@@ -4,6 +4,7 @@
 #include "NodeDataModel.h"
 #include "ParameterNodeGeometry.h"
 #include "TypedNodePainter.h"
+#include "WireRoute.h"
 
 #include <NodeAPI/NodeTemplates.h>
 #include <NodeAPI/Serialization.h>
@@ -104,6 +105,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     graph_ = NodeAPI::Graph{};
     nodeIdMap_.clear();
     loadWarning_.clear();
+    pendingWaypoints_.clear();
 
     const auto templatesResult = NodeAPI::LoadNodeTypesFromDirectory(graph_, templatesDir);
     if (!templatesResult.ok && templatesResult.typesLoaded == 0) {
@@ -218,6 +220,8 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
         }
     }
 
+    ParseWaypointsFromJson(graphJson);
+
     try {
         NodeAPI::LoadIntoGraph(graph_, *graphText);
     } catch (const std::exception& e) {
@@ -242,6 +246,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
 
 QString GraphScene::NewGraph() {
     graph_ = NodeAPI::Graph{};
+    pendingWaypoints_.clear();
     if (templatesDir_.empty()) {
         return QStringLiteral("No node templates have been loaded yet");
     }
@@ -306,6 +311,7 @@ void GraphScene::RebuildScene() {
     model_->BuildNodeIdMap(nodeIdMap_);
     CreateConnections();
     CreateBridges();
+    ApplyPendingWaypoints();
     CreateDomainOutlines();
 
     QObject::connect(scene_.get(),
@@ -1207,28 +1213,221 @@ void GraphScene::EndSelectedDomainDrag() {
     NotifyChanged();
 }
 
+std::string GraphScene::SerializeWithExtras() const {
+    const std::string json = NodeAPI::SaveToJson(graph_);
+
+    // Collect live manual bends, keyed by NodeAPI connection id.
+    std::unordered_map<std::string, std::vector<QPointF>> waypointsByGraphId;
+    if (model_) {
+        for (const auto& connection : graph_.GetConnections()) {
+            if (const auto* wps =
+                    model_->ConnectionWaypoints(FindQtConnectionId(connection.id));
+                wps && !wps->empty()) {
+                waypointsByGraphId[connection.id] = *wps;
+            }
+        }
+        for (const auto& bridge : graph_.GetBridges()) {
+            if (const auto* wps =
+                    model_->ConnectionWaypoints(FindQtConnectionId(bridge.id));
+                wps && !wps->empty()) {
+                waypointsByGraphId[bridge.id] = *wps;
+            }
+        }
+    }
+
+    if (originalTopKeys_.empty() && waypointsByGraphId.empty()) {
+        return json;
+    }
+    try {
+        nlohmann::ordered_json out = nlohmann::ordered_json::parse(json);
+        for (const auto& [key, value] : originalTopKeys_) {
+            if (!out.contains(key)) {
+                out[key] = value;   // restore (e.g. description)
+            }
+        }
+        auto mergeWaypoints = [&](const char* key) {
+            if (!out.contains(key) || !out[key].is_array()) {
+                return;
+            }
+            for (auto& item : out[key]) {
+                const auto it = waypointsByGraphId.find(item.value("id", std::string()));
+                if (it == waypointsByGraphId.end()) {
+                    continue;
+                }
+                nlohmann::ordered_json points = nlohmann::json::array();
+                for (const QPointF& p : it->second) {
+                    points.push_back(nlohmann::ordered_json{
+                        {"x", p.x()},
+                        {"y", p.y()},
+                    });
+                }
+                item["waypoints"] = std::move(points);
+            }
+        };
+        mergeWaypoints("connections");
+        mergeWaypoints("bridges");
+        return out.dump(2) + "\n";
+    } catch (const std::exception&) {
+        return json;   // merge is best-effort; never lose the save itself
+    }
+}
+
+void GraphScene::ParseWaypointsFromJson(const nlohmann::json& graphJson) {
+    pendingWaypoints_.clear();
+    auto pull = [&](const char* key) {
+        if (!graphJson.contains(key) || !graphJson[key].is_array()) {
+            return;
+        }
+        for (const auto& item : graphJson[key]) {
+            if (!item.contains("waypoints") || !item["waypoints"].is_array()) {
+                continue;
+            }
+            std::vector<QPointF> points;
+            for (const auto& p : item["waypoints"]) {
+                if (!p.contains("x") || !p.contains("y") || !p["x"].is_number() ||
+                    !p["y"].is_number()) {
+                    continue;
+                }
+                points.emplace_back(p["x"].get<double>(), p["y"].get<double>());
+            }
+            const std::string id = item.value("id", std::string());
+            if (!id.empty() && !points.empty()) {
+                pendingWaypoints_[id] = std::move(points);
+            }
+        }
+    };
+    pull("connections");
+    pull("bridges");
+}
+
+void GraphScene::ApplyPendingWaypoints() {
+    if (!model_) {
+        return;
+    }
+    for (const auto& [graphId, points] : pendingWaypoints_) {
+        const QtNodes::ConnectionId qtId = model_->QtConnectionIdForGraphId(graphId);
+        if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+            continue;   // wire did not materialize (dangling/unknown port)
+        }
+        model_->SetConnectionWaypoints(qtId, points);
+    }
+}
+
+void GraphScene::RepaintConnection(QtNodes::ConnectionId qtId) {
+    if (auto* cgo = scene_->connectionGraphicsObject(qtId)) {
+        cgo->move();    // prepareGeometryChange + endpoint refresh
+        cgo->update();
+    }
+}
+
+QtNodes::ConnectionId GraphScene::FindQtConnectionId(const std::string& graphId) const {
+    return model_->QtConnectionIdForGraphId(graphId);
+}
+
+std::vector<QtNodes::ConnectionId> GraphScene::SelectedConnections() const {
+    std::vector<QtNodes::ConnectionId> result;
+    for (QGraphicsItem* item : scene_->selectedItems()) {
+        if (auto* cgo = qgraphicsitem_cast<QtNodes::ConnectionGraphicsObject*>(item)) {
+            result.push_back(cgo->connectionId());
+        }
+    }
+    return result;
+}
+
+bool GraphScene::SelectConnection(const std::string& graphId) {
+    const QtNodes::ConnectionId qtId = FindQtConnectionId(graphId);
+    auto* cgo = qtId.outNodeId == QtNodes::InvalidNodeId
+                    ? nullptr
+                    : scene_->connectionGraphicsObject(qtId);
+    if (!cgo) {
+        return false;
+    }
+    scene_->clearSelection();
+    cgo->setSelected(true);
+    return true;
+}
+
+std::vector<QPointF> GraphScene::ConnectionWaypoints(QtNodes::ConnectionId qtId) const {
+    if (const auto* wps = model_->ConnectionWaypoints(qtId)) {
+        return *wps;
+    }
+    return {};
+}
+
+QString GraphScene::SetConnectionWaypoints(QtNodes::ConnectionId qtId,
+                                           const std::vector<QPointF>& scenePoints) {
+    if (qtId.outNodeId == QtNodes::InvalidNodeId ||
+        model_->GraphConnectionId(qtId).empty()) {
+        return QStringLiteral("Connection not found");
+    }
+
+    RepaintConnection(qtId);   // damages the old bounds before the data moves
+    model_->SetConnectionWaypoints(qtId, scenePoints);
+    RepaintConnection(qtId);
+    NotifyChanged();
+    return QString{};
+}
+
+QString GraphScene::AddWireBend(QtNodes::ConnectionId qtId) {
+    auto* cgo = scene_->connectionGraphicsObject(qtId);
+    if (!cgo) {
+        return QStringLiteral("Connection not found");
+    }
+
+    std::vector<QPointF> points = ConnectionWaypoints(qtId);
+
+    // Split the visually widest leg of the current route and nudge the new
+    // bend off the wire, perpendicular to that leg.
+    const QPointF out = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::Out));
+    const QPointF in = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::In));
+    QPolygonF control;
+    control << out;
+    for (const QPointF& p : points) {
+        control << p;
+    }
+    control << in;
+
+    int widest = 0;
+    double widestLength = -1.0;
+    for (int i = 0; i + 1 < control.size(); ++i) {
+        const QPointF d = control[i + 1] - control[i];
+        const double length = std::sqrt(QPointF::dotProduct(d, d));
+        if (length > widestLength) {
+            widestLength = length;
+            widest = i;
+        }
+    }
+
+    const QPointF a = control[widest];
+    const QPointF b = control[widest + 1];
+    const QPointF mid = (a + b) * 0.5;
+    QPointF offset(0.0, -40.0);
+    const QPointF d = b - a;
+    const double length = std::sqrt(QPointF::dotProduct(d, d));
+    if (length > 1e-6) {
+        offset = QPointF(d.y(), -d.x()) / length * 40.0;
+    }
+
+    points.insert(points.begin() + widest, WireRoute::SnapToGrid(mid + offset));
+    return SetConnectionWaypoints(qtId, points);
+}
+
+QString GraphScene::RemoveLastWireBend(QtNodes::ConnectionId qtId) {
+    std::vector<QPointF> points = ConnectionWaypoints(qtId);
+    if (points.empty()) {
+        return QString{};
+    }
+    points.pop_back();
+    return SetConnectionWaypoints(qtId, points);
+}
+
 QString GraphScene::SaveGraph(const std::string& path) const {
     std::ofstream stream(path, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!stream) {
         return QStringLiteral("Failed to open file for writing: %1").arg(QString::fromStdString(path));
     }
 
-    const std::string json = NodeAPI::SaveToJson(graph_);
-    if (originalTopKeys_.empty()) {
-        stream << json;
-    } else {
-        try {
-            nlohmann::ordered_json out = nlohmann::ordered_json::parse(json);
-            for (const auto& [key, value] : originalTopKeys_) {
-                if (!out.contains(key)) {
-                    out[key] = value;   // restore (e.g. description)
-                }
-            }
-            stream << out.dump(2) << "\n";
-        } catch (const std::exception&) {
-            stream << json;   // merge is best-effort; never lose the save itself
-        }
-    }
+    stream << SerializeWithExtras();
     if (!stream) {
         return QStringLiteral("Failed to write graph to: %1").arg(QString::fromStdString(path));
     }
@@ -1238,11 +1437,13 @@ QString GraphScene::SaveGraph(const std::string& path) const {
 
 std::string GraphScene::Snapshot() {
     SyncPositionsFromScene();
-    return NodeAPI::SaveToJson(graph_);
+    return SerializeWithExtras();
 }
 
 QString GraphScene::RestoreSnapshot(const std::string& json) {
     try {
+        const nlohmann::json graphJson = nlohmann::json::parse(json);
+        ParseWaypointsFromJson(graphJson);
         NodeAPI::Graph restored = NodeAPI::LoadFromJson(json);
         graph_ = std::move(restored);
     } catch (const std::exception& e) {

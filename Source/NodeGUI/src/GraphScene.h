@@ -82,6 +82,37 @@ public:
     std::string Snapshot();
     QString RestoreSnapshot(const std::string& json);
 
+    // ---- Manual wire routing (optional per-connection "waypoints") ----
+
+    // QtNodes id of a live connection by its NodeAPI graph id (invalid when
+    // unknown).
+    QtNodes::ConnectionId FindQtConnectionId(const std::string& graphId) const;
+
+    // Currently selected connections (both editors' wire gestures and the
+    // route.* actions operate on exactly one selected wire).
+    std::vector<QtNodes::ConnectionId> SelectedConnections() const;
+
+    // Selects the connection with the given NodeAPI graph id (clears the rest
+    // of the selection first). Returns false when it does not exist.
+    bool SelectConnection(const std::string& graphId);
+
+    // Copies of the connection's manual bends in scene coordinates.
+    std::vector<QPointF> ConnectionWaypoints(QtNodes::ConnectionId qtId) const;
+
+    // Replaces the connection's manual bends (empty = automatic routing),
+    // repaints the wire, and records the change for undo. Returns an empty
+    // string on success.
+    QString SetConnectionWaypoints(QtNodes::ConnectionId qtId,
+                                   const std::vector<QPointF>& scenePoints);
+
+    // Action verbs behind the route.addPoint / route.removePoint verbs:
+    // insert a bend beside the visually widest gap of the wire's current
+    // route, or drop the connection's last manual bend. Error when the
+    // connection is unknown; RemoveLastWireBend is a no-op on a wire without
+    // bends.
+    QString AddWireBend(QtNodes::ConnectionId qtId);
+    QString RemoveLastWireBend(QtNodes::ConnectionId qtId);
+
     // Invoked after a user-visible graph mutation has fully reached the
     // NodeAPI model.
     void SetChangeCallback(std::function<void()> callback);
@@ -204,6 +235,19 @@ public:
                                      const std::string& portName,
                                      QtNodes::PortType portType) const;
 
+    // NodeAPI::SaveToJson output with the GUI-layer extras (non-schema top
+    // keys, per-connection "waypoints") merged back in.
+    std::string SerializeWithExtras() const;
+    // Parses the optional per-connection "waypoints" arrays from a loaded
+    // graph document into pendingWaypoints_ (tolerant: malformed entries are
+    // silently skipped).
+    void ParseWaypointsFromJson(const nlohmann::json& graphJson);
+    // Hands pendingWaypoints_ to the model after a rebuild. Must run after
+    // CreateConnections/CreateBridges (the qt ids exist only then).
+    void ApplyPendingWaypoints();
+    // Repaints a wire after its waypoint list changed.
+    void RepaintConnection(QtNodes::ConnectionId qtId);
+
     NodeAPI::Graph graph_;
     std::shared_ptr<QtNodes::NodeDelegateModelRegistry> registry_;
     std::unique_ptr<NodeGraphModel> model_;
@@ -248,6 +292,10 @@ public:
     // LoadGraph for the save-time merge (description etc.; the NodeAPI JSON
     // surface does not model them).
     std::unordered_map<std::string, nlohmann::json> originalTopKeys_;
+
+    // Manual wire bends parsed from the loaded document, keyed by NodeAPI
+    // connection id; staged until the scene exists (ApplyPendingWaypoints).
+    std::unordered_map<std::string, std::vector<QPointF>> pendingWaypoints_;
 
     bool PointHitsGraphContent(const QPointF& scenePos) const;
     void UpdateDomainSelectionStyle();

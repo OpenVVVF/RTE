@@ -7,6 +7,7 @@
 #include <QPointF>
 
 #include <sstream>
+#include <vector>
 
 namespace NodeGUI {
 
@@ -409,6 +410,7 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
         }
         connectionMap_.erase(it);
     }
+    connectionWaypoints_.erase(connectionId);
 
     const bool result = DataFlowGraphModel::deleteConnection(connectionId);
 
@@ -441,6 +443,38 @@ bool NodeGraphModel::deleteNode(QtNodes::NodeId const nodeId) {
 bool NodeGraphModel::IsBridge(QtNodes::ConnectionId const connectionId) const {
     const auto it = connectionMap_.find(connectionId);
     return it != connectionMap_.end() && it->second.isBridge;
+}
+
+std::string NodeGraphModel::GraphConnectionId(QtNodes::ConnectionId const connectionId) const {
+    const auto it = connectionMap_.find(connectionId);
+    return it != connectionMap_.end() ? it->second.graphId : std::string{};
+}
+
+QtNodes::ConnectionId NodeGraphModel::QtConnectionIdForGraphId(const std::string& graphId) const {
+    for (const auto& [qtId, info] : connectionMap_) {
+        if (info.graphId == graphId) {
+            return qtId;
+        }
+    }
+    return QtNodes::ConnectionId{QtNodes::InvalidNodeId,
+                                 QtNodes::InvalidPortIndex,
+                                 QtNodes::InvalidNodeId,
+                                 QtNodes::InvalidPortIndex};
+}
+
+const std::vector<QPointF>* NodeGraphModel::ConnectionWaypoints(
+    QtNodes::ConnectionId const connectionId) const {
+    const auto it = connectionWaypoints_.find(connectionId);
+    return it != connectionWaypoints_.end() ? &it->second : nullptr;
+}
+
+void NodeGraphModel::SetConnectionWaypoints(QtNodes::ConnectionId const connectionId,
+                                            std::vector<QPointF> scenePoints) {
+    if (scenePoints.empty()) {
+        connectionWaypoints_.erase(connectionId);
+    } else {
+        connectionWaypoints_[connectionId] = std::move(scenePoints);
+    }
 }
 
 bool NodeGraphModel::IsExcluded(QtNodes::ConnectionId const connectionId) const {

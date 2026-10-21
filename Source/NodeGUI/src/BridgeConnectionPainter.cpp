@@ -2,12 +2,15 @@
 
 #include "NodeGraphModel.h"
 #include "PortStyle.h"
+#include "WireRoute.h"
 
 #include <QtNodes/Definitions>
 #include <QtNodes/StyleCollection>
 #include <QtNodes/internal/ConnectionGraphicsObject.hpp>
 #include <QtNodes/internal/ConnectionState.hpp>
 
+#include <QApplication>
+#include <QPalette>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPainterPathStroker>
@@ -37,6 +40,18 @@ QColor ConnectionColor(QtNodes::ConnectionGraphicsObject const& cgo) {
     }
 
     return QtNodes::StyleCollection::connectionStyle().normalColor();
+}
+
+// Wire selection follows the active app theme (QPalette::Highlight), falling
+// back to the connection style when no application palette exists.
+QColor WireSelectionColor() {
+    if (qApp) {
+        const QColor highlight = qApp->palette().color(QPalette::Highlight);
+        if (highlight.isValid()) {
+            return highlight;
+        }
+    }
+    return QtNodes::StyleCollection::connectionStyle().selectedHaloColor();
 }
 
 // Draws a port-shaped marker (same shapes as the node ports).
@@ -94,6 +109,40 @@ QPainterPath BridgeConnectionPainter::cubicPath(QtNodes::ConnectionGraphicsObjec
     return cubic;
 }
 
+QPolygonF BridgeConnectionPainter::routePolygon(QtNodes::ConnectionGraphicsObject const& connection) const {
+    const auto* model = TryGetNodeModel(connection);
+    if (!model) {
+        return {};
+    }
+    const std::vector<QPointF>* waypoints = model->ConnectionWaypoints(connection.connectionId());
+    if (!waypoints || waypoints->empty()) {
+        return {};
+    }
+
+    const QTransform toLocal = connection.sceneTransform().inverted();
+    std::vector<QPointF> local;
+    local.reserve(waypoints->size());
+    for (const QPointF& p : *waypoints) {
+        local.push_back(toLocal.map(p));
+    }
+
+    return WireRoute::BuildRoute(connection.endPoint(QtNodes::PortType::Out),
+                                 connection.endPoint(QtNodes::PortType::In),
+                                 local);
+}
+
+QPainterPath BridgeConnectionPainter::wirePath(QtNodes::ConnectionGraphicsObject const& connection) const {
+    const QPolygonF routed = routePolygon(connection);
+    if (routed.isEmpty()) {
+        return cubicPath(connection);
+    }
+    QPainterPath path(routed.constFirst());
+    for (int i = 1; i < routed.size(); ++i) {
+        path.lineTo(routed[i]);
+    }
+    return path;
+}
+
 void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
                                                  QtNodes::ConnectionGraphicsObject const& cgo,
                                                  bool isBridge) const {
@@ -107,20 +156,20 @@ void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
 
     QColor color = excluded ? QColor(110, 112, 118) : ConnectionColor(cgo);
     if (selected) {
-        color = color.darker(200);
+        color = WireSelectionColor();
     } else if (hovered) {
         color = connectionStyle.hoveredColor();
     }
 
     QPen pen;
-    pen.setWidthF(connectionStyle.lineWidth());
+    pen.setWidthF(connectionStyle.lineWidth() + (selected ? 0.5 : 0.0));
     pen.setColor(color);
     pen.setStyle(isBridge ? Qt::DashLine : Qt::SolidLine);
     pen.setCapStyle(Qt::RoundCap);
 
     painter->setPen(pen);
     painter->setBrush(Qt::NoBrush);
-    painter->drawPath(cubicPath(cgo));
+    painter->drawPath(wirePath(cgo));
 }
 
 void BridgeConnectionPainter::paint(QPainter* painter,
@@ -135,13 +184,16 @@ void BridgeConnectionPainter::paint(QPainter* painter,
         auto const& connectionStyle = QtNodes::StyleCollection::connectionStyle();
         QPen pen;
         pen.setWidthF(2.0 * connectionStyle.lineWidth());
-        pen.setColor(selected ? connectionStyle.selectedHaloColor()
-                              : connectionStyle.hoveredColor());
+        QColor halo = selected ? WireSelectionColor() : connectionStyle.hoveredColor();
+        if (selected) {
+            halo.setAlpha(110);
+        }
+        pen.setColor(halo);
         pen.setStyle(isBridge ? Qt::DashLine : Qt::SolidLine);
 
         painter->setPen(pen);
         painter->setBrush(Qt::NoBrush);
-        painter->drawPath(cubicPath(cgo));
+        painter->drawPath(wirePath(cgo));
     }
 
     drawConnectionLine(painter, cgo, isBridge);
@@ -199,9 +251,62 @@ void BridgeConnectionPainter::paint(QPainter* painter,
     painter->setBrush(dotColor);
     painter->drawEllipse(cgo.out(), pointRadius, pointRadius);
     painter->drawEllipse(cgo.in(), pointRadius, pointRadius);
+
+    if ((hovered || selected) && model) {
+        QColor handleColor = ConnectionColor(cgo);
+        if (excludedEndpoints) {
+            handleColor = QColor(110, 112, 118);
+        } else if (selected) {
+            handleColor = WireSelectionColor();
+        }
+        drawWaypointHandles(painter, cgo, handleColor);
+    }
 }
+
+void BridgeConnectionPainter::drawWaypointHandles(QPainter* painter,
+                                                  QtNodes::ConnectionGraphicsObject const& cgo,
+                                                  const QColor& color) const {
+    const auto* model = TryGetNodeModel(cgo);
+    if (!model) {
+        return;
+    }
+    const std::vector<QPointF>* waypoints = model->ConnectionWaypoints(cgo.connectionId());
+    if (!waypoints || waypoints->empty()) {
+        return;
+    }
+
+    constexpr double kHandleHalf = 4.0;
+    const QTransform toLocal = cgo.sceneTransform().inverted();
+
+    painter->save();
+    QPen pen(color.darker(170));
+    pen.setWidthF(1.0);
+    painter->setPen(pen);
+    painter->setBrush(QBrush(color));
+    for (const QPointF& p : *waypoints) {
+        const QPointF local = toLocal.map(p);
+        painter->drawRect(QRectF(local.x() - kHandleHalf,
+                                 local.y() - kHandleHalf,
+                                 2.0 * kHandleHalf,
+                                 2.0 * kHandleHalf));
+    }
+    painter->restore();
+}
+
 QPainterPath BridgeConnectionPainter::getPainterStroke(
     QtNodes::ConnectionGraphicsObject const& cgo) const {
+    const QPolygonF routed = routePolygon(cgo);
+    if (!routed.isEmpty()) {
+        QPainterPath path(routed.constFirst());
+        for (int i = 1; i < routed.size(); ++i) {
+            path.lineTo(routed[i]);
+        }
+
+        QPainterPathStroker stroker;
+        stroker.setWidth(10.0);
+        return stroker.createStroke(path);
+    }
+
     auto cubic = cubicPath(cgo);
 
     QPointF const out = cgo.endPoint(QtNodes::PortType::Out);
@@ -217,6 +322,27 @@ QPainterPath BridgeConnectionPainter::getPainterStroke(
     stroker.setWidth(10.0);
 
     return stroker.createStroke(result);
+}
+
+QRectF BridgeConnectionPainter::routeBounds(QtNodes::ConnectionGraphicsObject const& cgo) const {
+    const auto* model = TryGetNodeModel(cgo);
+    if (!model) {
+        return {};
+    }
+    const std::vector<QPointF>* waypoints = model->ConnectionWaypoints(cgo.connectionId());
+    if (!waypoints || waypoints->empty()) {
+        return {};
+    }
+
+    const QTransform toLocal = cgo.sceneTransform().inverted();
+    QPolygonF local;
+    local.reserve(static_cast<int>(waypoints->size()));
+    for (const QPointF& p : *waypoints) {
+        local << toLocal.map(p);
+    }
+
+    // Slack covers the waypoint handles and the pen width.
+    return local.boundingRect().adjusted(-8.0, -8.0, 8.0, 8.0);
 }
 
 }  // namespace NodeGUI

@@ -7,6 +7,7 @@
 #include <QtNodes/internal/ConnectionIdHash.hpp>
 
 #include <QObject>
+#include <QPointF>
 #include <QString>
 
 #include <functional>
@@ -15,6 +16,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace NodeGUI {
 
@@ -52,6 +54,20 @@ public:
 
     // Returns true if the QtNodes connection id maps to a NodeAPI Bridge.
     bool IsBridge(QtNodes::ConnectionId const connectionId) const;
+
+    // The NodeAPI graph id of a live QtNodes connection (empty when unknown).
+    std::string GraphConnectionId(QtNodes::ConnectionId const connectionId) const;
+
+    // The QtNodes id of a live connection by its NodeAPI graph id
+    // (QtNodes::InvalidConnectionId equivalent — outNodeId ==
+    // QtNodes::InvalidNodeId — when unknown).
+    QtNodes::ConnectionId QtConnectionIdForGraphId(const std::string& graphId) const;
+
+    // Manual routing bends of a connection, in scene coordinates. Empty =
+    // automatic routing. nullptr when the connection has no stored bends.
+    const std::vector<QPointF>* ConnectionWaypoints(QtNodes::ConnectionId const connectionId) const;
+    void SetConnectionWaypoints(QtNodes::ConnectionId const connectionId,
+                                std::vector<QPointF> scenePoints);
 
     // Returns true when either endpoint node of the connection is excluded
     // from compile (used to grey out the wire).
@@ -107,6 +123,7 @@ private:
     NodeAPI::Graph& graph_;
     std::unordered_map<QtNodes::NodeId, std::string> qtIdToNodeId_;
     mutable std::unordered_map<QtNodes::ConnectionId, GraphConnection> connectionMap_;
+    std::unordered_map<QtNodes::ConnectionId, std::vector<QPointF>> connectionWaypoints_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;
     // Effective exclusion set (NodeAPI node ids), refreshed by GraphScene.

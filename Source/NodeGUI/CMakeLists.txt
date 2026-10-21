@@ -36,6 +36,8 @@ add_executable(RTEStudio
     src/sim/SimTelemetryView.h
     src/PortStyle.cpp
     src/PortStyle.h
+    src/WireRoute.cpp
+    src/WireRoute.h
     src/FrameRateMonitor.cpp
     src/FrameRateMonitor.h
     src/runtime/TelemetryStore.cpp
