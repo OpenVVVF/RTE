@@ -1,10 +1,10 @@
 # Design note — RTE Studio "Simulate" tab
 
-Status: design intent only (no Qt code yet). This note pins the UX and the
-seams so the tab can land on top of `rte sim` (in-flight) without inventing
-any new backend mechanism. Background: `docs/plant-nodegraph.md` (the plant
-side of the loop) and `docs/automation-backend.md` (Studio = thin frontend
-over the portable `rte` executable).
+Status: design intent only (no Qt code yet). The backend seam (`rte sim`) is
+**landed**; this note pins the UX on top of it without inventing any new
+mechanism. Background: `docs/plant-nodegraph.md` (the plant side of the loop)
+and `docs/automation-backend.md` (Studio = thin frontend over the portable
+`rte` executable).
 
 ## Idea in one sentence
 
@@ -30,36 +30,78 @@ overlay charts with fault injection and diff-vs-recorded one click away.
 
   ```bash
   rte sim --sw-graph <controller.json> --plant-graph <plant.json> \
-          --base-source Images/Gen6FW --duration S --dyno-rpm R \
+          --base-source Images/Gen6FW --duration S \
+          --dyno-rpm R | --dyno-series 't=rpm,t=rpm,...' \
+          --dt-sub 0.0002 --telemetry-hz 100 \
+          --supply 'v_set=..,i_limit=..,sink_limit=..,can_sink=0|1,cv_clamp_v=..,cv_clamp_sink_a=..,series_r_mohm=..' \
           --event 't=.. kind=.. arg=..' --out session.jsonl
   ```
 
   and launches it the way Studio launches every automation job today: an
-  argument array against the discovered RTEAutomation session, `--format
-  jsonl` progress events streamed back for a progress strip. Cancelling a
-  run uses the same job lifecycle as `rte build`/`flash`.
+  argument array against the discovered RTEAutomation session. The
+  **`--format jsonl` streaming progress contract is real**: phase progress,
+  artifact, and completion events stream back as jsonl for the progress strip
+  (the same Emit machinery `rte build` uses), and cancelling a run uses the
+  same job lifecycle as `rte build`/`flash`.
 - **Charts** below the canvas: the written session
   (`rte-runtime-session-jsonl` **v3**, same schema the twin emits, so
   simulated and recorded sessions align key-for-key) loads into the existing
   telemetry charting: channel picker, multi-channel overlay, cursor with
   per-channel values. Node-level truth channels (e.g. machine id/iq, DC-link
-  power) are just more chart series.
+  power) are just more chart series. `session_start` carries a plant
+  **provenance stamp** (`"plant": "generated" | "fallback"`) so a run made
+  against the built-in fallback plant can never be confused with a
+  graph-generated plant run — and the fallback is now opt-in anyway
+  (`--allow-fallback-plant`; the default build refuses to substitute). The
+  UI surfaces the toggle and the stamp rather than hiding them.
+- **Substep knob.** `rte sim` exposes the plant substep (`--dt-sub`, default
+  200 µs, 2 substeps per control period). The shipped, proof-covered IM
+  configuration (`teco_vhz_induction.json`) is validated at 50 µs — the stiff
+  TECO rotor modes must not be presented at the default 200 µs without a
+  warning in the UI chrome.
 
-## Fault injection
+## Scenario events
 
 The run bar's event list is a small grid of rows (time, kind, argument) that
-serializes straight into repeated `--event` flags. The kinds map 1:1 onto the
-plant contract's host-driven inputs:
+serializes straight into repeated `--event 't=.. kind=.. arg=..'` flags. The
+kinds map onto the plant contract's host-driven externals (the python/C++
+spellings are in `docs/plant-nodegraph.md`'s glossary table):
 
-- `fault` → a named `Plant.Fault.Point` setter (`OpenGates`,
-  `EncoderDisconnect`, `SensorRail`, ...), i.e. what the python reference
-  calls `sim.set_fault(name, value)`. UI offers the known names from
-  `Plant.Fault.Point/node.json` plus free text.
-- `dyno` → `Plant.Shaft.Dyno` speed reassignment.
-- (later) duty/throttle step rows map onto the remaining host seam.
+- `reset` → supervisor fault-reset choreography (fault flags clear + gate
+  reset), `start` / `stop` → control on/off (duties live vs the 50/50/50
+  zero-vector boot default).
+- `var-set` → writes a controller runtime variable (`arg=Name=Value` — the
+  `g_<domain>_vars` tables; the twin's `var` event kind).
+- `fault-inject` → `PlantSetFault(plant, name, true)` on the graph: a
+  **physics-level** named plant fault (`OpenGates`, `EncoderDisconnect`,
+  `SensorRail` — the `Plant.Fault.Point` port vocabulary), addressed by
+  output port name. The C++ accessor returns `bool`, so a typo'd name fails
+  loudly instead of pretending to inject. `fault-clear` clears one or all
+  (`arg=<Name>|empty`).
+- `dyno-set` → `PlantSetDynoRpm`, republishing the derived speed views
+  (`Omega_Elec`/`Rpm`/`Elec_Rpm`).
+- `gate-ready` → the gate-driver-ready power transition (the recorded
+  gatekill class: drives the plant physics behind `gate_ready` with its
+  console/state vocabulary).
+- `plant-input` → `PlantSetInput(plant, name, value)`: one-shot assignment of
+  **every unwired plant input of that name** — the controller-side externals
+  (`arg=Omega_Cmd=<rad/s>` for `InductDq`, the IM's synchronous speed; the
+  V/Hz controller pushes it per control period). Together with
+  `induction_vhz.json` + `teco_vhz_induction.json` this makes a V/Hz IM run
+  expressible from the CLI; a scripted ramp is the `var_series` follow-up
+  (not yet on the timeline, with `config set` and `reboot`).
 
 Nothing is scheduled inside Studio: the runner applies events at sim time;
 Studio only edits a declarative timeline.
+
+**Fault markers are real.** Trip-side behavior (gate_ready fall, MOE drop,
+fault flags, console `[FAULT]`/`[SUP]`/`[SAFETY]` vocabulary, graph-telemetry
+freeze) comes from the **actual emitted fault manager running in the loop**,
+not a host-side fake — so a fault window in a sim session differs from a
+recorded window only where the protection physics does. The open verification
+item here is **F02**: an end-to-end diff of a real-firmware-protection fault
+run against the recorded triple-redundancy trips (harness physics-vs-
+protection glossary semantics apply, see the contract §Host interface).
 
 ## Diff vs recorded
 
