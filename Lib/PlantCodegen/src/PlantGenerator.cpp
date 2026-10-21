@@ -478,9 +478,30 @@ bool Validate(Analysis& a, std::string& error) {
             error = "node id is not a valid C++ identifier: '" + node.id + "'";
             return false;
         }
-        if (node.domain != "plant") {
+        // F-09: an absent/empty domain validates as 'plant'.
+        if (!node.domain.empty() && node.domain != "plant") {
             error = "node '" + node.id + "' has domain '" + node.domain +
                     "'; plant graphs use the single domain 'plant'";
+            return false;
+        }
+        // F-23: controller-format pruning keys are rejected on plant graphs
+        // (detection beats silently ignoring them).
+        if (node.excludeFromCompile || node.excludeFromCompileRecursive) {
+            error = "node '" + node.id +
+                    "' carries the controller-format key excludeFromCompile; "
+                    "plant graphs reject it (no pruning in the plant pipeline)";
+            return false;
+        }
+        if (!node.parameterInputs.empty()) {
+            error = "node '" + node.id +
+                    "' carries the controller-format key parameterInputs; "
+                    "plant graphs reject it";
+            return false;
+        }
+        if (!node.zeroInputs.empty()) {
+            error = "node '" + node.id +
+                    "' carries the controller-format key zeroInputs; "
+                    "plant graphs reject it";
             return false;
         }
     }

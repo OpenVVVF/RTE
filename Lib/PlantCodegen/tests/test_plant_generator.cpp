@@ -586,6 +586,39 @@ TEST(PlantCodegenValidation, RejectsDanglingConnectionAtLoad) {
     // the loader parity check (plant_test_util pattern) flags the mismatch.
 }
 
+// F-09: an absent/empty domain validates as 'plant' (v1.1 contract).
+TEST(PlantCodegenValidation, AcceptsEmptyDomainAsPlant) {
+    auto graph = LoadExample("gen7_bench_pmsm");
+    ASSERT_TRUE(graph.SetNodeDomain("Knee", ""));
+    const auto result = GenerateCapturing(graph, "empty_domain");
+    EXPECT_TRUE(result.ok) << result.error;
+}
+
+// F-23: controller-format pruning keys are an error on plant graphs
+// (detection beats silently ignoring them).
+TEST(PlantCodegenValidation, RejectsControllerFormatKeys) {
+    {
+        auto graph = LoadExample("gen7_bench_pmsm");
+        ASSERT_TRUE(graph.SetNodeExcludeFromCompile("Draw", true));
+        EXPECT_TRUE(ExpectGenerateFails(graph, "exclude_key"));
+    }
+    {
+        auto graph = LoadExample("gen7_bench_pmsm");
+        ASSERT_TRUE(graph.SetNodeExcludeFromCompileRecursive("Draw", true));
+        EXPECT_TRUE(ExpectGenerateFails(graph, "exclude_rec_key"));
+    }
+    {
+        auto graph = LoadExample("gen7_bench_pmsm");
+        ASSERT_TRUE(graph.SetNodeParameterInputs("Draw", {"C"}));
+        EXPECT_TRUE(ExpectGenerateFails(graph, "param_inputs_key"));
+    }
+    {
+        auto graph = LoadExample("gen7_bench_pmsm");
+        ASSERT_TRUE(graph.SetNodeZeroInputs("Draw", {"C"}));
+        EXPECT_TRUE(ExpectGenerateFails(graph, "zero_inputs_key"));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // D2 warnings channel: mild issues are reported, generation still succeeds.
 TEST(PlantCodegenValidation, WarningsForUnusedAndUndeclaredParameters) {
