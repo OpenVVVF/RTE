@@ -2,11 +2,13 @@
 
 #include <RTEAutomation/CachePaths.h>
 
+#include <QAbstractButton>
 #include <QApplication>
 #include <QLockFile>
 #include <QPixmap>
 #include <QSurfaceFormat>
 #include <QTimer>
+#include <QThread>
 
 #include <cstdlib>
 #include <filesystem>
@@ -26,7 +28,52 @@ struct SmokeState {
     bool grabNextTick = false;
 };
 
+// Fine-grained smoke actions: RTE_SMOKE_ACTIONS='screen 2; click simRun;
+// wait 12000; grab sim_after; wait 50; exit 0' plays them in order on a
+// fixed cadence and supplements the default per-screen sweep when set.
+void RunSmokeActions(NodeGUI::MainWindow* window,
+                     const std::filesystem::path& dir,
+                     const std::string& script) {
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    auto* actions = new QStringList;
+    for (const auto& step : QString::fromStdString(script).split(';', Qt::SkipEmptyParts)) {
+        actions->push_back(step.trimmed());
+    }
+    auto* idx = new int; *idx = 0;
+    auto* timer = new QTimer(window);
+    timer->setInterval(300);
+    QObject::connect(timer, &QTimer::timeout, window,
+                     [window, dir, actions, idx]() {
+        if (*idx >= actions->size()) { QApplication::exit(0); return; }
+        const QString step = actions->at(*idx); ++*idx;
+        const QStringList parts = step.split(' ', Qt::SkipEmptyParts);
+        const QString kind = parts.value(0);
+        const QString arg = parts.value(1);
+        if (kind == "screen") {
+            window->SmokeSelectScreen(arg.toInt());
+        } else if (kind == "click") {
+            if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
+                button->click();
+            } else {
+                std::cerr << "smoke: no button named " << arg.toStdString() << "\n";
+            }
+        } else if (kind == "wait") {
+            QThread::msleep(static_cast<unsigned long>(arg.toInt()));
+        } else if (kind == "grab") {
+            window->grab().save(QString::fromStdString(dir.string() + "/" + arg.toStdString() + ".png"));
+        } else if (kind == "exit") {
+            QApplication::exit(arg.toInt());
+        }
+    });
+    timer->start();
+}
+
 void RunSmokeSequence(NodeGUI::MainWindow* window, const std::filesystem::path& dir) {
+    if (const char* actions = std::getenv("RTE_SMOKE_ACTIONS"); actions && *actions) {
+        RunSmokeActions(window, dir, actions);
+        return;
+    }
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     auto* state = new SmokeState;
