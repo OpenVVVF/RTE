@@ -5,6 +5,8 @@
 #include <QtNodes/BasicGraphicsScene>
 #include <QtNodes/NodeDelegateModelRegistry>
 
+#include <nlohmann/json.hpp>
+
 #include "NodeGraphModel.h"
 
 #include <QString>
@@ -241,6 +243,11 @@ public:
 
     // Optional default domain assigned by AddNodeAt (see the constructor).
     QString defaultDomain_;
+
+    // Non-schema top-level keys of the loaded source document, stashed at
+    // LoadGraph for the save-time merge (description etc.; the NodeAPI JSON
+    // surface does not model them).
+    std::unordered_map<std::string, nlohmann::json> originalTopKeys_;
 
     bool PointHitsGraphContent(const QPointF& scenePos) const;
     void UpdateDomainSelectionStyle();

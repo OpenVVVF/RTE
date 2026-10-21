@@ -55,6 +55,7 @@ public:
 
     QString StatusText() const;
 
+
     // Frame the canvas to the document content (mirrors the Node Editor's
     // Frame to Content behavior, invoked after every successful load).
     void FrameToContent();

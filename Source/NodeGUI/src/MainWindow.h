@@ -65,6 +65,11 @@ public:
     // env hook in Main.cpp): screen switching + count for scripted grabs.
     int SmokeScreenCount() const;
     void SmokeSelectScreen(int index);
+    // [smoke] select+inspect a node by API id on the ACTIVE editor tab's
+    // scene exactly like a user click would (fires the panel wiring).
+    void SmokePickNode(const std::string& nodeId);
+    // [smoke] save the ACTIVE editor tab's document to a path (menu-free).
+    QString SmokeSaveActiveAs(const QString& path);
 
 private slots:
     void OnOpen();

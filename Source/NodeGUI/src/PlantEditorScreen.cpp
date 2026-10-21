@@ -10,6 +10,10 @@
 
 #include <NodeAPI/Graph.h>
 
+#include <nlohmann/json.hpp>
+
+#include <unordered_set>
+
 #include <QAction>
 #include <QByteArray>
 #include <QCheckBox>
@@ -19,6 +23,8 @@
 #include <QFile>
 #include <QInputDialog>
 #include <QJsonArray>
+#include <nlohmann/json.hpp>
+
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeySequence>
@@ -247,6 +253,89 @@ QString PlantEditorScreen::OpenGraph(const std::string& path) {
         }
     }
     ClearEntryPointFlags(merged);
+
+    // Same load-time semantic audit the shared GraphScene path enforces
+    // (engines refuse these classes; NodeAPI load used to swallow them):
+    // duplicate ids, dangling endpoints, double-wired inputs, unknown ports.
+    {
+        QStringList problems;
+        std::unordered_set<std::string> ids;
+        QJsonArray nodesArr = merged.value(QStringLiteral("nodes")).toArray();
+        for (const QJsonValue& n : nodesArr) {
+            const std::string id = n.toObject().value(QStringLiteral("id")).toString().toStdString();
+            if (!ids.insert(id).second) {
+                problems.push_back(QString::fromStdString("duplicate node id '" + id + "'"));
+            }
+        }
+        QJsonArray connsArr = merged.value(QStringLiteral("connections")).toArray();
+        std::unordered_set<std::string> connIds, wiredInputs;
+        for (const QJsonValue& c : connsArr) {
+            const QJsonObject& co = c.toObject();
+            const std::string cid = co.value(QStringLiteral("id")).toString().toStdString();
+            if (!cid.empty() && !connIds.insert(cid).second) {
+                problems.push_back(QString::fromStdString("duplicate connection id '" + cid + "'"));
+            }
+            const QJsonObject from = co.value(QStringLiteral("from")).toObject();
+            const QJsonObject to = co.value(QStringLiteral("to")).toObject();
+            for (const auto& [ref, dir] : {std::pair{from, "from"}, std::pair{to, "to"}}) {
+                const std::string nid = ref.value(QStringLiteral("nodeId")).toString().toStdString();
+                if (ids.count(nid) == 0) {
+                    problems.push_back(QString::fromStdString(
+                        std::string("connection '") + cid + "' '" + dir +
+                        "' endpoint references unknown node '" + nid + "'"));
+                    continue;
+                }
+                const std::string type =
+                    ref.value(QStringLiteral("type")).toString().toStdString();   // no-op when absent
+                const std::string port = ref.value(QStringLiteral("portName")).toString().toStdString();
+                // resolve via the node's type listed on the node record
+                for (const QJsonValue& n : nodesArr) {
+                    if (n.toObject().value(QStringLiteral("id")).toString().toStdString() == nid) {
+                        const std::string nt = n.toObject().value(QStringLiteral("type")).toString().toStdString();
+                        if (const auto t = graphScene_->Graph().FindNodeType(nt)) {
+                            bool ok = false;
+                            for (const auto& p : t->inputPorts) ok |= p.name == port;
+                            for (const auto& p : t->outputPorts) ok |= p.name == port;
+                            if (!ok) {
+                                problems.push_back(QString::fromStdString(
+                                    std::string("connection '") + cid + "' '" + dir + "' endpoint '" + nid +
+                                    "' has no port '" + port + "'"));
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            const std::string dst = to.value(QStringLiteral("nodeId")).toString().toStdString() + "." +
+                                    to.value(QStringLiteral("portName")).toString().toStdString();
+            if (!wiredInputs.insert(dst).second) {
+                problems.push_back(QString::fromStdString("input '" + dst + "' is wired more than once"));
+            }
+        }
+        if (!problems.isEmpty()) {
+            return QStringLiteral("Plant graph rejected (corrupt; %1 problems):\n%2")
+                .arg(problems.size())
+                .arg(problems.mid(0, 20).join(QStringLiteral("\n")));
+        }
+    }
+
+    // Save-time extras merge needs the source document keys stashed (the
+    // shared GraphScene::SaveGraph merges them back; description etc.).
+    try {
+        const nlohmann::json docJson = nlohmann::json::parse(
+            QJsonDocument(engine).toJson(QJsonDocument::Compact).toStdString());
+        graphScene_->originalTopKeys_.clear();
+        static const std::unordered_set<std::string> kSchemaKeys = {
+            "name", "schemaVersion", "nodes", "connections", "bridges", "nodeTypes",
+        };
+        for (const auto& [key, value] : docJson.items()) {
+            if (kSchemaKeys.count(key) == 0) {
+                graphScene_->originalTopKeys_[key] = value;
+            }
+        }
+    } catch (const std::exception&) {
+        graphScene_->originalTopKeys_.clear();   // extras loss beats a bad load
+    }
 
     // Nodes whose type the loaded library does not resolve must hard-fail
     // here, the same way both engines reject the graph at load: the generic

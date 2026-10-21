@@ -1583,6 +1583,29 @@ void MainWindow::SmokeSelectScreen(int index) {
     if (index >= 0 && index < screens_->count()) appSwitcher_->setCurrentIndex(index);
 }
 
+QString MainWindow::SmokeSaveActiveAs(const QString& path) {
+    if (plantScreen_ && screens_ && screens_->currentWidget() == plantScreen_.data()) {
+        return plantScreen_->SaveGraph(path.toStdString());
+    }
+    return graphScene_->SaveGraph(path.toStdString());
+}
+
+void MainWindow::SmokePickNode(const std::string& nodeId) {
+    GraphScene* active = nullptr;
+    if (plantScreen_ && screens_ && screens_->currentWidget() == plantScreen_.data()) {
+        active = plantScreen_->Scene();
+    } else {
+        active = graphScene_.get();
+    }
+    if (!active || !active->Scene()) return;
+    const auto it = active->nodeIdMap_.find(nodeId);
+    if (it == active->nodeIdMap_.end()) return;
+    active->Scene()->clearSelection();
+    if (auto* ngo = active->Scene()->nodeGraphicsObject(it->second)) {
+        ngo->setSelected(true);   // selectionChanged fires -> inspector panels feed
+    }
+}
+
 void MainWindow::UpdateStatus() {
     const auto& graph = graphScene_->Graph();
     const QString message =

@@ -8,6 +8,8 @@
 #include <NodeAPI/NodeTemplates.h>
 #include <NodeAPI/Serialization.h>
 
+#include <nlohmann/json.hpp>
+
 #include <QtNodes/Definitions>
 #include <QtNodes/internal/ConnectionGraphicsObject.hpp>
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
@@ -116,6 +118,89 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     const auto graphText = ReadTextFile(graphJsonPath);
     if (!graphText) {
         return QStringLiteral("Failed to read graph file: %1").arg(QString::fromStdString(graphJsonPath));
+    }
+
+    nlohmann::json graphJson;
+    try {
+        graphJson = nlohmann::json::parse(*graphText);
+    } catch (const std::exception& e) {
+        return QStringLiteral("Failed to parse graph JSON: %1").arg(QString::fromStdString(e.what()));
+    }
+
+    // Lean semantic audit: the engines (python reference + PlantCodegen) are
+    // loud about these classes; the shared NodeAPI loader normalization used
+    // to swallow them (duplicate ids dropped, dangling wires pruned), so the
+    // user never learned the file was broken. Refuse rather than repair.
+    QStringList problems;
+    if (graphJson.contains("nodes") && graphJson["nodes"].is_array()) {
+        std::unordered_set<std::string> ids, portNames = {};
+        for (const auto& n : graphJson["nodes"]) {
+            const std::string id = n.value("id", std::string("<no id>"));
+            if (!ids.insert(id).second) {
+                problems.push_back(QString::fromStdString("duplicate node id '" + id + "'"));
+            }
+        }
+        std::unordered_map<std::string, std::string> nodeTypeById;
+        for (const auto& n : graphJson["nodes"]) {
+            nodeTypeById[n.value("id", std::string())] = n.value("type", std::string());
+        }
+        if (graphJson.contains("connections") && graphJson["connections"].is_array()) {
+            std::unordered_set<std::string> connIds;
+            std::unordered_set<std::string> wiredInputs;
+            for (const auto& c : graphJson["connections"]) {
+                const std::string cid = c.value("id", std::string());
+                if (!cid.empty() && !connIds.insert(cid).second) {
+                    problems.push_back(QString::fromStdString("duplicate connection id '" + cid + "'"));
+                }
+                const auto checkRef = [&](const nlohmann::json& ref, const char* dir) {
+                    const std::string nid = ref.value("nodeId", std::string());
+                    if (ids.count(nid) == 0) {
+                        problems.push_back(QString::fromStdString(
+                            std::string("connection '") + cid + "' " + dir +
+                            " endpoint references unknown node '" + nid + "'"));
+                        return;
+                    }
+                    if (const auto type = graph_.FindNodeType(nodeTypeById[nid])) {
+                        bool portOk = false;
+                        const std::string port = ref.value("portName", std::string());
+                        for (const auto& p : type->inputPorts) portOk |= p.name == port;
+                        for (const auto& p : type->outputPorts) portOk |= p.name == port;
+                        if (!portOk) {
+                            problems.push_back(QString::fromStdString(
+                                std::string("connection '") + cid + "' " + dir +
+                                " endpoint '" + nid + "' has no port '" + port +
+                                "' on type '" + nodeTypeById[nid] + "'"));
+                        }
+                    }
+                };
+                checkRef(c.value("from", nlohmann::json::object()), "'from'");
+                checkRef(c.value("to", nlohmann::json::object()), "'to'");
+                const auto to = c.value("to", nlohmann::json::object());
+                const std::string dst = to.value("nodeId", std::string()) + "." +
+                                        to.value("portName", std::string());
+                if (!wiredInputs.insert(dst).second) {
+                    problems.push_back(QString::fromStdString("input '" + dst + "' is wired more than once"));
+                }
+            }
+        }
+    }
+    if (!problems.isEmpty()) {
+        return QStringLiteral("Graph file rejected (corrupt; %1 problems):\n%2")
+            .arg(problems.size())
+            .arg(problems.mid(0, 20).join(QStringLiteral("\n")));
+    }
+
+    // Save-time merge: the non-schema top-level keys present in the source
+    // document (description, custom pipeline keys) are stashed verbatim, to
+    // be merged back on SaveGraph (NodeAPI::SaveToJson would drop them).
+    originalTopKeys_.clear();
+    static const std::unordered_set<std::string> kSchemaKeys = {
+        "name", "schemaVersion", "nodes", "connections", "bridges", "nodeTypes",
+    };
+    for (const auto& [key, value] : graphJson.items()) {
+        if (kSchemaKeys.count(key) == 0) {
+            originalTopKeys_[key] = value;
+        }
     }
 
     try {
@@ -1114,7 +1199,21 @@ QString GraphScene::SaveGraph(const std::string& path) const {
     }
 
     const std::string json = NodeAPI::SaveToJson(graph_);
-    stream << json;
+    if (originalTopKeys_.empty()) {
+        stream << json;
+    } else {
+        try {
+            nlohmann::ordered_json out = nlohmann::ordered_json::parse(json);
+            for (const auto& [key, value] : originalTopKeys_) {
+                if (!out.contains(key)) {
+                    out[key] = value;   // restore (e.g. description)
+                }
+            }
+            stream << out.dump(2) << "\n";
+        } catch (const std::exception&) {
+            stream << json;   // merge is best-effort; never lose the save itself
+        }
+    }
     if (!stream) {
         return QStringLiteral("Failed to write graph to: %1").arg(QString::fromStdString(path));
     }

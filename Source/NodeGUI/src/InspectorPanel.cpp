@@ -166,6 +166,11 @@ void InspectorPanel::Rebuild() {
     }
     for (const auto& [name, value] : node->parameters) {
         auto* edit = new QLineEdit(QString::fromStdString(value), form_);
+        // smoke-driver seam: param.<nodeId>.<paramName> for scripted edits
+        edit->setObjectName(QStringLiteral("param.")
+                            + QString::fromStdString(node->id)
+                            + QStringLiteral(".")
+                            + QString::fromStdString(name));
         QString parameterToolTip;
         if (nodeType) {
             if (const auto type = nodeType->FindParameterType(name)) {

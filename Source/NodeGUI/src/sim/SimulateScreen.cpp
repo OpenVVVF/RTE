@@ -252,7 +252,7 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     nameEdit_ = new QLineEdit(QStringLiteral("studio_sim"), scenarioBox);
     nameEdit_->setObjectName(QStringLiteral("simScenarioName"));
     nameEdit_->setMaximumWidth(180);
-    connect(nameEdit_, &QLineEdit::textEdited, this,
+    connect(nameEdit_, &QLineEdit::textChanged, this,
             [this] { UpdateOutPathDefault(); });
     grid->addWidget(nameEdit_, row, 1);
     grid->addWidget(new QLabel(QStringLiteral("Session file"), scenarioBox), row, 2);
@@ -413,7 +413,9 @@ SimulateScreen::SimulateScreen(QWidget* parent)
             &SimulateScreen::OnSimStderr);
     connect(process_, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
-                AppendLog(QStringLiteral("[error] %1\n").arg(process_->errorString()));
+                if (!cancelledByUser_) {   // a user-initiated kill is not an error
+                    AppendLog(QStringLiteral("[error] %1\n").arg(process_->errorString()));
+                }
             });
     connect(process_, &QProcess::finished, this, &SimulateScreen::OnSimFinished);
 
@@ -756,7 +758,9 @@ void SimulateScreen::OnSimStdout() {
         const QString message = object.value(QStringLiteral("message")).toString();
         const QString phase =
             object.value(QStringLiteral("phase")).toString(event);
-        if (!message.isEmpty()) {
+        // 'error' events are logged exactly once (dedicated branch below) so
+        // they do not also flow through the generic progress/message path
+        if (!message.isEmpty() && event != QLatin1String("error")) {
             AppendProgress(phase, message);
             AppendLog(QStringLiteral("[%1] %2\n").arg(phase, message));
         }

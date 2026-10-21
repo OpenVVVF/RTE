@@ -4,8 +4,14 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QLabel>
+#include <QLineEdit>
 #include <QLockFile>
 #include <QPixmap>
+#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QThread>
@@ -52,12 +58,49 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
         const QString arg = parts.value(1);
         if (kind == "screen") {
             window->SmokeSelectScreen(arg.toInt());
+        } else if (kind == "pick") {
+            window->SmokePickNode(arg.toStdString());
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
                 button->click();
             } else {
                 std::cerr << "smoke: no button named " << arg.toStdString() << "\n";
             }
+        } else if (kind == "set") {
+            QString text = step.mid(step.indexOf(arg) + arg .size()). trimmed();
+            if (QWidget* w = window->findChild<QWidget*>(arg)) {
+                if (auto* edit = qobject_cast<QLineEdit*>(w)) edit->setText(text);
+                else if (auto* combo = qobject_cast<QComboBox*>(w)) combo->setCurrentText(text);
+                else if (auto* spin = qobject_cast<QDoubleSpinBox*>(w)) spin->setValue(text.toDouble());
+                else if (auto* plain = qobject_cast<QPlainTextEdit*>(w)) {
+                    // action scripts carry newlines as "\\n" or "\n"; both mean newline
+                    plain->setPlainText(text.replace("\\\\n", "\n").replace("\\n", "\n"));
+                }
+                else if (auto* area = qobject_cast<QTextEdit*>(w)) {
+                    area->setPlainText(text.replace("\\\\n", "\n").replace("\\n", "\n"));
+                }
+                else std::cerr << "smoke: unsupported widget for set " << arg.toStdString() << "\n";
+            } else {
+                std::cerr << "smoke: no widget named " << arg.toStdString() << "\n";
+            }
+        } else if (kind == "dump") {
+            QString value;
+            if (auto* edit = window->findChild<QLineEdit*>(arg)) value = edit->text();
+            else if (auto* label = window->findChild<QLabel*>(arg)) value = label->text();
+            else if (auto* combo = window->findChild<QComboBox*>(arg)) value = combo->currentText();
+            else if (auto* plain = window->findChild<QPlainTextEdit*>(arg)) value = plain->toPlainText().replace("\n", "|");
+            else if (auto* area = window->findChild<QTextEdit*>(arg)) value = area->toPlainText().replace("\n", "|");
+            else {
+                std::cerr << "smoke: no dumpable widget named " << arg.toStdString() << "\n";
+            }
+            std::cout << arg.toStdString() << "=" << value.toStdString() << "\n";
+        } else if (kind == "open") {
+            if (!window->OpenGraph(arg.toStdString())) {
+                std::cerr << "smoke: open failed " << arg.toStdString() << "\n";
+            }
+        } else if (kind == "saveas") {
+            const QString err = window->SmokeSaveActiveAs(arg);
+            if (!err.isEmpty()) std::cerr << "smoke: saveas failed " << err.toStdString() << "\n";
         } else if (kind == "wait") {
             QThread::msleep(static_cast<unsigned long>(arg.toInt()));
         } else if (kind == "grab") {
