@@ -48,6 +48,10 @@ public:
     // document" button next to the picker pulls whatever this returns at
     // press time.
     void SetCurrentGraphProvider(std::function<QString()> provider);
+    // Same for the Plant row, sourced from the Plant Editor's document
+    // (parity with the Sw row; the document-change hook only pushes at
+    // path-assignment time).
+    void SetCurrentPlantGraphProvider(std::function<QString()> provider);
 
     // Offline seam ("Load session..."), also used when a run's artifact
     // event lands. Returns false (and shows the run log) on failure.
@@ -74,12 +78,20 @@ private:
     // vice versa): red border + tooltip + badge on the field, Run disabled,
     // and the status line naming the fix until the fields are right again.
     void RefreshGraphKindBadges();
+    // sim/lastSessionDir + sim/recentSessions QSettings plumbing (mirrors
+    // RuntimeTab's preset MRU): every successful session use - dialog pick,
+    // MRU pick, or a run artifact - moves to the front of the list and the
+    // next Load dialog / Runtime export lands in its directory.
+    QString SessionStartDir() const;
+    void RecordSessionUsed(const QString& path);
+    void RefreshSessionMruCombo();
     // First failure reason, or "" when the current fields form a runnable
     // command. Also emits the argument list on success.
     bool BuildArguments(QStringList& arguments, QString& error) const;
 
     QString rteBinary_;
     std::function<QString()> currentGraphProvider_;
+    std::function<QString()> currentPlantGraphProvider_;
     bool swPathSetExternally_ = false;
 
     QLineEdit* swEdit_ = nullptr;
@@ -88,9 +100,11 @@ private:
     QLineEdit* nameEdit_ = nullptr;
     QLineEdit* outEdit_ = nullptr;
     QPushButton* swUseCurrentButton_ = nullptr;
+    QPushButton* plantUseCurrentButton_ = nullptr;
     QLabel* swKindBadge_ = nullptr;
     QLabel* plantKindBadge_ = nullptr;
     QCheckBox* fallbackPlantCheck_ = nullptr;
+    QComboBox* sessionMruCombo_ = nullptr;
     QString kindBlockReason_;
 
     QDoubleSpinBox* durationSpin_ = nullptr;

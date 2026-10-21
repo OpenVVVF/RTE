@@ -124,6 +124,15 @@ public:
     void ClearConsole();
     void ClearSession();
 
+    // Raise the retention floor (seconds AND sample count) above the rolling
+    // live defaults. Only ever EXTENDS retention (clamped at kRetainSeconds /
+    // kMaxSamples), so the live Runtime ring is unchanged; the sim viewer
+    // calls this on its own store - after ClearSession(), before
+    // SimSession::PopulateStore - so a recorded session renders whole instead
+    // of being silently trimmed to its last 30 s. ClearSession() restores the
+    // live defaults.
+    void SetRetentionLimit(float seconds, std::size_t maxSamples);
+
     void SetStats(float rxHz,
                   float rxBytesPerSec,
                   uint64_t goodFrames,
@@ -179,6 +188,11 @@ private:
         sessionStringSignals_;
     std::vector<SessionConsoleLine> sessionConsole_;
     std::vector<SessionCommand> sessionCommands_;
+    // Retention applied by TrimHistoryLocked: the live rolling defaults
+    // unless SetRetentionLimit raised the floor (recorded-session playback
+    // only, never the live ring).
+    float retainSeconds_ = kRetainSeconds;
+    std::size_t maxSamples_ = kMaxSamples;
     bool sessionTelemetryClockInitialized_ = false;
     float sessionTelemetrySourceOrigin_ = 0.0f;
     double sessionTelemetryElapsedOrigin_ = 0.0;

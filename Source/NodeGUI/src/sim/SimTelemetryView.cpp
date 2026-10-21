@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSlider>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
@@ -65,8 +66,10 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     leftLayout->addWidget(filterEdit_);
 
     signalTable_ = new QTableWidget(0, 3, leftPanel);
+    // "Last": the column shows the session-final value until a playback
+    // cursor exists (the runtime live table's "Value" is live-latest).
     signalTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("Signal"), QStringLiteral("Graph"), QStringLiteral("Value")});
+        {QStringLiteral("Signal"), QStringLiteral("Graph"), QStringLiteral("Last")});
     signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     signalTable_->horizontalHeader()->setStretchLastSection(true);
     signalTable_->setColumnWidth(kSignalColumn, 170);
@@ -87,6 +90,16 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     countLabel_ = new QLabel(rightPanel);
     topRow->addWidget(countLabel_);
     topRow->addStretch(1);
+    topRow->addWidget(new QLabel(QStringLiteral("Plot view (sec)"), rightPanel));
+    // Same idiom as the runtime SignalTablePanel slider: 0.5..60.0 s in
+    // 0.1 s steps, driving every plot's SetViewSeconds.
+    viewSlider_ = new QSlider(Qt::Horizontal, rightPanel);
+    viewSlider_->setObjectName(QStringLiteral("simViewSeconds"));
+    viewSlider_->setRange(5, 600);
+    viewSlider_->setValue(100);  // 10 s, the SignalPlotWidget default
+    connect(viewSlider_, &QSlider::valueChanged, this,
+            [this](int) { ApplyViewSeconds(); });
+    topRow->addWidget(viewSlider_, 1);
     auto* addButton = new QPushButton(QStringLiteral("+ Graph"), rightPanel);
     addButton->setObjectName(QStringLiteral("simAddGraph"));
     addButton->setToolTip(QStringLiteral("Add another telemetry graph"));
@@ -122,6 +135,7 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     contentLayout->addWidget(splitter, 1);
 
     statusLabel_ = new QLabel(content);
+    statusLabel_->setObjectName(QStringLiteral("simSessionInfo"));
     statusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     contentLayout->addWidget(statusLabel_);
 
@@ -134,12 +148,20 @@ NodeGUI::runtime::SignalPlotWidget* SimTelemetryView::MakePlot() {
     auto* plot = new runtime::SignalPlotWidget(
         QStringLiteral("Graph %1").arg(plots_.size() + 1), plotsContainer_);
     plot->SetStore(&store_);
-    plot->setMinimumHeight(160);
-    if (session_) {
-        plot->SetViewSeconds(std::clamp(session_->Meta().durationS, 0.5, 60.0));
-    }
+    plot->setMinimumHeight(200);
+    // The slider row owns the view window (mirrors the runtime surface).
+    plot->SetViewSeconds(viewSlider_ ? viewSlider_->value() / 10.0 : 10.0);
     plotsLayout_->addWidget(plot);
     return plot;
+}
+
+void SimTelemetryView::ApplyViewSeconds() {
+    const double seconds = viewSlider_ ? viewSlider_->value() / 10.0 : 10.0;
+    for (auto* plot : plots_) {
+        plot->SetViewSeconds(seconds);
+        plot->Refresh();
+    }
+    UpdateStatusLine();
 }
 
 void SimTelemetryView::UpdateGraphCount() {
@@ -187,9 +209,21 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
         return false;
     }
     session_ = std::move(session);
+    sessionPath_ = path;
 
     store_.ClearSession();
     store_.ClearConsole();
+    // Recorded sessions play back whole: raise THIS store's retention floor
+    // above the session's span and longest channel before PopulateStore —
+    // the live Runtime store keeps its 30 s / 12000-sample ring (it never
+    // calls SetRetentionLimit).
+    int maxChannelSamples = 0;
+    for (const QString& name : session_->ChannelNames()) {
+        maxChannelSamples = std::max(maxChannelSamples,
+                                     session_->ChannelStats(name).samples);
+    }
+    store_.SetRetentionLimit(static_cast<float>(session_->Meta().durationS) + 1.0f,
+                             static_cast<std::size_t>(maxChannelSamples) + 16);
     session_->PopulateStore(store_);
 
     // Keep only assignments that still exist in this session; when that
@@ -210,10 +244,12 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
     }
     ApplyAssignments();
 
-    for (auto* plot : plots_) {
-        plot->SetViewSeconds(std::clamp(session_->Meta().durationS, 0.5, 60.0));
-        plot->Refresh();
-    }
+    // The window follows the session duration (capped at the leaf's 60 s);
+    // the slider is the single owner of the plots' view seconds.
+    const double viewSeconds =
+        std::clamp(session_->Meta().durationS, 0.5, 60.0);
+    viewSlider_->setValue(std::clamp(qRound(viewSeconds * 10.0), 5, 600));
+    ApplyViewSeconds();
 
     RebuildSignalTable();
     UpdateStatusLine();
@@ -251,19 +287,46 @@ void SimTelemetryView::UpdateStatusLine() {
     }
     const SimSessionMeta& meta = session_->Meta();
     int idleChannels = 0;
+    QString firstDataChannel;
     for (const QString& name : session_->ChannelNames()) {
         if (session_->ChannelStats(name).finiteSamples == 0) {
             ++idleChannels;
+        } else if (firstDataChannel.isEmpty()) {
+            firstDataChannel = name;
         }
     }
+    // Retained-span readout, from the store the plots actually read: a
+    // recorded session must cover t 0..duration, not just the rolling tail.
+    QString retained = QStringLiteral("(no data channels)");
+    if (!firstDataChannel.isEmpty()) {
+        std::vector<float> t;
+        std::vector<float> y;
+        if (store_.CopyHistoryInto(firstDataChannel.toStdString(), t, y)
+            && !t.empty()) {
+            retained = QStringLiteral("t %1..%2 s (%3 samples of %4)")
+                           .arg(static_cast<double>(t.front()), 0, 'f', 3)
+                           .arg(static_cast<double>(t.back()), 0, 'f', 3)
+                           .arg(t.size())
+                           .arg(firstDataChannel);
+        }
+    }
+    // Window bounds the plots show right now (anchored at the newest sample,
+    // like the leaf widget computes them).
+    const double windowSeconds = viewSlider_ ? viewSlider_->value() / 10.0 : 10.0;
+    const double windowEnd = meta.durationS;
+    const double windowStart = windowEnd - windowSeconds;
     statusLabel_->setText(QStringLiteral(
-        "%1 frames · %2 channels (%3 all-null) · %4 s · plant: %5")
+        "%1 frames · %2 channels (%3 all-null) · %4 s · retained %5 · window %6..%7 s · plant: %8 · %9")
             .arg(meta.telemetryFrames)
             .arg(session_->ChannelNames().size())
             .arg(idleChannels)
             .arg(meta.durationS, 0, 'f', 3)
-            .arg(meta.plant.isEmpty() ? QStringLiteral("(no stamp)")
-                                      : meta.plant));
+            .arg(retained,
+                 QString::number(windowStart, 'f', 1),
+                 QString::number(windowEnd, 'f', 1),
+                 meta.plant.isEmpty() ? QStringLiteral("(no stamp)")
+                                      : meta.plant,
+                 sessionPath_));
 }
 
 void SimTelemetryView::RebuildSignalTable() {

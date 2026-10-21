@@ -7,6 +7,8 @@
 #include "SignalTablePanel.h"
 #include "TelemetryPanel.h"
 
+#include <RTEAutomation/CachePaths.h>
+
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -190,8 +192,14 @@ void RuntimeTab::OnLoadPreset() {
 void RuntimeTab::OnExportSession() {
     const QString timestamp =
         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    // Suggest the shared sim sessions dir (~/.cache/rte/sim) so recorded
+    // exports and sim sessions live in one place; the sim viewer's MRU /
+    // lastSessionDir plumbing picks them up.
+    const QString simSessionsDir = QString::fromStdString(
+        (RTEAutomation::DefaultCacheRoot() / "sim").string());
+    QDir().mkpath(simSessionsDir);
     const QString suggestedPath =
-        QDir::home().filePath(
+        QDir(simSessionsDir).filePath(
             QStringLiteral("runtime-session-%1.jsonl").arg(timestamp));
     QString path = QFileDialog::getSaveFileName(
         this,
@@ -228,6 +236,8 @@ void RuntimeTab::OnExportSession() {
         return;
     }
 
+    MakeSettings().setValue(QStringLiteral("sim/lastSessionDir"),
+                            QFileInfo(path).absolutePath());
     exportStatus_->setText(
         QStringLiteral("exported %1").arg(QFileInfo(path).fileName()));
 }

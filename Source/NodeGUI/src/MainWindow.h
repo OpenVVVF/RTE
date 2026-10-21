@@ -79,6 +79,9 @@ public:
     QString SmokeDumpNodeGeometry(const std::string& nodeId);
     // [smoke] save the ACTIVE editor tab's document to a path (menu-free).
     QString SmokeSaveActiveAs(const QString& path);
+    // [smoke] load a sim session file through the Simulate screen's own
+    // "Load session..." path (returns false on load failure).
+    bool SmokeLoadSimSession(const QString& path);
 
 private slots:
     void OnOpen();

@@ -60,9 +60,11 @@ public:
     QStringList ConsoleLines() const { return console_; }
 
     // Pushes every channel into the store the SignalPlotWidget leaf reads.
-    // NaN samples are skipped so the GL line strips never see them (and the
-    // store's 30 s / 12000-sample rolling window holds the whole card for
-    // the sessions this screen produces).
+    // NaN samples are skipped so the GL line strips never see them. The sim
+    // viewer first raises the target store's retention floor
+    // (TelemetryStore::SetRetentionLimit) so recorded sessions survive whole;
+    // into a default store this still lands in the 30 s / 12000-sample live
+    // ring (used that way only by SelfCheck's tail cross-check).
     void PopulateStore(NodeGUI::runtime::TelemetryStore& store) const;
 
     // Acceptance self-check: re-scans the file with a naive regex scanner

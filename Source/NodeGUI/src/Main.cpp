@@ -158,6 +158,10 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             if (!window->OpenGraph(arg.toStdString())) {
                 std::cerr << "smoke: open failed " << arg.toStdString() << "\n";
             }
+        } else if (kind == "loadsession") {
+            const bool ok = window->SmokeLoadSimSession(
+                QString::fromStdString(arg.toStdString()));
+            if (!ok) std::cerr << "smoke: loadsession failed " << arg.toStdString() << "\n";
         } else if (kind == "saveas") {
             const QString err = window->SmokeSaveActiveAs(arg);
             if (!err.isEmpty()) std::cerr << "smoke: saveas failed " << err.toStdString() << "\n";

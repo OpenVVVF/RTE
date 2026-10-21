@@ -86,9 +86,19 @@ void TelemetryStore::ClearSession() {
     sessionTelemetryClockInitialized_ = false;
     sessionTelemetrySourceOrigin_ = 0.0f;
     sessionTelemetryElapsedOrigin_ = 0.0;
+    // Retention overrides belong to the data that was just dropped; a fresh
+    // session starts from the live ring defaults until told otherwise.
+    retainSeconds_ = kRetainSeconds;
+    maxSamples_ = kMaxSamples;
     nextConsoleSeq_ = 1;
     sessionStartSteady_ = std::chrono::steady_clock::now();
     sessionStartWall_ = std::chrono::system_clock::now();
+}
+
+void TelemetryStore::SetRetentionLimit(float seconds, std::size_t maxSamples) {
+    std::lock_guard lock(mtx_);
+    retainSeconds_ = std::max(kRetainSeconds, seconds);
+    maxSamples_ = std::max(kMaxSamples, maxSamples);
 }
 
 void TelemetryStore::SetStats(float rxHz,
@@ -232,12 +242,12 @@ uint64_t TelemetryStore::LatestConsoleSeq() const {
 }
 
 void TelemetryStore::TrimHistoryLocked(SignalHistory& hist) const {
-    while (hist.t.size() > kMaxSamples) {
+    while (hist.t.size() > maxSamples_) {
         hist.t.pop_front();
         hist.y.pop_front();
     }
     if (!hist.t.empty()) {
-        const float cutoff = hist.t.back() - kRetainSeconds;
+        const float cutoff = hist.t.back() - retainSeconds_;
         while (!hist.t.empty() && hist.t.front() < cutoff) {
             hist.t.pop_front();
             hist.y.pop_front();

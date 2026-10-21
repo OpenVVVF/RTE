@@ -14,6 +14,7 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QScrollArea;
+class QSlider;
 class QStackedWidget;
 class QTableWidget;
 class QVBoxLayout;
@@ -55,16 +56,19 @@ private:
     void ApplyAssignments();
     void ApplyDefaultAssignments();
     void UpdateStatusLine();
+    void ApplyViewSeconds();
     NodeGUI::runtime::SignalPlotWidget* MakePlot();
     void UpdateGraphCount();
     int AssignedGraph(const QString& name) const;
 
     NodeGUI::runtime::TelemetryStore store_;
     std::unique_ptr<SimSession> session_;
+    QString sessionPath_;  // full path of the loaded session (status line)
 
     QStackedWidget* stack_ = nullptr;  // empty-state page vs content page
     QLineEdit* filterEdit_ = nullptr;
     QTableWidget* signalTable_ = nullptr;
+    QSlider* viewSlider_ = nullptr;
     QScrollArea* scroll_ = nullptr;
     QWidget* plotsContainer_ = nullptr;
     QVBoxLayout* plotsLayout_ = nullptr;

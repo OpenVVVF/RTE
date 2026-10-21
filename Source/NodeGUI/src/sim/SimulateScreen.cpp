@@ -26,6 +26,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSettings>
 #include <QTabWidget>
 #include <QTextCursor>
 #include <QToolButton>
@@ -82,9 +83,13 @@ QStringList EventLines(const QString& text) {
     return lines;
 }
 
-// Regex-level sanity only — rte does the real parse; the badge says so.
-// Grammar mirrors RTESim::ParseEventSpec: whitespace-separated t=.., kind=..
-// and an optional arg=.. token without whitespace.
+// Structural check + per-kind arg grammar. The kind list and the arg rules
+// below DUPLICATE RTESim::ParseEventSpec (Source/RTESim/src/Scenario.cpp:
+// 66-108) so a typo fails at edit time instead of after a whole sim run —
+// keep them in sync by hand until the verb table moves into a shared
+// RTESim/EventVocabulary header (deliberately NOT extracting yet; one
+// caller on each side of the module boundary is acceptable for now per the
+// 2026-10-21 integration dossier).
 QString ValidateEventLine(const QString& line) {
     static const QRegularExpression pattern(
         QStringLiteral("^t=(\\S+)\\s+kind=([a-z][a-z0-9-]*)(?:\\s+arg=(\\S+))?$"));
@@ -105,8 +110,73 @@ QString ValidateEventLine(const QString& line) {
         QStringLiteral("fault-clear"),  QStringLiteral("dyno-set"),
         QStringLiteral("gate-ready"),
     };
-    if (!kinds.contains(match.captured(2))) {
-        return QStringLiteral("unknown kind '%1'").arg(match.captured(2));
+    const QString kind = match.captured(2);
+    if (!kinds.contains(kind)) {
+        return QStringLiteral("unknown kind '%1'").arg(kind);
+    }
+    const QString arg = match.captured(3);  // "" when the arg=.. token is absent
+
+    // reset / start / stop (the fault-reset and control start/stop verbs):
+    // no operand.
+    if (kind == QLatin1String("reset") || kind == QLatin1String("start")
+        || kind == QLatin1String("stop")) {
+        if (!arg.isEmpty()) {
+            return QStringLiteral("%1 takes no arg (got '%2')").arg(kind, arg);
+        }
+        return QString();
+    }
+    // var-set / plant-input: arg=<Name>=<Value>, Value numeric (mirrors
+    // parseNameValue in Scenario.cpp).
+    if (kind == QLatin1String("var-set") || kind == QLatin1String("plant-input")) {
+        const qsizetype eq = arg.indexOf(u'=');
+        if (eq <= 0) {
+            return QStringLiteral("%1 needs arg=<Name>=<Value>").arg(kind);
+        }
+        const QString valueText = arg.mid(eq + 1);
+        bool valueOk = false;
+        const double value = valueText.toDouble(&valueOk);
+        if (!valueOk || !std::isfinite(value)) {
+            return QStringLiteral("%1 value is not a number: '%2'").arg(kind, valueText);
+        }
+        return QString();
+    }
+    // dyno-set: arg=<rpm>, numeric.
+    if (kind == QLatin1String("dyno-set")) {
+        bool rpmOk = false;
+        const double rpm = arg.toDouble(&rpmOk);
+        if (!rpmOk || !std::isfinite(rpm)) {
+            return QStringLiteral("dyno-set needs arg=<rpm>, got '%1'").arg(arg);
+        }
+        return QString();
+    }
+    // gate-ready: 0|1, exactly (twin harness gate_ready vocabulary).
+    if (kind == QLatin1String("gate-ready")) {
+        if (arg != QLatin1String("0") && arg != QLatin1String("1")) {
+            return QStringLiteral("gate-ready needs arg=0|1, got '%1'").arg(arg);
+        }
+        return QString();
+    }
+    // fault-inject: the Plant.Fault.Point port name set; rte rejects a typo'd
+    // injection name, so the GUI does too.
+    if (kind == QLatin1String("fault-inject")) {
+        static const QStringList faultNames = {
+            QStringLiteral("OpenGates"), QStringLiteral("EncoderDisconnect"),
+            QStringLiteral("SensorRail"),
+        };
+        if (!faultNames.contains(arg)) {
+            return QStringLiteral(
+                "unknown fault name: '%1' (valid: OpenGates|EncoderDisconnect|SensorRail)")
+                    .arg(arg);
+        }
+        return QString();
+    }
+    // fault-clear: any name passes rte through (a typo'd clear only clears
+    // nothing), but an empty operand is always an authoring slip.
+    if (kind == QLatin1String("fault-clear")) {
+        if (arg.isEmpty()) {
+            return QStringLiteral("fault-clear needs arg=<fault name>");
+        }
+        return QString();
     }
     return QString();
 }
@@ -169,6 +239,13 @@ QToolButton* MakeBrowseButton(QWidget* parent) {
     button->setText(QStringLiteral("..."));
     button->setToolTip(QStringLiteral("Browse"));
     return button;
+}
+
+// Sessions MRU list cap (same as the runtime preset MRU).
+constexpr int kMaxRecentSessions = 10;
+
+QSettings MakeSimSettings() {
+    return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
 }
 
 // Relative graph/base paths must work no matter where the Studio was
@@ -261,6 +338,23 @@ SimulateScreen::SimulateScreen(QWidget* parent)
         }
     });
     grid->addWidget(plantBrowse, row, 4);
+    // Parity with the Sw row: pull the Plant Editor's document at press
+    // time (the onPathAssigned hook only pushes at open/save-as).
+    plantUseCurrentButton_ =
+        new QPushButton(QStringLiteral("Use current document"), scenarioBox);
+    plantUseCurrentButton_->setToolTip(QStringLiteral(
+        "Pull the Plant Editor's open document at press time."));
+    plantUseCurrentButton_->setVisible(false);
+    connect(plantUseCurrentButton_, &QPushButton::clicked, this, [this] {
+        const QString path =
+            currentPlantGraphProvider_ ? currentPlantGraphProvider_() : QString();
+        if (path.isEmpty()) {
+            AppendLog(QStringLiteral("[warn] the Plant Editor has no saved document yet.\n"));
+            return;
+        }
+        plantEdit_->setText(path);
+    });
+    grid->addWidget(plantUseCurrentButton_, row, 5);
     plantKindBadge_ = new QLabel(scenarioBox);
     plantKindBadge_->setObjectName(QStringLiteral("simPlantKindBadge"));
     grid->addWidget(plantKindBadge_, row, 6);
@@ -311,13 +405,30 @@ SimulateScreen::SimulateScreen(QWidget* parent)
         "Open an existing v3 session file in the telemetry view."));
     connect(loadButton, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(
-            this, QStringLiteral("Load Session"), QString(),
+            this, QStringLiteral("Load Session"), SessionStartDir(),
             QStringLiteral("Session JSONL (*.jsonl)"));
         if (!path.isEmpty()) {
             LoadSessionFile(path);
         }
     });
     grid->addWidget(loadButton, row, 5);
+    // Sessions MRU (mirrors RuntimeTab's preset MRU plumbing): most recent
+    // first, deduped, capped at 10; the placeholder row does nothing.
+    sessionMruCombo_ = new QComboBox(scenarioBox);
+    sessionMruCombo_->setObjectName(QStringLiteral("simSessionMru"));
+    sessionMruCombo_->setToolTip(QStringLiteral(
+        "Recently run / loaded sessions — pick one to load it."));
+    connect(sessionMruCombo_, &QComboBox::activated, this, [this](int index) {
+        if (index <= 0) {
+            return;
+        }
+        const QString path = sessionMruCombo_->itemText(index);
+        if (!path.isEmpty()) {
+            LoadSessionFile(path);
+        }
+        sessionMruCombo_->setCurrentIndex(0);
+    });
+    grid->addWidget(sessionMruCombo_, row, 6);
     ++row;
 
     grid->setColumnStretch(3, 1);
@@ -394,8 +505,10 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     auto* eventsLabel = new QLabel(QStringLiteral("Events (one per line)"), settingsBox);
     settingsGrid->addWidget(eventsLabel, 2, 0);
     eventsBadge_ = new QLabel(settingsBox);
+    eventsBadge_->setObjectName(QStringLiteral("simEventsBadge"));
     eventsBadge_->setToolTip(QStringLiteral(
-        "Regex-level sanity only — rte does the real parse at Run time."));
+        "Structure plus per-kind arg rules mirrored from rte's Scenario "
+        "parser; rte still does the final parse at Run time."));
     settingsGrid->addWidget(eventsBadge_, 2, 1, 1, 7);
     eventsEdit_ = new QPlainTextEdit(settingsBox);
     eventsEdit_->setObjectName(QStringLiteral("simEvents"));
@@ -480,6 +593,7 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     RefreshEventsBadge();
     RefreshSupplyBadge();
     RefreshGraphKindBadges();
+    RefreshSessionMruCombo();
 }
 
 SimulateScreen::~SimulateScreen() {
@@ -518,6 +632,47 @@ void SimulateScreen::SetCurrentGraphProvider(std::function<QString()> provider) 
     swUseCurrentButton_->setVisible(currentGraphProvider_ && !swPathSetExternally_);
 }
 
+void SimulateScreen::SetCurrentPlantGraphProvider(std::function<QString()> provider) {
+    currentPlantGraphProvider_ = std::move(provider);
+    plantUseCurrentButton_->setVisible(currentPlantGraphProvider_ != nullptr);
+}
+
+QString SimulateScreen::SessionStartDir() const {
+    const QString fromSettings =
+        MakeSimSettings().value(QStringLiteral("sim/lastSessionDir")).toString();
+    if (!fromSettings.isEmpty()) {
+        return fromSettings;
+    }
+    return QString::fromStdString(
+        (RTEAutomation::DefaultCacheRoot() / "sim").string());
+}
+
+void SimulateScreen::RecordSessionUsed(const QString& path) {
+    auto settings = MakeSimSettings();
+    // The next Load dialog (and the Runtime export suggestion) lands where
+    // the last used session lives.
+    settings.setValue(QStringLiteral("sim/lastSessionDir"),
+                      QFileInfo(path).absolutePath());
+    QStringList recent =
+        settings.value(QStringLiteral("sim/recentSessions")).toStringList();
+    recent.removeAll(path);
+    recent.prepend(path);
+    while (recent.size() > kMaxRecentSessions) {
+        recent.removeLast();
+    }
+    settings.setValue(QStringLiteral("sim/recentSessions"), recent);
+    RefreshSessionMruCombo();
+    sessionMruCombo_->setCurrentIndex(0);
+}
+
+void SimulateScreen::RefreshSessionMruCombo() {
+    const QStringList recent =
+        MakeSimSettings().value(QStringLiteral("sim/recentSessions")).toStringList();
+    sessionMruCombo_->clear();
+    sessionMruCombo_->addItem(QStringLiteral("recent sessions..."));
+    sessionMruCombo_->addItems(recent);
+}
+
 bool SimulateScreen::LoadSessionFile(const QString& path) {
     QString error;
     if (!telemetryView_->LoadSession(path, error)) {
@@ -527,6 +682,7 @@ bool SimulateScreen::LoadSessionFile(const QString& path) {
         bottomTabs_->setCurrentWidget(logView_);
         return false;
     }
+    RecordSessionUsed(path);
     const SimSessionMeta& meta = telemetryView_->Session()->Meta();
     AppendLog(QStringLiteral("[session] %1 (%2 frames, %3 channels, plant: %4)\n")
                   .arg(path)
@@ -575,7 +731,7 @@ void SimulateScreen::RefreshEventsBadge() {
     } else {
         eventsBadge_->setStyleSheet(QLatin1String(kBadgeOkStyle));
         eventsBadge_->setText(QStringLiteral(
-            "%1 %2 · sane (regex-level only — rte does the real parse)")
+            "%1 %2 · sane (kind+arg grammar; rte does the final parse)")
                 .arg(lines.size())
                 .arg(lines.size() == 1 ? QStringLiteral("event")
                                        : QStringLiteral("events")));
@@ -886,6 +1042,7 @@ void SimulateScreen::OnSimStdout() {
                               .arg(loadError));
                 artifactPath_.clear();
             } else {
+                RecordSessionUsed(artifactPath_);
                 bottomTabs_->setCurrentWidget(telemetryView_);
             }
         } else if (event == QLatin1String("complete")) {

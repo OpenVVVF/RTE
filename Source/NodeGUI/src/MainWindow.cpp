@@ -340,6 +340,13 @@ MainWindow::MainWindow(QWidget* parent)
     simulateScreen_->SetCurrentGraphProvider([this]() -> QString {
         return currentPath_.empty() ? QString() : QString::fromStdString(currentPath_);
     });
+    // Plant row parity: "Use current document" pulls the Plant Editor's
+    // document at press time; unsaved (empty-path) documents warn in the log.
+    simulateScreen_->SetCurrentPlantGraphProvider([this]() -> QString {
+        return plantScreen_ && !plantScreen_->CurrentPath().empty()
+                   ? QString::fromStdString(plantScreen_->CurrentPath())
+                   : QString();
+    });
     plantScreen_->onPathAssigned = [this](const std::string& path) {
         if (simulateScreen_ && !path.empty()) {
             simulateScreen_->SetPlantGraphPath(QString::fromStdString(path));
@@ -1679,6 +1686,10 @@ QString MainWindow::SmokeSaveActiveAs(const QString& path) {
         return plantScreen_->SaveGraph(path.toStdString());
     }
     return graphScene_->SaveGraph(path.toStdString());
+}
+
+bool MainWindow::SmokeLoadSimSession(const QString& path) {
+    return simulateScreen_ && simulateScreen_->LoadSessionFile(path);
 }
 
 void MainWindow::SmokePickNode(const std::string& nodeId) {
