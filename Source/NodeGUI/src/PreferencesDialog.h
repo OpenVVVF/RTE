@@ -13,6 +13,7 @@ class QComboBox;
 class QLabel;
 class QKeySequenceEdit;
 class QSpinBox;
+class QTabWidget;
 
 namespace NodeGUI {
 
@@ -66,6 +67,8 @@ private:
 
     QVector<ShortcutBinding> bindings_;
     QMap<QString, QKeySequenceEdit*> shortcutEditors_;
+    QTabWidget* tabsWidget_ = nullptr;
+    QWidget* shortcutsPage_ = nullptr;
 
     QCheckBox* confirmNewGraphCheck_ = nullptr;
     QCheckBox* showBuildLogsCheck_ = nullptr;

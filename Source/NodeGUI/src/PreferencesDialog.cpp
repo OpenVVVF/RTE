@@ -145,6 +145,7 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
 
     auto* outerLayout = new QVBoxLayout(this);
     auto* tabs = new QTabWidget(this);
+    tabsWidget_ = tabs;
     outerLayout->addWidget(tabs, 1);
 
     auto* generalPage = new QWidget(tabs);
@@ -301,6 +302,7 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     shortcutErrorLabel_->hide();
     shortcutsLayout->addWidget(shortcutErrorLabel_);
     tabs->addTab(shortcutsPage, QStringLiteral("Keybindings"));
+    shortcutsPage_ = shortcutsPage;
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                          this);
@@ -349,6 +351,11 @@ void PreferencesDialog::accept() {
                          duplicate.value(),
                          binding.label));
             shortcutErrorLabel_->show();
+            // Bring the user to the error instead of silently refusing on
+            // whatever other tab OK was pressed from (clunk audit below-cut).
+            if (tabsWidget_ && shortcutsPage_) {
+                tabsWidget_->setCurrentWidget(shortcutsPage_);
+            }
             return;
         }
         ownerBySequence.insert(portable, binding.label);
