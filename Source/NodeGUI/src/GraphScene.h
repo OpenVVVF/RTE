@@ -181,6 +181,7 @@ public:
     // "<id>=x,y;<id>.<port>=x,y;..." — node origin and port socket scene
     // positions, rounded to 0.01; serves grid-compliance smoke assertions.
     QString DumpNodeGeometry(const std::string& nodeId) const;
+    QPointF NodeCenterForSmoke(const std::string& nodeId) const;
 
 private:
     // Applies the greyed (excluded) or normal style to a node.

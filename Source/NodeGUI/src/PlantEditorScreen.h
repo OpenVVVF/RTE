@@ -75,11 +75,17 @@ public:
     InspectorPanel* InspectorPanelWidget() const;
 
     GraphScene* Scene() const { return graphScene_.get(); }
+    GraphView* View() const { return view_; }
 
     // MainWindow hooks: fired after any document-identity or content change
     // (title/undo-state refresh) and to relay the screen's status text.
     std::function<void()> onDocumentChanged;
     std::function<void(const QString&)> onStatusMessage;
+    // Fired only at the moment a path is ASSIGNED to the plant document
+    // (successful OpenGraph / SaveGraph), never per history snapshot and
+    // never with an empty path. The sim screen's plant row listens to this;
+    // ordinary canvas edits must not move it (clunk audit item 3).
+    std::function<void(const std::string&)> onPathAssigned;
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -104,6 +110,7 @@ private:
     void RecordHistorySnapshot();
     bool RestoreHistorySnapshot(const std::string& snapshot);
     void NotifyDocumentChanged();
+    void NotifyPathAssigned();
     // Drops the informational controller entry-point flags from the loaded
     // plant type database (see the comment in the .cpp).
     void SanitizeEntryPointFlags();

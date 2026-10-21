@@ -1,10 +1,12 @@
 #include "SimulateScreen.h"
 
+#include "GraphKind.h"
 #include "SimSession.h"
 #include "SimTelemetryView.h"
 
 #include <RTEAutomation/CachePaths.h>
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
@@ -169,6 +171,29 @@ QToolButton* MakeBrowseButton(QWidget* parent) {
     return button;
 }
 
+// Relative graph/base paths must work no matter where the Studio was
+// launched from: resolve against the process cwd first (explicit user
+// intent), then against the project root from the build define.
+QString ResolveProjectPath(const QString& raw) {
+    const QString text = raw.trimmed();
+    if (QFileInfo(text).exists()) {
+        return QFileInfo(text).absoluteFilePath();
+    }
+    const QString rooted = QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/") + text;
+    if (QFileInfo(rooted).exists()) {
+        return QFileInfo(rooted).absoluteFilePath();
+    }
+    return text;  // leave the user's text intact for the error message
+}
+
+// A path field whose line still shows only its placeholder falls back to
+// that placeholder (it is the documented default, e.g. the foc_demo
+// example), never to validation silence.
+QString EffectiveFieldText(const QLineEdit* edit) {
+    const QString text = edit->text().trimmed();
+    return text.isEmpty() ? edit->placeholderText().trimmed() : text;
+}
+
 }  // namespace
 
 SimulateScreen::SimulateScreen(QWidget* parent)
@@ -214,6 +239,11 @@ SimulateScreen::SimulateScreen(QWidget* parent)
         swEdit_->setText(path);
     });
     grid->addWidget(swUseCurrentButton_, row, 5);
+    swKindBadge_ = new QLabel(scenarioBox);
+    swKindBadge_->setObjectName(QStringLiteral("simSwKindBadge"));
+    grid->addWidget(swKindBadge_, row, 6);
+    connect(swEdit_, &QLineEdit::textChanged, this,
+            [this] { RefreshGraphKindBadges(); });
     ++row;
 
     grid->addWidget(new QLabel(QStringLiteral("Plant graph"), scenarioBox), row, 0);
@@ -231,6 +261,11 @@ SimulateScreen::SimulateScreen(QWidget* parent)
         }
     });
     grid->addWidget(plantBrowse, row, 4);
+    plantKindBadge_ = new QLabel(scenarioBox);
+    plantKindBadge_->setObjectName(QStringLiteral("simPlantKindBadge"));
+    grid->addWidget(plantKindBadge_, row, 6);
+    connect(plantEdit_, &QLineEdit::textChanged, this,
+            [this] { RefreshGraphKindBadges(); });
     ++row;
 
     grid->addWidget(new QLabel(QStringLiteral("Base source"), scenarioBox), row, 0);
@@ -346,6 +381,16 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     supplyBadge_ = new QLabel(settingsBox);
     settingsGrid->addWidget(supplyBadge_, 1, 6, 1, 2);
 
+    fallbackPlantCheck_ = new QCheckBox(
+        QStringLiteral("Allow fallback plant (fixed Gen7 physics substitute)"), settingsBox);
+    fallbackPlantCheck_->setObjectName(QStringLiteral("simAllowFallbackPlant"));
+    fallbackPlantCheck_->setToolTip(QStringLiteral(
+        "Only for rte builds without PlantCodegenLib: rte otherwise refuses — "
+        "'re-run with --allow-fallback-plant to opt into the built-in "
+        "Gen7-bench fallback plant'. The substitute is fixed Gen7-bench "
+        "physics, not the picked graph's physics, so it stays opt-in."));
+    settingsGrid->addWidget(fallbackPlantCheck_, 1, 8);
+
     auto* eventsLabel = new QLabel(QStringLiteral("Events (one per line)"), settingsBox);
     settingsGrid->addWidget(eventsLabel, 2, 0);
     eventsBadge_ = new QLabel(settingsBox);
@@ -378,6 +423,18 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     cancelButton_->setEnabled(false);
     connect(cancelButton_, &QPushButton::clicked, this, &SimulateScreen::OnCancel);
     actionRow->addWidget(cancelButton_);
+    auto* examplePairButton = new QPushButton(QStringLiteral("Use example pair"), this);
+    examplePairButton->setObjectName(QStringLiteral("simUseExamplePair"));
+    examplePairButton->setToolTip(QStringLiteral(
+        "Fill both rows with the worked example: foc_demo controller + "
+        "gen7_bench_pmsm plant (resolved against the project root)."));
+    connect(examplePairButton, &QPushButton::clicked, this, [this] {
+        swEdit_->setText(ResolveProjectPath(
+            QStringLiteral("Assets/Examples/foc_demo.json")));
+        plantEdit_->setText(ResolveProjectPath(
+            QStringLiteral("Assets/PlantExamples/gen7_bench_pmsm.json")));
+    });
+    actionRow->addWidget(examplePairButton);
     statusLabel_ = new QLabel(this);
     statusLabel_->setObjectName(QStringLiteral("simStatus"));
     statusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -422,6 +479,7 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     UpdateOutPathDefault();
     RefreshEventsBadge();
     RefreshSupplyBadge();
+    RefreshGraphKindBadges();
 }
 
 SimulateScreen::~SimulateScreen() {
@@ -538,32 +596,68 @@ void SimulateScreen::RefreshSupplyBadge() {
     }
 }
 
-namespace {
+void SimulateScreen::RefreshGraphKindBadges() {
+    // Same check for both rows, mirrored expectations: the Controller row
+    // must not hold a Plant graph and vice versa. Files that do not exist
+    // (yet) are left to the existence errors in BuildArguments; files that
+    // exist but are not recognizable graph JSON take the rte parse error at
+    // Run — neither is a kind mismatch, so neither draws a badge here.
+    auto checkRow = [](QLineEdit* edit, QLabel* badge, GraphKind wrongKind,
+                       const QString& reason) {
+        bool blocked = false;
+        const QString text = EffectiveFieldText(edit);
+        if (!text.isEmpty()) {
+            const QString resolved = ResolveProjectPath(text);
+            if (QFileInfo(resolved).isFile()
+                && GraphKindOf(resolved.toStdString()) == wrongKind) {
+                blocked = true;
+            }
+        }
+        if (blocked) {
+            edit->setStyleSheet(QStringLiteral("QLineEdit { border: 1px solid #ef5350; }"));
+            edit->setToolTip(reason);
+            badge->setStyleSheet(QLatin1String(kBadgeBadStyle));
+            badge->setText(reason);
+        } else {
+            edit->setStyleSheet(QString());
+            edit->setToolTip(QString());
+            badge->setStyleSheet(QLatin1String(kBadgeNeutralStyle));
+            badge->setText(QString());
+        }
+        return blocked;
+    };
 
-// Relative graph/base paths must work no matter where the Studio was
-// launched from: resolve against the process cwd first (explicit user
-// intent), then against the project root from the build define.
-QString ResolveProjectPath(const QString& raw) {
-    const QString text = raw.trimmed();
-    if (QFileInfo(text).exists()) {
-        return QFileInfo(text).absoluteFilePath();
+    const QString swReason = QStringLiteral(
+        "plant graph in Controller row — swap or pick another file");
+    const QString plantReason = QStringLiteral(
+        "controller graph in Plant row — swap or pick another file");
+    const bool swBlocked = checkRow(swEdit_, swKindBadge_, GraphKind::Plant, swReason);
+    const bool plantBlocked =
+        checkRow(plantEdit_, plantKindBadge_, GraphKind::Controller, plantReason);
+
+    QString reason;
+    if (swBlocked && plantBlocked) {
+        reason = swReason + QStringLiteral("; ") + plantReason;
+    } else if (swBlocked) {
+        reason = swReason;
+    } else if (plantBlocked) {
+        reason = plantReason;
     }
-    const QString rooted = QStringLiteral(RTE_PROJECT_ROOT) + QStringLiteral("/") + text;
-    if (QFileInfo(rooted).exists()) {
-        return QFileInfo(rooted).absoluteFilePath();
+
+    if (!reason.isEmpty()) {
+        kindBlockReason_ = reason;
+        SetStatus(reason, QLatin1String(kStatusBadStyle));
+    } else {
+        // Restore the idle prompt only when the status line still shows the
+        // kind block (never stomp a run result).
+        if (!kindBlockReason_.isEmpty() && statusLabel_->text() == kindBlockReason_) {
+            SetStatus(QStringLiteral("Idle — fill the scenario and press Run."),
+                      QLatin1String(kStatusIdleStyle));
+        }
+        kindBlockReason_.clear();
     }
-    return text;  // leave the user's text intact for the error message
+    runButton_->setEnabled(!IsRunning() && kindBlockReason_.isEmpty());
 }
-
-// A path field whose line still shows only its placeholder falls back to
-// that placeholder (it is the documented default, e.g. the foc_demo
-// example), never to validation silence.
-QString EffectiveFieldText(const QLineEdit* edit) {
-    const QString text = edit->text().trimmed();
-    return text.isEmpty() ? edit->placeholderText().trimmed() : text;
-}
-
-}  // namespace
 
 bool SimulateScreen::BuildArguments(QStringList& arguments, QString& error) const {
     const QString sw = ResolveProjectPath(EffectiveFieldText(swEdit_));
@@ -581,6 +675,18 @@ bool SimulateScreen::BuildArguments(QStringList& arguments, QString& error) cons
     }
     if (plant.isEmpty() || !QFileInfo(plant).isFile()) {
         error = QStringLiteral("plant graph file does not exist: %1").arg(plant);
+        return false;
+    }
+    // Kind checks ride on top of the existence checks (same rule the live
+    // row badges use): a swapped pair must name the fix here too.
+    if (GraphKindOf(sw.toStdString()) == GraphKind::Plant) {
+        error = QStringLiteral("plant graph in Controller row — swap or pick another file: %1")
+                    .arg(sw);
+        return false;
+    }
+    if (GraphKindOf(plant.toStdString()) == GraphKind::Controller) {
+        error = QStringLiteral("controller graph in Plant row — swap or pick another file: %1")
+                    .arg(plant);
         return false;
     }
     if (base.isEmpty() || !QFileInfo(base).isDir()) {
@@ -657,6 +763,9 @@ bool SimulateScreen::BuildArguments(QStringList& arguments, QString& error) cons
     }
     if (!supplyEdit_->text().trimmed().isEmpty()) {
         arguments << QStringLiteral("--supply") << supplyEdit_->text().trimmed();
+    }
+    if (fallbackPlantCheck_->isChecked()) {
+        arguments << QStringLiteral("--allow-fallback-plant");
     }
     for (const QString& event : events) {
         arguments << QStringLiteral("--event") << event;
@@ -840,7 +949,7 @@ void SimulateScreen::SetStatus(const QString& text, const QString& color) {
 }
 
 void SimulateScreen::SetRunning(bool running) {
-    runButton_->setEnabled(!running);
+    runButton_->setEnabled(!running && kindBlockReason_.isEmpty());
     cancelButton_->setEnabled(running);
 }
 

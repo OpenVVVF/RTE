@@ -5,6 +5,7 @@
 #include "InspectorPanel.h"
 #include "NodeGraphModel.h"
 #include "NodePalette.h"
+#include "ResourcePaths.h"
 
 #include <QtNodes/internal/NodeGraphicsObject.hpp>
 
@@ -12,6 +13,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
 #include <unordered_set>
 
 #include <QAction>
@@ -21,6 +23,7 @@
 #include <QCursor>
 #include <QEvent>
 #include <QFile>
+#include <QFileDialog>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <nlohmann/json.hpp>
@@ -70,6 +73,16 @@ void ClearEntryPointFlags(QJsonObject& document) {
     }
 }
 
+// Sibling of DefaultPlantTemplatesDir(): the worked plant examples the hint
+// link's file dialog seeds from (installed share/rte first, project root
+// second — the InstalledResourceRoot walk used by the other resolvers).
+std::string DefaultPlantExamplesDir() {
+    const std::filesystem::path installed = InstalledResourceRoot()
+        / "Assets" / "PlantExamples";
+    if (std::filesystem::is_directory(installed)) return installed.lexically_normal().string();
+    return (ProjectRoot() / "Assets" / "PlantExamples").lexically_normal().string();
+}
+
 }  // namespace
 
 PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
@@ -83,14 +96,30 @@ PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
 
     // One-line contract reminder: what makes a plant graph different from a
     // controller graph (single implicit domain, no bridges). The engines
-    // enforce these at load; the screen enforces them while editing.
+    // enforce these at load; the screen enforces them while editing. The
+    // trailing link opens a file dialog seeded at the worked plant examples.
     auto* hint = new QLabel(
         QStringLiteral("Plant nodegraph (HW side of the loop) - single implicit domain "
-                       "'plant', bridges rejected. Closed-loop simulation: rte sim."),
+                       "'plant', bridges rejected. Closed-loop simulation: rte sim. "
+                       "<a href=\"open-example\">Open an example plant\u2026</a>"),
         this);
+    hint->setTextFormat(Qt::RichText);
     hint->setStyleSheet(QStringLiteral(
         "QLabel { color: palette(mid); padding: 3px 8px; "
         "border-bottom: 1px solid palette(midlight); }"));
+    connect(hint, &QLabel::linkActivated, this, [this](const QString&) {
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Open Example Plant Graph"),
+            QString::fromStdString(DefaultPlantExamplesDir()),
+            QStringLiteral("JSON (*.json)"));
+        if (path.isEmpty()) {
+            return;
+        }
+        const QString error = OpenGraph(path.toStdString());
+        if (!error.isEmpty()) {
+            ReportError(error);
+        }
+    });
     layout->addWidget(hint);
 
     view_ = new GraphView(graphScene_->Scene());
@@ -390,6 +419,7 @@ QString PlantEditorScreen::OpenGraph(const std::string& path) {
     currentPath_ = path;
     ResetHistory();
     NotifyDocumentChanged();
+    NotifyPathAssigned();
     FrameToContent();
     return {};
 }
@@ -430,6 +460,7 @@ QString PlantEditorScreen::SaveGraph(const std::string& path) {
     }
     currentPath_ = path;
     NotifyDocumentChanged();
+    NotifyPathAssigned();
     return {};
 }
 
@@ -792,6 +823,15 @@ void PlantEditorScreen::NotifyDocumentChanged() {
     }
     if (onStatusMessage) {
         onStatusMessage(StatusText());
+    }
+}
+
+void PlantEditorScreen::NotifyPathAssigned() {
+    // Fires only when currentPath_ is (re)assigned - open / save-as - never
+    // on content edits, undo/redo, or NewGraph (whose cleared path must not
+    // blank a manually browsed sim input downstream).
+    if (onPathAssigned && !currentPath_.empty()) {
+        onPathAssigned(currentPath_);
     }
 }
 

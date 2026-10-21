@@ -7,6 +7,7 @@
 #include <functional>
 #include <QStringList>
 
+class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
@@ -69,6 +70,10 @@ private:
     void UpdateOutPathDefault();
     void RefreshEventsBadge();
     void RefreshSupplyBadge();
+    // Wrong-kind graph in a picker row (plant file in the Controller row or
+    // vice versa): red border + tooltip + badge on the field, Run disabled,
+    // and the status line naming the fix until the fields are right again.
+    void RefreshGraphKindBadges();
     // First failure reason, or "" when the current fields form a runnable
     // command. Also emits the argument list on success.
     bool BuildArguments(QStringList& arguments, QString& error) const;
@@ -83,6 +88,10 @@ private:
     QLineEdit* nameEdit_ = nullptr;
     QLineEdit* outEdit_ = nullptr;
     QPushButton* swUseCurrentButton_ = nullptr;
+    QLabel* swKindBadge_ = nullptr;
+    QLabel* plantKindBadge_ = nullptr;
+    QCheckBox* fallbackPlantCheck_ = nullptr;
+    QString kindBlockReason_;
 
     QDoubleSpinBox* durationSpin_ = nullptr;
     QComboBox* dtSubCombo_ = nullptr;

@@ -351,6 +351,7 @@ void GraphScene::RebuildScene() {
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeClicked,
                      [this](QtNodes::NodeId qtId) {
+                         std::cerr << "[dragtrace] nodeClicked fired qtId=" << qtId << "\n";
                          OnNodeMoved(qtId);
                      });
 
@@ -1618,8 +1619,12 @@ void GraphScene::SetGridSnap(bool on) {
 
 void GraphScene::SnapNodeToGrid(QtNodes::NodeId qtId) {
     if (auto* ngo = scene_->nodeGraphicsObject(qtId)) {
-        const QPointF snapped = WireRoute::SnapToGrid(ngo->pos());
-        if (snapped != ngo->pos()) {
+        const QPointF before = ngo->pos();
+        const QPointF snapped = WireRoute::SnapToGrid(before);
+        std::cerr << "[dragtrace] Snap qtId=" << qtId << " before=" << before.x()
+                  << "," << before.y() << " snapped=" << snapped.x() << ","
+                  << snapped.y() << "\n";
+        if (snapped != before) {
             ngo->setPos(snapped);
         }
     }
@@ -1633,6 +1638,7 @@ void GraphScene::SnapAllNodesToGrid() {
 }
 
 void GraphScene::OnNodeMoved(QtNodes::NodeId qtId) {
+    std::cerr << "[dragtrace] OnNodeMoved qtId=" << qtId << " gridSnap=" << gridSnap_ << "\n";
     if (gridSnap_) {
         SnapNodeToGrid(qtId);
     }
@@ -1683,6 +1689,7 @@ QString GraphScene::DumpNodeGeometry(const std::string& nodeId) const {
         return QStringLiteral("unknown node");
     }
 
+
     auto fmtP = [](const QPointF& p) {
         return QStringLiteral("%1,%2")
             .arg(p.x(), 0, 'f', 2)
@@ -1714,6 +1721,17 @@ QString GraphScene::DumpNodeGeometry(const std::string& nodeId) const {
         emitPorts(QtNodes::PortType::Out, nodeType->outputPorts);
     }
     return fields.join(QStringLiteral(";")) + QStringLiteral("\n");
+}
+
+QPointF GraphScene::NodeCenterForSmoke(const std::string& nodeId) const {
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end() || !scene_) {
+        return {};
+    }
+    if (auto* ngo = scene_->nodeGraphicsObject(it->second)) {
+        return ngo->sceneBoundingRect().center();
+    }
+    return {};
 }
 
 void GraphScene::RegisterNodeTypes() {

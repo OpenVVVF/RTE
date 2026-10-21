@@ -1,9 +1,11 @@
 #include "MainWindow.h"
 
 #include "FrameRateMonitor.h"
+#include "GraphKind.h"
 #include "InspectorPanel.h"
 #include "NodePalette.h"
 #include "PlantEditorScreen.h"  // [plant]
+#include "ResourcePaths.h"
 #include "sim/SimulateScreen.h"     // [sim]
 
 #include "runtime/ConsolePanel.h"
@@ -64,17 +66,6 @@ namespace NodeGUI {
 
 namespace {
 
-std::filesystem::path InstalledResourceRoot() {
-    std::filesystem::path directory =
-        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString());
-    for (int level = 0; level < 6 && !directory.empty(); ++level) {
-        const auto candidate = directory / "share" / "rte";
-        if (std::filesystem::is_directory(candidate)) return candidate;
-        directory = directory.parent_path();
-    }
-    return {};
-}
-
 std::string DefaultTemplatesDir() {
     const std::filesystem::path installed = InstalledResourceRoot()
         / "Assets" / "NodeTemplates";
@@ -86,14 +77,6 @@ std::string DefaultTemplatesDir() {
 #endif
 }
 
-std::filesystem::path ProjectRoot() {
-#ifdef RTE_PROJECT_ROOT
-    return RTE_PROJECT_ROOT;
-#else
-    return std::filesystem::current_path();
-#endif
-}
-
 // [plant] Sibling of DefaultTemplatesDir(): the plant-side node library used
 // by plant nodegraphs (HW side of the loop; see Assets/PlantTemplates).
 std::string DefaultPlantTemplatesDir() {
@@ -101,27 +84,6 @@ std::string DefaultPlantTemplatesDir() {
         / "Assets" / "PlantTemplates";
     if (std::filesystem::is_directory(installed)) return installed.lexically_normal().string();
     return (ProjectRoot() / "Assets" / "PlantTemplates").lexically_normal().string();
-}
-
-// [plant] A graph routes to the Plant Editor when any node's type belongs to
-// the Plant.* library (controller and plant types never mix in one document).
-bool GraphContainsPlantNodes(const std::string& path) {
-    QFile file(QString::fromStdString(path));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return false;
-    }
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
-    if (!document.isObject()) {
-        return false;
-    }
-    const QJsonArray nodes = document.object().value(QStringLiteral("nodes")).toArray();
-    for (const QJsonValue& value : nodes) {
-        const QString type = value.toObject().value(QStringLiteral("type")).toString();
-        if (type.startsWith(QStringLiteral("Plant."))) {
-            return true;
-        }
-    }
-    return false;
 }
 
 std::filesystem::path DefaultFirmwareBaseDir() {
@@ -370,28 +332,21 @@ MainWindow::MainWindow(QWidget* parent)
     simulateScreen_->SetRteBinary(QStringLiteral(RTE_CLI_DEVELOPMENT_PATH));
 #endif
     // The Sw row's "Use current document" resolves at press time against
-    // whatever the Node Editor has open; the Plant row follows the plant
-    // document whenever it changes.
+    // whatever the Node Editor has open. The Plant row follows the plant
+    // document only at the moment a path is ASSIGNED to it (open / save-as):
+    // the per-snapshot onDocumentChanged signal must never push — every
+    // canvas edit would otherwise clobber a manually browsed plant path with
+    // the document's stale (or empty) one (clunk audit item 3).
     simulateScreen_->SetCurrentGraphProvider([this]() -> QString {
         return currentPath_.empty() ? QString() : QString::fromStdString(currentPath_);
     });
-    const auto plantPathToSim = [this] {
-        if (simulateScreen_ && plantScreen_) {
-            simulateScreen_->SetPlantGraphPath(
-                QString::fromStdString(plantScreen_->CurrentPath()));
+    plantScreen_->onPathAssigned = [this](const std::string& path) {
+        if (simulateScreen_ && !path.empty()) {
+            simulateScreen_->SetPlantGraphPath(QString::fromStdString(path));
         }
     };
-    // keep the screen's own "use current document at press time" helper
-    // and its built-in example prefill; never clobber with an empty setter
-    (void)plantPathToSim;
     screens_->addWidget(simulateScreen_);
     appSwitcher_->addTab(QStringLiteral("Simulate"));
-    // same hook for later plant-document changes
-    const auto priorDocHook = plantScreen_->onDocumentChanged;
-    plantScreen_->onDocumentChanged = [priorDocHook, plantPathToSim] {
-        if (priorDocHook) priorDocHook();
-        plantPathToSim();
-    };
 
     StripBrokenSceneActions();
 
@@ -666,8 +621,10 @@ void MainWindow::SetupRuntime(const QString& serialPort,
 bool MainWindow::OpenGraph(const std::string& path) {
     // [plant] Route by document content: a graph holding any Plant.* node
     // opens in the Plant Editor (its own document + history); every other
-    // graph keeps the Node Editor path below, unchanged.
-    if (plantScreen_ && GraphContainsPlantNodes(path)) {
+    // graph keeps the Node Editor path below, unchanged. Unknown-kind files
+    // (unreadable / not a JSON object) also stay here — LoadGraph below
+    // surfaces the real parse error.
+    if (plantScreen_ && GraphKindOf(path) == GraphKind::Plant) {
         return OpenPlantGraph(path);
     }
 
@@ -1017,6 +974,7 @@ void MainWindow::SetupMenu() {
     QMenu* buildMenu = menuBar()->addMenu(QStringLiteral("&Build"));
 
     generateAction_ = buildMenu->addAction(QStringLiteral("&Generate Code"));
+    generateAction_->setObjectName(QStringLiteral("buildGenerate"));
     RegisterShortcut(generateAction_,
                      QStringLiteral("build.generate"),
                      QStringLiteral("Build"),
@@ -1027,6 +985,7 @@ void MainWindow::SetupMenu() {
     });
 
     flashAction_ = buildMenu->addAction(QStringLiteral("&Flash"));
+    flashAction_->setObjectName(QStringLiteral("buildFlash"));
     RegisterShortcut(flashAction_,
                      QStringLiteral("build.flash"),
                      QStringLiteral("Build"),
@@ -1039,6 +998,7 @@ void MainWindow::SetupMenu() {
     buildMenu->addSeparator();
 
     generateFlashAction_ = buildMenu->addAction(QStringLiteral("Generate and &Flash"));
+    generateFlashAction_->setObjectName(QStringLiteral("buildGenerateFlash"));
     RegisterShortcut(generateFlashAction_,
                      QStringLiteral("build.generateAndFlash"),
                      QStringLiteral("Build"),
@@ -1403,6 +1363,25 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
         return;
     }
 
+    // Plant graphs carry no firmware: they belong to the Plant Editor /
+    // rte sim path. Refuse before EnsureGraphSaved can overwrite the on-disk
+    // file and without touching buildProcess_. The Node Editor's path only
+    // points at a plant document after an on-disk kind change routed its
+    // reload to the Plant Editor (routing keeps plant graphs out of
+    // currentPath_ at open time).
+    if (!currentPath_.empty() && GraphKindOf(currentPath_) != GraphKind::Controller) {
+        ShowToast(QStringLiteral(
+            "Plant graphs build no firmware — use the Plant Editor / rte sim path"));
+        AppendBuildLog(QStringLiteral(
+            "\n[cancelled] '%1' is a plant graph. Firmware builds start from a "
+            "controller graph; plant graphs belong to the Plant Editor / rte sim path.\n")
+                .arg(QString::fromStdString(currentPath_)));
+        statusBar()->showMessage(
+            QStringLiteral("Build refused: plant graphs belong to the Plant Editor / rte sim path"),
+            6000);
+        return;
+    }
+
     // Always serialize the live graph before invoking external tools. For a
     // new graph this prompts for its first filename.
     if (!EnsureGraphSaved()) {
@@ -1551,8 +1530,17 @@ void MainWindow::FinishCliOperation(bool success, int exitCode) {
     AppendBuildLog(success
         ? QStringLiteral("\n[finished] Operation completed successfully.\n")
         : QStringLiteral("\n[finished] Operation failed (exit code %1).\n").arg(exitCode));
-    statusBar()->showMessage(success ? QStringLiteral("Firmware operation completed")
-                                     : QStringLiteral("Firmware operation failed"), 5000);
+    if (success && finishedStage == CliStage::Flash) {
+        // Post-flash crumb: the next thing the user wants is live telemetry.
+        AppendBuildLog(QStringLiteral(
+            "[hint] Firmware flashed — switch to Runtime (Ctrl+4) to watch telemetry.\n"));
+        statusBar()->showMessage(
+            QStringLiteral("Firmware flashed — switch to Runtime (Ctrl+4) to watch telemetry"),
+            8000);
+    } else {
+        statusBar()->showMessage(success ? QStringLiteral("Firmware operation completed")
+                                         : QStringLiteral("Firmware operation failed"), 5000);
+    }
     SetBuildActionsEnabled(true);
 }
 

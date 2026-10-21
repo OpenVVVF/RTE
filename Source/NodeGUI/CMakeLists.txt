@@ -4,6 +4,8 @@ add_executable(RTEStudio
     src/Main.cpp
     src/MainWindow.cpp
     src/MainWindow.h
+    src/GraphKind.cpp
+    src/GraphKind.h
     src/GraphScene.cpp
     src/GraphScene.h
     src/GraphView.cpp
@@ -22,6 +24,8 @@ add_executable(RTEStudio
     src/ParameterBlock.h
     src/PreferencesDialog.cpp
     src/PreferencesDialog.h
+    src/ResourcePaths.cpp
+    src/ResourcePaths.h
     src/ParameterNodeGeometry.cpp
     src/ParameterNodeGeometry.h
     src/NodePalette.cpp
