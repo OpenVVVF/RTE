@@ -311,7 +311,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     plantToolboxDock_ = new QDockWidget(QStringLiteral("Plant Toolbox"), this);
     plantToolboxDock_->setObjectName(QStringLiteral("plantToolboxDock"));
-    plantToolboxDock_->setWidget(plantScreen_->PalettePanel());
+    plantToolboxDock_->setWidget(
+        new NodePaletteHost(plantScreen_->PalettePanel(), this));
     // Same usable-read floor as the node palette (2-char truncation at the
     // default dock breadth; preferred size still wins when resized).
     plantScreen_->PalettePanel()->setMinimumWidth(190);
@@ -424,7 +425,7 @@ MainWindow::MainWindow(QWidget* parent)
             });
     toolboxDock_ = new QDockWidget(QStringLiteral("Node Toolbox"), this);
     toolboxDock_->setObjectName(QStringLiteral("nodeToolboxDock"));
-    toolboxDock_->setWidget(palette_);
+    toolboxDock_->setWidget(new NodePaletteHost(palette_, this));
     // default dock breadth left names truncated to 2 chars; give the tree a
     // usable-read floor (preferred size still wins when the user resizes)
     palette_->setMinimumWidth(190);

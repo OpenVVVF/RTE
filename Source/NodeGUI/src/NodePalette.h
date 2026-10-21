@@ -52,4 +52,16 @@ private:
     QString filterText_;
 };
 
+// Host widget pairing a filter line edit (top) with a NodePalette (bottom);
+// the palette docks receive this wrapper, and the palette reference stays
+// addressable for SetNodeTypes / activation connects.
+class NodePaletteHost : public QWidget {
+public:
+    explicit NodePaletteHost(NodePalette* palette, QWidget* parent);
+    NodePalette* Palette() const { return palette_; }
+
+private:
+    NodePalette* palette_ = nullptr;
+};
+
 }  // namespace NodeGUI

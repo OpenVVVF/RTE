@@ -1,8 +1,10 @@
 #include "NodePalette.h"
 
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMimeData>
 #include <QTreeWidgetItem>
+#include <QVBoxLayout>
 
 namespace NodeGUI {
 
@@ -142,6 +144,22 @@ void NodePalette::ActivateItem(const QTreeWidgetItem* item) {
     if (!typeId.isEmpty()) {
         Q_EMIT nodeTypeActivated(typeId);
     }
+}
+
+NodePaletteHost::NodePaletteHost(NodePalette* palette, QWidget* parent)
+    : QWidget(parent)
+    , palette_(palette) {
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(2, 2, 2, 2);
+    layout->setSpacing(2);
+    auto* filter = new QLineEdit(this);
+    filter->setObjectName(QStringLiteral("paletteFilter"));
+    filter->setPlaceholderText(QStringLiteral("Filter (name or id)"));
+    connect(filter, &QLineEdit::textChanged, palette_,
+            [palette](const QString& text) { palette->SetFilter(text); });
+    layout->addWidget(filter);
+    palette_->setParent(this);
+    layout->addWidget(palette_, 1);
 }
 
 }  // namespace NodeGUI
