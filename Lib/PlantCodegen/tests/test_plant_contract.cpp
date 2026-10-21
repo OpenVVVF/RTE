@@ -23,7 +23,7 @@ TEST(PlantCodegenContract, ZeroDsrSmokeTracksPythonTape) {
     plant_zero_dsr_zf75_7::PlantState state{};
     plant_zero_dsr_zf75_7::PlantInit(state);
     plant_zero_dsr_zf75_7::PlantSetDuty(state, 52.0f, 49.0f, 49.0f);
-    plant_zero_dsr_zf75_7::PlantSetDynoRpm(state, 600.0f);
+    plant_zero_dsr_zf75_7::PlantSetDynoRpm(state, 517.0f);  // off electrical-rev wrap razors (600rpm*pp5 landed exactly on 2pi at substep 100)
 
     struct Checkpoint {
         int substep;
@@ -32,13 +32,12 @@ TEST(PlantCodegenContract, ZeroDsrSmokeTracksPythonTape) {
     };
     // python PlantGraphSim tape (200 us substeps).
     constexpr Checkpoint kTape[] = {
-        {50,  100.76, -333.7287728491094, 68.3183485971491, 100.55169283622679,
-         310.17, -33.040000000000006, -277.06, 36850, 53306},
-        {100, 106.92, -112.96562204097336, -220.5040339692526, 106.77373046937991,
-         174.79000000000002, -239.47000000000003, 64.68, 33545, 53707},
-        {200, 110.0, -335.1385945344959, -144.55136126581914, 110.05120056382147,
-         356.09000000000003, -247.38000000000002, -108.71000000000001,
-         35205, 53571},
+        {50,  117.04, -842.3522386908612, -426.1891790081615, 117.04129704791694,
+         943.46, -444.08000000000004, -499.38000000000005, 41414, 51832},
+        {100, 114.84, 29.537479263922616, -37.546184977516006, 114.80536371551598,
+         -9.590000000000002, -35.7, 45.36000000000001, 50117, 44559},
+        {200, 114.40, -374.1675589970487, -65.83057204337571, 114.5790831184064,
+         -2.5200000000000005, 330.26000000000005, -327.74, 47772, 47396},
     };
 
     plant_zero_dsr_zf75_7::PlantMeas meas{};
@@ -54,8 +53,9 @@ TEST(PlantCodegenContract, ZeroDsrSmokeTracksPythonTape) {
         EXPECT_LE(meas.Enc_Cos, 53727.0f) << "substep " << i;
         EXPECT_GE(meas.Vdc_V, 0.5f) << "substep " << i;
         EXPECT_LE(meas.Vdc_V, 2000.0f) << "substep " << i;
-        EXPECT_FLOAT_EQ(meas.Mech_Rpm, 600.0f);
-        EXPECT_FLOAT_EQ(meas.Elec_Rpm, 9600.0f);
+        EXPECT_FLOAT_EQ(meas.Mech_Rpm, 517.0f);
+        // pp = 5 (ZF75-7, ride-data verified 2026-10-21; was placeholder 16)
+        EXPECT_FLOAT_EQ(meas.Elec_Rpm, 2585.0f);
 
         if (next < std::size(kTape) && kTape[next].substep == i) {
             const Checkpoint& cp = kTape[next++];
@@ -72,11 +72,12 @@ TEST(PlantCodegenContract, ZeroDsrSmokeTracksPythonTape) {
     }
     EXPECT_EQ(next, std::size(kTape));
 
-    // D10: the 16 pole-pair DSR machine + the shared encoder offset.
+    // D10: the 5 pole-pair ZF75-7 DSR machine (ride-data verified; was the
+    // 16-pp placeholder) with its ride-fitted Rs + the shared encoder offset.
     double poles = 0, rsOhm = 0, encOffset = 0;
     plant_zero_dsr_zf75_7::PlantBootParams(state, &poles, &rsOhm, &encOffset);
-    EXPECT_DOUBLE_EQ(poles, 16.0);
-    EXPECT_DOUBLE_EQ(rsOhm, 0.030);
+    EXPECT_DOUBLE_EQ(poles, 5.0);
+    EXPECT_DOUBLE_EQ(rsOhm, 0.0087);
     EXPECT_DOUBLE_EQ(encOffset, 33.034);
 }
 

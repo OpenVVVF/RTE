@@ -339,6 +339,7 @@ std::optional<double> TemplateDefault(const std::string& typeId,
         {{"Plant.Thermal.TwoNodeCauer", "Off2Idle"}, 0.0},     // ch2 law: p.get(Off2Idle, Off2|0)
         {{"Plant.Thermal.TwoNodeCauer", "Off2Slope"}, 0.0},    // constant offset special case
         {{"Plant.Thermal.TwoNodeCauer", "Off2Knee_C"}, 4.9},   // p.get(...,4.9)
+        {{"Plant.Thermal.TwoNodeCauer", "Off3"}, 0.55},        // ch3: p.get(...,0.55)
         {{"Plant.Machine.PmsmDq", "Id0"}, 0.0},                // .get(...,0.0)
         {{"Plant.Machine.PmsmDq", "Iq0"}, 0.0},                // .get(...,0.0)
         {{"Plant.Machine.PmsmDq", "Theta0"}, 0.0},             // .get(...,0.0)

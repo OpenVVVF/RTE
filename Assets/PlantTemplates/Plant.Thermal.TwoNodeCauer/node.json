@@ -6,25 +6,141 @@
   "maxInstances": 0,
   "isEntryPoint": false,
   "inputPorts": [
-    {"name": "P_Heat", "description": "Heat power into the plate node, W.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+    {
+      "name": "P_Heat",
+      "description": "Heat power into the plate node, W.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
   ],
   "outputPorts": [
-    {"name": "T_Plate", "description": "Plate/sensor-node temperature, C.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "T_Sink", "description": "Heatsink mass temperature, C.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "T_Meas1", "description": "NTC channel 1 readout (plate + off1), C.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
-    {"name": "T_Meas2", "description": "NTC channel 2 readout (plate + off2), C.", "direction": "output", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}}
+    {
+      "name": "T_Plate",
+      "description": "Plate/sensor-node temperature, C.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Sink",
+      "description": "Heatsink mass temperature, C.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Meas1",
+      "description": "NTC channel 1 readout (plate + off1), C.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Meas2",
+      "description": "NTC channel 2 readout (plate + off2), C.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "T_Meas3",
+      "direction": "output",
+      "type": {
+        "quantity": "temperature",
+        "frame": "scalar",
+        "dtype": "f32"
+      },
+      "description": "NTC channel 3 readout (plate + Off3), C - populate for assemblies with three NTC strips (e.g. the DSR bike rig)."
+    }
   ],
   "parameterTypes": {
-    "R12_KW":   {"description": "Plate->sink thermal resistance, K/W.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "C1_JK":    {"description": "Plate thermal capacitance, J/K.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "R2_KW":    {"description": "Sink->ambient thermal resistance, K/W.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "C2_JK":    {"description": "Sink thermal capacitance, J/K.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "TAmb_C":   {"description": "Ambient temperature, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "T1_0_C":   {"description": "Initial plate temperature, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "T2_0_C":   {"description": "Initial sink temperature, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Off1":      {"description": "NTC ch1 spot offset, C.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Off2Idle":  {"description": "NTC ch2 idle spot offset, C (recorded +3.4 at idle).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Off2Slope": {"description": "ch2 load-relief slope, K per K of plate rise above the knee (recorded 0.268); 0 = constant offset.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
-    "Off2Knee_C":{"description": "offset knee above ambient, C (4.9 anchor).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+    "R12_KW": {
+      "description": "Plate->sink thermal resistance, K/W.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "C1_JK": {
+      "description": "Plate thermal capacitance, J/K.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "R2_KW": {
+      "description": "Sink->ambient thermal resistance, K/W.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "C2_JK": {
+      "description": "Sink thermal capacitance, J/K.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "TAmb_C": {
+      "description": "Ambient temperature, C.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "T1_0_C": {
+      "description": "Initial plate temperature, C.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "T2_0_C": {
+      "description": "Initial sink temperature, C.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Off1": {
+      "description": "NTC ch1 spot offset, C.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Off2Idle": {
+      "description": "NTC ch2 idle spot offset, C (recorded +3.4 at idle).",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Off2Slope": {
+      "description": "ch2 load-relief slope, K per K of plate rise above the knee (recorded 0.268); 0 = constant offset.",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Off2Knee_C": {
+      "description": "offset knee above ambient, C (4.9 anchor).",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    },
+    "Off3": {
+      "description": "NTC ch3 spot offset, C (constant; assemblies with a third sensor strip).",
+      "dtype": "f32",
+      "frame": "scalar",
+      "quantity": "dimensionless"
+    }
   }
 }
