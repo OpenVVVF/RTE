@@ -23,13 +23,19 @@
 #include <QHelpEvent>
 #include <QFontMetricsF>
 #include <QKeyEvent>
+#include <QMainWindow>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QGraphicsProxyWidget>
 #include <QScrollBar>
+#include <QStatusBar>
 #include <QToolTip>
 
 #include <cmath>
+#include <algorithm>
+#include <map>
+#include <vector>
 
 namespace NodeGUI {
 
@@ -219,6 +225,18 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event) {
                 return;
             }
             item = item->parentItem();
+        }
+    }
+    // Empty canvas: offer "Add node here" - the registry's type list grouped
+    // by the palette's family prefix - instead of a dead right-click.
+    if (onNodeTypeDropped) {
+        QGraphicsItem* item = itemAt(event->pos());
+        while (item && !qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+            item = item->parentItem();
+        }
+        if (!item && PopupAddNodeMenu(event->globalPos(), mapToScene(event->pos()))) {
+            event->accept();
+            return;
         }
     }
     QtNodes::GraphicsView::contextMenuEvent(event);
@@ -468,6 +486,119 @@ void GraphView::mouseDoubleClickEvent(QMouseEvent* event) {
     }
     QtNodes::GraphicsView::mouseDoubleClickEvent(event);
     TrackNodeDragAfterPress(event);
+}
+
+void GraphView::keyPressEvent(QKeyEvent* event) {
+    // Arrow keys move the selected nodes: one grid step per press, x5 with
+    // Shift. Any other modifier (or key) defers to the base handlers, so
+    // Ctrl+arrows and friends keep their platform meaning. Key autorepeat is
+    // welcome: each press is one nudge (one undo entry per press is within
+    // the sanctioned 'per series' design for this gesture).
+    if ((event->modifiers() & ~Qt::ShiftModifier) == 0 &&
+        scene()) {
+        QPointF direction;
+        switch (event->key()) {
+        case Qt::Key_Left:  direction = {-1.0, 0.0}; break;
+        case Qt::Key_Right: direction = { 1.0, 0.0}; break;
+        case Qt::Key_Up:    direction = {0.0, -1.0}; break;
+        case Qt::Key_Down:  direction = {0.0,  1.0}; break;
+        default: break;
+        }
+        if (!direction.isNull() &&
+            NudgeSelectedNodes(direction,
+                               (event->modifiers() & Qt::ShiftModifier) ? 5 : 1)) {
+            event->accept();
+            return;
+        }
+    }
+    QtNodes::GraphicsView::keyPressEvent(event);
+}
+
+bool GraphView::NudgeSelectedNodes(const QPointF& direction, int steps) {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    if (!basicScene) {
+        return false;
+    }
+    std::vector<QtNodes::NodeGraphicsObject*> nodes;
+    for (QGraphicsItem* item : scene()->selectedItems()) {
+        if (auto* node = qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item);
+            node && node->flags().testFlag(QGraphicsItem::ItemIsMovable)) {
+            nodes.push_back(node);
+        }
+    }
+    if (nodes.empty()) {
+        return false;
+    }
+
+    // A key nudge is a programmatic drag: mimic GraphScene::DragNodeAsUser
+    // through the public chain (move ONLY the graphics object - never the
+    // model's Position directly), leave the real-drag mark via
+    // onNodeDragProven, then fire the release-side nodeClicked whose gated
+    // handler completes the move: grid snap, domain outlines, position sync
+    // into the graph, change notification (hence undo booking).
+    const QPointF delta = direction * (WireRoute::kGridPitch * steps);
+    for (auto* node : nodes) {
+        const QtNodes::NodeId qtId = node->nodeId();
+        node->setPos(node->pos() + delta);
+        if (onNodeDragProven) {
+            onNodeDragProven(qtId);
+        }
+        basicScene->nodeClicked(qtId);
+    }
+
+    // Cheap, discoverable, transient feedback: the moved node's snapped
+    // scene position on the host window's status line for a moment.
+    if (auto* mainWindow = qobject_cast<QMainWindow*>(window())) {
+        const QPointF finalPos = nodes.front()->pos();
+        mainWindow->statusBar()->showMessage(
+            QStringLiteral("Node moved to (%1, %2)")
+                .arg(finalPos.x(), 0, 'f', 0)
+                .arg(finalPos.y(), 0, 'f', 0),
+            2500);
+    }
+    return true;
+}
+
+bool GraphView::PopupAddNodeMenu(const QPoint& globalPos, const QPointF& scenePos) {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* model = basicScene
+                      ? dynamic_cast<QtNodes::DataFlowGraphModel*>(&basicScene->graphModel())
+                      : nullptr;
+    const auto registry = model ? model->dataModelRegistry() : nullptr;
+    if (!registry || registry->registeredModelCreators().empty()) {
+        return false;
+    }
+
+    // Type ids from the model's own type registry (the loader the palette's
+    // SetNodeTypes mirrors), grouped with the palette's family-prefix rule -
+    // same taxonomy, nothing re-derived from template files.
+    std::map<QString, std::vector<QString>> families;
+    for (const auto& [typeName, creator] : registry->registeredModelCreators()) {
+        (void)creator;
+        families[NodePalette::CategoryOf(typeName.toStdString())].push_back(typeName);
+    }
+
+    auto* menu = new QMenu(QStringLiteral("Add node here"));
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    for (auto& [family, typeIds] : families) {
+        std::sort(typeIds.begin(), typeIds.end());
+        QMenu* submenu = families.size() > 1 ? menu->addMenu(family) : menu;
+        for (const QString& typeId : typeIds) {
+            const QString label = typeId.mid(typeId.lastIndexOf(QLatin1Char('.')) + 1);
+            QAction* action = submenu->addAction(label);
+            action->setToolTip(typeId);
+            QObject::connect(action, &QAction::triggered, this,
+                             [this, typeId, scenePos]() {
+                // Same seam as palette drops: the host's AddNodeAt applies
+                // domain adoption and the grid snap itself.
+                if (onNodeTypeDropped) {
+                    onNodeTypeDropped(typeId, scenePos);
+                }
+            });
+        }
+    }
+    menu->popup(globalPos);
+    return true;
 }
 
 void GraphView::keyReleaseEvent(QKeyEvent* event) {

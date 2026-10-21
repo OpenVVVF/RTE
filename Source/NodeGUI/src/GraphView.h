@@ -60,6 +60,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     bool viewportEvent(QEvent* event) override;
 
@@ -71,6 +72,18 @@ protected:
 private:
     void TrackNodeDragAfterPress(QMouseEvent* event);
     void ClearNodeDragCursor();
+
+    // Arrow-key move of the selected nodes: one WireRoute grid step per
+    // arrow press, steps x5 with Shift. The move goes through the same
+    // completion chain a real drag uses (see NudgeSelectedNodes). Returns
+    // false when nothing movable is selected (caller defers to the base).
+    bool NudgeSelectedNodes(const QPointF& direction, int steps);
+
+    // Empty-canvas right-click: popup with the registered node types grouped
+    // by the palette's family prefix; picking one instantiates it through
+    // onNodeTypeDropped (same seam as palette drops, incl. grid snap).
+    // Returns false when no type taxonomy is available.
+    bool PopupAddNodeMenu(const QPoint& globalPos, const QPointF& scenePos);
 
     // Manual wire routing: a left press on a wire arms the gesture; dragging
     // past the platform threshold drags the bend that was grabbed (or inserts

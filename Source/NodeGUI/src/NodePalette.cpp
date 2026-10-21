@@ -1,5 +1,6 @@
 #include "NodePalette.h"
 
+#include <QKeyEvent>
 #include <QMimeData>
 #include <QTreeWidgetItem>
 
@@ -11,6 +12,17 @@ NodePalette::NodePalette(QWidget* parent)
     setSelectionMode(QAbstractItemView::SingleSelection);
     setDragEnabled(true);
     setDragDropMode(QAbstractItemView::DragOnly);
+
+    // Activation beside drag: double-click a type entry to instantiate it.
+    // Deliberately NOT itemActivated - on some platforms that fires on single
+    // click, and a drag out of the palette would then add a stray node.
+    // Carries the same type id the drag's mimeData does, so one host seam
+    // (GraphView::onNodeTypeDropped) serves both gestures.
+    connect(this, &QTreeWidget::itemDoubleClicked, this,
+            [this](QTreeWidgetItem* item, int column) {
+        (void)column;
+        ActivateItem(item);
+    });
 }
 
 QString NodePalette::CategoryOf(const std::string& typeId) {
@@ -68,6 +80,32 @@ QMimeData* NodePalette::mimeData(const QList<QTreeWidgetItem*>& items) const {
                       items.first()->data(0, Qt::UserRole).toString().toUtf8());
     }
     return mime;
+}
+
+void NodePalette::keyPressEvent(QKeyEvent* event) {
+    // Enter/Return is the keyboard twin of the double-click: instantiate the
+    // current type entry without reaching for the mouse.
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        if (QTreeWidgetItem* item = currentItem()) {
+            ActivateItem(item);
+            if (const QString typeId = item->data(0, Qt::UserRole).toString();
+                !typeId.isEmpty()) {
+                event->accept();
+                return;
+            }
+        }
+    }
+    QTreeWidget::keyPressEvent(event);
+}
+
+void NodePalette::ActivateItem(const QTreeWidgetItem* item) {
+    if (!item) {
+        return;
+    }
+    const QString typeId = item->data(0, Qt::UserRole).toString();
+    if (!typeId.isEmpty()) {
+        Q_EMIT nodeTypeActivated(typeId);
+    }
 }
 
 }  // namespace NodeGUI

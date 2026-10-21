@@ -24,12 +24,25 @@ public:
     // Rebuilds the tree from the graph's node-type database.
     void SetNodeTypes(const std::vector<NodeAPI::NodeType>& nodeTypes);
 
+    // Category prefix of a type id: text before the first dot, or "Other".
+    // Also used by GraphView's empty-canvas "Add node here" menu so the menu
+    // grouping always matches the palette's family taxonomy.
+    static QString CategoryOf(const std::string& typeId);
+
+Q_SIGNALS:
+    // Double-click (or Enter) on a type entry asks the host to instantiate
+    // it - the keyboard/pointer activation path beside drag & drop. Carries
+    // the same type id the drag mimeData does (kNodeTypeMimeFormat payload).
+    void nodeTypeActivated(const QString& typeId);
+
 protected:
     QMimeData* mimeData(const QList<QTreeWidgetItem*>& items) const override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
-    // Category prefix of a type id: text before the first dot, or "Other".
-    static QString CategoryOf(const std::string& typeId);
+    // Emits nodeTypeActivated for an activated type entry (leaf item with a
+    // UserRole type id); category headers carry no id and are ignored.
+    void ActivateItem(const QTreeWidgetItem* item);
 };
 
 }  // namespace NodeGUI
