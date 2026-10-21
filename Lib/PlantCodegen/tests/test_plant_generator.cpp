@@ -768,4 +768,174 @@ TEST(PlantCodegenEmission, SuggestNamespaceSanitizesGraphNames) {
     EXPECT_EQ(PlantGenerator::SuggestNamespace(""), "plant");
 }
 
+// --- audit v1.2: defaults table covers bare Dyno/Thermal instances.
+TEST(PlantCodegenValidation, BareDynoAndThermalGetEngineDefaults) {
+    NodeAPI::Graph graph;
+    graph.SetName("bare_hosts");
+    const auto loaded = NodeAPI::LoadNodeTypesFromDirectory(
+        graph, planttest::PlantTemplatesDir());
+    ASSERT_TRUE(loaded.ok);
+    auto dynoType = *graph.FindNodeType("Plant.Shaft.Dyno");
+    // a Dyno carrying no rpm params at all: kDefaults must supply Rpm0 = 0
+    NodeAPI::Node dyno;
+    dyno.id = "Dyno";
+    dyno.type = dynoType.id;
+    dyno.domain = "plant";
+    dyno.parameters = {{"Poles", "5"}};
+    ASSERT_TRUE(graph.AddNode(dyno));
+    // a Thermal with no ch2 params at all: transitional defaults apply.
+    // Its P_Heat input is required: feed it from a spare summer (type is
+    // already registered from the template directory) so the defaults probe
+    // stays about params, not wiring.
+    NodeAPI::Node feed;
+    feed.id = "Feed";
+    feed.type = "Plant.Util.Sum";
+    feed.domain = "plant";
+    ASSERT_TRUE(graph.AddNode(feed));
+    NodeAPI::Node thermal;
+    thermal.id = "Thermal";
+    thermal.type = "Plant.Thermal.TwoNodeCauer";
+    thermal.domain = "plant";
+    thermal.parameters = {{"R12_KW", "0.012"}, {"C1_JK", "900"}, {"R2_KW", "0.09"},
+                          {"C2_JK", "18000"}, {"TAmb_C", "22.5"}, {"T1_0_C", "22.5"},
+                          {"T2_0_C", "22.5"}, {"Off1", "0.3"}};
+    ASSERT_TRUE(graph.AddNode(thermal));
+    for (const auto& [sn, sp, dn, dp] : {std::tuple{"Dyno", "Rpm", "Feed", "A"},
+                                        std::tuple{"Dyno", "Rpm", "Feed", "B"},
+                                        std::tuple{"Feed", "Out", "Thermal", "P_Heat"}}) {
+        NodeAPI::Connection c;
+        c.id = std::string("cx_") + sp + dp;
+        c.from = {sn, sp};
+        c.to = {dn, dp};
+        ASSERT_TRUE(graph.Connect(c));
+    }
+
+    const auto emitted = GenerateIntoTemp(graph, "bare_defaults");
+    EXPECT_NE(emitted.source.find("constexpr double Rpm0 = 0"), std::string::npos)
+        << "bare Dyno must default Rpm0 to 0 (python .get parity)";
+    EXPECT_NE(emitted.source.find("constexpr double Off2Idle = 0"), std::string::npos);
+    EXPECT_NE(emitted.source.find("constexpr double Off2Knee_C = 4.9"),
+              std::string::npos);
+}
+
+// --- audit v1.2: constructor bodies may not read input ports.
+TEST(PlantCodegenValidation, RejectsConstructorInputRead) {
+    auto type = ClonedSumType();
+    type.constructorCode = "Out = A;";  // A is an input port of Sum
+    for (auto& port : type.inputPorts) port.optional = true;
+
+    NodeAPI::Graph graph;
+    graph.SetName("ctor_input");
+    ASSERT_TRUE(graph.AddNodeType(type));
+    NodeAPI::Node u;
+    u.id = "U";
+    u.type = type.id;
+    u.domain = "plant";
+    ASSERT_TRUE(graph.AddNode(u));
+
+    PlantCodegen::PlantGenerator generator(graph);
+    const auto dir = std::filesystem::temp_directory_path() /
+                     ("plantcodegen_bad_ctor_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    std::string error;
+    EXPECT_FALSE(generator.Generate(dir.string(), error));
+    EXPECT_NE(error.find("constructor bodies must not read input ports"),
+              std::string::npos) << error;
+}
+
+// --- audit v1.2: comma multi-declarators must not leak into internal state.
+TEST(PlantCodegenEmission, CommaMultiDeclaratorStaysLocal) {
+    auto type = ClonedSumType();
+    type.constructorCode.clear();
+    // EmitBodyBlock pastes this verbatim: b must be classified as a LOCAL
+    // (declared), never as internal persistent state.
+    type.inlineCode =
+        "double a = 1.0, b = 2.0;\n"
+        "Out = A + (double)a * (double)b;\n";
+    for (auto& port : type.inputPorts) port.optional = true;
+
+    NodeAPI::Graph graph;
+    graph.SetName("comma_decl");
+    ASSERT_TRUE(graph.AddNodeType(type));
+    NodeAPI::Node u;
+    u.id = "U";
+    u.type = type.id;
+    u.domain = "plant";
+    ASSERT_TRUE(graph.AddNode(u));
+
+    const auto emitted = GenerateIntoTemp(graph, "comma_decl");
+    // internal state fields are emitted as `float <name> = 0.0f;` members of
+    // the node struct: `b` must never appear there
+    EXPECT_EQ(emitted.header.find("float b = 0.0f;"), std::string::npos)
+        << "comma-continued declarator leaked into persistent state";
+}
+
+// --- audit v1.2: zeroInputs parsed from real JSON files is rejected.
+TEST(PlantCodegenValidation, RejectsZeroInputsFromJson) {
+    NodeAPI::Graph graph;
+    const auto loaded = NodeAPI::LoadNodeTypesFromDirectory(
+        graph, planttest::PlantTemplatesDir());
+    ASSERT_TRUE(loaded.ok);
+    std::ifstream file(planttest::PlantExample("gen7_bench_pmsm"));
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    auto parsed = nlohmann::json::parse(contents.str());
+    for (auto& nodeJson : parsed["nodes"]) {
+        if (nodeJson["id"] == "Draw") nodeJson["zeroInputs"] = {"C"};
+    }
+    if (!parsed.contains("nodeTypes")) parsed["nodeTypes"] = nlohmann::json::array();
+    NodeAPI::LoadIntoGraph(graph, parsed.dump());
+    const auto draw = graph.FindNode("Draw");
+    ASSERT_TRUE(draw.has_value());
+    ASSERT_FALSE(draw->zeroInputs.empty())
+        << "Serialization must carry zeroInputs from the JSON file";
+
+    PlantCodegen::PlantGenerator generator(graph);
+    const auto dir = std::filesystem::temp_directory_path() /
+                     ("plantcodegen_bad_zero_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    std::string error;
+    EXPECT_FALSE(generator.Generate(dir.string(), error));
+    EXPECT_NE(error.find("zeroInputs"), std::string::npos) << error;
+}
+
+// --- audit v1.2: comment-injection guard on parameter keys.
+TEST(PlantCodegenValidation, RejectsCommentInjectionParamKey) {
+    auto type = ClonedSumType();
+    for (auto& port : type.inputPorts) port.optional = true;  // reach the key check
+    NodeAPI::Graph graph;
+    graph.SetName("inject");
+    ASSERT_TRUE(graph.AddNodeType(type));
+    NodeAPI::Node u;
+    u.id = "U";
+    u.type = type.id;
+    u.domain = "plant";
+    // a key that would smuggle code into the emitted WARNING comment
+    u.parameters = {{"Bad\nvoid injected_fn() {}", "1.0"}};
+    ASSERT_TRUE(graph.AddNode(u));
+
+    PlantCodegen::PlantGenerator generator(graph);
+    const auto dir = std::filesystem::temp_directory_path() /
+                     ("plantcodegen_bad_inject_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    std::string error;
+    EXPECT_FALSE(generator.Generate(dir.string(), error));
+    EXPECT_NE(error.find("not a valid C++20 identifier"), std::string::npos) << error;
+}
+
+// --- audit v1.2: fileStem must start with an identifier character.
+TEST(PlantCodegenEmission, RejectsLeadingDigitFileStem) {
+    auto graph = LoadExample("gen7_bench_pmsm");
+    PlantCodegen::PlantGenerator::Options bad;
+    bad.fileStem = "7gen_engine";
+    PlantCodegen::PlantGenerator generator(graph, bad);
+    const auto dir = std::filesystem::temp_directory_path() /
+                     ("plantcodegen_bad_stem_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    std::string error;
+    EXPECT_FALSE(generator.Generate(dir.string(), error));
+    EXPECT_NE(error.find("must start with a letter or underscore"),
+              std::string::npos) << error;
+}
+
 }  // namespace

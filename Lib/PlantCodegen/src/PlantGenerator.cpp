@@ -65,6 +65,28 @@ bool IsIdentifierToken(const std::string& tok) {
     return !tok.empty() && IsIdentStart(tok.front()) && Keywords().count(tok) == 0;
 }
 
+// Emitted-comment payload sanitizer: control characters and comment
+// delimiters must never smuggle code into a generated TU via graph text
+// (param keys, graph names). Newlines collapse, delimiters space out.
+std::string SanitizeCommentText(std::string text) {
+    for (char& c : text) {
+        if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f) c = ' ';
+    }
+    for (std::string::size_type i = text.find("//"); i != std::string::npos;
+         i = text.find("//", i)) {
+        text.replace(i, 2, "  ");
+    }
+    for (std::string::size_type i = text.find("/*"); i != std::string::npos;
+         i = text.find("/*", i)) {
+        text.replace(i, 2, "  ");
+    }
+    for (std::string::size_type i = text.find("*/"); i != std::string::npos;
+         i = text.find("*/", i)) {
+        text.replace(i, 2, "  ");
+    }
+    return text;
+}
+
 // Removes /* */ and // comments plus string/char literals (replaced by
 // spaces so token boundaries survive) before identifier scans.
 std::string StripCode(const std::string& code) {
@@ -152,18 +174,32 @@ void AddDeclared(const std::vector<std::string>& tokens, std::set<std::string>& 
         while (j < tokens.size() && (tokens[j] == "*" || tokens[j] == "&")) ++j;
         while (j < tokens.size() && IsIdentifierToken(tokens[j])) {
             out.insert(tokens[j]);
-            // "double a, b" shares the type; "double a, double b" (e.g. lambda
-            // parameter lists) restates it — stop and let the outer loop pick
-            // up the fresh declaration instead of consuming the type word.
-            if (j + 2 < tokens.size() && tokens[j + 1] == "," &&
-                (TypeWords().count(tokens[j + 2]) || tokens[j + 2] == "const")) {
-                break;
+            ++j;
+            // skip an optional initializer (balanced parens/braces/brackets)
+            // up to the declarator-list comma or the end of the statement;
+            // a fresh type word after a comma restarts the declaration (e.g.
+            // lambda parameter lists) and is left for the outer loop.
+            int depth = 0;
+            bool nextDeclarator = false;
+            while (j < tokens.size()) {
+                const std::string& tok = tokens[j];
+                if (tok == "(" || tok == "[" || tok == "{") ++depth;
+                else if (tok == ")" || tok == "]" || tok == "}") --depth;
+                if (depth == 0 && tok == ",") {
+                    ++j;
+                    if (j < tokens.size() &&
+                        (TypeWords().count(tokens[j]) || tokens[j] == "const")) {
+                        break;  // "double a, double b" - outer loop restarts
+                    }
+                    if (j < tokens.size() && IsIdentifierToken(tokens[j])) {
+                        nextDeclarator = true;  // "double a = 1, b = 2"
+                    }
+                    break;
+                }
+                if (depth == 0 && tok == ";") break;
+                ++j;
             }
-            if (j + 1 < tokens.size() && tokens[j + 1] == ",") {
-                j += 2;
-            } else {
-                break;
-            }
+            if (!nextDeclarator) break;
         }
     }
 }
@@ -295,8 +331,11 @@ std::optional<double> TemplateDefault(const std::string& typeId,
         {{"Plant.DcBus", "SinkLimit_A"}, 1e9},                 // .get(...,1e9)
         {{"Plant.DcBus", "CvClamp_V"}, 0.0},                   // .get(...,0.0)
         {{"Plant.DcBus", "CvClampSink_A"}, 0.0},               // clamp-branch default
-        {{"Plant.Shaft.Dyno", "StartRpm"}, 0.0},               // .get(...,0.0)
+        {{"Plant.Shaft.Dyno", "Rpm0"}, 0.0},                   // .get(...,0.0)
         {{"Plant.Shaft.FreeInertia", "Rpm0"}, 0.0},            // .get(...,0.0)
+        {{"Plant.Thermal.TwoNodeCauer", "Off2Idle"}, 0.0},     // ch2 law: p.get(Off2Idle, Off2|0)
+        {{"Plant.Thermal.TwoNodeCauer", "Off2Slope"}, 0.0},    // constant offset special case
+        {{"Plant.Thermal.TwoNodeCauer", "Off2Knee_C"}, 4.9},   // p.get(...,4.9)
         {{"Plant.Machine.PmsmDq", "Id0"}, 0.0},                // .get(...,0.0)
         {{"Plant.Machine.PmsmDq", "Iq0"}, 0.0},                // .get(...,0.0)
         {{"Plant.Machine.PmsmDq", "Theta0"}, 0.0},             // .get(...,0.0)
@@ -659,6 +698,26 @@ bool Validate(Analysis& a, std::string& error) {
                         a.warnings.push_back(warning);
                     }
                 }
+            } else if (na.node->type == "Plant.Thermal.TwoNodeCauer" &&
+                       used == "Off2Idle") {
+                // ch2 legacy: python prefers Off2Idle and falls back to the
+                // constant-offset 'Off2' spelling (plantgraph v1.1)
+                const auto canon = na.node->parameters.find("Off2Idle");
+                const auto legacy = na.node->parameters.find("Off2");
+                if (canon != na.node->parameters.end()) {
+                    instIt = canon;
+                } else if (legacy != na.node->parameters.end()) {
+                    instIt = legacy;
+                    const std::string warning =
+                        "node '" + na.node->id + "': Thermal ch2 parameter 'Off2' is "
+                        "deprecated; rename it to 'Off2Idle' (v1.1 ch2 law)";
+                    if (std::find(a.warnings.begin(), a.warnings.end(), warning) ==
+                        a.warnings.end()) {
+                        a.warnings.push_back(warning);
+                    }
+                } else {
+                    instIt = na.node->parameters.find(used);
+                }
             } else {
                 instIt = na.node->parameters.find(used);
             }
@@ -710,6 +769,13 @@ bool Validate(Analysis& a, std::string& error) {
             return false;
         };
         for (const auto& used : na.usedCtor) {
+            if (na.inputPorts.end() != std::find(na.inputPorts.begin(),
+                                                 na.inputPorts.end(), used)) {
+                error = "node '" + na.node->id + "' constructor body reads input "
+                        "port '" + used + "' -- constructor bodies must not read "
+                        "input ports (no binds exist at init; template ground rule)";
+                return false;
+            }
             if (!resolve(used, error)) return false;
         }
         for (const auto& used : na.usedStep) {
@@ -723,6 +789,12 @@ bool Validate(Analysis& a, std::string& error) {
     // ever referencing them (dead weight; "VSett_V"-class typos land here).
     for (const auto& na : a.nodes) {
         for (const auto& [key, text] : na.node->parameters) {
+            if (!IsValidIdentifier(key)) {
+                error = "node '" + na.node->id + "' parameter key '" +
+                        SanitizeCommentText(key) +
+                        "' is not a valid C++ identifier (comment-injection guard)";
+                return false;
+            }
             if (na.paramLiterals.count(key) ||
                 IsSupplyParameter(na.node->type, key) ||
                 na.dynoAliasConsumed.count(key)) {
@@ -1066,7 +1138,7 @@ std::string BuildHeader(const Analysis& a, const PlantGenerator::Options& opts) 
     out << "// (D1) include guard derives from the configured file stem.\n";
     out << "#ifndef " << guard << "\n#define " << guard << "\n\n";
     out << "// Generated by PlantCodegenLib from the plant nodegraph \""
-        << a.graph.GetName() << "\"; do not edit by hand.\n";
+        << SanitizeCommentText(a.graph.GetName()) << "\"; do not edit by hand.\n";
     out << "// Execution contract: Assets/PlantTemplates/README.md; frozen\n";
     out << "// substep schedule mirrors twin/plantgraph/plantgraph.py.\n";
     out << "// Unwired Plant.Io.MeasOut channels collect quiet NaN by contract:\n";
@@ -1168,7 +1240,7 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
     };
 
     out << "// Generated by PlantCodegenLib from the plant nodegraph \""
-        << a.graph.GetName() << "\"; do not edit by hand.\n";
+        << SanitizeCommentText(a.graph.GetName()) << "\"; do not edit by hand.\n";
     for (const auto& warning : a.warnings) {
         out << "// WARNING: " << warning << "\n";
     }
@@ -1500,6 +1572,11 @@ bool PlantGenerator::Generate(const std::string& outputDir, std::string& error,
     }
     if (opts_.fileStem.empty()) {
         error = "fileStem must not be empty";
+        return false;
+    }
+    if (!IsIdentStart(opts_.fileStem.front())) {
+        error = "fileStem '" + opts_.fileStem +
+                "' must start with a letter or underscore (include guards)";
         return false;
     }
     for (const char c : opts_.fileStem) {

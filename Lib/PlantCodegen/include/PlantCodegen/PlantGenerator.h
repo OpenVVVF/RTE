@@ -30,9 +30,9 @@ public:
     PlantGenerator(const NodeAPI::Graph& graph, Options opts);
 
     // D1: suggests an emit namespace for a graph name: "plant_<name>"
-    // sanitized to a C++ identifier (non-identifier chars become '_'; a
-    // leading digit gets a '_' prefix). "plant" is returned for names that
-    // sanitize to nothing usable.
+    // sanitized to a C++ identifier (non-identifier chars become '_'). The
+    // "plant_" prefix keeps the result valid even for leading-digit names.
+    // "plant" is returned for names that sanitize to nothing usable.
     static std::string SuggestNamespace(const std::string& graphName);
 
     // Writes <outputDir>/<fileStem>.h and <fileStem>.cpp.

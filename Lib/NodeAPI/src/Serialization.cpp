@@ -163,7 +163,10 @@ Node NodeFromJson(const json& j) {
     node.type = j.at("type").get<std::string>();
     node.displayName = j.value("displayName", "");
     node.domain = j.value("domain", "");
-    node.position = PositionFromJson(j.at("position"));
+    // position is editor metadata; the plant format treats it as
+    // tolerated-but-optional (PlantTemplates/README graph-key policy)
+    node.position = j.contains("position") ? PositionFromJson(j.at("position"))
+                                           : Position{0.0, 0.0};
     node.excludeFromCompile = j.value("excludeFromCompile", false);
     node.excludeFromCompileRecursive = j.value("excludeFromCompileRecursive", false);
 
@@ -175,6 +178,16 @@ Node NodeFromJson(const json& j) {
     if (j.contains("parameterInputs") && j.at("parameterInputs").is_array()) {
         for (const auto& item : j.at("parameterInputs")) {
             node.parameterInputs.push_back(item.get<std::string>());
+        }
+    }
+    // zeroInputs is part of the sanctioned node schema (Node.h); parse it
+    // like the other exclusion keys (previously dropped on the floor at
+    // load, which made validators against it dead code from real files).
+    // Note: no controller graph JSON in Assets uses the key today, so this
+    // is a no-op there.
+    if (j.contains("zeroInputs") && j.at("zeroInputs").is_array()) {
+        for (const auto& item : j.at("zeroInputs")) {
+            node.zeroInputs.push_back(item.get<std::string>());
         }
     }
 
