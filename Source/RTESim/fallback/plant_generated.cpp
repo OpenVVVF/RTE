@@ -46,11 +46,13 @@ void PlantSetDynoRpm(PlantState& s, float rpm) {
     s.dyno_rpm = rpm;
 }
 
-void PlantSetFault(PlantState& s, const char* name, bool active) {
-    if (!name) return;
-    if (!std::strcmp(name, "OpenGates")) s.open_gates = active;
-    else if (!std::strcmp(name, "EncoderDisconnect")) s.encoder_disconnect = active;
-    else if (!std::strcmp(name, "SensorRail")) s.sensor_rail = active;
+// v1.1 contract: bool return (true when the name matched a fault port).
+bool PlantSetFault(PlantState& s, const char* name, bool active) {
+    if (!name) return false;
+    if (!std::strcmp(name, "OpenGates")) { s.open_gates = active; return true; }
+    if (!std::strcmp(name, "EncoderDisconnect")) { s.encoder_disconnect = active; return true; }
+    if (!std::strcmp(name, "SensorRail")) { s.sensor_rail = active; return true; }
+    return false;
 }
 
 bool PlantSetInput(PlantState& s, const char* name, float value) {
@@ -61,12 +63,42 @@ bool PlantSetInput(PlantState& s, const char* name, float value) {
     return false;
 }
 
+// v1.1 contract: 7-arg supply repoint (python set_supply key set, F03/F11).
 void PlantSetSupply(PlantState& s, double v_set, double i_limit_a,
-                    double sink_limit_a, bool can_sink) {
+                    double sink_limit_a, bool can_sink, double cv_clamp_v,
+                    double cv_clamp_sink_a, double series_r_mohm) {
     s.supply_v_set = v_set;
     s.supply_i_limit_a = i_limit_a;
     s.supply_sink_limit_a = sink_limit_a;
     s.supply_can_sink = can_sink;
+    s.supply_cv_clamp_v = cv_clamp_v;
+    s.supply_has_cv_clamp = cv_clamp_v > 0.0;
+    s.supply_cv_clamp_sink_a = cv_clamp_sink_a;
+    s.supply_series_r_mohm = series_r_mohm;
+}
+
+// v1.1 contract: graduated supply defaults (F03) — mirrors the values sitting
+// in PlantState (the fallback's stand-in for "the graph's DcBus params").
+void PlantSupplyDefaults(const PlantState& s, double* v_set, double* i_limit_a,
+                         double* sink_limit_a, bool* can_sink, double* cv_clamp_v,
+                         double* cv_clamp_sink_a, double* series_r_mohm) {
+    if (v_set) *v_set = s.supply_v_set;
+    if (i_limit_a) *i_limit_a = s.supply_i_limit_a;
+    if (sink_limit_a) *sink_limit_a = s.supply_sink_limit_a;
+    if (can_sink) *can_sink = s.supply_can_sink;
+    if (cv_clamp_v) *cv_clamp_v = s.supply_cv_clamp_v;
+    if (cv_clamp_sink_a) *cv_clamp_sink_a = s.supply_cv_clamp_sink_a;
+    if (series_r_mohm) *series_r_mohm = s.supply_series_r_mohm;
+}
+
+// v1.1 contract: boot-line params (F07) — graph convention: `poles` is the
+// machine's pole-PAIR count like the graph Poles parameter (gen7: 5), not
+// the FRAM Motor.Poles physical count (10) — mirrors the generated plants.
+void PlantBootParams(const PlantState& s, double* poles, double* rs_ohm,
+                     double* enc_offset_deg) {
+    if (poles) *poles = s.pp;
+    if (rs_ohm) *rs_ohm = s.rs;
+    if (enc_offset_deg) *enc_offset_deg = s.enc_offset_true_deg;
 }
 
 void PlantStep(PlantState& s, double dt) {
@@ -112,8 +144,23 @@ void PlantStep(PlantState& s, double dt) {
 
     const double did = (vd - s.rs * s.id_a + s.omega_e * s.lq * s.iq_a) / s.ld;
     const double diq = (vq - s.rs * s.iq_a - s.omega_e * (s.ld * s.id_a + s.lam)) / s.lq;
-    s.id_a += did * h;
-    s.iq_a += diq * h;
+    if (!gates) {
+        // open-gate freewheel collapse (~2 ms evidence window): the monolith
+        // (twin/plant/plant.py:296-298), the python graph mirror, and the
+        // v1.1 PmsmDq template body all decay the stored currents toward
+        // zero instead of integrating against the (zero) terminal volt —
+        // plain integration self-excites to a sustained ~300 A circulating
+        // state at bench speed, which is not open-stage physics.
+        const double tau = 2.0e-3;
+        s.id_a -= s.id_a * h / tau;
+        s.iq_a -= s.iq_a * h / tau;
+    } else {
+        s.id_a += did * h;
+        s.iq_a += diq * h;
+    }
+    // physical rails (same in plant.py / plantgraph / the template bodies)
+    s.id_a = std::min(2000.0, std::max(-2000.0, s.id_a));
+    s.iq_a = std::min(2000.0, std::max(-2000.0, s.iq_a));
     s.theta_e = std::fmod(s.theta_e + s.omega_e * h, kTwoPi);
     if (s.theta_e < 0.0) s.theta_e += kTwoPi;
 
@@ -125,9 +172,15 @@ void PlantStep(PlantState& s, double dt) {
     // per-phase knee/deadtime terms above are voltage shaping only)
     const double im = std::hypot(s.id_a, s.iq_a);
     const double om = std::fabs(s.omega_e) / s.pp;
-    const double l_total = gates ? (s.loss_k1 * im + s.loss_k2 * im * im + s.loss_k3 * om
-                                    + s.loss_k4 * im * om + s.loss_k5 * s.v_dc * im)
-                                 : 0.0;
+    double l_total = gates ? (s.loss_k1 * im + s.loss_k2 * im * im + s.loss_k3 * om
+                                + s.loss_k4 * im * om + s.loss_k5 * s.v_dc * im)
+                             : 0.0;
+    /* v2-law domain guard (twin/plant/plant.py:256-259): extrapolation
+     * negative = energy creation; floor to zero with a hit counter */
+    if (l_total < 0.0) {
+        s.diag_loss_law_floor_hits += 1.0;
+        l_total = 0.0;
+    }
     const double p_shaft = 1.5 * (vd * s.id_a + vq * s.iq_a);
     const double om_m = s.omega_e / s.pp;
     const double p_em = gates ? te * om_m : 0.0;

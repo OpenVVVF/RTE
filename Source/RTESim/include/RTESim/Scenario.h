@@ -16,21 +16,34 @@
 
 namespace RTESim {
 
+/* Checked numeric parse shared by the rte CLI layer and the scenario host
+ * (F21: full-consumption strtod + isfinite; rejects nan/inf at the seam). */
+bool ParseDouble(const std::string& text, double& value);
+
 /* --------------------------------------------------------------------------
  * Scenario events (CLI spelling: 't=<seconds> kind=<kind> arg=<payload>')
  * -------------------------------------------------------------------------- */
 
 struct ScenarioEvent {
     double t = 0.0;
-    std::string kind;   // reset | start | var-set | fault-inject | fault-clear | dyno-set
-    std::string arg;    // var-set: "Name=Value"; fault-*: fault name ("" = all);
-                        // dyno-set: rpm as text
+    std::string kind;   // reset | start | stop | var-set | plant-input |
+                        // fault-inject | fault-clear | dyno-set | gate-ready
+    std::string arg;    // var-set/plant-input: "Name=Value"; fault-*: fault
+                        // name ("" = all); dyno-set: rpm as text;
+                        // gate-ready: "0"|"1"
 };
 
 bool ParseEventSpec(const std::string& spec, ScenarioEvent& event, std::string& error);
 
+// The fault-inject vocabulary (F01): output ports of Plant.Fault.Point.
+// fault-clear accepts the same names plus the empty arg (= all).
+extern const char* const kFaultNames[3];
+
 /* --------------------------------------------------------------------------
- * Bench supply overrides (CLI spelling: 'v_set=..,i_limit=..,sink_limit=..,can_sink=0|1')
+ * Bench supply overrides (F03/F11 — python set_supply spellings).
+ * CLI: 'v_set=..,i_limit=..,sink_limit=..,can_sink=0|1,cv_clamp_v=..,
+ *       cv_clamp_sink_a=..,series_r_mohm=..'
+ * Unset keys keep the graph's own DcBus values (plant::PlantSupplyDefaults).
  * -------------------------------------------------------------------------- */
 
 struct SupplyOverride {
@@ -38,12 +51,21 @@ struct SupplyOverride {
     bool hasILimit = false;
     bool hasSinkLimit = false;
     bool hasCanSink = false;
+    bool hasCvClamp = false;
+    bool hasCvClampSink = false;
+    bool hasSeriesRmOhm = false;
     double vSet = 0.0;
     double iLimit = 0.0;
     double sinkLimit = 0.0;
     bool canSink = false;
+    double cvClamp = 0.0;
+    double cvClampSink = 0.0;
+    double seriesRmOhm = 0.0;
 
-    bool any() const { return hasVSet || hasILimit || hasSinkLimit || hasCanSink; }
+    bool any() const {
+        return hasVSet || hasILimit || hasSinkLimit || hasCanSink ||
+               hasCvClamp || hasCvClampSink || hasSeriesRmOhm;
+    }
 };
 
 bool ParseSupplySpec(const std::string& spec, SupplyOverride& supply, std::string& error);
@@ -69,6 +91,9 @@ double Rt6(double t);                                          // round to micro
 
 // First line of every session file. Vocabulary pinned by twin/harness.py
 // TwinSession.write_jsonl; the port for rte-sim runs is "rte-sim".
-std::string FormatSessionStartLine(const std::string& scenario, const std::string& port);
+// `plant` stamps build provenance (F15: "generated"|"fallback"); it goes
+// last and replay ignores unknown keys.
+std::string FormatSessionStartLine(const std::string& scenario, const std::string& port,
+                                   const std::string& plant = "generated");
 
 } // namespace RTESim

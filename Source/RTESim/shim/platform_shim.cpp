@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -207,12 +208,36 @@ extern "C" float platform_get_dc_link_voltage(void) {
     return static_cast<float>(meas_Vdc_V(0.0));
 }
 
+namespace {
+/* F08: on encoder-less plants (e.g. teco_vhz_induction — Enc_Sin/Enc_Cos
+ * unwired) the generated plant collects NaN, and static_cast<uint32_t>(NaN)
+ * is undefined behavior. Report the healthy-bounds mid values instead
+ * (same literals the monolithic shim's decode treats as neutral), and note
+ * the substitution once at startup. */
+uint32_t encCountsOrMid(double counts, uint32_t mid, bool& noted) {
+    if (!std::isfinite(counts)) {
+        if (!noted) {
+            noted = true;
+            std::fprintf(stderr,
+                         "note: encoder-less plant detected (unwired Enc channels); "
+                         "substituting healthy-bounds mid counts\n");
+        }
+        return mid;
+    }
+    return static_cast<uint32_t>(counts);
+}
+} // namespace
+
 extern "C" uint32_t platform_get_encoder_raw_sin(void) {
-    return static_cast<uint32_t>(meas_Enc_Sin(0.0));
+    static bool noted = false;
+    return encCountsOrMid(meas_Enc_Sin(std::numeric_limits<double>::quiet_NaN()),
+                          32643u, noted);   // kEncMidSin (meas_access.h)
 }
 
 extern "C" uint32_t platform_get_encoder_raw_cos(void) {
-    return static_cast<uint32_t>(meas_Enc_Cos(0.0));
+    static bool noted = false;
+    return encCountsOrMid(meas_Enc_Cos(std::numeric_limits<double>::quiet_NaN()),
+                          32536u, noted);   // kEncMidCos (meas_access.h)
 }
 
 extern "C" float platform_get_dc_link_current(void) {

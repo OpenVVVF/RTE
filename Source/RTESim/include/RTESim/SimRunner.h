@@ -35,15 +35,19 @@ struct SimOptions {
 
     std::string name = "rte_sim";
     double durationS = 3.0;
+    double dtSubS = 0.0;                 // F4: plant substep; 0 = host default (200e-6)
     double dynoRpm = 0.0;
     bool dynoRpmSet = false;
-    std::vector<DynoStep> dynoSeries;       // overrides dynoRpm when non-empty
+    std::vector<DynoStep> dynoSeries;    // overrides dynoRpm when non-empty
     SupplyOverride supply;
     std::vector<ScenarioEvent> events;
 
     double telemetryHz = 100.0;
     std::filesystem::path outPath;
-    bool keepWork = false;
+    // F11: the work dir is ALWAYS kept (no --keep-work switch).
+    // F15: without PlantCodegenLib the run is refused unless this opt-in is
+    // set (the fallback plant is a physics substitute, not the graph's).
+    bool allowFallbackPlant = false;
 };
 
 // Directory layout used inside workDir; exposed for structural tests.

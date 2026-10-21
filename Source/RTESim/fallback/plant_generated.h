@@ -3,7 +3,8 @@
 /**
  * Fallback plant honoring the PlantCodegen host contract
  * (namespace plant; PlantState/PlantInit/PlantStep/PlantCollectMeas/
- * PlantSetDuty/PlantSetDynoRpm/PlantSetFault/PlantSetInput/PlantSetSupply).
+ * PlantSetDuty/PlantSetDynoRpm/PlantSetFault/PlantSetInput/PlantSetSupply/
+ * PlantSupplyDefaults/PlantBootParams — v1.1 surface).
  *
  * Used by SimRunner ONLY when this build has no PlantCodegenLib
  * (RTESIM_HAVE_PLANTCODEGEN undefined): the runner stages this file pair
@@ -71,7 +72,7 @@ struct PlantState {
 
     // diagnostics carried between PlantStep and PlantCollectMeas
     double diag_p_dc = 0.0, diag_p_heat = 0.0, diag_p_shaft_em = 0.0;
-    double diag_p_loss = 0.0, diag_te_nm = 0.0;
+    double diag_p_loss = 0.0, diag_te_nm = 0.0, diag_loss_law_floor_hits = 0.0;
 
     // ----- params (twin/native/src/plant_pmsm.h, pack gen7_size2 /
     //       machine zf75_10_pmsm incl. 2026-10-20 calibration) -----
@@ -122,9 +123,15 @@ void PlantStep(PlantState& state, double dt);
 void PlantCollectMeas(const PlantState& state, PlantMeas& meas);
 void PlantSetDuty(PlantState& state, float du, float dv, float dw);
 void PlantSetDynoRpm(PlantState& state, float rpm);
-void PlantSetFault(PlantState& state, const char* name, bool active);
+bool PlantSetFault(PlantState& state, const char* name, bool active);
 bool PlantSetInput(PlantState& state, const char* name, float value);
 void PlantSetSupply(PlantState& state, double v_set, double i_limit_a,
-                    double sink_limit_a, bool can_sink);
+                    double sink_limit_a, bool can_sink, double cv_clamp_v,
+                    double cv_clamp_sink_a, double series_r_mohm);
+void PlantSupplyDefaults(const PlantState& state, double* v_set, double* i_limit_a,
+                         double* sink_limit_a, bool* can_sink, double* cv_clamp_v,
+                         double* cv_clamp_sink_a, double* series_r_mohm);
+void PlantBootParams(const PlantState& state, double* poles, double* rs_ohm,
+                     double* enc_offset_deg);
 
 } // namespace plant

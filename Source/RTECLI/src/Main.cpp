@@ -52,9 +52,9 @@ void Usage() {
         << "  trace record --interface can0 --output FILE [--seconds N] [--id-base ID]\n"
         << "  trace export --input FILE --output CSV\n"
         << "  sim --sw-graph FILE --plant-graph FILE --base-source DIR [--name NAME]\n"
-        << "        [--duration S] [--dyno-rpm R | --dyno-series CSV] [--supply KV,..]\n"
-        << "        [--event 't=.. kind=.. arg=..'] [--telemetry-hz HZ] [--out FILE]\n"
-        << "        [--workdir DIR] [--keep-work]\n"
+        << "        [--duration S] [--dt-sub S] [--dyno-rpm R | --dyno-series CSV]\n"
+        << "        [--supply KV,..] [--event 't=.. kind=.. arg=..'] [--telemetry-hz HZ]\n"
+        << "        [--out FILE] [--workdir DIR] [--allow-fallback-plant]\n"
         << "  mcp [--workspace PATH] [--session FILE]\n";
 }
 
@@ -619,7 +619,13 @@ int Dispatch(const Parsed& parsed) {
     if (parsed.command == "device") return Device(parsed.args, parsed.format);
     if (parsed.command == "mcp2221") return Mcp2221(parsed.args, parsed.format);
     if (parsed.command == "trace") return RunTraceCommand(parsed.args);
-    if (parsed.command == "sim") return RunSimCommand(parsed.args);
+    // F12: sim joins the --format contract (json/jsonl stream progress +
+    // artifact events through Emit); text mode keeps stderr progress.
+    if (parsed.command == "sim") {
+        if (parsed.format == Format::Text) return RunSimCommand(parsed.args);
+        return RunSimCommand(parsed.args,
+                             [&](const json& v) { Emit(parsed.format, v); });
+    }
     if (parsed.command == "mcp") return Mcp(parsed.args);
     Usage();
     return 2;

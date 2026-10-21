@@ -6,7 +6,7 @@
 
 namespace RTESim {
 
-namespace {
+const char* const kFaultNames[3] = {"OpenGates", "EncoderDisconnect", "SensorRail"};
 
 bool ParseDouble(const std::string& text, double& value) {
     if (text.empty()) return false;
@@ -14,8 +14,6 @@ bool ParseDouble(const std::string& text, double& value) {
     value = std::strtod(text.c_str(), &end);
     return end != text.c_str() && *end == '\0' && std::isfinite(value);
 }
-
-} // namespace
 
 bool ParseEventSpec(const std::string& spec, ScenarioEvent& event, std::string& error) {
     // 't=.. kind=.. arg=..' (whitespace-separated key=value; arg may itself
@@ -55,27 +53,33 @@ bool ParseEventSpec(const std::string& spec, ScenarioEvent& event, std::string& 
         error = "event needs t=<seconds> and kind=<kind>";
         return false;
     }
-    static const char* kKinds[] = {"reset", "start", "var-set",
-                                   "fault-inject", "fault-clear", "dyno-set"};
+    static const char* kKinds[] = {"reset", "start", "stop", "var-set", "plant-input",
+                                   "fault-inject", "fault-clear", "dyno-set", "gate-ready"};
     bool known = false;
     for (const char* k : kKinds) known = known || event.kind == k;
     if (!known) {
         error = "unknown event kind: '" + event.kind +
-                "' (reset|start|var-set|fault-inject|fault-clear|dyno-set)";
+                "' (reset|start|stop|var-set|plant-input|fault-inject|fault-clear|"
+                "dyno-set|gate-ready)";
         return false;
     }
-    if (event.kind == "var-set") {
+    auto parseNameValue = [&](const char* what) {
         const std::size_t eq = arg.find('=');
         if (eq == std::string::npos || eq == 0) {
-            error = "var-set needs arg=<Name>=<Value>";
+            error = std::string(what) + " needs arg=<Name>=<Value>";
             return false;
         }
         double parsed = 0.0;
         if (!ParseDouble(arg.substr(eq + 1), parsed)) {
-            error = "var-set value is not a number: '" + arg.substr(eq + 1) + "'";
+            error = std::string(what) + " value is not a number: '" + arg.substr(eq + 1) + "'";
             return false;
         }
-    }
+        return true;
+    };
+    if (event.kind == "var-set" && !parseNameValue("var-set")) return false;
+    // F13/F7: one-shot plant::PlantSetInput for controller-side externals
+    // (InductDq.Omega_Cmd on the V/Hz rigs); same Name=Value grammar.
+    if (event.kind == "plant-input" && !parseNameValue("plant-input")) return false;
     if (event.kind == "dyno-set") {
         double rpm = 0.0;
         if (!ParseDouble(arg, rpm)) {
@@ -83,15 +87,36 @@ bool ParseEventSpec(const std::string& spec, ScenarioEvent& event, std::string& 
             return false;
         }
     }
-    if (event.kind == "fault-inject" && arg.empty()) {
-        error = "fault-inject needs arg=<OpenGates|EncoderDisconnect|SensorRail>";
-        return false;
+    if (event.kind == "gate-ready") {
+        // F36: mirrors the twin harness gate_ready vocabulary.
+        if (arg != "0" && arg != "1") {
+            error = "gate-ready needs arg=0|1, got '" + arg + "'";
+            return false;
+        }
+    }
+    if (event.kind == "fault-inject") {
+        // F01: validate against the Plant.Fault.Point port names; a typo'd
+        // fault name must die at the CLI, not "inject" nothing.
+        // (fault-clear semantics unchanged: any name passes through.)
+        bool match = false;
+        for (const char* n : kFaultNames) match = match || arg == n;
+        if (!match) {
+            error = "unknown fault name: '" + arg +
+                    "' (valid: OpenGates|EncoderDisconnect|SensorRail)";
+            return false;
+        }
     }
     event.arg = arg;
     return true;
 }
 
 bool ParseSupplySpec(const std::string& spec, SupplyOverride& supply, std::string& error) {
+    // F28: an empty spec is a usage error (mirrors --dyno-series), and the
+    // fill keys are the python set_supply spellings (F03/F11).
+    if (spec.empty()) {
+        error = "supply spec is empty";
+        return false;
+    }
     std::size_t pos = 0;
     while (pos <= spec.size()) {
         const std::size_t end = spec.find(',', pos);
@@ -121,8 +146,13 @@ bool ParseSupplySpec(const std::string& spec, SupplyOverride& supply, std::strin
             if (key == "v_set") { supply.vSet = parsed; supply.hasVSet = true; }
             else if (key == "i_limit") { supply.iLimit = parsed; supply.hasILimit = true; }
             else if (key == "sink_limit") { supply.sinkLimit = parsed; supply.hasSinkLimit = true; }
+            else if (key == "cv_clamp_v") { supply.cvClamp = parsed; supply.hasCvClamp = true; }
+            else if (key == "cv_clamp_sink_a") { supply.cvClampSink = parsed; supply.hasCvClampSink = true; }
+            else if (key == "series_r_mohm") { supply.seriesRmOhm = parsed; supply.hasSeriesRmOhm = true; }
             else {
-                error = "unknown supply key: '" + key + "' (v_set|i_limit|sink_limit|can_sink)";
+                error = "unknown supply key: '" + key +
+                        "' (v_set|i_limit|sink_limit|can_sink|cv_clamp_v|"
+                        "cv_clamp_sink_a|series_r_mohm)";
                 return false;
             }
         }
@@ -173,24 +203,39 @@ std::string JNum(double v) {
 double Rt6(double t) { return std::round(t * 1e6) / 1e6; }
 
 std::string JStr(const std::string& s) {
+    // F32: JSON string escaping matching python json.dumps — control
+    // characters (<0x20) as \u00XX, with \n / \t shortcuts.
     std::string out;
     out.reserve(s.size() + 2);
+    char esc[8];
     for (char c : s) {
         switch (c) {
             case '"': out += "\\\""; break;
             case '\\': out += "\\\\"; break;
-            default: out += c;
+            case '\n': out += "\\n"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    std::snprintf(esc, sizeof esc, "\\u%04x", c);
+                    out += esc;
+                } else {
+                    out += c;
+                }
         }
     }
     return out;
 }
 
-std::string FormatSessionStartLine(const std::string& scenario, const std::string& port) {
+std::string FormatSessionStartLine(const std::string& scenario, const std::string& port,
+                                   const std::string& plant) {
     std::string line = "{\"type\":\"session_start\",\"format\":\"rte-runtime-session-jsonl\","
                        "\"version\":3,\"t\":0,\"port\":\"";
     line += JStr(port);
     line += "\",\"mode\":\"sim\",\"protocol\":\"legacy\",\"scenario\":\"";
     line += JStr(scenario);
+    line += "\",\"plant\":\"";
+    line += JStr(plant);   // F15: build provenance; appended last (replay
+                           // ignores unknown keys)
     line += "\"}";
     return line;
 }

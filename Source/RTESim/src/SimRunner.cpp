@@ -128,6 +128,13 @@ bool SimRunner::Run(std::string& error) {
 
     if (logger_) logger_("workdir: " + options_.workDir.string());
 
+    // F28: --dyno-rpm and --dyno-series name the same knob; both is a usage
+    // error (SimCli also gates this; defense for direct API users).
+    if (options_.dynoRpmSet && !options_.dynoSeries.empty()) {
+        error = "dyno-rpm and dyno-series are mutually exclusive";
+        return false;
+    }
+
     if (!EmitSw(error)) return false;
     if (!GeneratePlant(error)) return false;
     if (!StageHostSources(error)) return false;
@@ -192,13 +199,27 @@ bool SimRunner::GeneratePlant(std::string& error) {
     std::error_code ec;
     fs::create_directories(layout_.plant, ec);
     std::string genError;
+    std::vector<std::string> genWarnings;
     PlantCodegen::PlantGenerator generator(graph);
-    if (!generator.Generate(layout_.plant.string(), genError)) {
+    if (!generator.Generate(layout_.plant.string(), genError, &genWarnings)) {
         error = "plant code generation failed: " + genError;
         return false;
     }
+    if (logger_) {
+        for (const auto& w : genWarnings) logger_("plant-codegen warning: " + w);
+    }
     return true;
 #else
+    // F15: the fallback plant is a fixed Gen7-bench physics substitute for
+    // whatever graph the user passed — running it must be an explicit opt-in,
+    // never the silent default.
+    if (!options_.allowFallbackPlant) {
+        error = "this rte build has no PlantCodegenLib, so it cannot generate "
+                "the plant from " + options_.plantGraphPath.string() +
+                "; re-run with --allow-fallback-plant to opt into the built-in "
+                "Gen7-bench fallback plant";
+        return false;
+    }
     if (logger_) {
         logger_("PlantCodegenLib not in this build; staging built-in fallback plant "
                "(Gen7 Size2 bench) for " + options_.plantGraphPath.string());
@@ -310,7 +331,18 @@ bool SimRunner::RunHost(std::string& error) {
         "--name", options_.name,
         "--duration", num(options_.durationS),
         "--telemetry-hz", num(options_.telemetryHz),
+        // F15: session provenance stamp (plant flavor this build produced)
+        "--plant-flavor",
+#ifdef RTESIM_HAVE_PLANTCODEGEN
+        "generated",
+#else
+        "fallback",
+#endif
     };
+    if (options_.dtSubS != 0.0) {   // F4: 0 = host default (200e-6)
+        proc.arguments.push_back("--dt-sub");
+        proc.arguments.push_back(num(options_.dtSubS));
+    }
     if (!options_.dynoSeries.empty()) {
         std::ostringstream csv;
         for (std::size_t i = 0; i < options_.dynoSeries.size(); ++i) {
@@ -331,10 +363,15 @@ bool SimRunner::RunHost(std::string& error) {
             first = false;
             csv << k << '=' << val;
         };
+        // F03/F11: python set_supply spellings; unset keys keep the graph's
+        // own DcBus values in the host (plant::PlantSupplyDefaults fill).
         if (options_.supply.hasVSet) kv("v_set", num(options_.supply.vSet));
         if (options_.supply.hasILimit) kv("i_limit", num(options_.supply.iLimit));
         if (options_.supply.hasSinkLimit) kv("sink_limit", num(options_.supply.sinkLimit));
         if (options_.supply.hasCanSink) kv("can_sink", options_.supply.canSink ? "1" : "0");
+        if (options_.supply.hasCvClamp) kv("cv_clamp_v", num(options_.supply.cvClamp));
+        if (options_.supply.hasCvClampSink) kv("cv_clamp_sink_a", num(options_.supply.cvClampSink));
+        if (options_.supply.hasSeriesRmOhm) kv("series_r_mohm", num(options_.supply.seriesRmOhm));
         proc.arguments.push_back("--supply");
         proc.arguments.push_back(csv.str());
     }
@@ -360,6 +397,15 @@ bool SimRunner::RunHost(std::string& error) {
     if (result.exitCode != 0) {
         error = "scenario host failed (exit " + std::to_string(result.exitCode) + "):\n" + output;
         return false;
+    }
+    if (logger_) {
+        // F31: child diagnostics (e.g. unknown runtime-var warnings) must not
+        // be swallowed on success; mirror warning lines into the rte log.
+        std::istringstream lines(output);
+        std::string line;
+        while (std::getline(lines, line)) {
+            if (line.rfind("warning:", 0) == 0) logger_(line);
+        }
     }
     if (!fs::is_regular_file(options_.outPath, ec)) {
         error = "scenario host did not produce " + options_.outPath.string() + "\n" + output;

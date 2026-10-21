@@ -40,6 +40,24 @@ TEST(ScenarioEventParse, ParsesSmokeEvents) {
     EXPECT_EQ(ev.arg, "-120");
 }
 
+TEST(ScenarioEventParse, ParsesV11Kinds) {
+    RTESim::ScenarioEvent ev;
+    std::string error;
+
+    // F36 additions
+    ASSERT_TRUE(RTESim::ParseEventSpec("t=1.0 kind=stop", ev, error)) << error;
+    EXPECT_EQ(ev.kind, "stop");
+    ASSERT_TRUE(RTESim::ParseEventSpec("t=1.0 kind=gate-ready arg=0", ev, error)) << error;
+    EXPECT_EQ(ev.arg, "0");
+    ASSERT_TRUE(RTESim::ParseEventSpec("t=1.0 kind=gate-ready arg=1", ev, error)) << error;
+
+    // F13/F7: plant-input carries the same Name=Value grammar as var-set
+    ASSERT_TRUE(RTESim::ParseEventSpec("t=1.0 kind=plant-input arg=Omega_Cmd=188.5",
+                                       ev, error)) << error;
+    EXPECT_EQ(ev.kind, "plant-input");
+    EXPECT_EQ(ev.arg, "Omega_Cmd=188.5");
+}
+
 TEST(ScenarioEventParse, RejectsBadSpecs) {
     RTESim::ScenarioEvent ev;
     std::string error;
@@ -53,6 +71,27 @@ TEST(ScenarioEventParse, RejectsBadSpecs) {
     EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=dyno-set arg=rpm", ev, error));
     EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=fault-inject", ev, error));
     EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=reset bogus=1", ev, error));
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=var-set arg=IqVar=nan", ev, error));
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=var-set arg=IqVar=inf", ev, error));
+}
+
+TEST(ScenarioEventParse, RejectsBadV11Specs) {
+    RTESim::ScenarioEvent ev;
+    std::string error;
+    // F01: unknown fault-inject names die at parse time listing the valid set
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=fault-inject arg=Bogus", ev, error));
+    EXPECT_NE(error.find("OpenGates"), std::string::npos);
+    EXPECT_NE(error.find("EncoderDisconnect"), std::string::npos);
+    EXPECT_NE(error.find("SensorRail"), std::string::npos);
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=fault-inject arg=OpenGte", ev, error));
+    // fault-clear semantics unchanged: free-form names still pass
+    EXPECT_TRUE(RTESim::ParseEventSpec("t=1 kind=fault-clear arg=Whatever", ev, error)) << error;
+    // F36: gate-ready is strictly 0|1
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=gate-ready arg=yes", ev, error));
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=gate-ready", ev, error));
+    // plant-input needs Name=Value with a finite number
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=plant-input arg=Omega_Cmd", ev, error));
+    EXPECT_FALSE(RTESim::ParseEventSpec("t=1 kind=plant-input arg=Omega_Cmd=fast", ev, error));
 }
 
 TEST(SupplyParse, ParsesAllFields) {
@@ -68,15 +107,27 @@ TEST(SupplyParse, ParsesAllFields) {
 
     ASSERT_TRUE(RTESim::ParseSupplySpec("can_sink=0", supply, error)) << error;
     EXPECT_FALSE(supply.canSink);
+
+    // F03/F11: python set_supply spellings, incl. the clamp + series-R keys
+    RTESim::SupplyOverride clamp;
+    ASSERT_TRUE(RTESim::ParseSupplySpec(
+        "cv_clamp_v=150,cv_clamp_sink_a=20,series_r_mohm=7.5", clamp, error)) << error;
+    EXPECT_NEAR(clamp.cvClamp, 150.0, 1e-12);
+    EXPECT_NEAR(clamp.cvClampSink, 20.0, 1e-12);
+    EXPECT_NEAR(clamp.seriesRmOhm, 7.5, 1e-12);
+    EXPECT_TRUE(clamp.any());
 }
 
 TEST(SupplyParse, RejectsBadSpecs) {
     RTESim::SupplyOverride supply;
     std::string error;
+    EXPECT_FALSE(RTESim::ParseSupplySpec("", supply, error));   // F28
     EXPECT_FALSE(RTESim::ParseSupplySpec("v_set=abc", supply, error));
+    EXPECT_FALSE(RTESim::ParseSupplySpec("v_set=nan", supply, error));
     EXPECT_FALSE(RTESim::ParseSupplySpec("bogus=1", supply, error));
     EXPECT_FALSE(RTESim::ParseSupplySpec("can_sink=yes", supply, error));
     EXPECT_FALSE(RTESim::ParseSupplySpec("v_set", supply, error));
+    EXPECT_FALSE(RTESim::ParseSupplySpec("i_limit_a=400", supply, error));  // old spelling
 }
 
 TEST(DynoSeriesParse, ParsesAndOrders) {
@@ -105,12 +156,21 @@ TEST(DynoSeriesParse, RejectsBadSpecs) {
  * -------------------------------------------------------------------------- */
 
 TEST(SessionSchema, SessionStartLine) {
+    // F15: provenance stamp appended last; replay ignores unknown keys
     EXPECT_EQ(RTESim::FormatSessionStartLine("sim_smoke", "rte-sim"),
-              R"({"type":"session_start","format":"rte-runtime-session-jsonl","version":3,"t":0,"port":"rte-sim","mode":"sim","protocol":"legacy","scenario":"sim_smoke"})");
+              R"({"type":"session_start","format":"rte-runtime-session-jsonl","version":3,"t":0,"port":"rte-sim","mode":"sim","protocol":"legacy","scenario":"sim_smoke","plant":"generated"})");
+    EXPECT_EQ(RTESim::FormatSessionStartLine("sim_smoke", "rte-sim", "fallback"),
+              R"({"type":"session_start","format":"rte-runtime-session-jsonl","version":3,"t":0,"port":"rte-sim","mode":"sim","protocol":"legacy","scenario":"sim_smoke","plant":"fallback"})");
 }
 
 TEST(SessionSchema, EscapesQuotes) {
     EXPECT_EQ(RTESim::JStr("a\"b\\c"), "a\\\"b\\\\c");
+}
+
+TEST(SessionSchema, EscapesControlChars) {
+    // F32: json.dumps parity — \n and \t shortcuts, other <0x20 as \u00XX
+    EXPECT_EQ(RTESim::JStr("a\nb\tc"), "a\\nb\\tc");
+    EXPECT_EQ(RTESim::JStr(std::string("x\ry\01z", 4)), "x\\u000dy\\u0001");
 }
 
 TEST(SessionSchema, JNumFormatting) {

@@ -1,10 +1,10 @@
 #pragma once
 
 /**
- * SFINAE helpers for reading plant::PlantMeas fields that MAY be absent
- * from a generated plant (the PlantCodegen contract leaves unconnected
- * channels out of the struct) + the shared bench constants both the
- * platform shim and the scheduler main need.
+ * SFINAE helpers for reading plant::PlantMeas fields (v1.1 contract: the
+ * struct always carries every MeasOut channel; channels the graph leaves
+ * unwired collect NaN = "unpopulated" -> null in the JSONL) + the shared
+ * bench constants both the platform shim and the scheduler main need.
  *
  * C++17-compatible (no requires-expressions) so the scenario binary builds
  * with the same -std=c++17 the emitted firmware support headers (au.hh)

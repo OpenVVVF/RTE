@@ -10,7 +10,34 @@
  * twin/native/src/main.cpp (constants cited inline); the plant access goes
  * through plant::PlantSetDuty/PlantStep/... instead of twin::PlantPmsm
  * fields, and the events timeline is argv-driven instead of hardcoded.
- */
+ *
+ * ---------------------------------------------------------------------------
+ * F02 — REAL-protection status (review round 2026-10-20, verdict: the real
+ * controller protection chain CANNOT trip in this host today — do NOT paper
+ * it over with a simulated latch):
+ *  - The base image ships the real chain (Images/Gen6FW/Src/Inverter/
+ *    Control/{FaultManager,ControlSupervisor,FocControlManager}.cpp + the
+ *    software OC monitor at Src/Inverter/Drivers/Sensors/PhaseCurrentADC.cpp
+ *    m_oc_threshold_a, default 500 A, OC_CONSEC_SAMPLES=3), but SimRunner
+ *    compiles ONLY sw/generated/*.cpp + this host + shim + plant: none of
+ *    those units is linked, and the emitted domains contain zero references
+ *    to FaultManager/ControlSupervisor (grep-verified in a produced workdir).
+ *  - Missing platform signals/FRAM keys the real chain would need:
+ *      1. RteParamStore FRAM backing (CY15B102Q over SPI4) — the shim only
+ *         implements the platform_config_* API used by graph Config nodes;
+ *         monitor keys Hw.PhCur.RefMinV/MaxV, Hw.Temp.Bx.*, Hw.DcLink.*,
+ *         Hw.OcSw.A, Can.AWD.SetA are never seeded or read in this build.
+ *      2. ADC analog-watchdog IRQ path (AdcWatchdog source) + injected-rank
+ *         raw frames beyond the shim's two-rank burst model.
+ *      3. TIM1 hardware break (DESAT -> PwmBreak) and gate-driver /RDY,
+ *         UVLO pins (GateDriverUvlo) GPIO/EXTI semantics.
+ *      4. MAX22530 SPI device model (Ov/Uv/Adc/Comm/Field sources).
+ *      5. Temp-sensor front-end open/short detection (TempSensor) and
+ *         encoder DMA fault (EncoderDma) hooks.
+ *  - The OC monitor smoke (IqVar well above the 500 A threshold) produces
+ *    plant-side currents > 500 A with zero trip vocabulary in the session —
+ *    evidence in the v1.1 review report. TODO list tracked there.
+ * --------------------------------------------------------------------------- */
 
 #include <algorithm>
 #include <cmath>
@@ -43,6 +70,8 @@ RTESIM_MEAS_ACCESSOR(Temp_Inv1_C)
 RTESIM_MEAS_ACCESSOR(Temp_Inv2_C)
 RTESIM_MEAS_ACCESSOR(Temp_Inv3_C)
 RTESIM_MEAS_ACCESSOR(Temp_Motor_C)
+RTESIM_MEAS_ACCESSOR(Mech_Rpm)
+RTESIM_MEAS_ACCESSOR(Elec_Rpm)
 RTESIM_MEAS_ACCESSOR(Dclink_I_A)
 RTESIM_MEAS_ACCESSOR(Dclink_P_W)
 RTESIM_MEAS_ACCESSOR(Vu_V)
@@ -62,8 +91,8 @@ constexpr double kDt = 400e-6;   // control period (tim_isr 2.5 kHz)
 
 /* --------------------------------------------------------------------------
  * v3 session JSONL writer — byte-compatible port of twin/native's
- * SessionWriter (same field order, same %.9g formatting, same n_records
- * accounting: console/command/telemetry bump it, state does not).
+ * SessionWriter (same field order, same %.9g formatting) with the python
+ * TwinSession n_records accounting: EVERY record bumps it, state included.
  * -------------------------------------------------------------------------- */
 
 struct SessionWriter {
@@ -88,6 +117,7 @@ struct SessionWriter {
     }
 
     void state(double t, const char* signal, const std::string& jsonValue) {
+        ++n_records;   // python TwinSession counts every record
         std::fprintf(f, "{\"type\":\"state\",\"t\":%s,\"signal\":\"%s\",\"value\":%s}\n",
                      RTESim::JNum(RTESim::Rt6(t)).c_str(), signal, jsonValue.c_str());
     }
@@ -105,10 +135,11 @@ struct SessionWriter {
         ++n_records;
     }
 
-    bool open(const char* path, const std::string& scenario) {
+    bool open(const char* path, const std::string& scenario, const std::string& plantFlavor) {
         f = std::fopen(path, "w");
         if (!f) return false;
-        std::fprintf(f, "%s\n", RTESim::FormatSessionStartLine(scenario, "rte-sim").c_str());
+        std::fprintf(f, "%s\n",
+                     RTESim::FormatSessionStartLine(scenario, "rte-sim", plantFlavor).c_str());
         return true;
     }
 
@@ -130,6 +161,8 @@ struct HostArgs {
     double telemetryHz = 100.0;
     double dtSub = 200e-6;             // monolith plant substep (twin/native dt_sub)
     double dynoRpm = 0.0;
+    bool dynoRpmSet = false;           // F28: "asked 0" vs "not asked" (Rpm0 kept)
+    std::string plantFlavor = "generated";  // F15 provenance stamp
     std::vector<DynoStep> dynoSeries;
     SupplyOverride supply;
     std::vector<ScenarioEvent> events;
@@ -141,13 +174,20 @@ void Usage() {
         "  --name NAME              scenario name (default rte_sim)\n"
         "  --duration S             simulate S seconds (default 3)\n"
         "  --telemetry-hz HZ        telemetry publish rate (default 100)\n"
-        "  --dt-sub S               plant substep (default 0.0002)\n"
-        "  --dyno-rpm R             hold dyno at R mechanical rpm\n"
+        "  --dt-sub S               plant substep, 1e-6..1e-3 s (default 0.0002)\n"
+        "  --dyno-rpm R             hold dyno at R mechanical rpm (xor --dyno-series)\n"
         "  --dyno-series 't=rpm,t=rpm,...'   piecewise-constant dyno schedule\n"
-        "  --supply 'v_set=..,i_limit=..,sink_limit=..,can_sink=0|1'\n"
-        "  --event 't=.. kind=.. arg=..'     repeatable; kinds: reset, start,\n"
-        "                           var-set (arg=Name=Value), fault-inject (arg=Name),\n"
-        "                           fault-clear (arg=Name|empty=all), dyno-set (arg=rpm)\n");
+        "  --supply 'k=v,...'       keys: v_set,i_limit,sink_limit,can_sink,\n"
+        "                           cv_clamp_v,cv_clamp_sink_a,series_r_mohm;\n"
+        "                           unset keys keep the graph's DcBus values\n"
+        "  --plant-flavor F         generated|fallback (session provenance)\n"
+        "  --event 't=.. kind=.. arg=..'     repeatable; kinds: reset, start, stop,\n"
+        "                           var-set (arg=Name=Value),\n"
+        "                           plant-input (arg=Name=Value, e.g. InductDq\n"
+        "                           Omega_Cmd for the V/Hz rigs),\n"
+        "                           fault-inject (arg=OpenGates|EncoderDisconnect|\n"
+        "                           SensorRail), fault-clear (arg=Name|empty=all),\n"
+        "                           dyno-set (arg=rpm), gate-ready (arg=0|1)\n");
 }
 
 bool ParseArgs(int argc, char** argv, HostArgs& args) {
@@ -161,13 +201,24 @@ bool ParseArgs(int argc, char** argv, HostArgs& args) {
             dst = argv[++i];
             return true;
         };
+        // F21: checked strtod (isfinite) — same parser the CLI layer uses.
+        auto nextNum = [&](const char* what, double& dst) {
+            std::string v;
+            if (!next(what, v)) return false;
+            if (!RTESim::ParseDouble(v, dst)) {
+                std::fprintf(stderr, "%s: not a finite number: %s\n", what, v.c_str());
+                return false;
+            }
+            return true;
+        };
         std::string v;
         if (a == "--out") { if (!next("--out", args.outPath)) return false; }
         else if (a == "--name") { if (!next("--name", args.name)) return false; }
-        else if (a == "--duration") { if (!next("--duration", v)) return false; args.duration = std::atof(v.c_str()); }
-        else if (a == "--telemetry-hz") { if (!next("--telemetry-hz", v)) return false; args.telemetryHz = std::atof(v.c_str()); }
-        else if (a == "--dt-sub") { if (!next("--dt-sub", v)) return false; args.dtSub = std::atof(v.c_str()); }
-        else if (a == "--dyno-rpm") { if (!next("--dyno-rpm", v)) return false; args.dynoRpm = std::atof(v.c_str()); }
+        else if (a == "--plant-flavor") { if (!next("--plant-flavor", args.plantFlavor)) return false; }
+        else if (a == "--duration") { if (!nextNum("--duration", args.duration)) return false; }
+        else if (a == "--telemetry-hz") { if (!nextNum("--telemetry-hz", args.telemetryHz)) return false; }
+        else if (a == "--dt-sub") { if (!nextNum("--dt-sub", args.dtSub)) return false; }
+        else if (a == "--dyno-rpm") { if (!nextNum("--dyno-rpm", args.dynoRpm)) return false; args.dynoRpmSet = true; }
         else if (a == "--dyno-series") {
             if (!next("--dyno-series", v)) return false;
             std::string err;
@@ -194,14 +245,23 @@ bool ParseArgs(int argc, char** argv, HostArgs& args) {
             }
             args.events.push_back(ev);
         }
-        else if (a == "--help" || a == "-h") { Usage(); std::exit(2); }
+        else if (a == "--help" || a == "-h") { Usage(); std::exit(0); }
         else { std::fprintf(stderr, "unknown arg %s\n", a.c_str()); return false; }
     }
     if (args.outPath.empty()) {
         std::fprintf(stderr, "--out is required\n");
         return false;
     }
-    if (args.duration <= 0.0 || args.dtSub <= 0.0 || args.dtSub > kDt ||
+    // F4: dt-sub window (validated at the CLI first; the host re-checks).
+    if (args.plantFlavor != "generated" && args.plantFlavor != "fallback") {
+        std::fprintf(stderr, "--plant-flavor must be generated|fallback\n");
+        return false;
+    }
+    if (args.dynoRpmSet && !args.dynoSeries.empty()) {
+        std::fprintf(stderr, "--dyno-rpm and --dyno-series are mutually exclusive\n");
+        return false;
+    }
+    if (args.duration <= 0.0 || args.dtSub < 1e-6 || args.dtSub > 1e-3 ||
         args.telemetryHz <= 0.0) {
         std::fprintf(stderr, "invalid duration/dt-sub/telemetry-hz\n");
         return false;
@@ -234,16 +294,31 @@ int main(int argc, char** argv) {
     // plant boot (generated plant or staged fallback; identical API)
     plant::PlantState plantState;
     plant::PlantInit(plantState);
-    if (args.supply.any()) {
-        // per-field fallback fill = the gen7 bench defaults (the same values
-        // the fallback plant and the gen7_bench_pmsm DcBus node carry)
-        plant::PlantSetSupply(plantState,
-            args.supply.hasVSet ? args.supply.vSet : 144.7,
-            args.supply.hasILimit ? args.supply.iLimit : 400.0,
-            args.supply.hasSinkLimit ? args.supply.sinkLimit : 50.0,
-            args.supply.hasCanSink ? args.supply.canSink : true);
+    {
+        // F03/F11: fill from the plant's graduated supply defaults and let
+        // only user-given --supply keys override (no hardcoded bench fill —
+        // a non-gen7 graph keeps its own DcBus values).
+        double vSet = 0.0, iLimit = 0.0, sinkLimit = 0.0, cvClamp = 0.0,
+               cvClampSink = 0.0, seriesRmOhm = 0.0;
+        bool canSink = false;
+        plant::PlantSupplyDefaults(plantState, &vSet, &iLimit, &sinkLimit,
+                                   &canSink, &cvClamp, &cvClampSink, &seriesRmOhm);
+        if (args.supply.any()) {
+            const SupplyOverride& s = args.supply;
+            plant::PlantSetSupply(plantState,
+                s.hasVSet ? s.vSet : vSet,
+                s.hasILimit ? s.iLimit : iLimit,
+                s.hasSinkLimit ? s.sinkLimit : sinkLimit,
+                s.hasCanSink ? s.canSink : canSink,
+                s.hasCvClamp ? s.cvClamp : cvClamp,
+                s.hasCvClampSink ? s.cvClampSink : cvClampSink,
+                s.hasSeriesRmOhm ? s.seriesRmOhm : seriesRmOhm);
+        }
     }
-    plant::PlantSetDynoRpm(plantState, static_cast<float>(args.dynoRpm));
+    // F28: with no --dyno-rpm and no series the graph's Dyno.Rpm0 stands.
+    if (args.dynoRpmSet) {
+        plant::PlantSetDynoRpm(plantState, static_cast<float>(args.dynoRpm));
+    }
 
     plant::PlantMeas meas{};
     plant::PlantCollectMeas(plantState, meas);
@@ -270,7 +345,7 @@ int main(int argc, char** argv) {
     };
 
     SessionWriter sess;
-    if (!sess.open(args.outPath.c_str(), args.name)) {
+    if (!sess.open(args.outPath.c_str(), args.name, args.plantFlavor)) {
         std::fprintf(stderr, "cannot open %s\n", args.outPath.c_str());
         return 4;
     }
@@ -289,33 +364,66 @@ int main(int argc, char** argv) {
     sess.console(0.0, "[FOC] Kp set to 0.0300");
     sess.console(0.0, "[FOC] Ki set to 10.0000");
     {
-        // plant stator resistance on the Gen7 bench (gen7_bench_pmsm Machine
-        // Rs=0.00765 -> %.4f prints 0.0076 like the monolith recordings)
-        constexpr double kPlantRsForBootLog = 0.00765;
+        // F07: read the plant's own boot params instead of gen7 constants;
+        // any NaN (e.g. encoder-less rig w/o OffsetDeg) keeps the legacy
+        // gen7-monolith line verbatim (F7-fallback behavior).
+        double bootPoles = 0.0, bootRs = 0.0, bootOff = 0.0;
+        plant::PlantBootParams(plantState, &bootPoles, &bootRs, &bootOff);
         char buf[256];
-        std::snprintf(buf, sizeof buf,
-                      "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=10 "
-                      "offset=33.034 deg sign=1 R=%.4f ohm kp=0.0300 ki=10.0000",
-                      kPlantRsForBootLog);
+        if (std::isfinite(bootPoles) && std::isfinite(bootRs) && std::isfinite(bootOff)) {
+            std::snprintf(buf, sizeof buf,
+                          "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=%.0f "
+                          "offset=%.3f deg sign=1 R=%.4f ohm kp=0.0300 ki=10.0000",
+                          bootPoles, bootOff, bootRs);
+        } else {
+            std::snprintf(buf, sizeof buf,
+                          "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=10 "
+                          "offset=33.034 deg sign=1 R=0.0076 ohm kp=0.0300 ki=10.0000");
+        }
         sess.console(0.0, buf);
     }
     sess.console(0.0, "[SHELL] Command shell ready; type HELP for list");
     sess.console(0.0, "[CUR] start cal done U=-4.565 V=-2.482");
 
     bool gate_fault_latched = true;   // boot latch like hardware
-    bool running = false;
+    bool started = false;             // ControlSupervisor RUNNING latch
+    bool gateReady = true;            // F36: gate-ready flag (telemetry + physics)
+    // F16: OpenGates has two independent raisers — the python harness's idle
+    // physics (pwm_gate_off injected whenever the supervisor is not RUNNING;
+    // gate-ready=0 forces the same per F36) and the user's fault-inject
+    // events. Track them separately so start/stop transitions never clobber
+    // an event-set fault the user didn't clear.
+    bool userOpenGates = false;
+    bool appliedOpenGates = false;    // last value written to the plant
+
+    auto reconcileOpenGates = [&]() {
+        const bool desired = userOpenGates || !(started && gateReady);
+        if (desired != appliedOpenGates) {
+            plant::PlantSetFault(plantState, "OpenGates", desired);
+            appliedOpenGates = desired;
+        }
+    };
+    reconcileOpenGates();   // boot-idle: gates open before the first substep
 
     std::size_t ev_i = 0;
     std::size_t dyno_i = 0;
 
-    const int nSub = std::max(1, static_cast<int>(std::lround(kDt / args.dtSub)));
+    // F23: half-to-even quantization of the cadence ratios (python round()).
+    const int nSub = std::max(1, static_cast<int>(std::nearbyint(kDt / args.dtSub)));
     const long publishEvery =
-        std::max(1L, std::lround(1.0 / (args.telemetryHz * kDt)));
+        std::max(1L, static_cast<long>(std::nearbyint(1.0 / (args.telemetryHz * kDt))));
 
     const long n_steps = static_cast<long>(args.duration / kDt);
     for (long k = 0; k < n_steps; ++k) {
         const double t = k * kDt;
         shim.now_us = static_cast<unsigned long long>(t * 1e6 + 0.5);
+
+        // ---- dyno speed series FIRST (F24: matches the python harness;
+        // events at the same t must see the current dyno state) ----
+        while (dyno_i < args.dynoSeries.size() && t >= args.dynoSeries[dyno_i].t - 1e-12) {
+            plant::PlantSetDynoRpm(plantState, static_cast<float>(args.dynoSeries[dyno_i].rpm));
+            ++dyno_i;
+        }
 
         // ---- scripted events ----
         while (ev_i < args.events.size() && t >= args.events[ev_i].t - 1e-12) {
@@ -329,6 +437,8 @@ int main(int argc, char** argv) {
                 sess.console(t, "[FAULT] none active");
                 gate_fault_latched = false;
                 PlantSetAllFaults(plantState, false);
+                userOpenGates = false;
+                appliedOpenGates = false;   // re-sync with the cleared plant
             } else if (ev.kind == "start") {
                 sess.command(t, "control start");
                 if (gate_fault_latched) {
@@ -340,14 +450,29 @@ int main(int argc, char** argv) {
                     app::TimIsrStart(tim);
                     app::AppLoopStart(alp);
                     app::VsenseStart(vse);
-                    running = true;
+                    started = true;   // F16: clears the host's idle OpenGates
                     sess.console(t, "[SUP] STARTED f_sw=2500 Hz f_u=5000 Hz");
                     sess.console(t, "[SHELL] control started: MAIN motor control (RTE graph)");
                 }
+            } else if (ev.kind == "stop") {
+                // F36: mirror of the start path (python prot.control_stop()).
+                // Second `start` re-runs the domain reset above.
+                sess.command(t, "control stop");
+                started = false;
+                sess.console(t, "[SHELL] control stopped");
+            } else if (ev.kind == "gate-ready") {
+                // F36: twin harness gate_ready vocabulary. 0 forces idle
+                // physics (F16) + latches the gate fault; 1 just re-readies
+                // (the latch still needs an explicit reset), silently in the
+                // session like the python card kind.
+                gateReady = ev.arg == "1";
+                if (!gateReady) gate_fault_latched = true;
             } else if (ev.kind == "var-set") {
                 const std::size_t eq = ev.arg.find('=');
                 const std::string varName = ev.arg.substr(0, eq);
-                const float value = static_cast<float>(std::atof(ev.arg.c_str() + eq + 1));
+                double parsed = 0.0;
+                RTESim::ParseDouble(ev.arg.substr(eq + 1), parsed);
+                const float value = static_cast<float>(parsed);
                 char cmd[96], echo[128];
                 std::snprintf(cmd, sizeof cmd, "var set %s %g", varName.c_str(), value);
                 std::snprintf(echo, sizeof echo, "[SHELL] %s = %.4f", varName.c_str(), value);
@@ -368,15 +493,49 @@ int main(int argc, char** argv) {
                         }
                     }
                 }
+                // F31: no [SHELL] echo for a write that never happened; the
+                // warning reaches the rte log via SimRunner's mirror.
                 if (!found) {
                     std::fprintf(stderr, "warning: unknown runtime var '%s'\n", varName.c_str());
+                } else {
+                    sess.console(t, echo);
                 }
-                sess.console(t, echo);
+            } else if (ev.kind == "plant-input") {
+                // F13/F7: THE scenario mechanism for controller-side external
+                // plant inputs (InductDq.Omega_Cmd on the V/Hz rigs). One-shot
+                // plant::PlantSetInput at this t; a ramp is a series of these.
+                const std::size_t eq = ev.arg.find('=');
+                const std::string portName = ev.arg.substr(0, eq);
+                double parsed = 0.0;
+                RTESim::ParseDouble(ev.arg.substr(eq + 1), parsed);
+                char cmd[128], line[160];
+                std::snprintf(cmd, sizeof cmd, "plant input %s %g", portName.c_str(), parsed);
+                sess.command(t, cmd);
+                if (!plant::PlantSetInput(plantState, portName.c_str(),
+                                          static_cast<float>(parsed))) {
+                    std::fprintf(stderr,
+                                 "plant-input: no unwired plant input port named '%s'\n",
+                                 portName.c_str());
+                    sess.finish();
+                    return 4;
+                }
+                std::snprintf(line, sizeof line, "[PLANT] input %s = %.4f",
+                              portName.c_str(), parsed);
+                sess.console(t, line);
             } else if (ev.kind == "fault-inject") {
                 char cmd[128];
                 std::snprintf(cmd, sizeof cmd, "fault inject %s", ev.arg.c_str());
                 sess.command(t, cmd);
-                plant::PlantSetFault(plantState, ev.arg.c_str(), true);
+                if (ev.arg == "OpenGates") {
+                    userOpenGates = true;   // F16: OR-managed, see reconcile
+                } else if (!plant::PlantSetFault(plantState, ev.arg.c_str(), true)) {
+                    // v1.1 contract: bool-checked (parse already gates names
+                    // per F01; this is the belt for graphs lacking a port)
+                    std::fprintf(stderr, "fault-inject: plant graph has no fault '%s'\n",
+                                 ev.arg.c_str());
+                    sess.finish();
+                    return 4;
+                }
                 char line[160];
                 std::snprintf(line, sizeof line, "[PLANT] fault injected: %s", ev.arg.c_str());
                 sess.console(t, line);
@@ -385,13 +544,21 @@ int main(int argc, char** argv) {
                 char cmd[128];
                 std::snprintf(cmd, sizeof cmd, "fault clear %s", which.c_str());
                 sess.command(t, cmd);
-                if (ev.arg.empty()) PlantSetAllFaults(plantState, false);
-                else plant::PlantSetFault(plantState, ev.arg.c_str(), false);
+                if (ev.arg.empty()) {
+                    PlantSetAllFaults(plantState, false);
+                    userOpenGates = false;
+                    appliedOpenGates = false;   // re-sync (idle re-asserts)
+                } else if (ev.arg == "OpenGates") {
+                    userOpenGates = false;
+                } else {
+                    plant::PlantSetFault(plantState, ev.arg.c_str(), false);
+                }
                 char line[160];
                 std::snprintf(line, sizeof line, "[PLANT] fault cleared: %s", which.c_str());
                 sess.console(t, line);
             } else if (ev.kind == "dyno-set") {
-                const double rpm = std::atof(ev.arg.c_str());
+                double rpm = 0.0;
+                RTESim::ParseDouble(ev.arg, rpm);
                 char cmd[96], line[128];
                 std::snprintf(cmd, sizeof cmd, "dyno set %g", rpm);
                 std::snprintf(line, sizeof line, "[PLANT] dyno speed set to %g rpm", rpm);
@@ -401,26 +568,30 @@ int main(int argc, char** argv) {
             }
         }
 
-        // ---- dyno speed series (piecewise constant) ----
-        while (dyno_i < args.dynoSeries.size() && t >= args.dynoSeries[dyno_i].t - 1e-12) {
-            plant::PlantSetDynoRpm(plantState, static_cast<float>(args.dynoSeries[dyno_i].rpm));
-            ++dyno_i;
-        }
+        // F16: idle physics — open gates whenever not driving (events above
+        // have settled; the OR keeps user-injected faults untouched).
+        reconcileOpenGates();
+
+        const bool driving = started && gateReady;
 
         // ---- 2.5 kHz domains: adc burst sampling always live; control gated ----
+        // (python harness: the controller keeps stepping while the
+        // supervisor is RUNNING; gate_ready pins the outputs instead)
         platform_set_current_domain_dt(static_cast<float>(kDt));
         app::AdcIsrStep(adc);
-        if (running) {
+        if (started) {
             platform_set_current_domain_dt(static_cast<float>(kDt));
             app::TimIsrStep(tim);
         }
 
         // ---- plant: freeze the duty vector for the control period, substep ----
-        if (running) {
-            plant::PlantSetDuty(plantState, shim.pwm_du, shim.pwm_dv, shim.pwm_dw);
-        } else {
-            plant::PlantSetDuty(plantState, 50.0f, 50.0f, 50.0f);
+        // python harness publishes the PUSHED duty vector (50/50/50 whenever
+        // outputs are inhibited), so keep the pushed values for telemetry.
+        float duty_u = 50.0f, duty_v = 50.0f, duty_w = 50.0f;
+        if (driving) {
+            duty_u = shim.pwm_du; duty_v = shim.pwm_dv; duty_w = shim.pwm_dw;
         }
+        plant::PlantSetDuty(plantState, duty_u, duty_v, duty_w);
         for (int s = 0; s < nSub; ++s) plant::PlantStep(plantState, args.dtSub);
         plant::PlantCollectMeas(plantState, meas);
 
@@ -444,10 +615,10 @@ int main(int argc, char** argv) {
                 return acc(meas, fallback);
             };
 
-            num("cg_du", shim.pwm_du);
-            num("cg_dv", shim.pwm_dv);
-            num("cg_dw", shim.pwm_dw);
-            if (running) {
+            num("cg_du", duty_u);
+            num("cg_dv", duty_v);
+            num("cg_dw", duty_w);
+            if (driving) {
                 tel("cg_id_a", 0.0);
                 tel("cg_iq_a", 0.0);
             } else {
@@ -464,8 +635,11 @@ int main(int argc, char** argv) {
             tel("cg_iu_a", getm(Meas_Iu_A, 0.0));
             tel("cg_iv_a", getm(Meas_Iv_A, 0.0));
             tel("cg_iw_a", getm(Meas_Iw_A, 0.0));
-            tel("Mech_RPM", 0.0);
-            tel("Elec_RPM", 0.0);
+            // graphs that don't telemetry-log speeds (the V/Hz rigs) fall
+            // back to the plant meas channels, mirroring the python harness
+            // publishing the controller-read speeds unconditionally.
+            tel("Mech_RPM", getm(Meas_Mech_Rpm, 0.0));
+            tel("Elec_RPM", getm(Meas_Elec_Rpm, 0.0));
             tel("EncoderSin", getm(Meas_Enc_Sin, 0.0));
             tel("EncoderCos", getm(Meas_Enc_Cos, 0.0));
             tel("GapTicks", 0.0);
@@ -483,12 +657,12 @@ int main(int argc, char** argv) {
             tel("thr_b_norm", 0.0);
             nullv("thr_a_v");
             nullv("thr_b_v");
-            num("pwm_moe", running ? 1 : 0);
-            num("gate_ready", 1);
+            num("pwm_moe", started ? 1 : 0);
+            num("gate_ready", gateReady ? 1 : 0);   // F36: flag-conditional
             num("gate_fault", gate_fault_latched ? 1 : 0);
-            num("control_outputs_enabled", running ? 1 : 0);
-            num("foc_running", running ? 1 : 0);
-            num("tim_isr_running", running ? 1 : 0);
+            num("control_outputs_enabled", started ? 1 : 0);
+            num("foc_running", driving ? 1 : 0);
+            num("tim_isr_running", driving ? 1 : 0);
             num("enc_rejects", 0);
             num("cg_vlimit_scale", 1.0);   // stub: graph does not log it
             nullv("cg_vd_req_v");
@@ -507,7 +681,7 @@ int main(int argc, char** argv) {
 
         // ---- 1 Hz state records ----
         if (k % 2500 == 0) {
-            sess.state(t, "control_state", running ? "\"RUNNING\"" : "\"IDLE\"");
+            sess.state(t, "control_state", started ? "\"RUNNING\"" : "\"IDLE\"");
             sess.state(t, "fault_flags_hex", "\"0x00000000\"");
             sess.state(t, "fault_active_names", "[]");
         }
