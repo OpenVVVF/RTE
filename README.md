@@ -13,7 +13,9 @@ flashable firmware binary. Plant nodegraphs (the hardware/inverter/thermal
 side of the loop) live in `Assets/PlantTemplates` and are emitted by
 `Lib/PlantCodegen`; `rte sim` (Source/RTESim) runs the controller graph and
 the plant graph in closed loop headlessly, writing the same v3 session
-JSONL as the recorded bench sessions - see `docs/plant-nodegraph.md`. A
+JSONL as the recorded bench sessions - see `docs/plant-nodegraph.md`. The
+same closed loop is editable and runnable in RTE Studio itself via the
+Plant Editor and Simulate tabs. A
 switch-level (sub-cycle, ngspice) plant for the fault classes the averaged
 model cannot resolve is on the longer roadmap.
 
@@ -96,6 +98,11 @@ cmake --build build --target RTEStudio -j8
 ```
 
 On Windows, pass your Qt prefix to CMake (e.g. `-DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/mingw_64`).
+Without system Qt on Linux, a user-space prefix works the same way (e.g.
+`-DCMAKE_PREFIX_PATH=/home/<you>/qt/6.8.3/gcc_64`). Headless GUI
+verification: `QT_QPA_PLATFORM=offscreen RTE_SMOKE_DIR=<dir>
+RTE_SMOKE_ACTIONS='screen 2; click simRun; wait 15000; grab out; exit 0'
+./build/bin/RTEStudio <graph> --simulate`.
 
 ## Test
 

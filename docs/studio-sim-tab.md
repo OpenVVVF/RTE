@@ -1,10 +1,12 @@
-# Design note — RTE Studio "Simulate" tab
+# Design note + shipped behavior — RTE Studio "Simulate" tab
 
-Status: design intent only (no Qt code yet). The backend seam (`rte sim`) is
-**landed**; this note pins the UX on top of it without inventing any new
-mechanism. Background: `docs/plant-nodegraph.md` (the plant side of the loop)
-and `docs/automation-backend.md` (Studio = thin frontend over the portable
-`rte` executable).
+Status: **landed** (the Simulate tab ships in RTEStudio; this note keeps the
+original design intent first and then pins what the shipped screen does).
+Backend: `rte sim` (closed-loop, landed). Plant graph editing ships as a
+separate "Plant Editor" tab with its own GraphScene/clipboard/history on
+`Assets/PlantTemplates`. Background: `docs/plant-nodegraph.md` (the plant
+side of the loop), `docs/automation-backend.md` (Studio = thin frontend over
+the portable `rte` executable).
 
 ## Idea in one sentence
 
@@ -12,6 +14,25 @@ One tab where the controller graph and the plant graph sit side by side on the
 same canvas component, a run bar drives a headless `rte sim` through the
 existing automation session, and the resulting v3 JSONL session renders as
 overlay charts with fault injection and diff-vs-recorded one click away.
+
+### Shipped form (verified in headless grabs)
+
+Two separate tabs carry this today: the **Plant Editor** (its own document
+and a single `plant` domain; interactive validation skips the controller
+cycle rule and rejects bridges) and **Simulate** (two path rows with project
+defaults, a scenario row - duration/dt-sub/dyno-rpm|series/supply/events -
+with an openly regex-level live validator, Run/Cancel on a QProcess driving
+`rte --format jsonl sim`, progress stream mirrored in the log pane, artifact
+auto-load into a Telemetry view with G1/G2/G3 assignment and the GL plots
+from `runtime/SignalPlotWidget`). This differs from the original "two views
+of one canvas" sketch only in packaging: the two documents have their own
+editors rather than sharing one canvas. What is NOT landed: diff-vs-recorded
+overlays (twin.metrics embed), fault injection presets as one-click buttons
+(the events editor carries them by name pattern), and cancel-of-in-flight
+scout runs from the progress list. On the headless offscreen test platform
+`QOpenGLWidget is not supported` leaves the plot canvases blank; the
+structure and the table still render - see `Source/NodeGUI/src/sim/` for
+the implementation.
 
 ## Layout
 

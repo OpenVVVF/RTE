@@ -374,8 +374,13 @@ is still open:
 - **Event-vocabulary parity:** `var_series` (scripted var ramps), `config
   set` (live FRAM writes), and `reboot` event kinds from the twin harness
   vocabulary are not yet on the `rte sim` timeline.
-- **The Studio tab:** `docs/studio-sim-tab.md` (design intent; drives `rte
-  sim` through the automation session).
+- ~~The Studio tab:~~ **landed** — the Plant Editor tab (plant graph
+  editing, single-domain, no bridges) and the Simulate tab (scenario editor
+  driving `rte sim` through QProcess, v3 session rendered in the Telemetry
+  view) ship in RTEStudio; verified end-to-end in headless dogfood loops
+  (`RTE_SMOKE_DIR`/`RTE_SMOKE_ACTIONS`). Regression-protective visual gate:
+  nothing is scripted yet for close-loop compares here — the E2E ctest
+  label covers the CLI path.
 
 ## Authoring a new plant pack
 
