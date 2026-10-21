@@ -52,6 +52,12 @@ private:
     FramKeysManager* framKeysManager_ = nullptr;
 
     QLabel* headerLabel_ = nullptr;
+    // Amber "no telemetry" banner - waits for sustained 0 Hz (N consecutive
+    // OnStoreChanged reads once the runtime is established) rather than
+    // flashing at startup (workflow dossier J3.2 / coldboot: the runtime
+    // header could show 0 Hz forever silently).
+    QLabel* noTelemetryBanner_ = nullptr;
+    int consecutiveZeroHzReads_ = 0;
     QLabel* exportStatus_ = nullptr;
     QLineEdit* presetNameEdit_ = nullptr;
     QComboBox* recentCombo_ = nullptr;

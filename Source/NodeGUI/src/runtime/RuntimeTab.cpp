@@ -45,7 +45,13 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     // full-session export that is independent of the rolling plot buffers.
     auto* headerRow = new QHBoxLayout;
     headerLabel_ = new QLabel(this);
+    noTelemetryBanner_ = new QLabel(this);
+    noTelemetryBanner_->setObjectName(QStringLiteral("rtNoTelemetry"));
+    noTelemetryBanner_->setStyleSheet(QStringLiteral(
+        "color: #e8b74d; font-style: italic;"));
+    noTelemetryBanner_->hide();
     headerRow->addWidget(headerLabel_, 1);
+    headerRow->addWidget(noTelemetryBanner_);
     exportStatus_ = new QLabel(this);
     headerRow->addWidget(exportStatus_);
     auto* clearSessionButton =
@@ -113,6 +119,21 @@ void RuntimeTab::OnStoreChanged() {
     // Cheap scalar read — the full Snapshot() copies every history and is far
     // too expensive for the ~30 Hz header refresh.
     const auto stats = controller_->Store().GetStatsLine();
+
+    // "No telemetry" banner: 0 Hz sustained for >2 s once the header's 30 Hz
+    // loop has visited ~66 times, and ONLY for a real (non-sim) port - the
+    // --simulate sine stream has its own generator and must never draw this.
+    if (controller_->IsSimulating() || stats.rxHz > 0.05) {
+        consecutiveZeroHzReads_ = 0;
+        noTelemetryBanner_->hide();
+    } else if (++consecutiveZeroHzReads_ >= 66) {
+        if (noTelemetryBanner_->isHidden()) {
+            noTelemetryBanner_->setText(QStringLiteral(
+                "No telemetry on %1 — device off, wrong port, or start with --simulate?")
+                    .arg(controller_->Port()));
+        }
+        noTelemetryBanner_->show();
+    }
 
     // Same bandwidth estimate as the old app: fraction of the 460800 8N1 link.
     const double bandwidthPct =
