@@ -113,6 +113,9 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                                                   parts.value(2).toDouble(),
                                                   parts.value(3).toDouble());
             std::cout << "dragnode " << arg.toStdString() << "=" << (ok ? "ok" : "failed") << "\n";
+        } else if (kind == "plainclick") {
+            const bool ok = window->SmokePlainClick(arg.toStdString());
+            std::cout << "plainclick " << arg.toStdString() << "=" << (ok ? "ok" : "failed") << "\n";
         } else if (kind == "mousedrag") {
             const bool ok = window->SmokeMouseDragNode(arg.toStdString(),
                                                        parts.value(2).toDouble(),

@@ -127,12 +127,18 @@ void RemoveWireBendAt(QtNodes::ConnectionGraphicsObject& cgo,
 
 void GraphView::TrackNodeDragAfterPress(QMouseEvent* event) {
     nodeDragPending_ = false;
+    nodePressGrabValid_ = false;
     if (event->button() != Qt::LeftButton || !scene()) {
         return;
     }
 
     auto* node = MovableNodeAncestor(scene()->mouseGrabberItem());
     nodeDragPending_ = node && !node->nodeState().resizing();
+    if (nodeDragPending_) {
+        nodePressGrabId_ = node->nodeId();
+        nodePressPos_ = node->pos();
+        nodePressGrabValid_ = true;
+    }
 }
 
 void GraphView::ClearNodeDragCursor() {
@@ -410,6 +416,22 @@ void GraphView::mouseReleaseEvent(QMouseEvent* event) {
     }
     const bool completedNodeRubberBand =
         nodeRubberBandSelecting_ && event->button() == Qt::LeftButton;
+
+    // Drag-completion evidence BEFORE the base release (the base leads into
+    // the graph items' release handlers, including the swap that triggers
+    // the GraphScene's nodeClicked gate).
+    if (event->button() == Qt::LeftButton && nodePressGrabValid_) {
+        if (auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene())) {
+            if (auto* ngo = basicScene->nodeGraphicsObject(nodePressGrabId_)) {
+                const QPointF delta = ngo->pos() - nodePressPos_;
+                if (onNodeDragProven
+                    && std::max(std::abs(delta.x()), std::abs(delta.y())) > 1.0) {
+                    onNodeDragProven(nodePressGrabId_);
+                }
+            }
+        }
+        nodePressGrabValid_ = false;
+    }
     QtNodes::GraphicsView::mouseReleaseEvent(event);
     if (event->button() == Qt::LeftButton) {
         ClearNodeDragCursor();

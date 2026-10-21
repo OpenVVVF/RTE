@@ -177,6 +177,13 @@ public:
     // release-side nodeClicked). Verifies the 2026-10-21 nodeClicked snap
     // hook through the chain that previously swallowed the completion.
     bool DragNodeAsUser(const std::string& nodeId, const QPointF& delta);
+    // Real-drag evidence (fed by GraphView::onNodeDragProven at release):
+    // the nodeClicked handler completes drags only for nodes marked proven,
+    // so plain clicks don't snap off-grid nodes nor book spurious history
+    // (coldboot dossier 2026-10-21: one plain click cost a move + 2 undos).
+    void ReportDragProven(QtNodes::NodeId qtId);
+    // Smoke-only: emit a plain-click release for a node (drag-gate check).
+    bool PlainClickNode(const std::string& nodeId);
 
     // "<id>=x,y;<id>.<port>=x,y;..." — node origin and port socket scene
     // positions, rounded to 0.01; serves grid-compliance smoke assertions.
@@ -319,6 +326,10 @@ public:
     QString defaultDomain_;
 
     bool gridSnap_ = true;
+
+    // Nodes proved as drags at release (see ReportDragProven's comment);
+    // the scene node's release handler consumes the mark per node.
+    std::set<QtNodes::NodeId> dragProven_;
 
     // Non-schema top-level keys of the loaded source document, stashed at
     // LoadGraph for the save-time merge (description etc.; the NodeAPI JSON

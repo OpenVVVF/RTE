@@ -333,9 +333,20 @@ void GraphScene::RebuildScene() {
     sceneEventFilter_ = std::make_unique<SceneEventFilter>(*this);
     scene_->installEventFilter(sceneEventFilter_.get());
 
+    // nodeMoved through BasicGraphicsScene carries the platform's own sticky
+    // _nodeDrag bookkeeping: ANY Position model write (load, AddNode,
+    // restore) sets it, and the next plain click on that node would emit a
+    // one-shot nodeMoved - WITHOUT the gate below, a load-then-plain-click
+    // snap-moves the node with zero mouse travel (observed: plainclick
+    // moved Machine (440,0) -> snapped). Real-mouse drags are covered by
+    // the proven-click path; everything else that moves nodes completes on
+    // its own committer (TranslateNode, load/restore refresh).
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeMoved,
                      [this](QtNodes::NodeId qtId) {
+                         if (dragProven_.erase(qtId) == 0) {
+                             return;   // spurious/sticky bookkeeping
+                         }
                          OnNodeMoved(qtId);
                      });
 
@@ -345,12 +356,18 @@ void GraphScene::RebuildScene() {
     // (BasicGraphicsScene's _nodeDrag gate) never fires and no nodeMoved
     // follows on release (2026-10-21: reported as 'grid snap does
     // nothing'). nodeClicked fires on EVERY NGO mouse release - drag or
-    // plain click - so route the same completion through it; plain clicks
-    // degenerate to no-ops (snap aligns nothing, sync writes back the same
-    // positions, NotifyChanged dedupes on content).
+    // plain click - so route the completion through it, BUT only for nodes
+    // that the host view proved moved during this press-release (drag
+    // evidence captured by GraphView::onNodeDragProven): without that gate
+    // a plain click on an off-grid node would snap it physically AND book
+    // a history entry (coldboot dossier: 'one visible edit costs two
+    // undos').
     QObject::connect(scene_.get(),
                      &QtNodes::BasicGraphicsScene::nodeClicked,
                      [this](QtNodes::NodeId qtId) {
+                         if (dragProven_.erase(qtId) == 0) {
+                             return;   // plain click: not a drag completion
+                         }
                          OnNodeMoved(qtId);
                      });
 
@@ -1666,8 +1683,26 @@ bool GraphScene::DragNodeAsUser(const std::string& nodeId, const QPointF& delta)
     }
     // Drag-completion fidelity: move ONLY the graphics object (no model
     // write, no OnNodeMoved) then fire the release-side nodeClicked - the
-    // exact chain manual QtNodes drags produce.
+    // exact chain manual QtNodes drags produce. The release gate requires
+    // the real-drag mark, which a manual drag also leaves.
     ngo->setPos(ngo->pos() + delta);
+    ReportDragProven(it->second);
+    scene_->nodeClicked(it->second);
+    return true;
+}
+
+void GraphScene::ReportDragProven(QtNodes::NodeId qtId) {
+    dragProven_.insert(qtId);
+}
+
+bool GraphScene::PlainClickNode(const std::string& nodeId) {
+    // Smoke seam for the drag-gate (see ReportDragProven): emit the same
+    // release signal a plain click produces - and NOTHING more. The gated
+    // handler must leave the node untouched (no snap, no sync, no move).
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end() || !scene_) {
+        return false;
+    }
     scene_->nodeClicked(it->second);
     return true;
 }

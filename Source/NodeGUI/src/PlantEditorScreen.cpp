@@ -155,6 +155,9 @@ PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
     view_->onDomainDragFinished = [this] {
         graphScene_->EndSelectedDomainDrag();
     };
+    view_->onNodeDragProven = [this](QtNodes::NodeId qtId) {
+        graphScene_->ReportDragProven(qtId);
+    };
 
     layout->addWidget(view_);
 

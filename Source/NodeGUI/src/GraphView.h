@@ -43,6 +43,14 @@ public:
     std::function<void(const QPointF& delta)> onDomainDragged;
     std::function<void()> onDomainDragFinished;
 
+    // Drag-completion evidence: the node's id + scene position captured at
+    // left-press; on release, if the captured node moved beyond a scene-unit
+    // wiggle, the host calls this BEFORE the base-class release runs - so the
+    // GraphScene's release-side handler can tell drags from plain clicks
+    // (2026-10-21: plain clicks used to snap off-grid nodes + book an undo;
+    // coldboot dossier finding).
+    std::function<void(QtNodes::NodeId qtId)> onNodeDragProven;
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
@@ -79,6 +87,11 @@ private:
     bool suppressDomainDoubleClickRelease_ = false;
     bool nodeRubberBandSelecting_ = false;
     bool nodeDragPending_ = false;
+    // Left-press drag evidence: the grabbed node's qt id + scene position,
+    // consumed at release by onNodeDragProven (see its header comment).
+    QtNodes::NodeId nodePressGrabId_ = 0;
+    bool nodePressGrabValid_ = false;
+    QPointF nodePressPos_;
     bool nodeDragCursorActive_ = false;
     bool wireDragPending_ = false;
     bool wireDragActive_ = false;

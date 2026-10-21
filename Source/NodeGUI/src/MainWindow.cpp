@@ -268,6 +268,9 @@ MainWindow::MainWindow(QWidget* parent)
     view_->onDomainDragFinished = [this] {
         graphScene_->EndSelectedDomainDrag();
     };
+    view_->onNodeDragProven = [this](QtNodes::NodeId qtId) {
+        graphScene_->ReportDragProven(qtId);
+    };
 
     layout->addWidget(view_);
 
@@ -1773,6 +1776,11 @@ bool MainWindow::SmokeMoveNode(const std::string& nodeId, double dx, double dy) 
 bool MainWindow::SmokeDragNode(const std::string& nodeId, double dx, double dy) {
     GraphScene* active = ActiveGraphScene();
     return active && active->DragNodeAsUser(nodeId, QPointF(dx, dy));
+}
+
+bool MainWindow::SmokePlainClick(const std::string& nodeId) {
+    GraphScene* active = ActiveGraphScene();
+    return active && active->PlainClickNode(nodeId);
 }
 
 bool MainWindow::SmokeMouseDragNode(const std::string& nodeId, double dx, double dy) {
