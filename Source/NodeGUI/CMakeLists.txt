@@ -26,6 +26,14 @@ add_executable(RTEStudio
     src/NodePalette.h
     src/InspectorPanel.cpp
     src/InspectorPanel.h
+    src/PlantEditorScreen.cpp
+    src/PlantEditorScreen.h
+    src/sim/SimulateScreen.cpp
+    src/sim/SimulateScreen.h
+    src/sim/SimSession.cpp
+    src/sim/SimSession.h
+    src/sim/SimTelemetryView.cpp
+    src/sim/SimTelemetryView.h
     src/PortStyle.cpp
     src/PortStyle.h
     src/FrameRateMonitor.cpp
