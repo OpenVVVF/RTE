@@ -8,6 +8,7 @@
 #include <QWidget>
 
 #include <cstddef>
+
 #include <functional>
 #include <map>
 #include <optional>
@@ -15,6 +16,7 @@
 #include <vector>
 
 class QCheckBox;
+class QScrollArea;
 class QComboBox;
 class QFormLayout;
 class QLineEdit;
@@ -79,6 +81,7 @@ private:
     QVBoxLayout* layout_ = nullptr;
     QWidget* placeholder_ = nullptr;
     QWidget* form_ = nullptr;
+    QScrollArea* scrollArea_ = nullptr;
     QLineEdit* idEdit_ = nullptr;
     QComboBox* domainCombo_ = nullptr;
     QCheckBox* excludeCheck_ = nullptr;

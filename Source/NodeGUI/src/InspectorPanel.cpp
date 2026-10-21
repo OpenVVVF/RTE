@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QPalette>
 #include <QPointer>
+#include <QScrollArea>
 #include <QTimer>
 
 #include <algorithm>
@@ -88,6 +89,14 @@ InspectorPanel::InspectorPanel(QWidget* parent)
     layout_->setContentsMargins(8, 8, 8, 8);
     layout_->setAlignment(Qt::AlignTop);
 
+    // Param-heavy forms overflow the dock without this wrap (clunk dossier);
+    // the scroll area hosts the rebuilt form content and hides when empty.
+    scrollArea_ = new QScrollArea(this);
+    scrollArea_->setWidgetResizable(true);
+    scrollArea_->setFrameShape(QFrame::NoFrame);
+    scrollArea_->hide();
+    layout_->addWidget(scrollArea_, 1);
+
     placeholder_ = new QLabel(QStringLiteral("Select a node to inspect it."), this);
     layout_->addWidget(placeholder_);
 
@@ -115,6 +124,12 @@ void InspectorPanel::Rebuild() {
     idEdit_ = nullptr;
     domainCombo_ = nullptr;
 
+    // Detach the old form from its scroll area before delete - the area
+    // would otherwise point at freed memory until it's itself replaced.
+    if (scrollArea_) {
+        scrollArea_->takeWidget();
+        scrollArea_->hide();
+    }
     delete form_;
     form_ = nullptr;
     placeholder_->hide();
@@ -284,7 +299,8 @@ void InspectorPanel::Rebuild() {
         connect(wireInput, &QCheckBox::toggled, this, &InspectorPanel::ApplyParameterInputs);
     }
 
-    layout_->addWidget(form_);
+    scrollArea_->setWidget(form_);
+    scrollArea_->show();
 }
 
 void InspectorPanel::ApplyRename() {
