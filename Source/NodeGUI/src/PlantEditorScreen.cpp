@@ -171,6 +171,16 @@ PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
     // Side panels handed up to the MainWindow's per-screen docks (parentless
     // here; QDockWidget::setWidget takes ownership).
     palette_ = new NodePalette;
+    // Double-click / Return inserts the type at the view center through the
+    // same onNodeTypeDropped seam as drag-drops (wave-3b keyboard batch).
+    connect(palette_, &NodePalette::nodeTypeActivated, this,
+            [this](const QString& typeId) {
+                if (view_ && view_->onNodeTypeDropped) {
+                    view_->onNodeTypeDropped(
+                        typeId,
+                        view_->mapToScene(view_->viewport()->rect().center()));
+                }
+            });
     inspector_ = new InspectorPanel;
     inspector_->Attach(graphScene_.get());
     inspector_->onError = [this](const QString& message) { ShowToast(message); };

@@ -412,6 +412,16 @@ MainWindow::MainWindow(QWidget* parent)
     // the view to instantiate them. Populated at startup (below) and on
     // OpenGraph.
     palette_ = new NodePalette(this);
+    // Double-click / Return inserts the type at the view center through the
+    // same onNodeTypeDropped seam as drag-drops (wave-3b keyboard batch).
+    connect(palette_, &NodePalette::nodeTypeActivated, this,
+            [this](const QString& typeId) {
+                if (view_ && view_->onNodeTypeDropped) {
+                    view_->onNodeTypeDropped(
+                        typeId,
+                        view_->mapToScene(view_->viewport()->rect().center()));
+                }
+            });
     toolboxDock_ = new QDockWidget(QStringLiteral("Node Toolbox"), this);
     toolboxDock_->setObjectName(QStringLiteral("nodeToolboxDock"));
     toolboxDock_->setWidget(palette_);

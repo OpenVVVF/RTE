@@ -49,6 +49,13 @@ FlashPanel::FlashPanel(RuntimeController* controller, QWidget* parent)
     pathRow->addWidget(new QLabel(QStringLiteral("Firmware path"), this));
     pathEdit_ = new QLineEdit(this);
     pathRow->addWidget(pathEdit_, 1);
+    // Never start empty (clunk quick-win): prefill with the last flashed
+    // binary when we know one.
+    const QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    const QString last = settings.value(QStringLiteral("flash/lastFirmware")).toString();
+    if (!last.isEmpty()) {
+        pathEdit_->setText(last);
+    }
     auto* browse = new QPushButton(QStringLiteral("Browse..."), this);
     connect(browse, &QPushButton::clicked, this, &FlashPanel::OnBrowse);
     pathRow->addWidget(browse);
@@ -111,6 +118,11 @@ void FlashPanel::OnFlashClicked() {
         errorLabel_->setText(QStringLiteral("Choose a firmware binary first."));
         return;
     }
+    // Remember the last flash target for next time (prefill + browse seed).
+    QSettings lastRun(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    lastRun.setValue(QStringLiteral("flash/lastFirmware"), firmware);
+    lastRun.setValue(QStringLiteral("flash/lastDir"),
+                     QFileInfo(firmware).dir().absolutePath());
     QStringList arguments = {QStringLiteral("--format"), QStringLiteral("jsonl"),
                              QStringLiteral("flash"), QStringLiteral("--firmware"), firmware,
                              QStringLiteral("--serial"), controller_->Port()};
@@ -143,8 +155,10 @@ void FlashPanel::OnCancel() {
 }
 
 void FlashPanel::OnBrowse() {
+    const QSettings settings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+    const QString seedDir = settings.value(QStringLiteral("flash/lastDir")).toString();
     const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Select firmware binary"), QString(),
+        this, QStringLiteral("Select firmware binary"), seedDir,
         QStringLiteral("Firmware binaries (*.bin);;All files (*)"));
     if (!path.isEmpty()) pathEdit_->setText(path);
 }
