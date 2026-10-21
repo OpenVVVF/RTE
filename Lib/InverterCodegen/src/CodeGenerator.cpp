@@ -215,25 +215,44 @@ std::string WireTypeToCpp(const NodeAPI::WireType& type) {
     return "float";
 }
 
+// Numeric literals bound into float expressions always need a decimal
+// point or a suffix that names a float: "5f" is NOT a valid C++ literal
+// (it is parsed as a built-in-suffix candidate and dies at consumer compile
+// time), while "5.0f" is. Integer-form values get the ".0" appended here;
+// everything already carrying a '.', exponent, or nan/inf spelling is left
+// untouched so existing emissions stay byte-identical.
+std::string NormalizeFloatLiteral(const std::string& value) {
+    const std::string lower = value.empty() ? value : [&] {
+        std::string x = value;
+        for (auto& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return x;
+    }();
+    const bool stays = value.find('.') != std::string::npos
+        || lower.find('e') != std::string::npos
+        || lower.find("inf") != std::string::npos
+        || lower.find("nan") != std::string::npos;
+    return stays ? value : value + ".0";
+}
+
 std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string& value) {
     // Emit a C++ expression that constructs the right unit-wrapped value from a
     // plain numeric literal. Framed parameter types are not supported.
     switch (type.quantity) {
         case NodeAPI::Quantity::Voltage:
             if (type.frame != NodeAPI::Frame::Scalar) break;
-            return "rte::Volts(" + value + "f)";
+            return "rte::Volts(" + NormalizeFloatLiteral(value) + "f)";
         case NodeAPI::Quantity::Current:
             if (type.frame != NodeAPI::Frame::Scalar) break;
-            return "rte::Amperes(" + value + "f)";
+            return "rte::Amperes(" + NormalizeFloatLiteral(value) + "f)";
         case NodeAPI::Quantity::AngularVelocity:
-            return "rte::RadiansPerSecond(" + value + "f)";
+            return "rte::RadiansPerSecond(" + NormalizeFloatLiteral(value) + "f)";
         case NodeAPI::Quantity::Torque:
-            return "rte::NewtonMeters(" + value + "f)";
+            return "rte::NewtonMeters(" + NormalizeFloatLiteral(value) + "f)";
         case NodeAPI::Quantity::Temperature:
-            return "rte::Celsius(" + value + "f)";
+            return "rte::Celsius(" + NormalizeFloatLiteral(value) + "f)";
         case NodeAPI::Quantity::Dimensionless:
         case NodeAPI::Quantity::Boolean:
-            return value + "f";
+            return NormalizeFloatLiteral(value) + "f";
         case NodeAPI::Quantity::String:
             // String params are stored unquoted in the graph JSON; quote them
             // for C++ emission.
@@ -241,7 +260,7 @@ std::string ParameterValueToCpp(const NodeAPI::WireType& type, const std::string
     }
     // Unknown / framed: fall back to a plain float so existing templates keep
     // working, but this loses unit safety for those parameters.
-    return value + "f";
+    return NormalizeFloatLiteral(value) + "f";
 }
 
 // Config nodes (type id "config.*") expose a FRAM-backed value by a user-chosen
@@ -579,7 +598,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
                                << " " << key << " = "
                                << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
+                                             : NormalizeFloatLiteral(value) + "f")
                                << ";\n";
                     }
                 }
@@ -588,7 +607,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                     if (IsParameterInput(*node, key)) continue;
                     auto paramType = nodeType->FindParameterType(key);
                     source << "        state." << node->id << "." << key << " = "
-                           << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
+                           << (paramType ? ParameterValueToCpp(*paramType, value) : NormalizeFloatLiteral(value) + "f")
                            << ";\n";
                 }
                 /* Bind local refs for parameters used by constructorCode. */
@@ -710,7 +729,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                                << (paramType ? WireTypeToCpp(*paramType) : "rte::Dimensionless")
                                << " " << key << " = "
                                << (paramType ? ParameterValueToCpp(*paramType, value)
-                                             : value + "f")
+                                             : NormalizeFloatLiteral(value) + "f")
                                << ";\n";
                     }
                 }
@@ -784,7 +803,7 @@ bool CodeGenerator::Generate(const std::string& outputDir, std::string& error) c
                 if (IsParameterInput(*node, key)) continue;
                 auto paramType = nodeType->FindParameterType(key);
                 source << "        state." << node->id << "." << key << " = "
-                       << (paramType ? ParameterValueToCpp(*paramType, value) : value + "f")
+                       << (paramType ? ParameterValueToCpp(*paramType, value) : NormalizeFloatLiteral(value) + "f")
                        << ";\n";
             }
             source << "    }\n";
