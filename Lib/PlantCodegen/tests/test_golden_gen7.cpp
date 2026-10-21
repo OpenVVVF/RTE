@@ -20,6 +20,7 @@
 // C++ float32 emulation stays within the float64 tape's divergence budget.
 
 #include <cmath>
+#include <cstring>
 #include <gtest/gtest.h>
 
 #include "plant_generated.h"
@@ -121,10 +122,12 @@ TEST(PlantCodegenGolden, Gen7TracksPythonReferenceTape) {
     }
     EXPECT_EQ(next, std::size(kTape));
 
-    // The MeasOut seam: unconnected channels read quiet NaN.
-    EXPECT_TRUE(std::isnan(meas.Vu_V));
-    EXPECT_TRUE(std::isnan(meas.Vv_V));
-    EXPECT_TRUE(std::isnan(meas.Vw_V));
+    // The MeasOut seam in v1.1: the three phase-ADC channels are wired
+    // (Knee raw taps through the 1.5 ms lag senses); only the two genuinely
+    // unpopulated NTC channels read quiet NaN.
+    EXPECT_FALSE(std::isnan(meas.Vu_V));
+    EXPECT_FALSE(std::isnan(meas.Vv_V));
+    EXPECT_FALSE(std::isnan(meas.Vw_V));
     EXPECT_TRUE(std::isnan(meas.Temp_Inv3_C));
     EXPECT_TRUE(std::isnan(meas.Temp_Motor_C));
 }
@@ -147,12 +150,12 @@ TEST(PlantCodegenGolden, HostExternals) {
                 static_cast<float>(3311.6 * (2.0 * M_PI / 60.0) * 5.0), 1e-2f);
     EXPECT_FLOAT_EQ(state.Dyno.Elec_Rpm, 3311.6f * 5.0f);
 
-    // Fault point by name; unknown names are a no-op.
-    plant::PlantSetFault(state, "OpenGates", true);
+    // Fault point by name; D8: the return says whether the name exists.
+    EXPECT_TRUE(plant::PlantSetFault(state, "OpenGates", true));
     EXPECT_FLOAT_EQ(state.Fault.OpenGates, 1.0f);
-    plant::PlantSetFault(state, "NotARealFault", true);
+    EXPECT_FALSE(plant::PlantSetFault(state, "NotARealFault", true));
     EXPECT_FLOAT_EQ(state.Fault.EncoderDisconnect, 0.0f);
-    plant::PlantSetFault(state, "OpenGates", false);
+    EXPECT_TRUE(plant::PlantSetFault(state, "OpenGates", false));
     EXPECT_FLOAT_EQ(state.Fault.OpenGates, 0.0f);
 
     // PlantSetInput: unwired ports of the graph match by name; wired/absent
@@ -163,13 +166,103 @@ TEST(PlantCodegenGolden, HostExternals) {
     EXPECT_FALSE(plant::PlantSetInput(state, "Omega_Cmd", 1.0f));  // absent here
 }
 
-TEST(PlantCodegenGolden, SupplyRepointTracksReference) {
-    // The host moves the bench setpoint from the graph's 144.7 V to 120 V;
-    // the bus must follow through the (mutable) supply parameters.
+// D11: after PlantInit the measurement view must already reflect t0 — the
+// python reference's _initial_eval pass publishes every comb/stateful output
+// before the first substep (encoder counts, thermal reads, idle heat...).
+// Tape recorded from twin/plantgraph/plantgraph.py (PlantGraphSim on
+// gen7_bench_pmsm, before any step), 2026-10-21.
+TEST(PlantCodegenGolden, T0PublishMatchesPythonInitialEval) {
+    plant::PlantState state{};
+    plant::PlantInit(state);
+    plant::PlantMeas meas{};
+    plant::PlantCollectMeas(state, meas);
+
+    EXPECT_FLOAT_EQ(meas.Iu_A, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Iv_A, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Iw_A, 0.0f);
+    // Unwired channels are NaN; wired phase-ADC taps read the 50/50/50
+    // zero-vector raw volts through un-sampled lags (python: 0.0).
+    EXPECT_FLOAT_EQ(meas.Vu_V, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Vv_V, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Vw_V, 0.0f);
+    EXPECT_NEAR(meas.Enc_Sin, 30201.0f, 1.0f);  // int()-truncation band
+    EXPECT_NEAR(meas.Enc_Cos, 53586.0f, 1.0f);
+    EXPECT_NEAR(meas.Temp_Inv1_C, 22.8f, 1e-4f);
+    EXPECT_NEAR(meas.Temp_Inv2_C, 25.9f, 1e-4f);  // Off2Idle law at idle
+    EXPECT_TRUE(std::isnan(meas.Temp_Inv3_C));
+    EXPECT_TRUE(std::isnan(meas.Temp_Motor_C));
+    EXPECT_FLOAT_EQ(meas.Mech_Rpm, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Elec_Rpm, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Dclink_I_A, 0.0f);
+    EXPECT_FLOAT_EQ(meas.Dclink_P_W, 0.0f);
+    EXPECT_FLOAT_EQ(meas.P_Heat_W, 120.0f);  // idle heat floor (IdleHeat_W)
+    EXPECT_FLOAT_EQ(meas.P_Dc_W, 0.0f);
+    EXPECT_FLOAT_EQ(meas.P_ShaftEm_W, 0.0f);
+    EXPECT_FLOAT_EQ(state.DcBus.Vdc, 144.7f);  // V0_V, still bus-rest
+    EXPECT_FLOAT_EQ(state.Loss.FloorHits, 0.0f);
+    // NOTE on Vdc_V (D11 divergence, documented): the C++ bus channel fuses
+    // sampling and integration in one body, so the t=0 publish pass already
+    // samples the 144.7 V rest bus through the lag-free path; python's split
+    // emit() publishes 0.0 there. The quantized 144.76 V assertion below
+    // pins the C++ behavior; every other channel matches python verbatim.
+    EXPECT_NEAR(meas.Vdc_V, 144.76f, 0.01f);
+
+    // Re-init restores the exact t0 bit pattern (all persistent state in the
+    // struct; PlantInit is idempotent under D11's publish pass).
+    plant::PlantState fresh{};
+    plant::PlantInit(fresh);
+    state.DcBus.Vdc = 999.0f;
+    plant::PlantInit(state);
+    EXPECT_EQ(std::memcmp(&state, &fresh, sizeof(state)), 0);
+}
+
+// D9/D10: graph-supplied supply defaults and boot params drive the partial
+// override composition the sim host performs (--supply partial fill).
+TEST(PlantCodegenGolden, SupplyDefaultsAndBootParams) {
+    plant::PlantState state{};
+    plant::PlantInit(state);
+
+    // D9: defaults accessor hands back the graph instance supply values.
+    double vSet = 0, iLimit = 0, sinkLimit = 0, cvClamp = -1, cvClampSink = -1,
+           seriesR = 0;
+    bool canSink = false;
+    plant::PlantSupplyDefaults(state, &vSet, &iLimit, &sinkLimit, &canSink,
+                               &cvClamp, &cvClampSink, &seriesR);
+    EXPECT_DOUBLE_EQ(vSet, 144.7);
+    EXPECT_DOUBLE_EQ(iLimit, 400.0);
+    EXPECT_DOUBLE_EQ(sinkLimit, 50.0);
+    EXPECT_TRUE(canSink);
+    EXPECT_DOUBLE_EQ(cvClamp, 0.0);
+    EXPECT_DOUBLE_EQ(cvClampSink, 0.0);
+    EXPECT_DOUBLE_EQ(seriesR, 5.0);
+    // Null pointers are skipped without touching anything.
+    plant::PlantSupplyDefaults(state, nullptr, &iLimit, nullptr, nullptr,
+                               nullptr, nullptr, nullptr);
+    EXPECT_DOUBLE_EQ(iLimit, 400.0);
+
+    // D10: boot constants from the graph's machine/encoder params.
+    double poles = 0, rsOhm = 0, encOffset = 0;
+    plant::PlantBootParams(state, &poles, &rsOhm, &encOffset);
+    EXPECT_DOUBLE_EQ(poles, 5.0);
+    EXPECT_DOUBLE_EQ(rsOhm, 0.00765);
+    EXPECT_DOUBLE_EQ(encOffset, 33.034);
+
+    // Partial-override composition: repoint just the setpoint and clamp via
+    // defaults-read -> modify -> full 7-arg set; the untouched knobs keep
+    // their graph values.
+    plant::PlantSupplyDefaults(state, &vSet, &iLimit, &sinkLimit, &canSink,
+                               &cvClamp, &cvClampSink, &seriesR);
+    vSet = 120.0;
+    plant::PlantSetSupply(state, vSet, iLimit, sinkLimit, canSink, cvClamp,
+                          cvClampSink, seriesR);
+    EXPECT_DOUBLE_EQ(state.DcBus.VSet_V, 120.0);
+    EXPECT_DOUBLE_EQ(state.DcBus.ILimit_A, 400.0);
+    EXPECT_DOUBLE_EQ(state.DcBus.SeriesR_mOhm, 5.0);
+
     GoldenDrive drive;
     plant::PlantInit(drive.state);
     plant::PlantSetDynoRpm(drive.state, 0.0f);
-    plant::PlantSetSupply(drive.state, 120.0, 100.0, 100.0, true);
+    plant::PlantSetSupply(drive.state, 120.0, 400.0, 50.0, true, 0.0, 0.0, 5.0);
     for (int period = 0; period < 100; ++period) {
         drive.StepPeriod();
     }
@@ -188,7 +281,7 @@ TEST(PlantCodegenGolden, OpenGatesCollapseMatchesTimeConstant) {
 
     const float idBefore = std::fabs(drive.state.Machine.Id);
     ASSERT_GT(idBefore, 100.0f);
-    plant::PlantSetFault(drive.state, "OpenGates", true);
+    EXPECT_TRUE(plant::PlantSetFault(drive.state, "OpenGates", true));
     for (int period = 0; period < 25; ++period) {  // 10 ms = 5 tau
         drive.StepPeriod();
     }

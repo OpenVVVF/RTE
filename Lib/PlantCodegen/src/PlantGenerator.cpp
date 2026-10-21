@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -24,6 +25,8 @@ namespace {
 // functions + M_PI/M_SQRT3 only).
 
 const std::set<std::string>& Keywords() {
+    // C++20 keyword set (D5): the project builds with CXX_STANDARD 20, so
+    // names like concept/requires/co_await/module must never be emitted.
     static const std::set<std::string> k = {
         "alignas", "alignof", "and", "asm", "auto", "bool", "break", "case",
         "catch", "char", "class", "const", "constexpr", "continue", "decltype",
@@ -35,6 +38,9 @@ const std::set<std::string>& Keywords() {
         "static_cast", "struct", "switch", "template", "this", "throw", "true",
         "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
         "virtual", "void", "volatile", "while",
+        // C++20 additions
+        "concept", "requires", "consteval", "constinit", "co_await",
+        "co_return", "co_yield", "char8_t", "import", "module",
     };
     return k;
 }
@@ -146,6 +152,13 @@ void AddDeclared(const std::vector<std::string>& tokens, std::set<std::string>& 
         while (j < tokens.size() && (tokens[j] == "*" || tokens[j] == "&")) ++j;
         while (j < tokens.size() && IsIdentifierToken(tokens[j])) {
             out.insert(tokens[j]);
+            // "double a, b" shares the type; "double a, double b" (e.g. lambda
+            // parameter lists) restates it — stop and let the outer loop pick
+            // up the fresh declaration instead of consuming the type word.
+            if (j + 2 < tokens.size() && tokens[j + 1] == "," &&
+                (TypeWords().count(tokens[j + 2]) || tokens[j + 2] == "const")) {
+                break;
+            }
             if (j + 1 < tokens.size() && tokens[j + 1] == ",") {
                 j += 2;
             } else {
@@ -187,6 +200,61 @@ std::set<std::string> AssignedIdentifiers(const std::string& code) {
     AddDeclared(tokens, locals);
     for (const auto& local : locals) out.erase(local);
     return out;
+}
+
+// Math/function whitelist the template ground rules allow bodies to call
+// (plain math functions only, per Assets/PlantTemplates/README.md).
+const std::set<std::string>& MathFunctions() {
+    static const std::set<std::string> k = {
+        "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+        "sinh", "cosh", "tanh", "sqrt", "hypot", "exp", "exp2",
+        "log", "log2", "log10", "pow", "fabs", "abs", "fmin", "fmax",
+        "fmod", "floor", "ceil", "round", "rint", "nearbyint", "trunc",
+    };
+    return k;
+}
+
+// D6 body ground-rule checks (README "Execution semantics"):
+//  (a) a statement-initial "<word> <word>" whose first word is not the local
+//      type whitelist (double/float/int/bool/const/auto/long/short/unsigned +
+//      the repo's own signed/char/size_t) is an unknown local type;
+//  (c) `static` locals are hidden state PlantInit cannot reset — forbidden.
+// Returns an error fragment (empty when the body is clean).
+std::string CheckBodyShape(const std::string& nodeId, const std::string& code) {
+    const auto tokens = Tokenize(code);
+    const auto isWord = [](const std::string& tok) {
+        if (tok.empty() || !IsIdentStart(tok.front())) return false;
+        for (char c : tok) {
+            if (!IsIdentChar(c)) return false;
+        }
+        return true;
+    };
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        if (tokens[i] == "static") {  // (c)
+            return "node '" + nodeId + "' template body declares a 'static' "
+                   "local; statics keep hidden state PlantInit cannot reset "
+                   "(D6c) — use an output port or internal persistent state";
+        }
+    }
+    bool atStatementStart = true;
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        const std::string& tok = tokens[i];
+        if (tok == ";" || tok == "{" || tok == "}" || tok == ":") {
+            atStatementStart = true;
+            continue;
+        }
+        if (atStatementStart) {
+            atStatementStart = false;
+            if (i + 1 < tokens.size() && isWord(tok) && isWord(tokens[i + 1]) &&
+                !Keywords().count(tok) && !TypeWords().count(tok) &&
+                tok != "const") {  // (a)
+                return "node '" + nodeId + "' template body: unknown local type '" +
+                       tok + "' — declare locals with double/float/int per the "
+                       "plant template ground rules (D6a)";
+            }
+        }
+    }
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -241,13 +309,26 @@ std::optional<double> TemplateDefault(const std::string& typeId,
 
 // DcBus bench-supply parameters the host may re-point at runtime via
 // PlantSetSupply: stored as mutable state fields, not constexpr.
-bool IsSupplyParameter(const std::string& typeId, const std::string& param) {
-    if (typeId != "Plant.DcBus") return false;
-    return param == "VSet_V" || param == "ILimit_A" ||
-           param == "SinkLimit_A" || param == "CanSink";
+// D9: the mutable surface is the full seven-knob bench-supply model,
+// mirroring python's set_supply keymap (v_set, i_limit_a, can_sink,
+// sink_limit_a, cv_clamp_v, cv_clamp_sink_a, series_r_mohm).
+const std::vector<std::string>& SupplyParameterNames() {
+    static const std::vector<std::string> k = {
+        "VSet_V", "ILimit_A", "CanSink", "SinkLimit_A",
+        "CvClamp_V", "CvClampSink_A", "SeriesR_mOhm",
+    };
+    return k;
 }
 
-// Parses a graph parameter string as a full-consumption double.
+bool IsSupplyParameter(const std::string& typeId, const std::string& param) {
+    if (typeId != "Plant.DcBus") return false;
+    const auto& names = SupplyParameterNames();
+    return std::find(names.begin(), names.end(), param) != names.end();
+}
+
+// Parses a graph parameter string as a full-consumption finite double
+// (D4: inf/nan/overflow literals like 1e999 are rejected — otherwise a
+// non-finite literal would compile into a silent-inf physics constant).
 bool ParseDouble(const std::string& text, double& out) {
     const std::size_t b = text.find_first_not_of(" \t\n\r");
     if (b == std::string::npos) return false;
@@ -255,7 +336,8 @@ bool ParseDouble(const std::string& text, double& out) {
     const std::string trimmed = text.substr(b, e - b + 1);
     char* end = nullptr;
     out = std::strtod(trimmed.c_str(), &end);
-    return end != trimmed.c_str() && end != nullptr && *end == '\0';
+    return end != trimmed.c_str() && end != nullptr && *end == '\0' &&
+           std::isfinite(out);
 }
 
 std::string FormatDouble(double value) {
@@ -292,6 +374,9 @@ struct NodeAnalysis {
     std::map<std::string, std::string> paramLiterals;
     // parseable instance parameters -> literal (for the struct constexprs)
     std::map<std::string, std::string> staticParams;
+    // Dyno Rpm0/StartRpm instance keys consumed via the D13 alias (spares
+    // them from the D2 unused-parameter warnings)
+    std::set<std::string> dynoAliasConsumed;
 };
 
 struct Analysis {
@@ -361,10 +446,11 @@ Analysis Analyze(const NodeAPI::Graph& graph) {
             if (!na.wiredInputs.count(name)) na.unwiredInputs.push_back(name);
         }
 
-        // DcBus host-mutable supply parameters (always materialized so
-        // PlantSetSupply reaches them even when the graph omits one).
+        // DcBus host-mutable supply parameters (all seven, D9; always
+        // materialized so PlantSetSupply reaches them even when the graph
+        // omits one).
         if (node.type == "Plant.DcBus") {
-            na.supplyParams = {"VSet_V", "ILimit_A", "SinkLimit_A", "CanSink"};
+            na.supplyParams = SupplyParameterNames();
         }
 
         a.indexById.emplace(node.id, a.nodes.size());
@@ -406,8 +492,15 @@ bool Validate(Analysis& a, std::string& error) {
             return false;
         }
         if (!na.typeInTable) {
-            a.warnings.push_back("node '" + na.node->id + "' has unlisted type '" +
-                                 na.node->type + "'; scheduled as combinational");
+            // D3: the classify table is the contract — a loaded type missing
+            // from it can never be silently demoted to combinational (the
+            // schedule, hence the physics, would diverge from the python
+            // reference evaluator, which hard-fails on the same case).
+            error = "node '" + na.node->id + "' has unlisted type '" +
+                    na.node->type + "': register it in PlantGenerator's "
+                    "classify table (Assets/PlantTemplates/README.md documents "
+                    "the node classes)";
+            return false;
         }
     }
 
@@ -478,36 +571,122 @@ bool Validate(Analysis& a, std::string& error) {
         }
     }
 
+    // D5: every name the emitter materializes must be a valid C++20
+    // identifier — node ids (checked above), port names (struct fields and
+    // bind locals), parameter names (struct constexprs), internal state.
+    for (const auto& na : a.nodes) {
+        const auto checkName = [&](const std::string& kind, const std::string& name) {
+            if (!IsValidIdentifier(name)) {
+                error = "node '" + na.node->id + "' (" + na.node->type + ") has " +
+                        kind + " '" + name +
+                        "' that is not a valid C++20 identifier";
+                return false;
+            }
+            return true;
+        };
+        for (const auto& p : na.type->inputPorts) {
+            if (!checkName("input port", p.name)) return false;
+        }
+        for (const auto& p : na.type->outputPorts) {
+            if (!checkName("output port", p.name)) return false;
+        }
+        for (const auto& name : na.staticParams) {
+            if (!checkName("parameter", name.first)) return false;
+        }
+        for (const auto& name : na.internalState) {
+            if (!checkName("internal state", name)) return false;
+        }
+    }
+
+    // D6 ground-rule shape checks before binding analysis (unknown local
+    // types, static locals — README "the plant template ground rules").
+    for (const auto& na : a.nodes) {
+        if (const auto bad = CheckBodyShape(na.node->id, na.ctorBody); !bad.empty()) {
+            error = bad;
+            return false;
+        }
+        if (const auto bad = CheckBodyShape(na.node->id, na.stepBody); !bad.empty()) {
+            error = bad;
+            return false;
+        }
+    }
+
     // Parameters referenced by pasted bodies: graph values must parse;
     // missing values need a python-parity template default.
     for (auto& na : a.nodes) {
+        std::set<std::string> dynoAliasConsumed;  // D13 bookkeeping per node
         const auto resolve = [&](const std::string& used,
                                  std::string& localError) -> bool {
-            const auto instIt = na.node->parameters.find(used);
-            const bool knownParam = instIt != na.node->parameters.end() ||
-                                    na.type->FindParameterType(used).has_value() ||
-                                    IsSupplyParameter(na.node->type, used);
-            if (!knownParam) return true;  // ports/state/locals/functions
-            if (instIt != na.node->parameters.end()) {
-                double parsed = 0.0;
-                if (!ParseDouble(instIt->second, parsed)) {
-                    localError = "unparseable float parameter '" + used +
-                                 "' on node '" + na.node->id + "': \"" +
-                                 instIt->second + "\"";
+            auto instIt = na.node->parameters.end();
+            // D13 addition: map the alias onto the instance key that supplies
+            // the Dyno initial rpm (canonical Rpm0, deprecated StartRpm).
+            if (na.node->type == "Plant.Shaft.Dyno" &&
+                (used == "Rpm0" || used == "StartRpm")) {
+                const auto canon = na.node->parameters.find("Rpm0");
+                const auto legacy = na.node->parameters.find("StartRpm");
+                if (canon != na.node->parameters.end()) {
+                    instIt = canon;
+                    dynoAliasConsumed.insert("Rpm0");
+                } else if (legacy != na.node->parameters.end()) {
+                    instIt = legacy;
+                    dynoAliasConsumed.insert("StartRpm");
+                    const std::string warning =
+                        "node '" + na.node->id + "': Dyno parameter 'StartRpm' is "
+                        "deprecated; rename it to 'Rpm0' (D13)";
+                    if (std::find(a.warnings.begin(), a.warnings.end(), warning) ==
+                        a.warnings.end()) {
+                        a.warnings.push_back(warning);
+                    }
+                }
+            } else {
+                instIt = na.node->parameters.find(used);
+            }
+            const bool isParam =
+                instIt != na.node->parameters.end() ||
+                na.type->FindParameterType(used).has_value() ||
+                IsSupplyParameter(na.node->type, used);
+            if (isParam) {
+                if (instIt != na.node->parameters.end()) {
+                    double parsed = 0.0;
+                    if (!ParseDouble(instIt->second, parsed)) {
+                        localError = "unparseable float parameter '" + used +
+                                     "' on node '" + na.node->id + "': \"" +
+                                     instIt->second + "\"";
+                        return false;
+                    }
+                    na.paramLiterals.emplace(used, instIt->second);
+                    return true;
+                }
+                const auto fallback = TemplateDefault(na.node->type, used);
+                if (!fallback) {
+                    localError = "node '" + na.node->id + "' body references parameter '" +
+                                 used + "' but the graph provides no value and the template"
+                                 " has no default";
                     return false;
                 }
-                na.paramLiterals.emplace(used, instIt->second);
+                na.paramLiterals.emplace(used, FormatDouble(*fallback));
                 return true;
             }
-            const auto fallback = TemplateDefault(na.node->type, used);
-            if (!fallback) {
-                localError = "node '" + na.node->id + "' body references parameter '" +
-                             used + "' but the graph provides no value and the template"
-                             " has no default";
-                return false;
+            // D6b: every identifier a body reads must resolve against ports,
+            // parameters, internal state, declared locals, the emit-time
+            // constants, or the math whitelist — anything else means the
+            // generated TU would fail at consumer compile time.
+            const auto locals = DeclaredLocals(na.ctorBody + "\n" + na.stepBody);
+            const std::set<std::string> inputs(na.inputPorts.begin(), na.inputPorts.end());
+            const std::set<std::string> outputs(na.outputPorts.begin(), na.outputPorts.end());
+            if (inputs.count(used) || outputs.count(used) ||
+                locals.count(used) || na.staticParams.count(used) ||
+                std::find(na.internalState.begin(), na.internalState.end(), used) !=
+                    na.internalState.end() ||
+                used == "DtPlant" || used == "M_PI" || used == "M_SQRT3" ||
+                MathFunctions().count(used) || TypeWords().count(used)) {
+                return true;
             }
-            na.paramLiterals.emplace(used, FormatDouble(*fallback));
-            return true;
+            localError = "node '" + na.node->id + "' template body reads undeclared "
+                         "identifier '" + used + "' (D6b); bindable names are "
+                         "ports, parameters, internal state, declared locals, "
+                         "DtPlant, M_PI/M_SQRT3 and the math whitelist";
+            return false;
         };
         for (const auto& used : na.usedCtor) {
             if (!resolve(used, error)) return false;
@@ -515,9 +694,41 @@ bool Validate(Analysis& a, std::string& error) {
         for (const auto& used : na.usedStep) {
             if (!resolve(used, error)) return false;
         }
+        na.dynoAliasConsumed = std::move(dynoAliasConsumed);
     }
 
-    // Struct-layout collisions (defensive; no current template mixes these).
+    // D2: mild parameter issues become warnings instead of errors — graph
+    // parameters that are materialized into the struct without the template
+    // ever referencing them (dead weight; "VSett_V"-class typos land here).
+    for (const auto& na : a.nodes) {
+        for (const auto& [key, text] : na.node->parameters) {
+            if (na.paramLiterals.count(key) ||
+                IsSupplyParameter(na.node->type, key) ||
+                na.dynoAliasConsumed.count(key)) {
+                continue;
+            }
+            double parsed = 0.0;
+            const bool materialized =
+                ParseDouble(text, parsed) && na.staticParams.count(key);
+            if (na.type->FindParameterType(key).has_value()) {
+                a.warnings.push_back(
+                    "node '" + na.node->id + "' parameter '" + key +
+                    "' is declared by template '" + na.node->type +
+                    "' but never referenced by its bodies" +
+                    (materialized ? "; materialized into the struct unused" : ""));
+            } else {
+                a.warnings.push_back(
+                    "node '" + na.node->id + "' parameter '" + key +
+                    "' is not declared by template '" + na.node->type + "'" +
+                    (materialized ? "; materialized into the struct as-is"
+                                  : " (unparseable, not materialized)") +
+                    " — possible typo");
+            }
+        }
+    }
+
+    // Struct-layout collisions (D5: extended to parameters and to
+    // input-vs-output port name clashes per node).
     for (const auto& na : a.nodes) {
         std::set<std::string> fields(na.outputPorts.begin(), na.outputPorts.end());
         for (const auto& s : na.internalState) fields.insert(s);
@@ -533,6 +744,33 @@ bool Validate(Analysis& a, std::string& error) {
             if (!fields.insert(s).second) {
                 error = "supply parameter '" + s + "' of node '" + na.node->id +
                         "' collides with a state field";
+                return false;
+            }
+        }
+        for (const auto& [name, literal] : na.staticParams) {
+            (void)literal;
+            if (!fields.insert(name).second) {
+                error = "parameter '" + name + "' of node '" + na.node->id +
+                        "' collides with a port or state field of the same name";
+                return false;
+            }
+        }
+        // Input-vs-output name clash: the emitted block binds inputs as
+        // `const float X` and outputs/internal state as `float& X` (params as
+        // constexpr locals) in one scope. Unwired-input struct fields are not
+        // a clash here — the bind reads the field itself (`const float C =
+        // state.Draw.C;`), which shares no scope with another local.
+        std::set<std::string> boundNames(na.outputPorts.begin(), na.outputPorts.end());
+        boundNames.insert(na.internalState.begin(), na.internalState.end());
+        boundNames.insert(na.supplyParams.begin(), na.supplyParams.end());
+        for (const auto& [name, literal] : na.staticParams) {
+            (void)literal;
+            boundNames.insert(name);
+        }
+        for (const auto& in : na.inputPorts) {
+            if (boundNames.count(in)) {
+                error = "node '" + na.node->id + "' has input port '" + in +
+                        "' colliding with an output port, parameter, or state field";
                 return false;
             }
         }
@@ -751,16 +989,28 @@ void EmitStateBinds(std::ostringstream& out, const NodeAnalysis& a,
     }
 }
 
+// Pastes a template body wrapped in an immediately-invoked lambda. Bodies
+// are pasted verbatim (the ground-rule contract), but a template-level early
+// return (e.g. a rail branch) must return from the pasted region only, never
+// abort the enclosing generated function and skip the rest of the schedule.
+std::string EmitPastedBody(const std::string& body, const char* indent) {
+    std::ostringstream out;
+    out << indent << "[&] {\n";
+    out << body;
+    if (!body.empty() && body.back() != '\n') out << "\n";
+    out << indent << "}();\n";
+    return out.str();
+}
+
 std::string EmitBodyBlock(const NodeAnalysis& a, const char* indent) {
     std::ostringstream out;
     out << indent << "{\n";
     const std::string inner = std::string(indent) + "    ";
-    out << inner << "[[maybe_unused]] const double DtPlant = (double)dt;\n";
     EmitInputBinds(out, a, a.usedStep, inner.c_str());
     EmitParameterBinds(out, a, a.usedStep, inner.c_str());
     EmitStateBinds(out, a, a.usedStep, inner.c_str());
-    out << a.stepBody;
-    if (!a.stepBody.empty() && a.stepBody.back() != '\n') out << "\n";
+    out << inner << "[[maybe_unused]] const double DtPlant = (double)dt;\n";
+    out << EmitPastedBody(a.stepBody, inner.c_str());
     out << indent << "}\n";
     return out.str();
 }
@@ -782,15 +1032,27 @@ bool WriteFile(const std::filesystem::path& path, const std::string& text,
     return true;
 }
 
-std::string BuildHeader(const Analysis& a) {
+std::string BuildHeader(const Analysis& a, const PlantGenerator::Options& opts) {
     std::ostringstream out;
-    out << "#pragma once\n\n";
+    std::string guard;
+    guard.reserve(opts.fileStem.size() + 2);
+    for (const char c : opts.fileStem) {
+        guard += IsIdentChar(c) ? static_cast<char>(std::toupper(static_cast<unsigned char>(c)))
+                                : '_';
+    }
+    guard += "_H";
+    out << "#pragma once\n";
+    out << "// (D1) include guard derives from the configured file stem.\n";
+    out << "#ifndef " << guard << "\n#define " << guard << "\n\n";
     out << "// Generated by PlantCodegenLib from the plant nodegraph \""
         << a.graph.GetName() << "\"; do not edit by hand.\n";
     out << "// Execution contract: Assets/PlantTemplates/README.md; frozen\n";
-    out << "// substep schedule mirrors twin/plantgraph/plantgraph.py.\n\n";
+    out << "// substep schedule mirrors twin/plantgraph/plantgraph.py.\n";
+    out << "// Unwired Plant.Io.MeasOut channels collect quiet NaN by contract:\n";
+    out << "// NaN is the unpopulated-measurement sentinel (-> null in the\n";
+    out << "// twin JSONL), never zero-filled (D12).\n\n";
 
-    out << "namespace plant {\n\n";
+    out << "namespace " << opts.emitNamespace << " {\n\n";
 
     out << "struct PlantState {\n";
     for (const auto& na : a.nodes) {
@@ -813,7 +1075,7 @@ std::string BuildHeader(const Analysis& a) {
             section("unwired inputs (zero-bound; PlantSetInput targets)",
                     na.unwiredInputs, "float");
         }
-        section("host-adjustable supply parameters (PlantSetSupply)",
+        section("host-adjustable supply parameters (PlantSetSupply, D9)",
                 na.supplyParams, "double");
         if (!na.staticParams.empty()) {
             out << "        // parameters (graph values)\n";
@@ -828,6 +1090,9 @@ std::string BuildHeader(const Analysis& a) {
     }
     out << "};\n\n";
 
+    // D11: PlantInit ends with a t=0 publish pass (PlantStep(state, 0.0)),
+    // so the full measurement view is valid immediately after init, exactly
+    // like the python reference's _initial_eval.
     out << "void PlantInit(PlantState& state);\n";
     out << "void PlantStep(PlantState& state, double dt);\n\n";
 
@@ -843,22 +1108,39 @@ std::string BuildHeader(const Analysis& a) {
     }
     if (measInputs.empty()) out << "    // (no Plant.Io.MeasOut type loaded)\n";
     out << "};\n";
+    out << "// Unwired channels read quiet NaN (D12 — see the file-header note).\n";
     out << "void PlantCollectMeas(const PlantState& state, PlantMeas& out);\n\n";
 
     out << "// Host-side externals (safe no-ops when the graph lacks the node;\n";
-    out << "// PlantSetInput returns false when no unwired port matches).\n";
+    out << "// PlantSetInput assigns EVERY unwired input of the name and returns\n";
+    out << "// false only when nothing matched (D7); PlantSetFault returns true\n";
+    out << "// iff a Fault.Point output of the name exists (D8)).\n";
     out << "void PlantSetDuty(PlantState& state, float du, float dv, float dw);\n";
     out << "void PlantSetDynoRpm(PlantState& state, float rpm);\n";
-    out << "void PlantSetFault(PlantState& state, const char* name, bool active);\n";
+    out << "bool PlantSetFault(PlantState& state, const char* name, bool active);\n";
     out << "bool PlantSetInput(PlantState& state, const char* portName, float value);\n";
+    // D9: full seven-knob bench-supply surface.
     out << "void PlantSetSupply(PlantState& state, double vSet, double iLimit,\n"
-           "                      double sinkLimit, bool canSink);\n\n";
+           "                      double sinkLimit, bool canSink, double cvClamp,\n"
+           "                      double cvClampSink, double seriesRmOhm);\n";
+    out << "// Graph-supplied supply defaults (no DcBus node -> all fields 0);\n"
+           "// each output pointer may be null (D9).\n";
+    out << "void PlantSupplyDefaults(const PlantState& state, double* vSet,\n"
+           "                           double* iLimit, double* sinkLimit, bool* canSink,\n"
+           "                           double* cvClamp, double* cvClampSink,\n"
+           "                           double* seriesRmOhm);\n";
+    out << "// Boot-critical machine/encoder constants from the graph;\n"
+           "// NaN for sources the graph does not carry (D10).\n";
+    out << "void PlantBootParams(const PlantState& state, double* poles,\n"
+           "                       double* rsOhm, double* encOffsetDeg);\n\n";
 
-    out << "}  // namespace plant\n";
+    out << "}  // namespace " << opts.emitNamespace << "\n\n";
+    out << "#endif  // " << guard << "\n";
     return out.str();
 }
 
-std::string BuildSource(const Analysis& a, const std::vector<std::string>& order) {
+std::string BuildSource(const Analysis& a, const std::vector<std::string>& order,
+                        const PlantGenerator::Options& opts) {
     std::ostringstream out;
     const auto byId = [&](const std::string& id) -> const NodeAnalysis& {
         return a.nodes.at(a.indexById.at(id));
@@ -878,7 +1160,7 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
     for (const auto& id : order) out << " " << id;
     out << "\n\n";
 
-    out << "#include \"plant_generated.h\"\n\n";
+    out << "#include \"" << opts.fileStem << ".h\"\n\n";
     out << "#include <math.h>\n";
     out << "#include <cmath>\n";
     out << "#include <cstring>\n";
@@ -886,7 +1168,7 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
     out << "#ifndef M_PI\n#define M_PI 3.14159265358979323846\n#endif\n";
     out << "#ifndef M_SQRT3\n#define M_SQRT3 1.7320508075688772935\n#endif\n\n";
 
-    out << "namespace plant {\n\n";
+    out << "namespace " << opts.emitNamespace << " {\n\n";
 
     // ----- PlantInit -----
     out << "void PlantInit(PlantState& state) {\n";
@@ -911,7 +1193,8 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
                                 na.node->type == "Plant.Shaft.Dyno";
         if (needsScope) {
             out << "    {\n";
-            // Constructor: bind constructor-used params/state, paste verbatim.
+            // Constructor: bind constructor-used params/state, paste verbatim
+            // (lambda-wrapped so an early return cannot abort PlantInit).
             std::set<std::string> used = na.usedCtor;
             if (na.node->type == "Plant.Shaft.Dyno") {
                 // Host publish (python _emit_hosts at initial eval): the dyno
@@ -920,11 +1203,9 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
             }
             EmitParameterBinds(out, na, used, "        ");
             EmitStateBinds(out, na, used, "        ");
-            out << na.ctorBody;
-            if (!na.ctorBody.empty() && na.ctorBody.back() != '\n') out << "\n";
+            out << EmitPastedBody(na.ctorBody, "        ");
             if (na.node->type == "Plant.Shaft.Dyno") {
-                out << na.stepBody;
-                if (!na.stepBody.empty() && na.stepBody.back() != '\n') out << "\n";
+                out << EmitPastedBody(na.stepBody, "        ");
             }
             out << "    }\n";
         } else if (na.node->type == "Plant.Io.DutyIn") {
@@ -934,6 +1215,13 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
             out << "    state." << na.node->id << ".Dw = 50.0f;\n";
         }
         // (Plant.Fault.Point: outputs zero-init; the host raises them.)
+    }
+    if (!a.nodes.empty()) {
+        // D11: t=0 publish — run the frozen schedule once with dt = 0 (Euler
+        // updates no-op) so all combinational/stateful outputs reflect t0,
+        // exactly like the python PlantGraphSim._initial_eval.
+        out << "    // t=0 publish pass (D11; mirrors python _initial_eval)\n";
+        out << "    PlantStep(state, 0.0);\n";
     }
     out << "}\n\n";
 
@@ -974,6 +1262,7 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
             out << "    out." << name << " = state." << producer.nodeId << "."
                 << producer.portName << ";\n";
         } else {
+            // D12: unwired channels collect quiet NaN (unpopulated sentinel).
             out << "    out." << name
                 << " = std::numeric_limits<float>::quiet_NaN();\n";
         }
@@ -1016,73 +1305,190 @@ std::string BuildSource(const Analysis& a, const std::vector<std::string>& order
             used.insert("Rpm");
             EmitParameterBinds(out, *na, used, "        ");
             EmitStateBinds(out, *na, used, "        ");
-            out << na->stepBody;
-            if (!na->stepBody.empty() && na->stepBody.back() != '\n') out << "\n";
+            out << EmitPastedBody(na->stepBody, "        ");
             out << "    }\n";
         }
     }
     out << "}\n\n";
 
-    out << "void PlantSetFault(PlantState& state, const char* name, bool active) {\n";
+    // D8: returns true iff a Fault.Point output of that name exists anywhere.
+    out << "bool PlantSetFault(PlantState& state, const char* name, bool active) {\n";
     const auto faultNodes = nodesOfType("Plant.Fault.Point");
     if (faultNodes.empty()) {
         out << "    (void)state; (void)name; (void)active;\n";
+        out << "    return false;\n";
     } else {
+        out << "    bool matched = false;\n";
         out << "    const float value = active ? 1.0f : 0.0f;\n";
         for (const auto* na : faultNodes) {
-            out << "    // " << na->node->id << " (unknown names are ignored)\n";
+            out << "    // " << na->node->id << "\n";
             for (const auto& port : na->outputPorts) {
-                out << "    if (std::strcmp(name, \"" << port << "\") == 0) state."
-                    << na->node->id << "." << port << " = value;\n";
+                out << "    if (std::strcmp(name, \"" << port << "\") == 0) {\n"
+                    << "        state." << na->node->id << "." << port << " = value;\n"
+                    << "        matched = true;\n"
+                    << "    }\n";
             }
         }
+        out << "    return matched;\n";
     }
     out << "}\n\n";
 
+    // D7: assign EVERY unwired input of the given name across nodes (python
+    // set_input broadcast semantics); return true iff at least one matched.
     out << "bool PlantSetInput(PlantState& state, const char* portName, float value) {\n";
     bool anyTargets = false;
     for (const auto& na : a.nodes) {
         if (na.node->type == "Plant.Io.MeasOut" || na.cls == NodeClass::kHost) continue;
         for (const auto& name : na.unwiredInputs) {
+            if (!anyTargets) {
+                out << "    bool matched = false;\n";
+            }
             out << "    if (std::strcmp(portName, \"" << name << "\") == 0) {\n"
                 << "        state." << na.node->id << "." << name << " = value;\n"
-                << "        return true;\n"
+                << "        matched = true;\n"
                 << "    }\n";
             anyTargets = true;
         }
     }
     if (!anyTargets) {
         out << "    (void)state; (void)portName; (void)value;\n";
+        out << "    return false;\n";
     } else {
         out << "    (void)portName; (void)value;\n";
+        out << "    return matched;\n";
     }
-    out << "    return false;\n";
     out << "}\n\n";
 
+    // D9: full seven-knob supply surface.
     out << "void PlantSetSupply(PlantState& state, double vSet, double iLimit,\n"
-           "                      double sinkLimit, bool canSink) {\n";
+           "                      double sinkLimit, bool canSink, double cvClamp,\n"
+           "                      double cvClampSink, double seriesRmOhm) {\n";
     const auto busNodes = nodesOfType("Plant.DcBus");
     if (busNodes.empty()) {
-        out << "    (void)state; (void)vSet; (void)iLimit; (void)sinkLimit; (void)canSink;\n";
+        out << "    (void)state; (void)vSet; (void)iLimit; (void)sinkLimit; (void)canSink;\n"
+               "    (void)cvClamp; (void)cvClampSink; (void)seriesRmOhm;\n";
     } else {
         for (const auto* na : busNodes) {
             out << "    state." << na->node->id << ".VSet_V = vSet;\n";
             out << "    state." << na->node->id << ".ILimit_A = iLimit;\n";
             out << "    state." << na->node->id << ".SinkLimit_A = sinkLimit;\n";
             out << "    state." << na->node->id << ".CanSink = canSink ? 1.0 : 0.0;\n";
+            out << "    state." << na->node->id << ".CvClamp_V = cvClamp;\n";
+            out << "    state." << na->node->id << ".CvClampSink_A = cvClampSink;\n";
+            out << "    state." << na->node->id << ".SeriesR_mOhm = seriesRmOhm;\n";
         }
     }
     out << "}\n\n";
 
-    out << "}  // namespace plant\n";
+    // D9: supply defaults from the graph instance (0-filled without a DcBus).
+    out << "void PlantSupplyDefaults(const PlantState& state, double* vSet,\n"
+           "                           double* iLimit, double* sinkLimit, bool* canSink,\n"
+           "                           double* cvClamp, double* cvClampSink,\n"
+           "                           double* seriesRmOhm) {\n";
+    if (busNodes.empty()) {
+        out << "    (void)state;\n";
+        out << "    if (vSet) *vSet = 0.0;\n"
+               "    if (iLimit) *iLimit = 0.0;\n"
+               "    if (sinkLimit) *sinkLimit = 0.0;\n"
+               "    if (canSink) *canSink = false;\n"
+               "    if (cvClamp) *cvClamp = 0.0;\n"
+               "    if (cvClampSink) *cvClampSink = 0.0;\n"
+               "    if (seriesRmOhm) *seriesRmOhm = 0.0;\n";
+    } else {
+        const auto* bus = busNodes.front();
+        const std::string prefix = "state." + bus->node->id + ".";
+        out << "    if (vSet) *vSet = " << prefix << "VSet_V;\n";
+        out << "    if (iLimit) *iLimit = " << prefix << "ILimit_A;\n";
+        out << "    if (sinkLimit) *sinkLimit = " << prefix << "SinkLimit_A;\n";
+        out << "    if (canSink) *canSink = " << prefix << "CanSink >= 0.5;\n";
+        out << "    if (cvClamp) *cvClamp = " << prefix << "CvClamp_V;\n";
+        out << "    if (cvClampSink) *cvClampSink = " << prefix << "CvClampSink_A;\n";
+        out << "    if (seriesRmOhm) *seriesRmOhm = " << prefix << "SeriesR_mOhm;\n";
+    }
+    out << "}\n\n";
+
+    // D10: boot constants — machine poles/Rs (PmsmDq preferred, else
+    // InductDq; rs only when that machine carries an Rs parameter) and the
+    // encoder offset; NaN for sources the graph lacks.
+    out << "void PlantBootParams(const PlantState& state, double* poles,\n"
+           "                       double* rsOhm, double* encOffsetDeg) {\n";
+    out << "    (void)state;  // values are compile-time graph constants\n";
+    const NodeAnalysis* machine = nullptr;
+    for (const auto& na : a.nodes) {
+        if (na.node->type == "Plant.Machine.PmsmDq") {
+            machine = &na;
+            break;
+        }
+    }
+    if (!machine) {
+        for (const auto& na : a.nodes) {
+            if (na.node->type == "Plant.Machine.InductDq") {
+                machine = &na;
+                break;
+            }
+        }
+    }
+    const auto staticLit = [](const NodeAnalysis* na, const char* name) {
+        if (na) {
+            const auto it = na->staticParams.find(name);
+            if (it != na->staticParams.end()) return it->second;
+        }
+        return std::string("std::numeric_limits<double>::quiet_NaN()");
+    };
+    const NodeAnalysis* encoder = nullptr;
+    for (const auto& na : a.nodes) {
+        if (na.node->type == "Plant.Sensor.SinCosEncoder") {
+            encoder = &na;
+            break;
+        }
+    }
+    out << "    if (poles) *poles = " << staticLit(machine, "Poles") << ";\n";
+    out << "    if (rsOhm) *rsOhm = " << staticLit(machine, "Rs") << ";\n";
+    out << "    if (encOffsetDeg) *encOffsetDeg = " << staticLit(encoder, "OffsetDeg")
+        << ";\n";
+    out << "}\n\n";
+
+    out << "}  // namespace " << opts.emitNamespace << "\n";
     return out.str();
 }
 
 }  // namespace
 
-PlantGenerator::PlantGenerator(const NodeAPI::Graph& graph) : graph_(graph) {}
+PlantGenerator::PlantGenerator(const NodeAPI::Graph& graph)
+    : PlantGenerator(graph, Options{}) {}
 
-bool PlantGenerator::Generate(const std::string& outputDir, std::string& error) const {
+PlantGenerator::PlantGenerator(const NodeAPI::Graph& graph, Options opts)
+    : graph_(graph), opts_(std::move(opts)) {}
+
+std::string PlantGenerator::SuggestNamespace(const std::string& graphName) {
+    std::string out = "plant_";
+    for (const char c : graphName) {
+        out += IsIdentChar(c) ? c : '_';
+    }
+    return out == "plant_" ? "plant" : out;
+}
+
+bool PlantGenerator::Generate(const std::string& outputDir, std::string& error,
+                              std::vector<std::string>* warnings) const {
+    // D1: the emitted namespace must itself be a usable C++ identifier and
+    // the file stem usable in a #include line and include guard.
+    if (!IsValidIdentifier(opts_.emitNamespace)) {
+        error = "emitNamespace '" + opts_.emitNamespace +
+                "' is not a valid C++ identifier";
+        return false;
+    }
+    if (opts_.fileStem.empty()) {
+        error = "fileStem must not be empty";
+        return false;
+    }
+    for (const char c : opts_.fileStem) {
+        if (!IsIdentChar(c) && c != '-' && c != '.') {
+            error = "fileStem '" + opts_.fileStem + "' contains invalid character '" +
+                    std::string(1, c) + "'";
+            return false;
+        }
+    }
+
     Analysis analysis = Analyze(graph_);
     if (!Validate(analysis, error)) return false;
 
@@ -1097,12 +1503,14 @@ bool PlantGenerator::Generate(const std::string& outputDir, std::string& error) 
         return false;
     }
     const std::filesystem::path out(outputDir);
-    if (!WriteFile(out / "plant_generated.h", BuildHeader(analysis), error)) {
+    if (!WriteFile(out / (opts_.fileStem + ".h"), BuildHeader(analysis, opts_), error)) {
         return false;
     }
-    if (!WriteFile(out / "plant_generated.cpp", BuildSource(analysis, order), error)) {
+    if (!WriteFile(out / (opts_.fileStem + ".cpp"), BuildSource(analysis, order, opts_),
+                   error)) {
         return false;
     }
+    if (warnings) *warnings = analysis.warnings;  // D2 warnings channel
     return true;
 }
 
