@@ -249,11 +249,12 @@ void RuntimeTab::OnExportSession() {
     QString error;
     if (!ExportRuntimeSession(path, session, metadata, error)) {
         exportStatus_->setText(QStringLiteral("export failed"));
-        QMessageBox::critical(
-            this,
-            QStringLiteral("Export Runtime Session"),
-            QStringLiteral("Could not export the runtime session:\n%1")
-                .arg(error));
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Critical);
+        box.setWindowTitle(QStringLiteral("Export Runtime Session"));
+        box.setText(QStringLiteral("Could not export the runtime session:\n%1")
+                        .arg(error));
+        box.exec();
         return;
     }
 
@@ -331,10 +332,11 @@ void RuntimeTab::OnSaveFramKeys() {
 
     QString error;
     if (!framKeysManager_->SaveToFile(path, error)) {
-        QMessageBox::critical(
-            this,
-            QStringLiteral("Save FRAM Keys"),
-            QStringLiteral("Could not save FRAM keys:\n%1").arg(error));
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Critical);
+        box.setWindowTitle(QStringLiteral("Save FRAM Keys"));
+        box.setText(QStringLiteral("Could not save FRAM keys:\n%1").arg(error));
+        box.exec();
         return;
     }
     exportStatus_->setText(QStringLiteral("saved FRAM keys to %1")
@@ -351,22 +353,25 @@ void RuntimeTab::OnLoadFramKeys() {
         return;
     }
 
-    const bool clearFirst =
-        QMessageBox::question(
-            this,
-            QStringLiteral("Load FRAM Keys"),
-            QStringLiteral("Delete all existing FRAM keys before loading?\n\n"
-                           "Choose No to merge the file with existing keys."),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No) == QMessageBox::Yes;
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Question);
+    box.setWindowTitle(QStringLiteral("Load FRAM Keys"));
+    box.setText(QStringLiteral("Delete all existing FRAM keys before loading?\n\n"
+                               "Choose No to merge the file with existing keys."));
+    box.addButton(QMessageBox::Yes);
+    box.addButton(QMessageBox::No);
+    box.setDefaultButton(QMessageBox::No);
+    box.exec();
+    const bool clearFirst = box.result() == QMessageBox::Yes;
 
     QString error;
     const bool ok = framKeysManager_->LoadFromFile(path, clearFirst, error);
     if (!ok) {
-        QMessageBox::critical(
-            this,
-            QStringLiteral("Load FRAM Keys"),
-            QStringLiteral("Could not load FRAM keys:\n%1").arg(error));
+        QMessageBox box2(this);
+        box2.setIcon(QMessageBox::Critical);
+        box2.setWindowTitle(QStringLiteral("Load FRAM Keys"));
+        box2.setText(QStringLiteral("Could not load FRAM keys:\n%1").arg(error));
+        box2.exec();
         return;
     }
     exportStatus_->setText(error);
