@@ -38,6 +38,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
@@ -1413,6 +1414,38 @@ void MainWindow::StartBuildCommand(BuildCommand command) {
     if (!EnsureGraphSaved()) {
         AppendBuildLog(QStringLiteral("\n[cancelled] Graph was not saved.\n"));
         return;
+    }
+
+    // Any stage that reaches hardware asks FIRST: un-guarded F5 flashes from
+    // whichever tab happens to be active with no visible target anywhere
+    // (top scored violation across the 2026-10-21 dossier set: F5 silently
+    // writes a device). Generate-only stages keep their old silent flow.
+    if (command != BuildCommand::Generate) {
+        const QString portLabel = runtimeController_
+            ? runtimeController_->Port()
+            : QStringLiteral("(no runtime port - the build's default)");
+        const QString stageLabel =
+            command == BuildCommand::Flash
+                ? QStringLiteral("Flash")
+                : QStringLiteral("Generate and Flash");
+        QMessageBox confirm(this);
+        confirm.setIcon(QMessageBox::Warning);
+        confirm.setWindowTitle(QStringLiteral("%1 - confirm").arg(stageLabel));
+        confirm.setText(QStringLiteral(
+            "This will write the firmware binary to the device on %1.\n\n"
+            "Graph: %2\nOperation: %3\n\nProceed?")
+                .arg(portLabel)
+                .arg(QString::fromStdString(currentPath_))
+                .arg(stageLabel));
+        auto* proceed = confirm.addButton(QStringLiteral("Flash"),
+                                          QMessageBox::AcceptRole);
+        confirm.addButton(QMessageBox::Cancel);
+        confirm.setDefaultButton(QMessageBox::Cancel);
+        confirm.exec();
+        if (confirm.clickedButton() != proceed) {
+            AppendBuildLog(QStringLiteral("\n[cancelled] flash refused by user.\n"));
+            return;
+        }
     }
 
     const QString absoluteGraphPath =
