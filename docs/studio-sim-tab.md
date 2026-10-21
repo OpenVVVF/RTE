@@ -58,6 +58,43 @@ the implementation.
   drive-control emulation is the twin ROADMAP M6 item; the living CAN path
   today is FD hardware + SocketCAN + `rte trace record`.
 
+### Telemetry cursor + pan (shipped)
+
+Both telemetry surfaces (this tab's Telemetry view and the Runtime tab) share
+the same plot-leaf behavior; each surface keeps its own cursor.
+
+- **Left-drag on any plot** pins a vertical time cursor, mirrored at the same
+  data time in every plot of the surface. Release keeps it pinned; a second
+  drag moves it; **double-click clears it** and snaps the window back to the
+  newest edge.
+- **The signal table follows the cursor**: while pinned, the Value column
+  shows each channel's value interpolated at the cursor time
+  (`runtime::TelemetryStore::ValueAt` — the sim side reads through the same
+  retained store the plots draw from, so any point of a recorded session is
+  reachable, not just the tail); with no cursor it shows last/latest as
+  before. The sim table's header flips "Last" -> "Cursor" as a reminder.
+- **The mouse wheel over a plot pans the window** off the newest tail
+  (up = toward newer, step = view/4 per notch); wheeling back onto the newest
+  edge re-engages tail-following automatically. Scrolling the plots column
+  itself uses the scrollbar — the wheel over a plot belongs to the plot.
+- On the **live Runtime tab** a pinned cursor additionally **freezes the
+  window**: the stream keeps running behind the hold, forward pans clamp at
+  the newest sample without re-following, and double-click is the release
+  that finds the tail again.
+- Cursor state is **not persisted** anywhere (only the graph assignments
+  are); a newly loaded session always starts tail-following.
+- Offscreen smoke has read dumps for all of this: `simCursorInfo` /
+  `rtCursorInfo` labels (`cursor <t> · window <a..b> s · following|held|panned`)
+  plus the signal-table dumps; gesture pokes: `dragcursor`, `clearcursor`,
+  `panwindow`, and synthesized-input `plotdrag` / `plotdblclick` / `plotwheel`.
+
+**View-slider semantics change:** the Telemetry view's "Plot view (sec)"
+slider no longer caps at a hard 60 s - its maximum is sampled from the loaded
+session's span, so e.g. a 3685 s recording can be widened into one window
+(proven on `twin/out/im_noload_1h_sim.jsonl`). The Runtime tab slider and its
+0.5..60 s range are unchanged, as is the initial view after a load
+(min(duration, 60 s)).
+
 ## Layout
 
 - **Two views of one canvas.** The existing graph canvas is reused twice —

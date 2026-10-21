@@ -16,6 +16,7 @@
 #include <QProcess>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
 #include <QVBoxLayout>
 
 #include <filesystem>

@@ -167,6 +167,14 @@ public:
     // Latest float value of one signal. Returns false if unknown.
     bool LatestValue(const std::string& key, float& value) const;
 
+    // Float value of one signal at time tsec: linear interpolation between
+    // the bracketing history samples, clamped to the nearest edge sample
+    // outside the span. Returns false for an unknown signal or an empty
+    // history. Backing lookup for the plot playback cursor (the sim viewer's
+    // retained store covers the whole loaded session, so the same walk
+    // serves recorded data end-to-end).
+    bool ValueAt(const std::string& key, float tsec, float& value) const;
+
     // Sorted list of known float signal names (for the signal table).
     std::vector<std::string> SignalNames() const;
 

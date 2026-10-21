@@ -113,8 +113,10 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     leftLayout->addWidget(filterEdit_);
 
     signalTable_ = new QTableWidget(0, 3, leftPanel);
+    signalTable_->setObjectName(QStringLiteral("simSignalTable"));
     // "Last": the column shows the session-final value until a playback
-    // cursor exists (the runtime live table's "Value" is live-latest).
+    // cursor exists (the runtime live table's "Value" is live-latest); a
+    // pinned cursor flips the header to "Cursor" (UpdateValueColumn).
     signalTable_->setHorizontalHeaderLabels(
         {QStringLiteral("Signal"), QStringLiteral("Graph"), QStringLiteral("Last")});
     signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
@@ -187,6 +189,12 @@ SimTelemetryView::SimTelemetryView(QWidget* parent)
     statusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     contentLayout->addWidget(statusLabel_);
 
+    // Cursor/window breadcrumb; doubles as the headless smoke read dump.
+    cursorInfo_ = new QLabel(content);
+    cursorInfo_->setObjectName(QStringLiteral("simCursorInfo"));
+    contentLayout->addWidget(cursorInfo_);
+    UpdateCursorInfo();
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(stack_);
@@ -214,9 +222,74 @@ NodeGUI::runtime::SignalPlotWidget* SimTelemetryView::MakePlot() {
     plot->SetStore(&store_);
     plot->setMinimumHeight(200);
     // The slider row owns the view window (mirrors the runtime surface).
+    plot->SetViewSecondsCap(viewCapTsec_);
     plot->SetViewSeconds(viewSlider_ ? viewSlider_->value() / 10.0 : 10.0);
+    connect(plot, &runtime::SignalPlotWidget::cursorDragged,
+            this, &SimTelemetryView::DragCursorTo);
+    connect(plot, &runtime::SignalPlotWidget::cursorClearRequested,
+            this, &SimTelemetryView::ClearCursor);
+    connect(plot, &runtime::SignalPlotWidget::panRequested,
+            this, &SimTelemetryView::PanWindowBy);
+    // A graph added under a pinned cursor joins the same hold.
+    if (hasCursor_) {
+        plot->SetCursor(true, cursorTsec_);
+    }
     plotsLayout_->addWidget(plot);
     return plot;
+}
+
+void SimTelemetryView::DragCursorTo(double tsec) {
+    hasCursor_ = true;
+    cursorTsec_ = tsec;
+    for (auto* plot : plots_) {
+        plot->SetCursor(true, tsec);
+    }
+    UpdateValueColumn();
+    UpdateCursorInfo();
+}
+
+void SimTelemetryView::ClearCursor() {
+    hasCursor_ = false;
+    cursorTsec_ = 0.0;
+    for (auto* plot : plots_) {
+        plot->SetCursor(false, 0.0);
+        // The double-click contract: released cursor finds the tail again.
+        plot->FollowTail();
+    }
+    UpdateValueColumn();
+    UpdateCursorInfo();
+    UpdateStatusLine();
+}
+
+void SimTelemetryView::PanWindowBy(double deltaTsec) {
+    for (auto* plot : plots_) {
+        plot->PanWindowBy(deltaTsec);
+    }
+    UpdateCursorInfo();
+    UpdateStatusLine();
+}
+
+void SimTelemetryView::UpdateCursorInfo() {
+    if (!cursorInfo_) {
+        return;
+    }
+    // Window bounds + anchor state of the first plot stand in for the
+    // surface; all plots share the same state ops from the hub above.
+    const bool panned = !plots_.empty() && !plots_.front()->FollowingTail();
+    const QString state = hasCursor_ ? QStringLiteral("held")
+                                     : (panned ? QStringLiteral("panned")
+                                               : QStringLiteral("following"));
+    const QString cursorText =
+        hasCursor_ ? QString::number(cursorTsec_, 'f', 3) + QStringLiteral(" s")
+                   : QStringLiteral("\u2014");
+    QString windowText = QStringLiteral("\u2014");
+    if (!plots_.empty()) {
+        windowText = QStringLiteral("%1..%2 s")
+                         .arg(plots_.front()->WindowStartTsec(), 0, 'f', 1)
+                         .arg(plots_.front()->WindowEndTsec(), 0, 'f', 1);
+    }
+    cursorInfo_->setText(QStringLiteral("cursor %1 · window %2 · %3")
+                             .arg(cursorText, windowText, state));
 }
 
 void SimTelemetryView::ApplyViewSeconds() {
@@ -226,6 +299,7 @@ void SimTelemetryView::ApplyViewSeconds() {
         plot->Refresh();
     }
     UpdateStatusLine();
+    UpdateCursorInfo();
 }
 
 void SimTelemetryView::UpdateGraphCount() {
@@ -315,11 +389,28 @@ bool SimTelemetryView::LoadSession(const QString& path, QString& error) {
     }
     ApplyAssignments();
 
-    // The window follows the session duration (capped at the leaf's 60 s);
-    // the slider is the single owner of the plots' view seconds.
+    // A fresh session drops any pinned cursor/pan: the window follows the
+    // new tail until the user drags again (cursor state is not persisted).
+    hasCursor_ = false;
+    cursorTsec_ = 0.0;
+    for (auto* plot : plots_) {
+        plot->SetCursor(false, 0.0);
+        plot->FollowTail();
+    }
+
+    // The window follows the session duration; the slider is the single
+    // owner of the plots' view seconds. Long sessions sample the cap (and
+    // the slider maximum) up to their full span - a hard 60 s used to make
+    // >60 s recordings unreachable in one window.
+    viewCapTsec_ = std::max(60.0, session_->Meta().durationS);
+    for (auto* plot : plots_) {
+        plot->SetViewSecondsCap(viewCapTsec_);
+    }
+    viewSlider_->setMaximum(std::max(600, qRound(viewCapTsec_ * 10.0)));
     const double viewSeconds =
         std::clamp(session_->Meta().durationS, 0.5, 60.0);
-    viewSlider_->setValue(std::clamp(qRound(viewSeconds * 10.0), 5, 600));
+    viewSlider_->setValue(std::clamp(qRound(viewSeconds * 10.0), 5,
+                                     viewSlider_->maximum()));
     ApplyViewSeconds();
 
     RebuildSignalTable();
@@ -430,6 +521,7 @@ void SimTelemetryView::ApplyAssignments() {
                                   : QStringList{});
         plots_[i]->Refresh();
     }
+    UpdateCursorInfo();
 }
 
 void SimTelemetryView::UpdateStatusLine() {
@@ -462,11 +554,27 @@ void SimTelemetryView::UpdateStatusLine() {
                            .arg(firstDataChannel);
         }
     }
-    // Window bounds the plots show right now (anchored at the newest sample,
-    // like the leaf widget computes them).
-    const double windowSeconds = viewSlider_ ? viewSlider_->value() / 10.0 : 10.0;
-    const double windowEnd = meta.durationS;
-    const double windowStart = windowEnd - windowSeconds;
+    // Window bounds the plots show right now, from the first plot with data
+    // (cursor pans shift them off the tail); unassigned plots fall back to
+    // the newest-sample anchor math the leaf used before the pan existed.
+    double windowStart;
+    double windowEnd;
+    const NodeGUI::runtime::SignalPlotWidget* dataPlot = nullptr;
+    for (const auto* plot : plots_) {
+        if (!plot->Signals().isEmpty()) {
+            dataPlot = plot;
+            break;
+        }
+    }
+    if (dataPlot) {
+        windowStart = dataPlot->WindowStartTsec();
+        windowEnd = dataPlot->WindowEndTsec();
+    } else {
+        const double windowSeconds =
+            viewSlider_ ? viewSlider_->value() / 10.0 : 10.0;
+        windowEnd = meta.durationS;
+        windowStart = windowEnd - windowSeconds;
+    }
     statusLabel_->setText(QStringLiteral(
         "%1 frames · %2 channels (%3 all-null) · %4 s · retained %5 · window %6..%7 s · plant: %8 · %9")
             .arg(meta.telemetryFrames)
@@ -479,6 +587,35 @@ void SimTelemetryView::UpdateStatusLine() {
                  meta.plant.isEmpty() ? QStringLiteral("(no stamp)")
                                       : meta.plant,
                  sessionPath_));
+}
+
+void SimTelemetryView::UpdateValueColumn() {
+    // Header tracks the column's source: session-final while no cursor is
+    // pinned ("Last"), value-at-cursor while one is ("Cursor").
+    if (auto* headerItem = signalTable_->horizontalHeaderItem(kValueColumn)) {
+        headerItem->setText(hasCursor_ ? QStringLiteral("Cursor")
+                                       : QStringLiteral("Last"));
+    }
+    if (!session_) {
+        return;
+    }
+    for (int row = 0; row < signalTable_->rowCount(); ++row) {
+        const QString name = signalTable_->item(row, kSignalColumn)->text();
+        auto* valueItem = signalTable_->item(row, kValueColumn);
+        const SimChannelStats stats = session_->ChannelStats(name);
+        if (stats.finiteSamples == 0) {
+            valueItem->setText(QStringLiteral("null"));
+            continue;
+        }
+        float value = 0.0f;
+        if (hasCursor_
+            && store_.ValueAt(name.toStdString(),
+                              static_cast<float>(cursorTsec_), value)) {
+            valueItem->setText(QString::number(value, 'g', 6));
+        } else {
+            valueItem->setText(QString::number(stats.lastFinite, 'g', 6));
+        }
+    }
 }
 
 void SimTelemetryView::RebuildSignalTable() {
@@ -520,6 +657,7 @@ void SimTelemetryView::RebuildSignalTable() {
             combo->setCurrentIndex(AssignedGraph(name) + 1);
         }
         rebuildingTable_ = false;
+        UpdateValueColumn();
         return;
     }
 
@@ -580,6 +718,7 @@ void SimTelemetryView::RebuildSignalTable() {
         signalTable_->setItem(row, kValueColumn, valueItem);
     }
     rebuildingTable_ = false;
+    UpdateValueColumn();
 }
 
 }  // namespace NodeGUI::sim

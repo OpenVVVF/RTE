@@ -213,6 +213,43 @@ bool TelemetryStore::LatestValue(const std::string& key, float& value) const {
     return true;
 }
 
+bool TelemetryStore::ValueAt(const std::string& key, float tsec, float& value) const {
+    std::lock_guard lock(mtx_);
+    const auto it = snap_.hist.find(key);
+    if (it == snap_.hist.end() || it->second.t.empty()) {
+        return false;
+    }
+    const SignalHistory& hist = it->second;
+    const auto upper =
+        std::lower_bound(hist.t.begin(), hist.t.end(), tsec);
+    if (upper == hist.t.begin() && tsec < hist.t.front()) {
+        value = hist.y.front();
+        return true;
+    }
+    if (upper == hist.t.end()) {
+        value = hist.y.back();
+        return true;
+    }
+    const std::size_t i =
+        static_cast<std::size_t>(std::distance(hist.t.begin(), upper));
+    if (hist.t[i] == tsec) {
+        value = hist.y[i];
+        return true;
+    }
+    // Bracket (i-1, i): interpolate; the sample clock rises monotonically,
+    // but zero-width steps from duplicated timestamps fall back to the
+    // earlier sample.
+    const float dt = hist.t[i] - hist.t[i - 1];
+    if (dt <= 0.0f) {
+        value = hist.y[i - 1];
+        return true;
+    }
+    const double alpha = (static_cast<double>(tsec) - hist.t[i - 1]) / dt;
+    value = hist.y[i - 1]
+            + static_cast<float>(alpha * (hist.y[i] - hist.y[i - 1]));
+    return true;
+}
+
 std::vector<std::string> TelemetryStore::SignalNames() const {
     std::lock_guard lock(mtx_);
     std::vector<std::string> names;

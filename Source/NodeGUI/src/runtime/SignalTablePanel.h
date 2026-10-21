@@ -31,6 +31,10 @@ public:
 
 public slots:
     void SetGraphCount(int count);
+    // Playback-cursor push from TelemetryPanel (wired in RuntimeTab): while
+    // set, the Value column reads at the cursor time via
+    // TelemetryStore::ValueAt instead of latest; clearing restores latest.
+    void SetCursor(bool hasCursor, double tsec);
 
 signals:
     void graphSignalsChanged(const std::vector<QStringList>& sets);
@@ -43,6 +47,7 @@ private slots:
 
 private:
     void RebuildSignalTable();
+    void RefreshValueColumn();
     void PopulateTargetCombo(QComboBox* combo) const;
     int AssignedGraph(const QString& name) const;
 
@@ -54,6 +59,8 @@ private:
 
     std::vector<QStringList> graphSignals_{QStringList{}, QStringList{}, QStringList{}};
     bool rebuildingTable_ = false;
+    bool hasCursor_ = false;
+    double cursorTsec_ = 0.0;
 };
 
 }  // namespace NodeGUI::runtime

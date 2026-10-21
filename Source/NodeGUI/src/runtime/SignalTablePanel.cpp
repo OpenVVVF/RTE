@@ -39,6 +39,7 @@ SignalTablePanel::SignalTablePanel(RuntimeController* controller, QWidget* paren
     layout->addLayout(controlsRow);
 
     signalTable_ = new QTableWidget(0, 3, this);
+    signalTable_->setObjectName(QStringLiteral("rtSignalTable"));
     signalTable_->setHorizontalHeaderLabels(
         {QStringLiteral("Signal"), QStringLiteral("Graph"), QStringLiteral("Value")});
     signalTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
@@ -97,12 +98,26 @@ int SignalTablePanel::AssignedGraph(const QString& name) const {
 
 void SignalTablePanel::OnStoreChanged() {
     RebuildSignalTable();
+    RefreshValueColumn();
+}
 
-    // Refresh the Value column in place.
+void SignalTablePanel::SetCursor(bool hasCursor, double tsec) {
+    hasCursor_ = hasCursor;
+    cursorTsec_ = tsec;
+    RefreshValueColumn();
+}
+
+void SignalTablePanel::RefreshValueColumn() {
+    // Value column: latest by default; interpolated value at the pinned
+    // cursor time while a cursor holds (live keeps streaming behind).
     for (int row = 0; row < signalTable_->rowCount(); ++row) {
         const auto key = signalTable_->item(row, kSignalColumn)->text().toStdString();
         float value = 0.0f;
-        if (controller_->Store().LatestValue(key, value)) {
+        const bool haveValue =
+            (hasCursor_ && controller_->Store().ValueAt(
+                               key, static_cast<float>(cursorTsec_), value))
+            || controller_->Store().LatestValue(key, value);
+        if (haveValue) {
             signalTable_->item(row, kValueColumn)
                 ->setText(QString::asprintf("% .6f", value));
         }

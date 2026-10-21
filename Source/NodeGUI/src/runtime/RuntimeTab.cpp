@@ -107,6 +107,9 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
             telemetryPanel_, &TelemetryPanel::SetViewSeconds);
     connect(telemetryPanel_, &TelemetryPanel::graphCountChanged,
             signalTablePanel_, &SignalTablePanel::SetGraphCount);
+    // Playback cursor: the plots hub pushes it to the live Value column.
+    connect(telemetryPanel_, &TelemetryPanel::cursorChanged,
+            signalTablePanel_, &SignalTablePanel::SetCursor);
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &RuntimeTab::OnStoreChanged);
@@ -282,6 +285,9 @@ void RuntimeTab::OnClearSession() {
     }
 
     controller_->ClearSession();
+    // A pinned cursor/window hold would dangle over the emptied store;
+    // the new stream starts tail-following again.
+    telemetryPanel_->ClearCursor();
     exportStatus_->setText(QStringLiteral("session cleared"));
 }
 

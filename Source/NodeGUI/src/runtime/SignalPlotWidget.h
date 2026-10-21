@@ -6,6 +6,8 @@
 #include <QOpenGLWidget>
 #include <QStringList>
 
+#include <QRect>
+
 #include <vector>
 
 class QColor;
@@ -23,6 +25,15 @@ namespace NodeGUI::runtime {
 // with an ortho projection mapping the visible window to clip space, grid
 // lines plus one GL_LINE_STRIP per signal, and QPainter text overlays (title,
 // legend, tick labels) on top.
+//
+// Playback cursor + pan: the widget only REPORTS gestures (cursorDragged,
+// cursorClearRequested, panRequested) and renders whatever the owning
+// surface pushes down (SetCursor); the surface fans one shared cursor out to
+// every plot so a drag on one draws at the same time in all. Setting a
+// cursor freezes the window at its current span (a live stream keeps
+// running behind the hold); clearing the cursor plus FollowTail returns the
+// window to the newest edge. Wheel pans the window off the tail; wheeling
+// back onto the newest edge re-engages following (unless a cursor holds).
 class SignalPlotWidget : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
 
@@ -33,15 +44,47 @@ public:
     void SetStore(const TelemetryStore* store);  // call once
     void SetSignals(const QStringList& names);   // signals assigned to this plot
     QStringList Signals() const { return signals_; }
-    void SetViewSeconds(double seconds);         // sliding X window, 0.5..60
+    void SetViewSeconds(double seconds);  // sliding X window, 0.5..cap
     double ViewSeconds() const { return viewSeconds_; }
+    // Upper clamp for SetViewSeconds (default 60): the sim surface samples it
+    // up to a long session's span so recorded data can fill one window.
+    void SetViewSecondsCap(double cap);
+
+    // Surface-pushed shared cursor (data-time seconds). Setting one while
+    // following freezes the window at its current end; clearing does NOT
+    // re-tail by itself — the surface pairs it with FollowTail on the
+    // double-click / load paths.
+    void SetCursor(bool hasCursor, double tsec);
+    bool HasCursor() const { return hasCursor_; }
+    double CursorTsec() const { return cursorTsec_; }
+
+    // Window positioning: followTail_ means the right edge tracks the newest
+    // sample (default); otherwise it sits at anchoredEndTsec_.
+    void FollowTail();
+    bool FollowingTail() const { return followTail_; }
+    void PanWindowBy(double deltaTsec);
+    double WindowStartTsec() const;
+    double WindowEndTsec() const;
+    // Plot-area rectangle in widget coords — doubles as the headless smoke
+    // driver's target for synthesized gestures at a known data position.
+    QRect PlotAreaRect() const;
 
 public slots:
     void Refresh();  // called ~30 Hz when store changed; triggers update()
 
+signals:
+    void cursorDragged(double tsec);     // left press/move inside the plot area
+    void cursorClearRequested();         // left double-click
+    void panRequested(double deltaTsec); // wheel notches, + toward newer
+
 protected:
     void initializeGL() override;
     void paintGL() override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
     struct Series {
@@ -56,13 +99,25 @@ private:
     // resolve to the same unit.
     QString UnitLabel() const;
 
+    double NewestSampleTsec() const;  // 0 when nothing has data
+    double OldestSampleTsec() const;
+    // Data time under a widget X pixel, using the current window.
+    double TsecAtX(int x) const;
+
     QString title_;
     const TelemetryStore* store_ = nullptr;
     QStringList signals_;
     double viewSeconds_ = 10.0;
+    double viewSecondsCap_ = 60.0;
 
     // History snapshots refreshed by Refresh() (GUI thread only).
     std::vector<Series> series_;
+
+    bool hasCursor_ = false;
+    double cursorTsec_ = 0.0;
+    bool dragging_ = false;
+    bool followTail_ = true;
+    double anchoredEndTsec_ = 0.0;
 
     QOpenGLShaderProgram* program_ = nullptr;
     QOpenGLBuffer* vbo_ = nullptr;

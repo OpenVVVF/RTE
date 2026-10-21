@@ -2,10 +2,12 @@
 
 #include <QColor>
 #include <QMatrix4x4>
+#include <QMouseEvent>
 #include <QOpenGLBuffer>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
 #include <QPainter>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -95,8 +97,160 @@ void SignalPlotWidget::SetSignals(const QStringList& names)
 
 void SignalPlotWidget::SetViewSeconds(double seconds)
 {
-    viewSeconds_ = std::clamp(seconds, 0.5, 60.0);
+    viewSeconds_ = std::clamp(seconds, 0.5, viewSecondsCap_);
     update();
+}
+
+void SignalPlotWidget::SetViewSecondsCap(double cap)
+{
+    viewSecondsCap_ = std::max(0.5, cap);
+    viewSeconds_ = std::clamp(viewSeconds_, 0.5, viewSecondsCap_);
+    update();
+}
+
+void SignalPlotWidget::SetCursor(bool hasCursor, double tsec)
+{
+    if (hasCursor && !hasCursor_ && followTail_) {
+        // Live hold: freeze the window at its current end so the pinned
+        // cursor stays put while the stream runs on behind it.
+        anchoredEndTsec_ = NewestSampleTsec();
+        followTail_ = false;
+    }
+    hasCursor_ = hasCursor;
+    cursorTsec_ = tsec;
+    update();
+}
+
+void SignalPlotWidget::FollowTail()
+{
+    followTail_ = true;
+    update();
+}
+
+void SignalPlotWidget::PanWindowBy(double deltaTsec)
+{
+    double end = WindowEndTsec() + deltaTsec;
+    // The right edge never steps before the first known sample; the left
+    // side of the window may still outrun the data (renders as empty).
+    end = std::max(end, OldestSampleTsec());
+    if (!hasCursor_ && end >= NewestSampleTsec()) {
+        // Ran back onto the newest edge: resume following automatically.
+        followTail_ = true;
+    } else {
+        // A pinned cursor never re-follows: the hold is released only by
+        // the surface (double-click clear / load), per the shared contract.
+        anchoredEndTsec_ = hasCursor_ ? std::min(end, NewestSampleTsec()) : end;
+        followTail_ = false;
+    }
+    update();
+}
+
+double SignalPlotWidget::WindowStartTsec() const
+{
+    return WindowEndTsec() - viewSeconds_;
+}
+
+double SignalPlotWidget::WindowEndTsec() const
+{
+    return followTail_ ? NewestSampleTsec() : anchoredEndTsec_;
+}
+
+double SignalPlotWidget::NewestSampleTsec() const
+{
+    double newest = 0.0;
+    for (const Series& s : series_) {
+        if (!s.t.empty()) {
+            newest = std::max(newest, static_cast<double>(s.t.back()));
+        }
+    }
+    return newest;
+}
+
+double SignalPlotWidget::OldestSampleTsec() const
+{
+    double oldest = 0.0;
+    bool haveData = false;
+    for (const Series& s : series_) {
+        if (!s.t.empty()) {
+            oldest = haveData ? std::min(oldest, static_cast<double>(s.t.front()))
+                              : static_cast<double>(s.t.front());
+            haveData = true;
+        }
+    }
+    return oldest;
+}
+
+double SignalPlotWidget::TsecAtX(int x) const
+{
+    const int pw = std::max(1, width() - kMarginLeft - kMarginRight);
+    const int px = std::clamp(x, kMarginLeft, kMarginLeft + pw);
+    const double fx = static_cast<double>(px - kMarginLeft) / pw;
+    return WindowStartTsec() + fx * viewSeconds_;
+}
+
+QRect SignalPlotWidget::PlotAreaRect() const
+{
+    const int pw = std::max(1, width() - kMarginLeft - kMarginRight);
+    const int ph = std::max(1, height() - kMarginTop - kMarginBottom);
+    return QRect(kMarginLeft, kMarginTop, pw, ph);
+}
+
+void SignalPlotWidget::mousePressEvent(QMouseEvent* event)
+{
+    const bool inPlot = event->position().x() >= kMarginLeft
+                        && event->position().x() <= width() - kMarginRight
+                        && event->position().y() >= kMarginTop
+                        && event->position().y() <= height() - kMarginBottom;
+    if (event->button() == Qt::LeftButton && inPlot) {
+        dragging_ = true;
+        emit cursorDragged(TsecAtX(static_cast<int>(event->position().x())));
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mousePressEvent(event);
+}
+
+void SignalPlotWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    if (dragging_) {
+        emit cursorDragged(TsecAtX(static_cast<int>(event->position().x())));
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseMoveEvent(event);
+}
+
+void SignalPlotWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && dragging_) {
+        // Release keeps the cursor pinned where the drag ended.
+        dragging_ = false;
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseReleaseEvent(event);
+}
+
+void SignalPlotWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        dragging_ = false;
+        emit cursorClearRequested();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseDoubleClickEvent(event);
+}
+
+void SignalPlotWidget::wheelEvent(QWheelEvent* event)
+{
+    const double notches = event->angleDelta().y() / 120.0;
+    if (notches != 0.0) {
+        emit panRequested(notches * viewSeconds_ / 4.0);
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::wheelEvent(event);
 }
 
 void SignalPlotWidget::Refresh()
@@ -162,17 +316,16 @@ void SignalPlotWidget::paintGL()
     glClearColor(45.0f / 255.0f, 45.0f / 255.0f, 48.0f / 255.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Newest timestamp across all assigned signals anchors the sliding window.
-    double newest = 0.0;
+    // Window end: the newest sample across assigned signals when following
+    // the tail, else the anchored (panned / cursor-frozen) end.
     bool haveData = false;
     for (const Series& s : series_) {
         if (!s.t.empty()) {
-            newest = haveData ? std::max(newest, static_cast<double>(s.t.back()))
-                              : static_cast<double>(s.t.back());
             haveData = true;
+            break;
         }
     }
-    const double x1 = newest;
+    const double x1 = WindowEndTsec();
     const double x0 = x1 - viewSeconds_;
 
     // Y autorange over the visible data with 5% padding.
@@ -343,12 +496,16 @@ void SignalPlotWidget::paintGL()
         const double fx = static_cast<double>(i) / kGridDivisionsX;
         const int px = kMarginLeft + static_cast<int>(fx * pw);
         painter.drawLine(px, kMarginTop + ph, px, kMarginTop + ph + 4);
-        // The rightmost label (0.0) would clip at the widget edge and collide
-        // with the "Time (s)" caption, so it is skipped.
+        // The rightmost label would clip at the widget edge and collide
+        // with the "Time (s)" caption, so it is skipped. Labels are
+        // relative-to-tail while following; an anchored window shows
+        // absolute session seconds instead (visiting the past is not a
+        // countdown from "now").
         if (haveData && i < kGridDivisionsX) {
-            const double rel = -viewSeconds_ + viewSeconds_ * fx;
+            const double t = followTail_ ? -viewSeconds_ + viewSeconds_ * fx
+                                         : x0 + viewSeconds_ * fx;
             painter.drawText(QRect(px - 30, h - kMarginBottom + 5, 60, 16),
-                             Qt::AlignHCenter, QString::number(rel, 'f', 1));
+                             Qt::AlignHCenter, QString::number(t, 'f', 1));
         }
     }
     for (int j = 0; j <= kGridDivisionsY; ++j) {
@@ -370,6 +527,20 @@ void SignalPlotWidget::paintGL()
     painter.setPen(QColor(190, 190, 190));
     painter.drawText(QRect(kMarginLeft + pw - 80, h - kMarginBottom + 5, 80, 16),
                      Qt::AlignRight, QStringLiteral("Time (s)"));
+
+    // Playback cursor: one pinned vertical line at the shared cursor time
+    // (drawn only while inside the visible window) plus its absolute-time
+    // tag tucked under the title strip.
+    if (hasCursor_ && haveData && cursorTsec_ >= x0 && cursorTsec_ <= x1) {
+        const int cx = kMarginLeft
+                       + static_cast<int>(
+                             (cursorTsec_ - x0) / viewSeconds_ * pw + 0.5);
+        painter.setPen(QColor(245, 245, 250));
+        painter.drawLine(cx, kMarginTop, cx, kMarginTop + ph);
+        painter.setClipRect(plotRect);
+        painter.drawText(cx + 4, kMarginTop + 14, QString::number(cursorTsec_, 'f', 3));
+        painter.setClipping(false);
+    }
 
     // Frame around the plot area.
     painter.setPen(QColor(86, 90, 96));

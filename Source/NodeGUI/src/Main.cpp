@@ -38,6 +38,10 @@
 
 #include "MainWindow.h"
 
+#include "runtime/SignalPlotWidget.h"
+#include "runtime/TelemetryPanel.h"
+#include "sim/SimTelemetryView.h"
+
 #include <RTEAutomation/CachePaths.h>
 
 #include <QAbstractButton>
@@ -50,13 +54,17 @@
 #include <QLockFile>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPixmap>
 #include <QPlainTextEdit>
+#include <QSlider>
 #include <QStatusBar>
+#include <QTableWidget>
 #include <QTextEdit>
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QThread>
+#include <QWheelEvent>
 
 #include <cstdlib>
 #include <filesystem>
@@ -138,6 +146,7 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                 if (auto* edit = qobject_cast<QLineEdit*>(w)) edit->setText(text);
                 else if (auto* combo = qobject_cast<QComboBox*>(w)) combo->setCurrentText(text);
                 else if (auto* spin = qobject_cast<QDoubleSpinBox*>(w)) spin->setValue(text.toDouble());
+                else if (auto* slider = qobject_cast<QSlider*>(w)) slider->setValue(text.toInt());
                 else if (auto* plain = qobject_cast<QPlainTextEdit*>(w)) {
                     // action scripts carry newlines as "\\n" or "\n"; both mean newline
                     plain->setPlainText(text.replace("\\\\n", "\n").replace("\\n", "\n"));
@@ -154,12 +163,103 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             if (auto* edit = window->findChild<QLineEdit*>(arg)) value = edit->text();
             else if (auto* label = window->findChild<QLabel*>(arg)) value = label->text();
             else if (auto* combo = window->findChild<QComboBox*>(arg)) value = combo->currentText();
+            else if (auto* slider = window->findChild<QSlider*>(arg)) value = QString::number(slider->value());
             else if (auto* plain = window->findChild<QPlainTextEdit*>(arg)) value = plain->toPlainText().replace("\n", "|");
             else if (auto* area = window->findChild<QTextEdit*>(arg)) value = area->toPlainText().replace("\n", "|");
+            else if (auto* table = window->findChild<QTableWidget*>(arg)) {
+                // row=col|col rows ';'-joined — cellWidget combos dump as their
+                // current text (the signal tables' Graph column).
+                QStringList rows;
+                for (int r = 0; r < table->rowCount(); ++r) {
+                    QStringList cells;
+                    for (int c = 0; c < table->columnCount(); ++c) {
+                        if (auto* cellCombo = qobject_cast<QComboBox*>(table->cellWidget(r, c))) {
+                            cells.push_back(cellCombo->currentText());
+                        } else if (auto* item = table->item(r, c)) {
+                            cells.push_back(item->text());
+                        } else {
+                            cells.push_back(QString());
+                        }
+                    }
+                    rows.push_back(cells.join(QStringLiteral("|")));
+                }
+                value = rows.join(QStringLiteral(";"));
+            }
             else {
                 std::cerr << "smoke: no dumpable widget named " << arg.toStdString() << "\n";
             }
             std::cout << arg.toStdString() << "=" << value.toStdString() << "\n";
+        } else if (kind == "plotdrag" || kind == "plotdblclick" || kind == "plotwheel") {
+            // Synthesized REAL gestures on the surface's first plot, routed
+            // through the leaf mouse/wheel handlers (the dragcursor family
+            // pokes the hub instead). plotdrag takes a 0..1 plot-area
+            // fraction; plotwheel takes signed notches.
+            QWidget* surface = nullptr;
+            if (arg == "sim") {
+                surface = window->findChild<NodeGUI::sim::SimTelemetryView*>();
+            } else if (arg == "runtime") {
+                surface = window->findChild<NodeGUI::runtime::TelemetryPanel*>();
+            }
+            auto* plot = surface
+                ? surface->findChild<NodeGUI::runtime::SignalPlotWidget*>()
+                : nullptr;
+            if (!plot) {
+                std::cerr << "smoke: no plot for " << kind.toStdString() << " " << arg.toStdString() << "\n";
+            } else {
+                const QRect r = plot->PlotAreaRect();
+                const double fx = parts.value(2).toDouble();
+                const QPointF pos(r.left() + fx * r.width(), r.center().y());
+                const QPointF global = plot->mapToGlobal(pos.toPoint());
+                if (kind == "plotdrag") {
+                    QMouseEvent press(QEvent::MouseButtonPress, pos, pos, global,
+                                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                    QApplication::sendEvent(plot, &press);
+                    QMouseEvent move(QEvent::MouseMove, pos, pos, global,
+                                     Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                    QApplication::sendEvent(plot, &move);
+                    QMouseEvent release(QEvent::MouseButtonRelease, pos, pos, global,
+                                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                    QApplication::sendEvent(plot, &release);
+                } else if (kind == "plotdblclick") {
+                    QMouseEvent dbl(QEvent::MouseButtonDblClick, pos, pos, global,
+                                    Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                    QApplication::sendEvent(plot, &dbl);
+                    QMouseEvent release(QEvent::MouseButtonRelease, pos, pos, global,
+                                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                    QApplication::sendEvent(plot, &release);
+                } else {
+                    const int notches = qRound(fx);
+                    QWheelEvent wheel(pos, plot->mapToGlobal(pos.toPoint()),
+                                      QPoint(0, 0), QPoint(0, 120 * notches),
+                                      Qt::NoButton, Qt::NoModifier,
+                                      Qt::NoScrollPhase, false);
+                    QApplication::sendEvent(plot, &wheel);
+                }
+                std::cout << kind.toStdString() << " " << arg.toStdString() << "=ok\n";
+            }
+        } else if (kind == "dragcursor" || kind == "clearcursor" || kind == "panwindow") {
+            // Playback-cursor pokes (sim | runtime): drive the same surface
+            // hub methods a mouse drag / double-click / wheel pan reaches;
+            // read back through the simCursorInfo / rtCursorInfo dumps.
+            NodeGUI::sim::SimTelemetryView* simView = nullptr;
+            NodeGUI::runtime::TelemetryPanel* runtimePanel = nullptr;
+            if (arg == "sim") {
+                simView = window->findChild<NodeGUI::sim::SimTelemetryView*>();
+            } else if (arg == "runtime") {
+                runtimePanel = window->findChild<NodeGUI::runtime::TelemetryPanel*>();
+            }
+            bool ok = simView || runtimePanel;
+            if (ok && kind == "dragcursor") {
+                const double tsec = parts.value(2).toDouble();
+                if (simView) simView->DragCursorTo(tsec); else runtimePanel->DragCursorTo(tsec);
+            } else if (ok && kind == "clearcursor") {
+                if (simView) simView->ClearCursor(); else runtimePanel->ClearCursor();
+            } else if (ok) {
+                const double delta = parts.value(2).toDouble();
+                if (simView) simView->PanWindowBy(delta); else runtimePanel->PanWindowBy(delta);
+            }
+            if (!ok) std::cerr << "smoke: no telemetry surface for " << kind.toStdString() << " " << arg.toStdString() << "\n";
+            else std::cout << kind.toStdString() << " " << arg.toStdString() << "=ok\n";
         } else if (kind == "dumpstatus") {
             // The main-window status bar's current message (build refusals,
             // post-flash hints, ...).

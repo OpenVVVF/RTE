@@ -40,6 +40,14 @@ namespace NodeGUI::sim {
 // session class (file stem + channel-set hash) into QSettings, mirroring
 // RuntimeTab's autosave shape; a loaded session with a stored entry restores
 // it instead of falling back to the first-load favorites.
+//
+// Playback cursor: the same surface-hub shape as TelemetryPanel — leaf
+// gestures fan out to all plots, and the Value column ("Last" when no
+// cursor) reads at the cursor time through the retained store
+// (TelemetryStore::ValueAt), so a recorded session yields values anywhere
+// along its full span. The view-seconds slider's maximum is sampled from
+// the loaded session's duration (was a hard 60), so a long recording can
+// fill one window; wheel-pan + cursor freeze run on the leaf.
 class SimTelemetryView : public QWidget {
     Q_OBJECT
 
@@ -54,15 +62,24 @@ public:
     const SimSession* Session() const { return session_.get(); }
     NodeGUI::runtime::TelemetryStore& Store() { return store_; }
 
+public slots:
+    // Shared-cursor operations — the leaf gesture signals connect straight
+    // here, and the headless smoke driver pokes the same entry points.
+    void DragCursorTo(double tsec);
+    void ClearCursor();
+    void PanWindowBy(double deltaTsec);
+
 private slots:
     void AddGraph();
     void RemoveLastGraph();
 
 private:
     void RebuildSignalTable();
+    void UpdateValueColumn();
     void ApplyAssignments();
     void ApplyDefaultAssignments();
     void UpdateStatusLine();
+    void UpdateCursorInfo();
     void ApplyViewSeconds();
     NodeGUI::runtime::SignalPlotWidget* MakePlot();
     void UpdateGraphCount();
@@ -88,10 +105,14 @@ private:
     QVBoxLayout* plotsLayout_ = nullptr;
     QLabel* countLabel_ = nullptr;
     QLabel* statusLabel_ = nullptr;
+    QLabel* cursorInfo_ = nullptr;
 
     std::vector<NodeGUI::runtime::SignalPlotWidget*> plots_;
     std::vector<QStringList> graphSignals_{QStringList{}, QStringList{}, QStringList{}};
     bool rebuildingTable_ = false;
+    bool hasCursor_ = false;
+    double cursorTsec_ = 0.0;
+    double viewCapTsec_ = 60.0;  // sampled up to the loaded session's span
 
     QTimer* layoutSaveTimer_ = nullptr;
     QString layoutStem_;         // sanitized filename stem of the loaded session

@@ -32,6 +32,10 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
     connect(removeButton, &QPushButton::clicked, this,
             &TelemetryPanel::RemoveLastGraph);
     topRow->addWidget(removeButton);
+    // Cursor/window breadcrumb; doubles as the headless smoke read dump.
+    cursorInfo_ = new QLabel(this);
+    cursorInfo_->setObjectName(QStringLiteral("rtCursorInfo"));
+    topRow->addWidget(cursorInfo_);
 
     plotsContainer_ = new QWidget(this);
     plotsLayout_ = new QVBoxLayout(plotsContainer_);
@@ -52,6 +56,7 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &TelemetryPanel::OnStoreChanged);
+    UpdateCursorInfo();
 }
 
 SignalPlotWidget* TelemetryPanel::MakePlot() {
@@ -59,6 +64,16 @@ SignalPlotWidget* TelemetryPanel::MakePlot() {
         QStringLiteral("Graph %1").arg(plots_.size() + 1), plotsContainer_);
     plot->SetStore(&controller_->Store());
     plot->setMinimumHeight(200);
+    connect(plot, &SignalPlotWidget::cursorDragged,
+            this, &TelemetryPanel::DragCursorTo);
+    connect(plot, &SignalPlotWidget::cursorClearRequested,
+            this, &TelemetryPanel::ClearCursor);
+    connect(plot, &SignalPlotWidget::panRequested,
+            this, &TelemetryPanel::PanWindowBy);
+    // A graph added under a pinned cursor joins the same hold.
+    if (hasCursor_) {
+        plot->SetCursor(true, cursorTsec_);
+    }
     plotsLayout_->addWidget(plot);
     return plot;
 }
@@ -106,12 +121,67 @@ void TelemetryPanel::SetViewSeconds(double seconds) {
     for (auto* plot : plots_) {
         plot->SetViewSeconds(seconds);
     }
+    UpdateCursorInfo();
+}
+
+void TelemetryPanel::DragCursorTo(double tsec) {
+    hasCursor_ = true;
+    cursorTsec_ = tsec;
+    for (auto* plot : plots_) {
+        plot->SetCursor(true, tsec);
+    }
+    emit cursorChanged(true, tsec);
+    UpdateCursorInfo();
+}
+
+void TelemetryPanel::ClearCursor() {
+    hasCursor_ = false;
+    cursorTsec_ = 0.0;
+    for (auto* plot : plots_) {
+        plot->SetCursor(false, 0.0);
+        // The double-click contract: released cursor finds the tail again
+        // (also the runtime resume-following path).
+        plot->FollowTail();
+    }
+    emit cursorChanged(false, 0.0);
+    UpdateCursorInfo();
+}
+
+void TelemetryPanel::PanWindowBy(double deltaTsec) {
+    for (auto* plot : plots_) {
+        plot->PanWindowBy(deltaTsec);
+    }
+    UpdateCursorInfo();
+}
+
+void TelemetryPanel::UpdateCursorInfo() {
+    if (!cursorInfo_) {
+        return;
+    }
+    // Window bounds + anchor state of the first plot stand in for the
+    // surface; all plots share the same state ops from the hub above.
+    const bool panned = !plots_.empty() && !plots_.front()->FollowingTail();
+    const QString state = hasCursor_ ? QStringLiteral("held")
+                                     : (panned ? QStringLiteral("panned")
+                                               : QStringLiteral("following"));
+    const QString cursorText =
+        hasCursor_ ? QString::number(cursorTsec_, 'f', 3) + QStringLiteral(" s")
+                   : QStringLiteral("\u2014");
+    QString windowText = QStringLiteral("\u2014");
+    if (!plots_.empty()) {
+        windowText = QStringLiteral("%1..%2 s")
+                         .arg(plots_.front()->WindowStartTsec(), 0, 'f', 1)
+                         .arg(plots_.front()->WindowEndTsec(), 0, 'f', 1);
+    }
+    cursorInfo_->setText(QStringLiteral("cursor %1 · window %2 · %3")
+                             .arg(cursorText, windowText, state));
 }
 
 void TelemetryPanel::OnStoreChanged() {
     for (auto* plot : plots_) {
         plot->Refresh();
     }
+    UpdateCursorInfo();
 }
 
 }  // namespace NodeGUI::runtime
