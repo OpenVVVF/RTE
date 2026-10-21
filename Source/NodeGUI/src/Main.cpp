@@ -49,6 +49,7 @@
 #include <QLineEdit>
 #include <QLockFile>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QStatusBar>
@@ -270,6 +271,20 @@ int main(int argc, char* argv[]) {
     QLockFile instanceLock(QString::fromStdString((cacheRoot / "rte-studio.lock").string()));
     if (!instanceLock.tryLock()) {
         std::cerr << "RTE Studio is already running. Use the existing window.\n";
+        // A desktop double-click gives the user nothing while the CLI
+        // answer is perfect for it: show a small alert on graphical
+        // platforms only (headless/offscreen runs keep the plain exit so
+        // the smoke harness isn't blocked by a modal).
+        const QString platform = qgetenv("QT_QPA_PLATFORM");
+        if (platform.isEmpty()) {
+            QMessageBox alert(QMessageBox::Information,
+                              QStringLiteral("RTE Studio"),
+                              QStringLiteral(
+                                  "RTE Studio is already running.\n\n"
+                                  "Use the existing window."),
+                              QMessageBox::Ok);
+            alert.exec();
+        }
         return 2;
     }
 
