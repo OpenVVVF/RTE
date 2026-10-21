@@ -104,7 +104,11 @@ NODE_CLASSES with the same equations.
 
 **Machine-family conventions.** dq variants (PmsmDq/IPM, SpmsmDq/SPM,
 SynRelPmsm/PMa-SyRM) carry the `Poles` pole-PAIR convention throughout;
-the physical pole count appears only in the `[CFG]` boot print. SRM
+the physical pole count appears only in the `[CFG]` boot print. CROSS-EDITOR
+TRAP (drives dossier 2026-10-21): the CONTROLLER side's `Motor.Poles`
+(FRAM/graph config) is the pole COUNT, i.e. 2x this plant pole-PAIR value -
+the same machine reads 5 on its plant node and 10 as chassis FRAM Poles; the
+foc_demo `CfgPoles` node display carries that callout in its label. SRM
 (SwitchedReluctance) has no synchronous frame: `Omega_Elec` on that
 machine carries MECHANICAL rad/s, position is per rotor teeth
 (`RotorTeeth`), and shaft nodes wired into an SRM graph must use

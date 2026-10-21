@@ -4880,7 +4880,7 @@
       "type": "Values.Config"
     },
     {
-      "displayName": "CfgPoles",
+      "displayName": "CfgPoles (pole COUNT; = 2x pole-pairs)",
       "domain": "tim_isr",
       "id": "CfgPoles",
       "parameters": {
