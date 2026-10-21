@@ -23,6 +23,7 @@ class QLabel;
 class QMenu;
 class QPlainTextEdit;
 class QProcess;
+class QPushButton;
 class QStackedWidget;
 class QTabBar;
 class QTabWidget;
@@ -124,6 +125,7 @@ private:
     bool EnsureGraphSaved();
     void StartBuildCommand(BuildCommand command);
     void StartCliFlash(const QString& firmwarePath);
+    void OnBuildCancel();
     void HandleCliOutput();
     void FinishCliOperation(bool success, int exitCode);
     void ShowBuildLogs();
@@ -201,6 +203,7 @@ private:
     QPointer<QDockWidget> editorConsoleDock_;
     QPointer<QTabWidget> editorConsoleTabs_;
     QPointer<QPlainTextEdit> buildLogView_;
+    QPointer<QPushButton> buildCancelButton_;
     QMenu* viewMenu_ = nullptr;
     QMenu* runtimeMenu_ = nullptr;
     QAction* saveFramKeysAction_ = nullptr;
@@ -223,6 +226,10 @@ private:
     CliStage cliStage_ = CliStage::None;
     BuildCommand activeBuildCommand_ = BuildCommand::Generate;
     QByteArray cliOutputBuffer_;
+    // Set by the Cancel button before buildProcess_ is killed; the finished
+    // handler consumes it to report a user cancellation instead of a failure
+    // (mirrors SimulateScreen::cancelledByUser_).
+    bool cancelRequested_ = false;
     QString pendingFirmwarePath_;
     QVector<ShortcutBinding> shortcutBindings_;
     AppPreferences preferences_;

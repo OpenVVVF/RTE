@@ -25,6 +25,7 @@ public:
 
 private:
     void OnFlashClicked();
+    void OnCancel();
     void OnBrowse();
     void ReadOutput();
     void Finish(int exitCode);
@@ -33,9 +34,13 @@ private:
     RuntimeController* controller_ = nullptr;
     QProcess* process_ = nullptr;
     QByteArray outputBuffer_;
+    // Set before the flash process is killed; Finish() consumes it to report
+    // a user cancellation instead of a failure.
+    bool cancelledByUser_ = false;
 
     QLineEdit* pathEdit_ = nullptr;
     QPushButton* flashButton_ = nullptr;
+    QPushButton* cancelButton_ = nullptr;
     QCheckBox* autoGpioCheck_ = nullptr;
     QLabel* manualHint_ = nullptr;
     QLabel* stateLabel_ = nullptr;
