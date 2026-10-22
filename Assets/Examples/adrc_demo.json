@@ -5129,10 +5129,10 @@
       "id": "PiD",
       "parameters": {
         "B0": "14286.0",
-        "Dt": "0.0004",
-        "ObsDamp": "1.0",
-        "OmegaC": "400.0",
-        "OmegaL": "1600.0",
+        "Dt": "0.0002",
+        "ObsDamp": "0.7071",
+        "OmegaC": "800.0",
+        "OmegaL": "2400.0",
         "OutputMax": "200.0",
         "OutputMin": "-200.0",
         "UPrev": "0.0",
@@ -5151,10 +5151,10 @@
       "id": "PiQ",
       "parameters": {
         "B0": "8333.0",
-        "Dt": "0.0004",
-        "ObsDamp": "1.0",
-        "OmegaC": "400.0",
-        "OmegaL": "1600.0",
+        "Dt": "0.0002",
+        "ObsDamp": "0.7071",
+        "OmegaC": "800.0",
+        "OmegaL": "2400.0",
         "OutputMax": "200.0",
         "OutputMin": "-200.0",
         "UPrev": "0.0",
@@ -5652,7 +5652,7 @@
       "domain": "tim_isr",
       "id": "LogDistVd",
       "parameters": {
-        "Key": "cg_distvd_v"
+        "Key": "thr_b_norm"
       },
       "position": {
         "x": 1185.0,
@@ -5665,7 +5665,7 @@
       "domain": "tim_isr",
       "id": "LogDistVq",
       "parameters": {
-        "Key": "cg_distvq_v"
+        "Key": "thr_a_norm"
       },
       "position": {
         "x": 1335.0,
