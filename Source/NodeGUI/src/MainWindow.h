@@ -276,12 +276,20 @@ private:
     // Per-tick refill of each editor scene's GraphValuesOverlay from the
     // Simulate screen's retained telemetry store: value-at-cursor while the
     // playback cursor is pinned, the session-tail value otherwise (the same
-    // source SimTelemetryView's Value column reads). The guards decide which
-    // editor surface may bind against the loaded session — a mismatched
-    // document surface would show values from a run it did not produce.
+    // source SimTelemetryView's Value column reads), plus each chip's
+    // sparkline decimated over the sim plot row's shared window
+    // (SimTelemetryView::PlotWindowTsec / SparklineSamples; the strip joins
+    // the value text's dirty gate, so a still frame costs zero repaints).
+    // The guards decide which editor surface may bind against the loaded
+    // session — a mismatched document surface would show values from a run
+    // it did not produce.
     void UpdateGraphValueTags();
     bool NodeGraphValuesBindingOk() const;
     bool PlantGraphValuesBindingOk() const;
+    // Chip-click probe assign: forwards a clicked tag's channel to the sim
+    // telemetry view's first-free-graph assignment (no view, no session: a
+    // clean no-op).
+    void AssignGraphTagToPlot(const std::string& key);
 
     // QtNodes' undo stack and paste/duplicate paths restore nodes straight
     // into its own model, bypassing the NodeAPI graph. Strip those shortcuts

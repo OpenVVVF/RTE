@@ -231,6 +231,10 @@ public:
         std::string key;
         QPointF scenePos;
         bool anchorIsOutput = false;
+        // Data-type id of the anchor port, through the same model read the
+        // wire painter's ConnectionColor performs — the overlay resolves it
+        // to the port-hue family color for its sparkline ink.
+        std::string portTypeId;
     };
     std::vector<TelemetryTagBinding> TelemetryTagBindings() const;
 

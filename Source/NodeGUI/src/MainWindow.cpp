@@ -436,6 +436,12 @@ MainWindow::MainWindow(QWidget* parent)
     // mode toggle AND the per-surface guard both pass.
     graphValuesNode_ = std::make_unique<GraphValuesOverlay>(graphScene_.get());
     graphValuesPlant_ = std::make_unique<GraphValuesOverlay>(plantScreen_->Scene());
+    graphValuesNode_->onTagClicked = [this](const std::string& key) {
+        AssignGraphTagToPlot(key);
+    };
+    graphValuesPlant_->onTagClicked = [this](const std::string& key) {
+        AssignGraphTagToPlot(key);
+    };
 
     StripBrokenSceneActions();
 
@@ -1506,9 +1512,11 @@ void MainWindow::SetupMenu() {
     graphValuesAction_->setCheckable(true);
     graphValuesAction_->setChecked(preferences_.showGraphValues);
     graphValuesAction_->setStatusTip(QStringLiteral(
-        "With a sim session loaded, draw each telemetry channel's value at "
-        "the graph ports that publish it (value-at-cursor while the "
-        "playback cursor is pinned)."));
+        "With a sim session loaded, draw LTspice-style probe chips at the "
+        "graph ports that publish telemetry channels: the channel's value "
+        "(value-at-cursor while the playback cursor is pinned) plus a "
+        "sparkline of its waveform over the sim plot window; click a chip "
+        "to assign the channel onto a sim plot graph."));
     connect(graphValuesAction_, &QAction::toggled, this, [this](bool on) {
         if (preferences_.showGraphValues != on) {
             preferences_.showGraphValues = on;
@@ -1852,6 +1860,19 @@ void MainWindow::UpdateGraphValueTags() {
             return;
         }
         runtime::TelemetryStore& store = view->Store();
+        // The sparkline window follows the sim plot row's shared window
+        // (follow-tail or panned/pinned state included) once per refill, so
+        // every chip of this tick draws the same span.
+        double windowStart = 0.0;
+        double windowEnd = 0.0;
+        const bool haveWindow = view->PlotWindowTsec(windowStart, windowEnd);
+        double cursorFrac = -1.0;
+        if (haveWindow && view->HasCursor()) {
+            cursorFrac =
+                std::clamp((view->CursorTsec() - windowStart)
+                               / (windowEnd - windowStart),
+                           0.0, 1.0);
+        }
         std::vector<GraphValuesOverlay::Tag> tags;
         for (const GraphScene::TelemetryTagBinding& binding :
              scene->TelemetryTagBindings()) {
@@ -1867,9 +1888,22 @@ void MainWindow::UpdateGraphValueTags() {
             if (!ok) {
                 continue;  // channel absent from this session — no tag
             }
-            tags.push_back({binding.nodeId, binding.key, binding.scenePos,
-                            binding.anchorIsOutput,
-                            QString::number(value, 'g', 6)});
+            GraphValuesOverlay::Tag tag;
+            tag.itemId = binding.nodeId;
+            tag.key = binding.key;
+            tag.anchor = binding.scenePos;
+            tag.wireRight = binding.anchorIsOutput;
+            tag.text = QString::number(value, 'g', 6);
+            tag.portTypeId = binding.portTypeId;
+            tag.windowStart = windowStart;
+            tag.windowEnd = windowEnd;
+            tag.cursorFrac = cursorFrac;
+            if (haveWindow) {
+                view->SparklineSamples(binding.key, windowStart, windowEnd,
+                                       GraphValuesOverlay::kMaxSparkPoints,
+                                       tag.spark);
+            }
+            tags.push_back(std::move(tag));
         }
         overlay->ApplyTags(tags);
     };
@@ -2416,6 +2450,60 @@ QString MainWindow::SmokeDumpGraphValues() {
         pairs << QString::fromStdString(key) + QStringLiteral("=") + text;
     }
     return pairs.join(QStringLiteral(";"));
+}
+
+QString MainWindow::SmokeDumpGraphSpark() {
+    // Same synchronous-refill contract as the value dump above.
+    UpdateGraphValueTags();
+    GraphScene* active = ActiveGraphScene();
+    GraphValuesOverlay* overlay =
+        (active && plantScreen_ && active == plantScreen_->Scene())
+            ? graphValuesPlant_.get()
+            : graphValuesNode_.get();
+    return overlay ? overlay->DumpSparkText() : QString{};
+}
+
+void MainWindow::AssignGraphTagToPlot(const std::string& key) {
+    sim::SimTelemetryView* view =
+        simulateScreen_ ? simulateScreen_->TelemetryView() : nullptr;
+    if (view) {
+        view->AssignSignalFirstFreeGraph(QString::fromStdString(key));
+    }
+}
+
+bool MainWindow::SmokeClickGraphTag(const std::string& itemId) {
+    // Synchronous refill first: a scripted click must not hinge on the 4 Hz
+    // timer having materialized the chip.
+    UpdateGraphValueTags();
+    GraphScene* active = ActiveGraphScene();
+    const bool plantActive =
+        active && plantScreen_ && active == plantScreen_->Scene();
+    GraphValuesOverlay* overlay =
+        plantActive ? graphValuesPlant_.get() : graphValuesNode_.get();
+    GraphView* view = plantActive ? plantScreen_->View() : view_.get();
+    if (!overlay || !view) {
+        return false;
+    }
+    const QRectF chip = overlay->ItemSceneRect(itemId);
+    if (!chip.isValid()) {
+        return false;
+    }
+    // Press+release through the real viewport event chain. The click lands
+    // in the chip's name row: the socket line (the wire's stroke the view
+    // click-intercepts for bend drags) crosses the chip's vertical center,
+    // so a dead-center press never reaches the scene item; the row strip a
+    // third of the chip up is chip-only (topmost at z 2.5).
+    const QPointF target = chip.center() - QPointF(0.0, chip.height() / 3.0);
+    const QPoint pos = view->mapFromScene(target);
+    QMouseEvent press(QEvent::MouseButtonPress, QPointF(pos),
+                      view->viewport()->mapToGlobal(pos), Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(view->viewport(), &press);
+    QMouseEvent release(QEvent::MouseButtonRelease, QPointF(pos),
+                        view->viewport()->mapToGlobal(pos), Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(view->viewport(), &release);
+    return true;
 }
 
 void MainWindow::SmokePickNode(const std::string& nodeId) {

@@ -7,7 +7,9 @@
 #include <QWidget>
 
 #include <memory>
+#include <string>
 #include <vector>
+#include <QPointF>
 #include <QStringList>
 
 class QComboBox;
@@ -77,6 +79,28 @@ public:
     // editor-canvas graph-value tags.
     bool HasCursor() const { return hasCursor_; }
     double CursorTsec() const { return cursorTsec_; }
+    // The plot row's shared view window in data-time seconds (all plots run
+    // the same window through the hub, so the first plot reads back as the
+    // surface) — the window the editor-canvas sparklines draw. False when
+    // no session is loaded or the window is degenerate.
+    bool PlotWindowTsec(double& startTsec, double& endTsec) const;
+    // Sparkline read side for the editor-canvas value tags: one channel's
+    // retained history thinned to <= maxPoints within [startTsec,endTsec]
+    // (the store's lock-guarded CopyHistoryInto — the same bounded read the
+    // ~30 Hz plot refresh performs — then uniform-stride decimation, edge
+    // samples kept). False for an unknown channel or empty window slice.
+    bool SparklineSamples(const std::string& key,
+                          double startTsec,
+                          double endTsec,
+                          int maxPoints,
+                          std::vector<QPointF>& out) const;
+    // Chip-click probe assign: puts the channel onto the sim plot grid in
+    // first-free-graph order (the first empty graph, else graph 1) through
+    // the same assignment machinery the signal-table dropdowns drive
+    // (ApplyAssignments + table sync + layout autosave debounce). A channel
+    // already assigned is a no-op success. False for a channel the session
+    // does not carry (or an all-null one — the dropdowns disable those).
+    bool AssignSignalFirstFreeGraph(const QString& name);
 
 public slots:
     // Shared-cursor operations — the leaf gesture signals connect straight

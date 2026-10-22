@@ -1975,7 +1975,8 @@ std::vector<GraphScene::TelemetryTagBinding> GraphScene::TelemetryTagBindings() 
     auto anchorFor = [&](const std::string& nodeId,
                          const std::string& portName,
                          QtNodes::PortType portType,
-                         QPointF& out) -> bool {
+                         QPointF& out,
+                         QString& typeId) -> bool {
         const auto qtIt = nodeIdMap_.find(nodeId);
         if (qtIt == nodeIdMap_.end()) {
             return false;
@@ -1990,6 +1991,12 @@ std::vector<GraphScene::TelemetryTagBinding> GraphScene::TelemetryTagBindings() 
         }
         out = scene_->nodeGeometry().portScenePosition(
             qtIt->second, portType, index, ngo->sceneTransform());
+        // Same model read BridgeConnectionPainter::ConnectionColor performs:
+        // the port data-type id selects the wire-hue family color.
+        typeId = model_->portData(qtIt->second, portType, index,
+                                  QtNodes::PortRole::DataType)
+                     .value<QtNodes::NodeDataType>()
+                     .id;
         return true;
     };
     for (const auto& node : graph_.GetNodes()) {
@@ -2010,16 +2017,18 @@ std::vector<GraphScene::TelemetryTagBinding> GraphScene::TelemetryTagBindings() 
                 break;
             }
         }
+        QString typeId;
         if (feed
             && anchorFor(feed->from.nodeId, feed->from.portName,
-                         QtNodes::PortType::Out, binding.scenePos)) {
+                         QtNodes::PortType::Out, binding.scenePos, typeId)) {
             binding.anchorIsOutput = true;
         } else if (anchorFor(node.id, "Value", QtNodes::PortType::In,
-                             binding.scenePos)) {
+                             binding.scenePos, typeId)) {
             binding.anchorIsOutput = false;
         } else {
             continue;  // no honest anchor (hidden/unknown port) — skip
         }
+        binding.portTypeId = typeId.toStdString();
         bindings.push_back(std::move(binding));
     }
     return bindings;

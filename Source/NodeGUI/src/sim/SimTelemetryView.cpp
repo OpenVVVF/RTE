@@ -333,6 +333,84 @@ void SimTelemetryView::PanWindowBy(double deltaTsec) {
     UpdateStatusLine();
 }
 
+bool SimTelemetryView::PlotWindowTsec(double& startTsec, double& endTsec) const {
+    if (!session_ || plots_.empty()) {
+        return false;
+    }
+    startTsec = plots_.front()->WindowStartTsec();
+    endTsec = plots_.front()->WindowEndTsec();
+    return endTsec > startTsec;
+}
+
+bool SimTelemetryView::SparklineSamples(const std::string& key,
+                                        double startTsec,
+                                        double endTsec,
+                                        int maxPoints,
+                                        std::vector<QPointF>& out) const {
+    out.clear();
+    if (!session_ || !(endTsec > startTsec) || maxPoints < 2) {
+        return false;
+    }
+    // Lock-guarded full-history copy (the 30 Hz plot refresh's own read),
+    // then decimate the window slice locally — the chip payload stays
+    // bounded even on a 63-channel deck.
+    std::vector<float> t;
+    std::vector<float> y;
+    if (!store_.CopyHistoryInto(key, t, y) || t.empty()) {
+        return false;
+    }
+    const auto lo = std::lower_bound(t.begin(), t.end(),
+                                     static_cast<float>(startTsec));
+    const auto hi = std::upper_bound(t.begin(), t.end(),
+                                     static_cast<float>(endTsec));
+    const std::size_t count = static_cast<std::size_t>(hi - lo);
+    if (count == 0) {
+        return false;
+    }
+    const std::size_t stride =
+        std::max<std::size_t>(1, (count + maxPoints - 1) / maxPoints);
+    for (auto it = lo; it != hi; it += stride) {
+        const std::size_t i = static_cast<std::size_t>(it - t.begin());
+        out.emplace_back(static_cast<double>(t[i]), static_cast<double>(y[i]));
+    }
+    // Edge honesty: the last in-window sample always lands, so the strip's
+    // right edge is the true window-edge value.
+    const std::size_t last = static_cast<std::size_t>(hi - 1 - t.begin());
+    const std::size_t emittedLast =
+        static_cast<std::size_t>(lo - t.begin())
+        + ((count - 1) / stride) * stride;
+    if (emittedLast != last) {
+        out.emplace_back(static_cast<double>(t[last]),
+                         static_cast<double>(y[last]));
+    }
+    return true;
+}
+
+bool SimTelemetryView::AssignSignalFirstFreeGraph(const QString& name) {
+    if (!session_ || !session_->ChannelNames().contains(name)
+        || session_->ChannelStats(name).finiteSamples == 0) {
+        return false;
+    }
+    if (AssignedGraph(name) >= 0) {
+        return true;  // already on the grid
+    }
+    int target = -1;
+    for (int i = 0; i < static_cast<int>(graphSignals_.size()); ++i) {
+        if (graphSignals_[i].isEmpty()) {
+            target = i;
+            break;
+        }
+    }
+    if (target < 0) {
+        target = 0;
+    }
+    graphSignals_[target].push_back(name);
+    ApplyAssignments();
+    RebuildSignalTable();
+    ScheduleLayoutSave();
+    return true;
+}
+
 void SimTelemetryView::UpdateCursorInfo() {
     if (!cursorInfo_) {
         return;

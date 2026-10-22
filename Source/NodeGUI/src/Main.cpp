@@ -82,10 +82,17 @@
 //   when its document is the scenario's controller graph (path equality;
 //   the standalone-loaded-session fallback binds the controller surface
 //   alone), the Plant Editor only under an exact plant-path match, and
-//   everything hides when the mode is off or no session is loaded. Toggle:
+//   everything hides when the mode is off or no session is loaded. Each
+//   chip is an LTspice-style probe: channel-name row, value line, and a
+//   sparkline strip of the channel's waveform over the sim plot view window
+//   (decimated from the retained store, wire-hue polyline on a dark track,
+//   light tick at the pinned cursor's window fraction; single click assigns
+//   the channel onto the sim plot grid, first-free-graph order). Toggle:
 //   View > Graph Signal Values (persisted via the showGraphValues app
-//   preference, editable in Preferences); smoke verbs gvals on|off|dump
-//   (dump prints "key=val;..." of the ACTIVE editor scene).
+//   preference, editable in Preferences); smoke verbs gvals
+//   on|off|dump|sparkdump (dump prints "key=val;..." of the ACTIVE editor
+//   scene; sparkdump one "key:npoints,wmin,wmax[,cursor=frac]" line per
+//   tag, a trailing "sparkdump=end" marker included).
 // ---------------------------------------------------------------------------
 
 #include "MainWindow.h"
@@ -253,17 +260,36 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             window->SmokeCornerRelease(parts.value(1).toInt(), parts.value(2).toInt());
             std::cout << "cornerrelease=ok\n";
         } else if (kind == "gvals") {
-            // gvals on|off|dump — the "graph values" sim value-tag mode.
-            // dump prints the ACTIVE editor scene's tags as "key=val;..."
-            // (empty when the mode is off or nothing binds).
+            // gvals on|off|dump|sparkdump — the "graph values" sim value-tag
+            // mode. dump prints the ACTIVE editor scene's tags as
+            // "key=val;..."; sparkdump prints one "key:npoints,wmin,wmax
+            // [,cursor=frac]" line per tag (the LTspice-style chip's
+            // sparkline backing; empty when the mode is off or nothing
+            // binds).
             if (arg == "on" || arg == "off") {
                 const bool ok = window->SmokeSetGraphValuesEnabled(arg == "on");
                 std::cout << "gvals=" << arg.toStdString() << (ok ? "" : " failed") << "\n";
             } else if (arg == "dump") {
                 std::cout << window->SmokeDumpGraphValues().toStdString() << "\n";
+            } else if (arg == "sparkdump") {
+                const QString text = window->SmokeDumpGraphSpark();
+                if (!text.isEmpty()) {
+                    std::cout << text.toStdString() << "\n";
+                }
+                std::cout << "sparkdump=end\n";
             } else {
-                std::cerr << "smoke: gvals wants on|off|dump\n";
+                std::cerr << "smoke: gvals wants on|off|dump|sparkdump\n";
             }
+        } else if (kind == "chipclick") {
+            // chipclick <telemetryLogNodeId> — a real single click in the
+            // name row of that log node's LTspice chip on the ACTIVE editor
+            // tab (viewport event dispatch; the row dodges the socket-line
+            // wire stroke the view's bend-drag interception claims).
+            // Assigns the chip's channel onto the sim plot grid,
+            // first-free-graph order.
+            const bool ok = window->SmokeClickGraphTag(arg.toStdString());
+            std::cout << "chipclick " << arg.toStdString() << "="
+                      << (ok ? "ok" : "failed") << "\n";
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
                 button->click();
