@@ -134,6 +134,44 @@ QtNodes::ConnectionGraphicsObject* ChipItemAt(QGraphicsView* view,
     return nullptr;
 }
 
+// The node whose corner resize-handle pocket contains the point (topmost
+// node wins). The pocket is the geometry's resizeHandleRect relaxed by 2
+// VIEWPORT pixels (a press landing right on the node border still counts):
+// zoomed out the scene-unit handle is only a few physical pixels tall, so
+// the padding follows the view transform instead of being scene-fixed.
+QtNodes::NodeGraphicsObject* ResizePocketNodeAt(QGraphicsView* view,
+                                                const QPoint& viewportPos) {
+    auto* basicScene =
+        dynamic_cast<QtNodes::BasicGraphicsScene*>(view->scene());
+    if (!basicScene) {
+        return nullptr;
+    }
+    const QPointF scenePos = view->mapToScene(viewportPos);
+    const QList<QGraphicsItem*> hit = view->items(viewportPos);
+    if (hit.isEmpty()) {
+        return nullptr;
+    }
+    const double scale = view->transform().m11();
+    const int pad =
+        qMax(2, qCeil(2.0 / (scale > 1e-3 ? scale : 1.0)));
+    QGraphicsItem* item = hit.first();
+    for (; item; item = item->parentItem()) {
+        if (qgraphicsitem_cast<QGraphicsProxyWidget*>(item)) {
+            return nullptr;
+        }
+        if (auto* node = qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+            QtNodes::AbstractNodeGeometry& geometry = basicScene->nodeGeometry();
+            const QRect grip = geometry.resizeHandleRect(node->nodeId())
+                                   .adjusted(-pad, -pad, pad, pad);
+            const QPointF local = node->mapFromScene(scenePos);
+            return grip.contains(QPoint(qRound(local.x()), qRound(local.y())))
+                       ? node
+                       : nullptr;
+        }
+    }
+    return nullptr;
+}
+
 // Half-size of the square a bend accepts grabs in (scene units).
 constexpr double kWaypointPickRadius = 6.0;
 
@@ -309,6 +347,37 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event) {
 void GraphView::mousePressEvent(QMouseEvent* event) {
     ClearNodeDragCursor();
 
+    // Typed-node corner-resize pocket first: QtNodes' own resize path only
+    // drives embedded widgets (typed nodes have none — its gesture armed but
+    // visibly did nothing), so the pocket is claimed here wholesale.
+    if (event->button() == Qt::LeftButton && scene()) {
+        if (auto* node = ResizePocketNodeAt(this, event->position().toPoint())) {
+            if (!node->isSelected()) {
+                scene()->clearSelection();
+                node->setSelected(true);
+            }
+            auto* basicScene =
+                dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+            auto* model = basicScene
+                              ? dynamic_cast<NodeGraphModel*>(&basicScene->graphModel())
+                              : nullptr;
+            nodeResizePending_ = true;
+            nodeResizeActive_ = false;
+            nodeResizeMoved_ = false;
+            nodeResizeNodeId_ = node->nodeId();
+            nodeResizePressViewport_ = event->position().toPoint();
+            nodeResizePressScene_ = mapToScene(event->position().toPoint());
+            nodeResizeStartSize_ = basicScene->nodeGeometry().size(node->nodeId());
+            nodeResizePriorOverride_ =
+                model && model->NodeSizeOverride(node->nodeId())
+                    ? *model->NodeSizeOverride(node->nodeId())
+                    : QSize();
+            viewport()->setCursor(Qt::SizeFDiagCursor);
+            event->accept();
+            return;
+        }
+    }
+
     // Left press inside a labeled connection's tag chip (chip determinism:
     // the chip beats the wire stroke wherever they overlap) arms the chip
     // drag instead of the bend drag. Selection mirrors the wire press.
@@ -411,6 +480,32 @@ void GraphView::mousePressEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseMoveEvent(QMouseEvent* event) {
+    if (nodeResizeActive_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            FinishNodeResize(false);
+            event->accept();
+            return;
+        }
+        UpdateNodeResize(mapToScene(event->position().toPoint()));
+        event->accept();
+        return;
+    }
+    if (nodeResizePending_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            nodeResizePending_ = false;
+            viewport()->unsetCursor();
+            event->accept();
+            return;
+        }
+        if ((event->position().toPoint() - nodeResizePressViewport_).manhattanLength()
+            >= QApplication::startDragDistance()) {
+            nodeResizePending_ = false;
+            nodeResizeActive_ = true;
+            UpdateNodeResize(mapToScene(event->position().toPoint()));
+        }
+        event->accept();
+        return;
+    }
     if (chipDragActive_) {
         if (!(event->buttons() & Qt::LeftButton)) {
             FinishChipDrag(false);
@@ -527,6 +622,13 @@ void GraphView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseReleaseEvent(QMouseEvent* event) {
+    if ((nodeResizeActive_ || nodeResizePending_) && event->button() == Qt::LeftButton) {
+        const bool commit = nodeResizeActive_;
+        FinishNodeResize(commit);
+        viewport()->unsetCursor();
+        event->accept();
+        return;
+    }
     if ((chipDragActive_ || chipDragPending_) && event->button() == Qt::LeftButton) {
         const bool commit = chipDragActive_;
         FinishChipDrag(commit);
@@ -961,6 +1063,74 @@ void GraphView::FinishChipDrag(bool commit) {
         return;
     }
     if (model && model->onGraphChanged) {
+        model->onGraphChanged();
+    }
+}
+
+void GraphView::UpdateNodeResize(const QPointF& scenePos) {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* model = basicScene
+                      ? dynamic_cast<NodeGraphModel*>(&basicScene->graphModel())
+                      : nullptr;
+    if (!model || !basicScene->nodeGraphicsObject(nodeResizeNodeId_)) {
+        FinishNodeResize(false);
+        return;
+    }
+    QPointF delta = scenePos - nodeResizePressScene_;
+    if (gridSnap_) {
+        delta = WireRoute::SnapToGrid(delta);
+    }
+    const int floorPx = static_cast<int>(2.0 * WireRoute::kGridPitch);
+    const QSize target(
+        std::max(nodeResizeStartSize_.width() + static_cast<int>(delta.x()),
+                 floorPx),
+        std::max(nodeResizeStartSize_.height() + static_cast<int>(delta.y()),
+                 floorPx));
+    // Emits nodeUpdated -> the scene item re-lays out + repaints live; the
+    // geometry clamps the store against the content floor, so a below-floor
+    // pull just stops shrinking.
+    model->SetNodeSizeOverride(nodeResizeNodeId_, target);
+    nodeResizeMoved_ = true;
+}
+
+void GraphView::FinishNodeResize(bool commit) {
+    nodeResizeActive_ = false;
+    nodeResizePending_ = false;
+    viewport()->unsetCursor();
+
+    const QtNodes::NodeId nodeId = nodeResizeNodeId_;
+    nodeResizeNodeId_ = QtNodes::InvalidNodeId;
+    const bool moved = nodeResizeMoved_;
+    nodeResizeMoved_ = false;
+
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* model = basicScene
+                      ? dynamic_cast<NodeGraphModel*>(&basicScene->graphModel())
+                      : nullptr;
+    if (!model) {
+        return;
+    }
+    if (!commit) {
+        if (moved && basicScene->nodeGraphicsObject(nodeId)) {
+            model->SetNodeSizeOverride(nodeId, nodeResizePriorOverride_);
+        }
+        return;
+    }
+    if (!moved || !basicScene->nodeGraphicsObject(nodeId)) {
+        return;
+    }
+    // Release-side normalization: persist exactly what renders (the geometry
+    // clamped the store against the content floor), and keep the
+    // renders-like-natural case key-free (no phantom "size" key when the
+    // drag at/below the content floor changed nothing).
+    const QSize effective = basicScene->nodeGeometry().size(nodeId);
+    if (!nodeResizePriorOverride_.isValid() &&
+        effective == nodeResizeStartSize_) {
+        model->SetNodeSizeOverride(nodeId, QSize());
+    } else {
+        model->SetNodeSizeOverride(nodeId, effective);
+    }
+    if (model->onGraphChanged) {
         model->onGraphChanged();
     }
 }

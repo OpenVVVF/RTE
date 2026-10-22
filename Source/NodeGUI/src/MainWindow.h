@@ -145,6 +145,11 @@ public:
     // [smoke] "label=<text|—>;offset=dx,dy|—;outchip=[...];inchip=[...]" for
     // the given wire graph id on the ACTIVE editor tab (checker line).
     QString SmokeDumpChipInfo(const std::string& graphId);
+    // [smoke] store/reset (non-positive size) a node's user-chosen size on
+    // the ACTIVE editor tab through GraphScene::SetNodeSizeOverride (the
+    // corner-drag release normalization: grid-round, content clamp, undo).
+    // Returns "ok" or "failed <reason>".
+    QString SmokeSetNodeSize(const std::string& nodeId, double w, double h);
     // [smoke] load a sim session file through the Simulate screen's own
     // "Load session..." path (returns false on load failure).
     bool SmokeLoadSimSession(const QString& path);

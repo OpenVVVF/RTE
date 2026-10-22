@@ -2,6 +2,7 @@
 
 #include "NodeDataModel.h"
 #include "NodeGlyphs.h"
+#include "NodeGraphModel.h"
 #include "ParameterBlock.h"
 #include "WireRoute.h"
 
@@ -138,6 +139,19 @@ void ParameterNodeGeometry::recomputeSize(QtNodes::NodeId const nodeId) const {
         if (padding > 0.0) {
             s.setHeight(static_cast<int>(
                 WireRoute::RoundUpToGrid(s.height() + padding)));
+        }
+    }
+
+    // User resize overrides the computed box per axis but never below the
+    // content floor: a shrunk store renders content-sized (dead space gets
+    // normalized away at commit), and a grown one leaves honest blank room
+    // (port rows and the bottom-anchored parameter panel stay put — rows
+    // never un-float to fill the extra height).
+    if (const auto* nodeModel = dynamic_cast<const NodeGraphModel*>(&_graphModel)) {
+        if (const QSize* userSize = nodeModel->NodeSizeOverride(nodeId);
+            userSize && userSize->isValid() && !userSize->isNull()) {
+            s.setWidth(std::max(s.width(), userSize->width()));
+            s.setHeight(std::max(s.height(), userSize->height()));
         }
     }
 

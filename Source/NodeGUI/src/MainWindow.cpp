@@ -2710,8 +2710,11 @@ bool MainWindow::SmokeCornerPressNode(const std::string& nodeId) {
         return false;
     }
     const QSize size = active->Scene()->nodeGeometry().size(qtId);
+    // Aim at the pocket CENTER (the resize-handle rect is 7 scene units
+    // tall, ~7 units up-left of the corner): at zoomed-out views a press 2px
+    // from the border quantizes past the handle into a no-op wait.
     const QPointF sceneStart = ngo->pos() + QPointF(size.width(), size.height())
-                               - QPointF(2.0, 2.0);
+                               - QPointF(6.5, 6.5);
     const QPoint start = view->mapFromScene(sceneStart);
     smokeCornerView_ = view;
     smokeCornerStart_ = start;
@@ -2768,9 +2771,6 @@ bool MainWindow::SmokeCornerDragNode(const std::string& nodeId,
     if (!ngo) {
         return false;
     }
-    const QSize size = active->Scene()->nodeGeometry().size(qtId);
-    const QPointF sceneStart = ngo->pos() + QPointF(size.width(), size.height())
-                               - QPointF(2.0, 2.0);
     if (!SmokeCornerPressNode(nodeId)) {
         return false;
     }
@@ -2883,6 +2883,19 @@ QString MainWindow::SmokeDumpChipInfo(const std::string& graphId) {
         return QStringLiteral("no scene\n");
     }
     return active->DumpConnectionChip(graphId);
+}
+
+QString MainWindow::SmokeSetNodeSize(const std::string& nodeId,
+                                     double w,
+                                     double h) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("failed no scene");
+    }
+    const QSize size(qRound(w), qRound(h));
+    const QString error = active->SetNodeSizeOverride(nodeId, size);
+    return error.isEmpty() ? QStringLiteral("ok")
+                           : QStringLiteral("failed ") + error;
 }
 
 QString MainWindow::SmokeAddNode(const QString& typeId, double x, double y) {

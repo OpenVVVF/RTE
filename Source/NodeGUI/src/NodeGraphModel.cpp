@@ -445,6 +445,7 @@ bool NodeGraphModel::deleteNode(QtNodes::NodeId const nodeId) {
         graphChanged = graph_.RemoveNode(it->second);
     }
     const bool result = DataFlowGraphModel::deleteNode(nodeId);
+    nodeSizeOverrides_.erase(nodeId);
     if (graphChanged && onGraphChanged) {
         onGraphChanged();
     }
@@ -588,6 +589,27 @@ void NodeGraphModel::SetConnectionLabelOffset(QtNodes::ConnectionId const connec
     } else {
         connectionLabelOffsets_[connectionId] = clamped;
     }
+}
+
+const QSize* NodeGraphModel::NodeSizeOverride(QtNodes::NodeId const nodeId) const {
+    const auto it = nodeSizeOverrides_.find(nodeId);
+    return it != nodeSizeOverrides_.end() ? &it->second : nullptr;
+}
+
+void NodeGraphModel::SetNodeSizeOverride(QtNodes::NodeId const nodeId,
+                                         const QSize& size) {
+    const QSize normalized = size.isValid() && !size.isNull() ? size : QSize();
+    const QSize current = NodeSizeOverride(nodeId) ? *NodeSizeOverride(nodeId)
+                                                   : QSize();
+    if (normalized == current) {
+        return;
+    }
+    if (normalized.isNull()) {
+        nodeSizeOverrides_.erase(nodeId);
+    } else {
+        nodeSizeOverrides_[nodeId] = normalized;
+    }
+    Q_EMIT nodeUpdated(nodeId);
 }
 
 QtNodes::ConnectionId NodeGraphModel::NetLabelOwner(const QString& label) const {

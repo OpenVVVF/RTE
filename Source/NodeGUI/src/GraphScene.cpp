@@ -236,6 +236,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     ParseWaypointsFromJson(graphJson);
     ParseNetLabelsFromJson(graphJson);
     ParseNetLabelOffsetsFromJson(graphJson);
+    ParseNodeSizesFromJson(graphJson);
 
     try {
         NodeAPI::LoadIntoGraph(graph_, *graphText);
@@ -264,6 +265,7 @@ QString GraphScene::NewGraph() {
     pendingWaypoints_.clear();
     pendingNetLabels_.clear();
     pendingLabelOffsets_.clear();
+    pendingNodeSizes_.clear();
     if (templatesDir_.empty()) {
         return QStringLiteral("No node templates have been loaded yet");
     }
@@ -331,6 +333,7 @@ void GraphScene::RebuildScene() {
     ApplyPendingWaypoints();
     ApplyPendingNetLabels();
     ApplyPendingNetLabelOffsets();
+    ApplyPendingNodeSizes();
     CreateDomainOutlines();
 
     QObject::connect(scene_.get(),
@@ -414,6 +417,22 @@ void GraphScene::RebuildScene() {
                              delegate->SetDomain(domain);
                          }
                          CreateDomainOutlines();
+                     });
+
+    // Self-healing size cache: any size-affecting model change (port-set
+    // edit, parameter block growth, stored-size resize) refreshes the cached
+    // size of the node it fires for, so domain outlines and the mini-router
+    // read truthful boxes without per-seam refresh calls. Ordering is safe:
+    // the scene's own onNodeUpdated (which recomputes the geometry) connects
+    // inside the BasicGraphicsScene constructor, i.e. before this lambda.
+    QObject::connect(model_.get(),
+                     &QtNodes::DataFlowGraphModel::nodeUpdated,
+                     [this](QtNodes::NodeId qtId) {
+                         if (nodeIdMap_.empty() ||
+                             !scene_->nodeGraphicsObject(qtId)) {
+                             return;
+                         }
+                         nodeSizeCache_[qtId] = scene_->nodeGeometry().size(qtId);
                      });
 
     // QtNodes' own undo stack only restores its visual model. Record changes
@@ -1280,6 +1299,7 @@ std::string GraphScene::SerializeWithExtras() const {
     std::unordered_map<std::string, std::vector<QPointF>> waypointsByGraphId;
     std::unordered_map<std::string, QString> labelsByGraphId;
     std::unordered_map<std::string, QPointF> labelOffsetsByGraphId;
+    std::unordered_map<std::string, QSize> sizesByNodeId;
     if (model_) {
         for (const auto& connection : graph_.GetConnections()) {
             const QtNodes::ConnectionId qtId = FindQtConnectionId(connection.id);
@@ -1313,10 +1333,21 @@ std::string GraphScene::SerializeWithExtras() const {
                 }
             }
         }
+        for (const auto& node : graph_.GetNodes()) {
+            const auto it = nodeIdMap_.find(node.id);
+            if (it == nodeIdMap_.end()) {
+                continue;
+            }
+            if (const QSize* size = model_->NodeSizeOverride(it->second);
+                size && size->isValid() && !size->isNull()) {
+                sizesByNodeId[node.id] = *size;
+            }
+        }
     }
 
     if (originalTopKeys_.empty() && waypointsByGraphId.empty() &&
-        labelsByGraphId.empty() && labelOffsetsByGraphId.empty()) {
+        labelsByGraphId.empty() && labelOffsetsByGraphId.empty() &&
+        sizesByNodeId.empty()) {
         return json;
     }
     try {
@@ -1376,6 +1407,16 @@ std::string GraphScene::SerializeWithExtras() const {
         };
         mergeLabelOffsets("connections");
         mergeLabelOffsets("bridges");
+        if (out.contains("nodes") && out["nodes"].is_array()) {
+            for (auto& item : out["nodes"]) {
+                const auto it = sizesByNodeId.find(item.value("id", std::string()));
+                if (it == sizesByNodeId.end()) {
+                    continue;
+                }
+                item["size"] = nlohmann::json::array(
+                    {it->second.width(), it->second.height()});
+            }
+        }
         return out.dump(2) + "\n";
     } catch (const std::exception&) {
         return json;   // merge is best-effort; never lose the save itself
@@ -1499,6 +1540,57 @@ void GraphScene::ApplyPendingNetLabelOffsets() {
             continue;   // an offset without its label is dead state
         }
         model_->SetConnectionLabelOffset(qtId, offset);
+    }
+}
+
+void GraphScene::ParseNodeSizesFromJson(const nlohmann::json& graphJson) {
+    pendingNodeSizes_.clear();
+    if (!graphJson.contains("nodes") || !graphJson["nodes"].is_array()) {
+        return;
+    }
+    for (const auto& item : graphJson["nodes"]) {
+        if (!item.contains("size") || !item["size"].is_array() ||
+            item["size"].size() != 2) {
+            continue;
+        }
+        const auto& pair = item["size"];
+        if (!pair[0].is_number() || !pair[1].is_number()) {
+            continue;
+        }
+        const std::string id = item.value("id", std::string());
+        const QSize size(pair[0].get<int>(), pair[1].get<int>());
+        // Absurd entries (zero/negative/extreme) are skipped rather than
+        // clamped through the content floor a live node gives.
+        if (!id.empty() && size.isValid() && size.width() >= 2 * WireRoute::kGridPitch &&
+            size.height() >= 2 * WireRoute::kGridPitch && size.width() < 10000 &&
+            size.height() < 10000) {
+            pendingNodeSizes_[id] = size;
+        }
+    }
+}
+
+void GraphScene::ApplyPendingNodeSizes() {
+    if (!model_ || !scene_) {
+        return;
+    }
+    for (const auto& [graphId, size] : pendingNodeSizes_) {
+        const auto it = nodeIdMap_.find(graphId);
+        if (it == nodeIdMap_.end()) {
+            continue;
+        }
+        // Grid-round like the gesture's release normalization (the clamp
+        // against the content minimum happens inside recomputeSize, which the
+        // nodeUpdated emission from the setter runs).
+        const QSize snapped(
+            static_cast<int>(WireRoute::RoundUpToGrid(size.width())),
+            static_cast<int>(WireRoute::RoundUpToGrid(size.height())));
+        model_->SetNodeSizeOverride(it->second, snapped);
+        // Persist exactly what renders (the content floor may have raised it).
+        const QSize effective = scene_->nodeGeometry().size(it->second);
+        if (effective != snapped) {
+            model_->SetNodeSizeOverride(it->second, effective);
+        }
+        nodeSizeCache_[it->second] = scene_->nodeGeometry().size(it->second);
     }
 }
 
@@ -1811,6 +1903,62 @@ QString GraphScene::DumpConnectionChip(const std::string& graphId) const {
         .arg(text, offsetText, outChipText, inChipText);
 }
 
+std::optional<QSize> GraphScene::NodeSizeOverride(QtNodes::NodeId qtId) const {
+    if (const QSize* size = model_->NodeSizeOverride(qtId);
+        size && size->isValid() && !size->isNull()) {
+        return *size;
+    }
+    return std::nullopt;
+}
+
+QString GraphScene::SetNodeSizeOverride(const std::string& nodeId,
+                                        const QSize& size) {
+    const auto it = nodeIdMap_.find(nodeId);
+    if (it == nodeIdMap_.end() || !scene_) {
+        return QStringLiteral("Node not found");
+    }
+    const QtNodes::NodeId qtId = it->second;
+    auto storedSize = [&]() -> QSize {
+        const QSize* stored = model_->NodeSizeOverride(qtId);
+        return stored ? *stored : QSize();
+    };
+    const QSize prior = storedSize();
+    if (size.isNull() || !size.isValid()) {
+        if (!prior.isValid()) {
+            return QString{};   // no-op
+        }
+        model_->SetNodeSizeOverride(qtId, QSize());
+        NotifyChanged();
+        return QString{};
+    }
+
+    // The release-side normalization of the corner drag: grid-round up, then
+    // persist exactly what renders (recomputeSize clamps to the content
+    // minimum — a stored size below it would be dead data).
+    const QSize snapped(
+        std::max(static_cast<int>(WireRoute::RoundUpToGrid(size.width())),
+                 static_cast<int>(2.0 * WireRoute::kGridPitch)),
+        std::max(static_cast<int>(WireRoute::RoundUpToGrid(size.height())),
+                 static_cast<int>(2.0 * WireRoute::kGridPitch)));
+    const QSize natural = scene_->nodeGeometry().size(qtId);
+    model_->SetNodeSizeOverride(qtId, snapped);
+    QSize effective = scene_->nodeGeometry().size(qtId);
+    if (effective != snapped) {
+        model_->SetNodeSizeOverride(qtId, effective);
+    }
+    if (!prior.isValid() && effective == natural) {
+        // The request at/below the content minimum renders content-sized:
+        // keeping a key that changes nothing would be phantom data.
+        model_->SetNodeSizeOverride(qtId, QSize());
+        return QString{};
+    }
+    if (storedSize() == prior) {
+        return QString{};   // no-op: leave the document (and its history) alone
+    }
+    NotifyChanged();
+    return QString{};
+}
+
 QString GraphScene::DumpConnectionInfo(const std::string& graphId) const {
     const QtNodes::ConnectionId qtId = FindQtConnectionId(graphId);
     if (qtId.outNodeId == QtNodes::InvalidNodeId) {
@@ -1957,6 +2105,7 @@ QString GraphScene::RestoreSnapshot(const std::string& json) {
         ParseWaypointsFromJson(graphJson);
         ParseNetLabelsFromJson(graphJson);
         ParseNetLabelOffsetsFromJson(graphJson);
+        ParseNodeSizesFromJson(graphJson);
         NodeAPI::Graph restored = NodeAPI::LoadFromJson(json);
         graph_ = std::move(restored);
     } catch (const std::exception& e) {
@@ -2123,6 +2272,13 @@ QString GraphScene::DumpNodeGeometry(const std::string& nodeId) const {
                   .arg(body.y(), 0, 'f', 2)
                   .arg(body.right(), 0, 'f', 2)
                   .arg(body.bottom(), 0, 'f', 2);
+    // Geometry-computed node size (content floor + stored resize) — the
+    // read-back surface for the typed-node resize smoke.
+    const QSize nodeSize = scene_->nodeGeometry().size(qtId);
+    fields << QStringLiteral("%1.size=%2,%3")
+                  .arg(QString::fromStdString(nodeId))
+                  .arg(nodeSize.width())
+                  .arg(nodeSize.height());
 
     const auto node = graph_.FindNode(nodeId);
     const auto nodeType = node ? graph_.FindNodeType(node->type) : std::nullopt;

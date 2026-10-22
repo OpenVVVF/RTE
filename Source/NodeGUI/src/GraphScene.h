@@ -166,6 +166,16 @@ public:
     // (offset/chip fields print "—" when the connection is unlabeled).
     QString DumpConnectionChip(const std::string& graphId) const;
 
+    // ---- Stored node sizes (user resize of typed nodes) ---------------------
+
+    // The node's stored user-chosen size (std::nullopt = content-sized).
+    std::optional<QSize> NodeSizeOverride(QtNodes::NodeId qtId) const;
+    // Sets/clears (null/invalid size) a node's stored size through the same
+    // normalization the corner-drag release applies: grid-round up, clamp to
+    // the content minimum, repaint, book undo. Unknown node → error; empty
+    // string on success. Persisted as per-node "size":[w,h].
+    QString SetNodeSizeOverride(const std::string& nodeId, const QSize& size);
+
     // Smoke/checker read-out of the RENDERED route as the painter resolves
     // it (user bends -> WireRoute::BuildRoute; else the mini-router's
     // displaced line; else the rigid orthogonal default), in scene
@@ -366,6 +376,10 @@ public:
     // dropped at apply time).
     void ParseNetLabelOffsetsFromJson(const nlohmann::json& graphJson);
     void ApplyPendingNetLabelOffsets();
+    // Same staged parse/apply for the optional per-node "size":[w,h] stored
+    // node size (tolerant: malformed/tiny entries are silently skipped).
+    void ParseNodeSizesFromJson(const nlohmann::json& graphJson);
+    void ApplyPendingNodeSizes();
     // Repaints a wire after its waypoint list changed.
     void RepaintConnection(QtNodes::ConnectionId qtId);
 
@@ -450,6 +464,10 @@ public:
     // Chip displacements parsed from the loaded document (same staging,
     // ApplyPendingNetLabelOffsets).
     std::unordered_map<std::string, QPointF> pendingLabelOffsets_;
+
+    // Stored node sizes parsed from the loaded document (same staging,
+    // ApplyPendingNodeSizes; keyed by NodeAPI node id).
+    std::unordered_map<std::string, QSize> pendingNodeSizes_;
 
     bool PointHitsGraphContent(const QPointF& scenePos) const;
     void UpdateDomainSelectionStyle();

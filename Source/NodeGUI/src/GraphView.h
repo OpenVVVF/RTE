@@ -117,6 +117,15 @@ private:
     void UpdateChipDrag(const QPointF& scenePos);
     void FinishChipDrag(bool commit);
 
+    // Typed-node resize: a left press in the corner resize-handle pocket
+    // arms this gesture — QtNodes' own pocket path resizes embedded widgets
+    // only, and typed nodes embed none (its gesture armed but did nothing).
+    // Moves write the snapped target into the model's size override (the
+    // geometry applies it clamped to the content floor); release normalizes
+    // and commits via onGraphChanged (one undo entry).
+    void UpdateNodeResize(const QPointF& scenePos);
+    void FinishNodeResize(bool commit);
+
     bool firstShow_ = true;
     Qt::MouseButton panMouseButton_ = Qt::MiddleButton;
     bool mousePanning_ = false;
@@ -145,6 +154,14 @@ private:
     QPoint chipDragPressViewport_;
     QPointF chipDragPressScene_;
     QPointF chipDragBaseOffset_;
+    bool nodeResizePending_ = false;
+    bool nodeResizeActive_ = false;
+    bool nodeResizeMoved_ = false;
+    QtNodes::NodeId nodeResizeNodeId_ = QtNodes::InvalidNodeId;
+    QPoint nodeResizePressViewport_;
+    QPointF nodeResizePressScene_;
+    QSize nodeResizeStartSize_;
+    QSize nodeResizePriorOverride_;   // invalid = node had no stored size
     QPoint panLastPosition_;
     QPointF domainDragLastScenePosition_;
 };

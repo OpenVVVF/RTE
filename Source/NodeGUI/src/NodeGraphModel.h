@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QPointF>
 #include <QPolygonF>
+#include <QSize>
 #include <QString>
 
 #include <functional>
@@ -120,6 +121,16 @@ public:
     void SetConnectionLabelOffset(QtNodes::ConnectionId const connectionId,
                                   const QPointF& offset);
 
+    // Optional user-chosen node size (nullptr when unset). The gesture fully
+    // bypasses QtNodes' widget-driven resize (typed nodes embed no widget, so
+    // the corner pocket armed but did nothing): the override is the persisted
+    // size the geometry clamps against the content minimum (see
+    // ParameterNodeGeometry::recomputeSize); grid-multiple values only.
+    const QSize* NodeSizeOverride(QtNodes::NodeId const nodeId) const;
+    // A null/invalid size clears the entry. Emits nodeUpdated on change so
+    // the scene item re-lays out + repaints (same repaint path as a port-set
+    // or parameter change).
+    void SetNodeSizeOverride(QtNodes::NodeId const nodeId, const QSize& size);
 
     // The mini-router's choice for a waypoint-free connection (scene
     // coordinates for the non-legacy line). nullptr when the cache has no
@@ -191,6 +202,7 @@ private:
     std::unordered_map<QtNodes::ConnectionId, NodeTranslation> waypointFollows_;
     std::unordered_map<QtNodes::ConnectionId, QString> connectionLabels_;
     std::unordered_map<QtNodes::ConnectionId, QPointF> connectionLabelOffsets_;
+    std::unordered_map<QtNodes::NodeId, QSize> nodeSizeOverrides_;
     std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> autoRoutes_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;

@@ -66,6 +66,19 @@
 //   Inspector "Reset label position", or `chipdrag <id> reset`. Smoke
 //   verbs: chipdrag/dumpchip.
 //
+// Stored node sizes ("size"):
+//   Typed nodes embed no widget, so QtNodes' corner-pocket resize armed a
+//   state machine that visibly did nothing; GraphView's pocket press now
+//   drives its own gesture: moves write a grid-snapped target into the
+//   model's node-size override (the geometry applies it clamped to the
+//   content floor — port rows and the bottom-anchored parameter panel stay
+//   put, rows never un-float into the extra room), release normalizes to
+//   exactly what renders and commits one undo entry. Persisted per node as
+//   an additive "size":[w,h] key (absent while content-sized); a stored
+//   size below the content floor renders content-sized and is normalized
+//   away at commit. Smoke verbs: noderesize (+dumppos .size read-out),
+//   cornerdrag/cornerpress/cornerrelease drive the real gesture.
+//
 // Domain node glyphs (painter layer only, no model/geometry changes):
 //   TypedNodePainter::DrawTypeGlyph paints a type-driven icon into the node
 //   center (between the port text columns, above the parameter block).
@@ -249,6 +262,25 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             // inchip=[x,y,w,h]" single line for checkers (offset/chip fields
             // print "—" on an unlabeled connection).
             std::cout << window->SmokeDumpChipInfo(arg.toStdString()).toStdString();
+        } else if (kind == "noderesize") {
+            // noderesize <nodeId> <w> <h> | noderesize <nodeId> reset —
+            // stores the node's user-chosen size through GraphScene (the
+            // corner-drag release normalization: grid-round up, clamp to the
+            // content floor, repaint, undo entry); reset clears it so the
+            // node sizes by content again. Prints ok | failed <reason>.
+            if (parts.value(2) == QLatin1String("reset")) {
+                std::cout << "noderesize " << arg.toStdString() << "="
+                          << window->SmokeSetNodeSize(arg.toStdString(), -1.0, -1.0)
+                                 .toStdString()
+                          << "\n";
+            } else {
+                std::cout << "noderesize " << arg.toStdString() << "="
+                          << window->SmokeSetNodeSize(arg.toStdString(),
+                                                      parts.value(2).toDouble(),
+                                                      parts.value(3).toDouble())
+                                 .toStdString()
+                          << "\n";
+            }
         } else if (kind == "dumproute") {
             // "route=[x,y;...]" rendered route polyline (scene coords) —
             // the foldback checker's read-out for bend-drag cases.
