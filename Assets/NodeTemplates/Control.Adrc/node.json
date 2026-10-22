@@ -1,0 +1,135 @@
+{
+  "id": "Control.Adrc",
+  "displayName": "ADRC (1st-order, ESO + disturbance taps)",
+  "defaultName": "Adrc",
+  "description": "Active Disturbance Rejection Controller for a first-order plant (PMSM dq current). ESO + state-feedback combination: a linear extended-state observer with the pole-pair gain family (OmegaL, ObsDamp: beta1 = 2*zeta*wl, beta2 = wl^2) estimates the total disturbance, and a B0-lifted control law u = (u0 - z2)/B0 cancels it. Unlike Control.Ladrc the ESO disturbance estimate is exposed as first-class outputs (DistRate/DistVolts) for wiring to telemetry.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "Setpoint",
+      "description": "Desired current (A) or process setpoint.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "Measurement",
+      "description": "Measured current (A) or process value.",
+      "direction": "input",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Output",
+      "description": "Control effort (volts for current-loop use).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "DistVolts",
+      "description": "Estimated total disturbance expressed in control-effort units (z2/B0; volts for current-loop use): the equivalent input the ESO cancels. For a PMSM q axis at steady state this is -(Rs*Iq + we*(Lambda + Ld*Id)).",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "DistRate",
+      "description": "Estimated total disturbance rate (ESO state z2, A/s for current-loop use): everything di/dt sees besides B0*u.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    },
+    {
+      "name": "EstState",
+      "description": "Estimated process output (ESO state z1, A): the observer's filtered current estimate.",
+      "direction": "output",
+      "type": {
+        "quantity": "dimensionless",
+        "frame": "scalar",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "parameterTypes": {
+    "Dt": {
+      "description": "Controller step period in seconds.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "B0": {
+      "description": "Plant gain estimate b0. For dq current use ≈ 1/L (e.g. Ld or Lq).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OmegaC": {
+      "description": "Controller bandwidth ωc [rad/s]. u0 = ωc·(Setpoint − z1).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OmegaL": {
+      "description": "Observer pole family bandwidth ωl [rad/s]. β1 = 2·ObsDamp·ωl, β2 = ωl². Typically 3–10× ωc.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "ObsDamp": {
+      "description": "Observer pole-pair damping ζ (dimensionless). ζ = 1 gives the critically damped double pole at −ωl (the Control.Ladrc gain family); 0.7 (Butterworth) trades peaking for a rounder disturbance-estimate transient.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Z1": {
+      "description": "Persistent ESO state: estimated output.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "Z2": {
+      "description": "Persistent ESO state: estimated total disturbance.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "UPrev": {
+      "description": "Persistent previous control effort for the ESO input.",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OutputMax": {
+      "description": "Upper output clamp (also limited by Vdc/√3·0.95).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    },
+    "OutputMin": {
+      "description": "Lower output clamp (also limited by −Vdc/√3·0.95).",
+      "quantity": "dimensionless",
+      "frame": "scalar",
+      "dtype": "f32"
+    }
+  }
+}
