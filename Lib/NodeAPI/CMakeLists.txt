@@ -48,6 +48,7 @@ target_link_libraries(NodeAPI
 set(NODEAPI_TEST_SOURCES
     tests/test_nodeapi.cpp
     tests/test_templates.cpp
+    tests/test_mtpa.cpp
 )
 
 if(NODEAPI_BUILD_TIMING)
@@ -55,6 +56,13 @@ if(NODEAPI_BUILD_TIMING)
 endif()
 
 add_executable(NodeAPI_tests ${NODEAPI_TEST_SOURCES})
+
+# test_mtpa.cpp compiles the shipped Control.Mtpa inline.cpp against the real
+# rte:: quantity types; the au single header lives under Lib/InverterCodegen.
+target_include_directories(NodeAPI_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../InverterCodegen/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../InverterCodegen/third_party
+)
 
 target_link_libraries(NodeAPI_tests
     PRIVATE NodeAPI GTest::gtest_main project_warnings

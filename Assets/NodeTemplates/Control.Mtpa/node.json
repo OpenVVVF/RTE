@@ -48,19 +48,19 @@
       "dtype": "f32"
     },
     "Ld": {
-      "description": "D-axis inductance in henries.",
+      "description": "D-axis inductance, H.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Lq": {
-      "description": "Q-axis inductance in henries.",
+      "description": "Q-axis inductance, H.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
     },
     "Lambda": {
-      "description": "Permanent-magnet flux linkage in webers.",
+      "description": "Permanent-magnet flux linkage, Wb.",
       "quantity": "dimensionless",
       "frame": "scalar",
       "dtype": "f32"
