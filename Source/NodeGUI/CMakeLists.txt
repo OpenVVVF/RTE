@@ -92,7 +92,7 @@ if(APPLE)
     )
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus)
 
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -131,6 +131,7 @@ target_link_libraries(RTEStudio
         Qt6::Network
         Qt6::OpenGL
         Qt6::OpenGLWidgets
+        Qt6::DBus
         project_warnings
 )
 

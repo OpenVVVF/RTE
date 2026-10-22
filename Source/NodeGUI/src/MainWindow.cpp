@@ -31,6 +31,10 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFrame>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusVariant>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -807,7 +811,6 @@ void MainWindow::RebuildRecentFilesMenu() {
         recentFilesMenu_->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);
         return;
     }
-    int position = 1;
     for (const QString& path : recent) {
         const QFileInfo info(path);
         // "name (parentdir)" keeps the list skimmable; tooltip = full path.
@@ -1412,9 +1415,41 @@ QVariantMap StartupLook() {
 
 }  // namespace
 
+namespace {
+
+// freedesktop xdg-desktop-portal appearance.color-scheme: the only source a
+// desktop session reliably agrees on for "system dark mode" (KDE/GNOME etc.,
+// under both Wayland-native and xcb/Xwayland: portal answers the same).
+// 0 = no preference, 1 = dark, 2 = light. On any failure: treat as light.
+bool SystemPrefersDarkMode() {
+    QDBusInterface portal(QStringLiteral("org.freedesktop.portal.Desktop"),
+                          QStringLiteral("/org/freedesktop/portal/desktop"),
+                          QStringLiteral("org.freedesktop.portal.Settings"),
+                          QDBusConnection::sessionBus());
+    if (!portal.isValid()) return false;
+    const QDBusMessage reply = portal.call(
+        QStringLiteral("Read"), QStringLiteral("org.freedesktop.appearance"),
+        QStringLiteral("color-scheme"));
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
+        return false;
+    }
+    QVariant v = reply.arguments().front();
+    for (int unwrap = 0; unwrap < 2; ++unwrap) {
+        if (v.userType() == qMetaTypeId<QDBusVariant>()) {
+            v = v.value<QDBusVariant>().variant();
+        } else {
+            break;
+        }
+    }
+    return v.toInt() == 1;
+}
+
+}  // namespace
+
 void MainWindow::ApplyThemeMode(int mode) {
     const QVariantMap startup = StartupLook();
-    if (mode == 2) {
+    const bool dark = (mode == 2) || (mode == 0 && SystemPrefersDarkMode());
+    if (dark) {
         QApplication::setStyle(
             QStyleFactory::create(QStringLiteral("Fusion")));
         // Fusion-based dark palette (Qt docs "Dark Theme" recipe)
