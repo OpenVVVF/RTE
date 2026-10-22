@@ -107,7 +107,9 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QDockWidget>
 #include <QDoubleSpinBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLockFile>
@@ -117,6 +119,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QSlider>
+#include <QSplitter>
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QTextEdit>
@@ -347,6 +350,53 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                 std::cerr << "smoke: no dumpable widget named " << arg.toStdString() << "\n";
             }
             std::cout << arg.toStdString() << "=" << value.toStdString() << "\n";
+        } else if (kind == "restablecol") {
+            // Table-column resize poke: restablecol <tableObjectName> <col>
+            // <px> drives the same QHeaderView::resizeSection a header-edge
+            // drag issues (the column-resize freeze repro + its regression).
+            auto* table = window->findChild<QTableWidget*>(arg);
+            if (!table) {
+                std::cerr << "smoke: no table named " << arg.toStdString() << "\n";
+            } else {
+                table->horizontalHeader()->resizeSection(parts.value(2).toInt(),
+                                                         parts.value(3).toInt());
+                std::cout << "restablecol " << arg.toStdString() << "="
+                          << table->horizontalHeader()->sectionSize(
+                                 parts.value(2).toInt())
+                          << "\n";
+            }
+        } else if (kind == "resgraphcol") {
+            // Plot-column resize poke: resgraphcol <sim|runtime> <px> drives
+            // the same geometry write a separator drag lands on (sim: the
+            // telemetry view's table|plots QSplitter; runtime: the signal
+            // table dock vs the central plot stack). The freeze repro's
+            // second, layout-driving edge.
+            int applied = -1;
+            if (arg == "sim") {
+                auto* view = window->findChild<NodeGUI::sim::SimTelemetryView*>();
+                if (auto* splitter = view ? view->findChild<QSplitter*>() : nullptr) {
+                    QList<int> sizes = splitter->sizes();
+                    const int total = sizes.value(0) + sizes.value(1);
+                    splitter->setSizes({parts.value(2).toInt(),
+                                        total - parts.value(2).toInt()});
+                    applied = splitter->sizes().value(0);
+                } else {
+                    std::cerr << "smoke: no sim telemetry splitter\n";
+                }
+            } else if (arg == "runtime") {
+                if (auto* dock = window->findChild<QDockWidget*>(
+                        QStringLiteral("signalTableDock"))) {
+                    window->resizeDocks({dock}, {parts.value(2).toInt()},
+                                        Qt::Horizontal);
+                    applied = dock->width();
+                } else {
+                    std::cerr << "smoke: no signalTableDock\n";
+                }
+            }
+            if (applied >= 0) {
+                std::cout << "resgraphcol " << arg.toStdString() << "="
+                          << applied << "\n";
+            }
         } else if (kind == "plotdrag" || kind == "plotdblclick" || kind == "plotwheel") {
             // Synthesized REAL gestures on the surface's first plot, routed
             // through the leaf mouse/wheel handlers (the dragcursor family

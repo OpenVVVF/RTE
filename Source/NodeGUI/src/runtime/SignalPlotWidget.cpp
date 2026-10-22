@@ -8,6 +8,8 @@
 #include <QOpenGLVertexArrayObject>
 #include <QPainter>
 #include <QPen>
+#include <QResizeEvent>
+#include <QTimer>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -71,6 +73,43 @@ QString UnitForSignal(const QString& name) {
 SignalPlotWidget::SignalPlotWidget(QString title, QWidget* parent)
     : QOpenGLWidget(parent), title_(std::move(title))
 {
+    resizeCoalesceTimer_ = new QTimer(this);
+    resizeCoalesceTimer_->setSingleShot(true);
+    resizeCoalesceTimer_->setInterval(40);
+    connect(resizeCoalesceTimer_, &QTimer::timeout, this, [this] {
+        if (!commitPending_) {
+            return;
+        }
+        commitPending_ = false;
+        // Commit the latest geometry through the same base-class path an
+        // un-coalesced resize lands (the notification reads size(), so a
+        // synthetic event with the current size is faithful).
+        QResizeEvent settle(size(), size());
+        QOpenGLWidget::resizeEvent(&settle);
+    });
+}
+
+void SignalPlotWidget::resizeEvent(QResizeEvent* event)
+{
+    // Freeze fix: a separator drag (the sim tab's table|plots splitter, the
+    // runtime tab's Signal-Table dock edge) resizes the whole plot stack per
+    // mouse move, and EVERY base-class resize recreates the GL framebuffer
+    // (context switch + FBO destroy/create + an immediate repaint) per plot —
+    // against the live ~30 Hz telemetry refresh that outruns the event loop
+    // on screen-driven GL platforms and the app freezes. Coalesce bursts:
+    // the first resize commits immediately; intermediates inside the throttle
+    // window only update widget geometry (the layout manages that anyway) and
+    // the latest size commits when the window closes. Refresh()/update() are
+    // untouched — live telemetry keeps painting (momentarily into the
+    // slightly stale framebuffer; the standard throttled-resize look).
+    if (event->size().isEmpty() || !resizeCoalesceTimer_->isActive()) {
+        QOpenGLWidget::resizeEvent(event);
+        if (!event->size().isEmpty()) {
+            resizeCoalesceTimer_->start();
+        }
+        return;
+    }
+    commitPending_ = true;
 }
 
 SignalPlotWidget::~SignalPlotWidget()

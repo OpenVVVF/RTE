@@ -14,6 +14,7 @@ class QColor;
 class QOpenGLBuffer;
 class QOpenGLShaderProgram;
 class QOpenGLVertexArrayObject;
+class QTimer;
 
 namespace NodeGUI::runtime {
 
@@ -88,6 +89,7 @@ signals:
 protected:
     void initializeGL() override;
     void paintGL() override;
+    void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
@@ -131,6 +133,11 @@ private:
     bool dragging_ = false;
     bool followTail_ = true;
     double anchoredEndTsec_ = 0.0;
+
+    // Resize-burst coalescer (see resizeEvent): one-shot throttle window and
+    // the "an intermediate resize was swallowed" flag it commits on timeout.
+    QTimer* resizeCoalesceTimer_ = nullptr;
+    bool commitPending_ = false;
 
     QOpenGLShaderProgram* program_ = nullptr;
     QOpenGLBuffer* vbo_ = nullptr;
