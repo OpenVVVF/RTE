@@ -1,6 +1,8 @@
 #include "InspectorPanel.h"
 
 #include "GraphScene.h"
+#include "NodeDataModel.h"
+#include "NodeGraphModel.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -351,6 +353,39 @@ void InspectorPanel::RebuildConnectionForm() {
     // Id (read-only — connection graph ids are engine-assigned).
     auto* idValue = new QLabel(graphId, form_);
     formLayout->addRow(QStringLiteral("Connection"), idValue);
+
+    // Endpoints (read-only): "from.port → to.port" so a selected wire reads
+    // whose signals it joins without walking both nodes (KiCad-style: name
+    // the net's pins). Port captions come from the endpoint delegates, so
+    // synthesized parameter ports display exactly like the node's face.
+    auto endpoint = [this](QtNodes::NodeId qtId,
+                           QtNodes::PortType portType,
+                           QtNodes::PortIndex portIndex) {
+        QString nodeText = QString::fromStdString(scene_->NodeApiId(qtId));
+        if (nodeText.isEmpty()) {
+            nodeText = QStringLiteral("?");
+        }
+        QString portText = QStringLiteral("#%1").arg(portIndex);
+        if (scene_->Model()) {
+            if (const auto* delegate =
+                    scene_->Model()->delegateModel<NodeInstanceModel>(qtId)) {
+                const QString caption = delegate->portCaption(portType, portIndex);
+                if (!caption.isEmpty()) {
+                    portText = caption;
+                }
+            }
+        }
+        return nodeText + QStringLiteral(".") + portText;
+    };
+    auto* endpointsValue = new QLabel(
+        endpoint(connId_.outNodeId, QtNodes::PortType::Out, connId_.outPortIndex)
+        + QStringLiteral(" \u2192 ")
+        + endpoint(connId_.inNodeId, QtNodes::PortType::In, connId_.inPortIndex),
+        form_);
+    endpointsValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    // smoke-driver seam: conninfo.<connGraphId> dumps the FROM→TO line.
+    endpointsValue->setObjectName(QStringLiteral("conninfo.") + graphId);
+    formLayout->addRow(QStringLiteral("Endpoints"), endpointsValue);
 
     // Net label (editable): KiCad-style — a labeled wire renders as two
     // short stubs + name tags instead of the long route. Empty clears.

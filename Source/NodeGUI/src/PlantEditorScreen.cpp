@@ -166,6 +166,30 @@ PlantEditorScreen::PlantEditorScreen(std::string plantTemplatesDir,
         graphScene_->ReportDragProven(qtId);
     };
 
+    // Ctrl+double-click on a wire: quick-edit its net label through an
+    // instance-modal dialog - identical to the Node Editor's gesture (same
+    // prompt, same refusal/uniqueness semantics in GraphScene::
+    // SetConnectionLabel, same optional "netLabel" document key on save).
+    view_->onNetLabelRequested = [this](QtNodes::ConnectionId connId) {
+        QInputDialog dialog(this);
+        dialog.setInputMode(QInputDialog::TextInput);
+        dialog.setWindowTitle(QStringLiteral("Net label"));
+        dialog.setLabelText(QStringLiteral(
+            "Net label (empty clears; unique across all connections):"));
+        dialog.setTextValue(graphScene_->ConnectionLabel(connId));
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        const QString error =
+            graphScene_->SetConnectionLabel(connId, dialog.textValue());
+        if (!error.isEmpty()) {
+            ShowToast(error);
+        } else if (inspector_) {
+            inspector_->RefreshNetLabel(connId,
+                                        graphScene_->ConnectionLabel(connId));
+        }
+    };
+
     layout->addWidget(view_);
 
     // Side panels handed up to the MainWindow's per-screen docks (parentless
