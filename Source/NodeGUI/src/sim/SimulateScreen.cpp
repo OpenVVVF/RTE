@@ -10,11 +10,13 @@
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -43,6 +45,7 @@ namespace {
 // text like the build-status labels elsewhere in Studio.
 const char* kBadgeOkStyle = "color: #58b368;";
 const char* kBadgeBadStyle = "color: #ef5350;";
+const char* kBadgeWarnStyle = "color: #e6a23c;";
 const char* kBadgeNeutralStyle = "color: palette(mid);";
 const char* kStatusIdleStyle = "";
 const char* kStatusRunStyle = "color: #e6a23c;";
@@ -271,6 +274,47 @@ QString EffectiveFieldText(const QLineEdit* edit) {
     return text.isEmpty() ? edit->placeholderText().trimmed() : text;
 }
 
+// Locked-rotor probe (honesty wave): reads the plant graph's Dyno/shaft node
+// initial-rpm default off disk. Returns true when a node with "Dyno" in its
+// type id exists (speed then has a mechanical authority whose default the
+// host honors when no CLI source is given — host F28). *rpm0 out: the Rpm0
+// parameter (missing -> 0.0, matching PlantGenerator's Plant.Shaft.Dyno
+// default). Unparseable files report "no Dyno" and let rte's parse error
+// own the failure at Run time.
+bool PlantDynoRpm0(const QString& plantPath, double* rpm0) {
+    QFile file(plantPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) {
+        return false;
+    }
+    const QJsonArray nodes = doc.object().value(QStringLiteral("nodes")).toArray();
+    for (const auto& nodeValue : nodes) {
+        const QJsonObject node = nodeValue.toObject();
+        if (!node.value(QStringLiteral("type")).toString().contains(
+                QStringLiteral("Dyno"))) {
+            continue;
+        }
+        if (rpm0) {
+            *rpm0 = 0.0;
+            const QJsonValue raw =
+                node.value(QStringLiteral("parameters")).toObject()
+                    .value(QStringLiteral("Rpm0"));
+            bool ok = false;
+            const double parsed = raw.isString()
+                                      ? raw.toString().toDouble(&ok)
+                                      : raw.toDouble(0.0);
+            if (ok || raw.isDouble()) {
+                *rpm0 = parsed;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 SimulateScreen::SimulateScreen(QWidget* parent)
@@ -476,6 +520,14 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     dynoSeriesEdit_->setObjectName(QStringLiteral("simDynoSeries"));
     dynoSeriesEdit_->setPlaceholderText(QStringLiteral("or 0=500,1.5=0"));
     settingsGrid->addWidget(dynoSeriesEdit_, 0, 7);
+    // Honesty wave (fa_engineer #3): the spin's Qt-side clamp used to swallow
+    // an over-range typed entry with zero complaint — this badge (and a
+    // one-shot Run-log row) names the clamp while the entry is fresh.
+    durationBadge_ = new QLabel(settingsBox);
+    durationBadge_->setObjectName(QStringLiteral("simDurationClampBadge"));
+    settingsGrid->addWidget(durationBadge_, 0, 8);
+    connect(durationSpin_, &QDoubleSpinBox::textChanged, this,
+            [this] { RefreshDurationClampBadge(); });
     settingsGrid->setColumnStretch(8, 1);
 
     settingsGrid->addWidget(new QLabel(QStringLiteral("Supply"), settingsBox), 1, 0);
@@ -788,6 +840,67 @@ void SimulateScreen::RefreshSupplyBadge() {
     }
 }
 
+QString SimulateScreen::LockedRotorWarningText() const {
+    // Mechanical-source census: any one of these spins or schedules the shaft.
+    if (!dynoRpmEdit_->text().trimmed().isEmpty()) {
+        return QString();   // --dyno-rpm hold
+    }
+    if (!dynoSeriesEdit_->text().trimmed().isEmpty()) {
+        return QString();   // --dyno-series schedule
+    }
+    for (const QString& line : EventLines(eventsEdit_->toPlainText())) {
+        if (line.contains(QLatin1String("kind=dyno-set"))) {
+            return QString();   // timeline assigns mechanical speed mid-run
+        }
+    }
+    // No side-band source: the host stands on the graph's Dyno.Rpm0 (host F28).
+    double rpm0 = 0.0;
+    if (!PlantDynoRpm0(ResolveProjectPath(EffectiveFieldText(plantEdit_)), &rpm0)) {
+        return QString();   // no Dyno/shaft node: speed is plant-physics-driven
+    }
+    if (std::abs(rpm0) > 1e-12) {
+        return QString();   // the graph itself spins the shaft
+    }
+    return QStringLiteral(
+        "⚠ mechanical speed static at 0 (Dyno rpm source unset) — locked-rotor "
+        "bench: the rotor will not turn for the whole run; add a Dyno rpm hold, "
+        "a dyno series, or a dyno-set event for a spinning bench");
+}
+
+void SimulateScreen::RefreshDurationClampBadge() {
+    // cleanText is the editor's raw digits (no " s" suffix) — the ONLY place
+    // an over-range typed entry is visible; value() is already clamped by
+    // then. The post-clamp reformat reports exactly maximum() and must not
+    // clear a pending warning (it is the clamp committing, not a new intent).
+    bool numericOk = false;
+    const double entered = durationSpin_->cleanText().trimmed().toDouble(&numericOk);
+    const double maxDuration = durationSpin_->maximum();
+    if (numericOk && std::isfinite(entered)) {
+        if (entered > maxDuration) {
+            if (overMaxDurationEntry_ != entered) {
+                overMaxDurationEntry_ = entered;
+                AppendLog(QStringLiteral(
+                    "\n[warn] duration %1 s exceeds the Studio limit %2 s — this field "
+                    "clamps to %2 s on commit and runs %2 s, not %1 s; longer scenarios "
+                    "via CLI: rte sim --duration %1 ... --out <session.jsonl> (the CLI "
+                    "has no session-length cap)\n")
+                        .arg(entered).arg(maxDuration));
+            }
+        } else if (entered < maxDuration) {
+            overMaxDurationEntry_ = 0.0;   // a genuine in-range edit
+        }
+    }
+    if (overMaxDurationEntry_ > 0.0) {
+        durationBadge_->setStyleSheet(QLatin1String(kBadgeWarnStyle));
+        durationBadge_->setText(QStringLiteral(
+            "⚠ %1 s clamps to %2 s — longer: rte sim --duration %1 ...")
+                .arg(overMaxDurationEntry_).arg(maxDuration));
+    } else {
+        durationBadge_->setStyleSheet(QLatin1String(kBadgeNeutralStyle));
+        durationBadge_->clear();
+    }
+}
+
 void SimulateScreen::RefreshGraphKindBadges() {
     // Same check for both rows, mirrored expectations: the Controller row
     // must not hold a Plant graph and vice versa. Files that do not exist
@@ -1007,6 +1120,27 @@ void SimulateScreen::OnRun() {
     completedEventSeen_ = false;
     cancelledByUser_ = false;
     cliOutputBuffer_.clear();
+
+    // Honesty-wave run warnings (status/log rows, never modals; P1-r2 round):
+    if (overMaxDurationEntry_ > 0.0) {
+        const QString row = QStringLiteral(
+            "⚠ duration run at %1 s — typed %2 s exceeds the Studio limit and the "
+            "field clamped; longer scenarios via CLI: rte sim --duration %2 ... "
+            "--out <session.jsonl> (no session-length cap)")
+                .arg(durationSpin_->maximum()).arg(overMaxDurationEntry_);
+        AppendLog(QStringLiteral("\n[warn] %1\n").arg(row));
+        AppendProgress(QStringLiteral("warn"), row);
+        overMaxDurationEntry_ = 0.0;
+        RefreshDurationClampBadge();
+    }
+    lockedRotorWarnedForRun_ = false;
+    const QString lockedRotor = LockedRotorWarningText();
+    if (!lockedRotor.isEmpty()) {
+        lockedRotorWarnedForRun_ = true;
+        AppendLog(QStringLiteral("\n[warn] %1\n").arg(lockedRotor));
+        AppendProgress(QStringLiteral("warn"), lockedRotor);
+    }
+
     SetRunning(true);
     SetStatus(QStringLiteral("Running %1...").arg(nameEdit_->text().trimmed()),
               QLatin1String(kStatusRunStyle));
@@ -1121,14 +1255,24 @@ void SimulateScreen::OnSimFinished(int exitCode, QProcess::ExitStatus exitStatus
     if (cleanExit && !artifactPath_.isEmpty()) {
         const SimSession* session = telemetryView_->Session();
         AppendLog(QStringLiteral("\n[finished] Run completed: %1\n").arg(artifactPath_));
-        SetStatus(QStringLiteral("Complete — %1 (%2 frames, %3 channels, plant: %4)")
-                      .arg(QFileInfo(artifactPath_).fileName())
-                      .arg(session ? session->Meta().telemetryFrames : 0)
-                      .arg(session ? session->ChannelNames().size() : 0)
-                      .arg(session && !session->Meta().plant.isEmpty()
-                               ? session->Meta().plant
-                               : QStringLiteral("(no stamp)")),
-                  QLatin1String(kStatusOkStyle));
+        QString statusText =
+            QStringLiteral("Complete — %1 (%2 frames, %3 channels, plant: %4)")
+                .arg(QFileInfo(artifactPath_).fileName())
+                .arg(session ? session->Meta().telemetryFrames : 0)
+                .arg(session ? session->ChannelNames().size() : 0)
+                .arg(session && !session->Meta().plant.isEmpty()
+                         ? session->Meta().plant
+                         : QStringLiteral("(no stamp)"));
+        // Honesty wave: the warn row scrolled by with the run; keep its fact
+        // visible on the line the green status would otherwise close alone.
+        if (lockedRotorWarnedForRun_) {
+            lockedRotorWarnedForRun_ = false;
+            statusText += QStringLiteral(
+                "  ·  ⚠ locked-rotor bench (dyno source unset)");
+            SetStatus(statusText, QLatin1String(kStatusRunStyle));
+            return;
+        }
+        SetStatus(statusText, QLatin1String(kStatusOkStyle));
         return;
     }
     // Failure surface: no exception, no modal — the log tail gets the focus.

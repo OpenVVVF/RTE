@@ -43,6 +43,24 @@ the implementation.
   actually move the ramp (verified 25.4 -> 2.9 A/s for DefaultValue 50->5).
   Keys the graph never names keep the twin-replica defaults so recorded
   campaign parity is untouched.
+- **Boot console quotes the seeded gains.** The `[FOC] Kp set to …`,
+  `[FOC] Ki set to …` and `[CFG] motor config … kp=/ki= …` lines quote the
+  `Ctrl.PiD.Kp/Ki` / `Ctrl.PiQ.Kp/Ki` FRAM/graph seeds the generated
+  controller loads at domain init (d/q axes shown as `d / q`), not the
+  recorded firmware's 0.0300/10.0000 literals — editing a `Values.Config`
+  DefaultValue between runs changes the boot lines to match (P1-r2-4).
+- **Duration spin clamp is no longer silent.** Typed entries above the
+  300.00 s Studio limit log a `[warn] duration … clamps …` row naming the
+  clamp and the CLI alternative (`rte sim --duration <s> --out …` has no
+  session-length cap) at edit time, again as a Run-transcript row if a run
+  starts with a clamp pending, and on an amber badge next to the spin.
+- **Locked-rotor-by-default gets a warning row.** A run with no mechanical
+  source — Dyno rpm and series fields empty, no `dyno-set` event, and the
+  plant graph's `Dyno.Rpm0 == 0` (every shipped bench rig ships 0) — adds a
+  `⚠ mechanical speed static at 0 (Dyno rpm source unset) — locked-rotor
+  bench` warn row to the run log/progress strip and a `⚠ locked-rotor
+  bench` chip on the Complete status line. The green strip alone no longer
+  has to teach "the bike never turned once".
 - **`control start` resets runtime vars to graph defaults** (the emitted
   code's Start() runs at every control start). A scripted ramp must re-issue
   `var-set` events after each `start` - references don't survive a stop on
@@ -229,14 +247,25 @@ dual-polarity converter semantics, per the graphs' description strings and
 Nothing is scheduled inside Studio: the runner applies events at sim time;
 Studio only edits a declarative timeline.
 
-**Fault markers are real.** Trip-side behavior (gate_ready fall, MOE drop,
-fault flags, console `[FAULT]`/`[SUP]`/`[SAFETY]` vocabulary, graph-telemetry
-freeze) comes from the **actual emitted fault manager running in the loop**,
-not a host-side fake — so a fault window in a sim session differs from a
-recorded window only where the protection physics does. The open verification
-item here is **F02**: an end-to-end diff of a real-firmware-protection fault
-run against the recorded triple-redundancy trips (harness physics-vs-
-protection glossary semantics apply, see the contract §Host interface).
+**Fault markers are honest, not emulated.** Plant-side trip physics
+(gate_ready fall, MOE drop, open-gate freewheel collapse, encoder-loss
+telemetry freeze) genuinely runs on the generated plant, and the
+`[FAULT]`/`[SUP]` console vocabulary around scripted `reset`/`start` events
+is deliberate host choreography mirroring the recorded boot vocabulary.
+What does NOT run in the sim host is the **emitted fault manager itself**:
+F02 verified that FaultManager/ControlSupervisor are not among the compiled
+units (the ADC watchdog, TIM1 break, gate-driver /RDY/UVLO and MAX22530
+paths they'd need are absent too), so `fault_flags_hex` and
+`fault_active_names` can never move off `0x00000000` / `[]`. A forever-zero
+word is NOT a protection verdict: the session says so in-band with a boot
+console line (`[FAULT] sim host: no fault manager linked — …`) and a
+`fault_manager_emulation=manager_absent_sim_host` t=0 state stamp, while
+the flag values keep their exact-string shape for twin tooling's
+exact-match checks. The open verification item remains **F02**: linking the
+real protection chain (FRAM store first, per the host header note), after
+which a real-firmware trip diff against the recorded triple-redundancy
+trips becomes meaningful (glossary semantics in the contract §Host
+interface).
 
 ## Diff vs recorded
 

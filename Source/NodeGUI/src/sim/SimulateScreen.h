@@ -74,6 +74,15 @@ private:
     void UpdateOutPathDefault();
     void RefreshEventsBadge();
     void RefreshSupplyBadge();
+    // Honesty wave — run-validation warnings (status/log rows, never modals):
+    // a) locked-rotor-by-default: empty dyno fields + no dyno-set event + the
+    //    plant graph's Dyno.Rpm0 == 0 means the shaft never moves; says so.
+    //    Returns the warning text, or "" when a mechanical source exists.
+    QString LockedRotorWarningText() const;
+    // b) duration clamp: the duration spin (0.1..300 s) silently clamps typed
+    //    entries > max on commit; the badge + a one-shot [warn] log row name
+    //    the clamp and the rte CLI alternative while the raw text is fresh.
+    void RefreshDurationClampBadge();
     // Scenario form persistence (dossier J3-dead-end: every sim field
     // died per relaunch). Keys: sim/scenario/*; saved on each actual run,
     // restored at construction.
@@ -113,6 +122,7 @@ private:
     QString kindBlockReason_;
 
     QDoubleSpinBox* durationSpin_ = nullptr;
+    QLabel* durationBadge_ = nullptr;
     QComboBox* dtSubCombo_ = nullptr;
     QLineEdit* dynoRpmEdit_ = nullptr;
     QLineEdit* dynoSeriesEdit_ = nullptr;
@@ -135,6 +145,12 @@ private:
     bool completedEventSeen_ = false;
     bool cancelledByUser_ = false;
     QString artifactPath_;
+    // Honesty-wave run-warning state: last typed duration entry that exceeds
+    // the spin's max (0.0 = none; consumed by OnRun for the transcript row),
+    // and whether the current run launched under the locked-rotor warning
+    // (re-surfaced on the Complete status line).
+    double overMaxDurationEntry_ = 0.0;
+    bool lockedRotorWarnedForRun_ = false;
 };
 
 }  // namespace NodeGUI::sim

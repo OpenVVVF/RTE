@@ -37,8 +37,12 @@
  *  - Evidence collected 2026-10-20: a 24 s IqVar=2000 @ 500 rpm scenario
  *    sustained plant-side currents > 500 A for 69 telemetry frames (peak
  *    571.5 A) while the session kept pwm_moe=1 / control_state RUNNING /
- *    fault_flags_hex = 0x00000000 - zero trip vocabulary. The next step is
- *    picking items off the TODO list above (FRAM store first).
+ *    fault_flags_hex = 0x00000000 - zero trip vocabulary. The fault word and
+ *    names stay constant + literal (twin tooling exact-matches them); the
+ *    honest story now rides on the boot "[FAULT] sim host: ..." console line
+ *    and the fault_manager_emulation=manager_absent_sim_host state stamp.
+ *    The next step is picking items off the TODO list above (FRAM store
+ *    first).
  * --------------------------------------------------------------------------- */
 
 #include <algorithm>
@@ -359,32 +363,74 @@ int RunScenario(int argc, char** argv) {
     app::AppLoopInit(alp);
     app::VsenseInit(vse);
 
-    // boot log preamble (verbatim twin/harness.py text via twin/native)
-    sess.console(0.0, "[FOC] Kp set to 0.0300");
-    sess.console(0.0, "[FOC] Ki set to 10.0000");
+    // boot log preamble — F-honesty (review P1-r2-4): the gain lines quote
+    // the values the loop ACTUALLY eats, not the recorded firmware's
+    // 0.0300/10.0000 literals. Authority chain (traced): SimRunner merges the
+    // sw graph's Values.Config Key/DefaultValue over the twin baseline into
+    // kGraphConfigSeed; the seed loop above fills shim.config; the domain
+    // init just above then loads each key through platform_config_load
+    // (FRAM-create semantics) into the config node's Cached, which drives the
+    // PI gains by wire. Reading shim.config HERE — post-seed, post-init —
+    // therefore reports the value in use; whichever face the seed wears
+    // (graph default or baseline) is what stepped the control law.
+    const auto cfgSeed = [&](const char* key) -> double {
+        const auto it = shim.config.find(key);
+        return it != shim.config.end() ? static_cast<double>(it->second) : 0.0;
+    };
+    {
+        char line[256];
+        std::snprintf(line, sizeof line,
+                      "[FOC] Kp set to %.4f (Ctrl.PiD.Kp fram/graph seed) / "
+                      "%.4f (Ctrl.PiQ.Kp fram/graph seed)",
+                      cfgSeed("Ctrl.PiD.Kp"), cfgSeed("Ctrl.PiQ.Kp"));
+        sess.console(0.0, line);
+        std::snprintf(line, sizeof line,
+                      "[FOC] Ki set to %.4f (Ctrl.PiD.Ki fram/graph seed) / "
+                      "%.4f (Ctrl.PiQ.Ki fram/graph seed)",
+                      cfgSeed("Ctrl.PiD.Ki"), cfgSeed("Ctrl.PiQ.Ki"));
+        sess.console(0.0, line);
+    }
     {
         // F07: read the plant's own boot params instead of gen7 constants;
         // any NaN (e.g. encoder-less rig w/o OffsetDeg) keeps the legacy
-        // gen7-monolith line verbatim (F7-fallback behavior).
+        // gen7-monolith line verbatim (F7-fallback behavior). kp/ki again
+        // quote the consumed FRAM/graph seed on both branches (P1-r2-4).
         double bootPoles = 0.0, bootRs = 0.0, bootOff = 0.0;
         plant::PlantBootParams(plantState, &bootPoles, &bootRs, &bootOff);
         char buf[256];
         if (std::isfinite(bootPoles) && std::isfinite(bootRs) && std::isfinite(bootOff)) {
             std::snprintf(buf, sizeof buf,
                           "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=%.0f "
-                          "offset=%.3f deg sign=1 R=%.4f ohm kp=0.0300 ki=10.0000",
-                          bootPoles * 2.0, bootOff, bootRs);
+                          "offset=%.3f deg sign=1 R=%.4f ohm "
+                          "kp=%.4f/%.4f ki=%.4f/%.4f (Ctrl.PiD/PiQ seed)",
+                          bootPoles * 2.0, bootOff, bootRs,
+                          cfgSeed("Ctrl.PiD.Kp"), cfgSeed("Ctrl.PiQ.Kp"),
+                          cfgSeed("Ctrl.PiD.Ki"), cfgSeed("Ctrl.PiQ.Ki"));
             /* graph Poles convention is pole PAIRS (node.json); the recorded
              * boot vocabulary prints physical poles (Motor.Poles = 10 on gen7) */
         } else {
             std::snprintf(buf, sizeof buf,
                           "[CFG] motor config loaded from FRAM: type=pmsm_ipm poles=10 "
-                          "offset=33.034 deg sign=1 R=0.0076 ohm kp=0.0300 ki=10.0000");
+                          "offset=33.034 deg sign=1 R=0.0076 ohm "
+                          "kp=%.4f/%.4f ki=%.4f/%.4f (Ctrl.PiD/PiQ seed)",
+                          cfgSeed("Ctrl.PiD.Kp"), cfgSeed("Ctrl.PiQ.Kp"),
+                          cfgSeed("Ctrl.PiD.Ki"), cfgSeed("Ctrl.PiQ.Ki"));
         }
         sess.console(0.0, buf);
     }
     sess.console(0.0, "[SHELL] Command shell ready; type HELP for list");
     sess.console(0.0, "[CUR] start cal done U=-4.565 V=-2.482");
+    // F02-honesty (review P1-r2-5): NO FaultManager/ControlSupervisor is
+    // linked into this host (see the header note) — the reset-event
+    // [FAULT]/[SUP] echoes below are host choreography, so the fault word can
+    // never move. Say so in-band once, and stamp it on a sibling state
+    // signal; the fault_flags_hex VALUE itself keeps its exact-string shape
+    // ("0x00000000") because twin tooling pattern-matches that literal.
+    sess.console(0.0, "[FAULT] sim host: no fault manager linked — "
+                      "fault_flags_hex / fault_active_names stay 0x00000000 / [] "
+                      "for the whole session; fault-inject events raise plant "
+                      "physics only (see the F02 note in the host header)");
+    sess.state(0.0, "fault_manager_emulation", "\"manager_absent_sim_host\"");
 
     bool gate_fault_latched = true;   // boot latch like hardware
     bool started = false;             // ControlSupervisor RUNNING latch
@@ -689,6 +735,11 @@ int RunScenario(int argc, char** argv) {
         }
 
         // ---- 1 Hz state records ----
+        // The fault word and names stay deliberately constant + literal: the
+        // protection manager is absent in this host (F02) — the honest story
+        // rides on the boot console line + the fault_manager_emulation
+        // state stamp above; the literal shapes below are load-bearing for
+        // twin tooling's exact-match checks (P1-r2-5).
         if (k % 2500 == 0) {
             sess.state(t, "control_state", started ? "\"RUNNING\"" : "\"IDLE\"");
             sess.state(t, "fault_flags_hex", "\"0x00000000\"");
