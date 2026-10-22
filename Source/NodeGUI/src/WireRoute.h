@@ -7,7 +7,8 @@
 #include <vector>
 
 // Route precedence in the scene: user waypoints > (future net stubs) >
-// PlanAutoRoute > legacy cubic (BridgeConnectionPainter::wirePath).
+// PlanAutoRoute > the rigid orthogonal default (BridgeConnectionPainter::
+// wirePath; nothing renders a smooth cubic anymore).
 // Grid contract: kGridPitch is THE scene grid — node origins, port rows and
 // sockets, wire bends and router tracks all snap to its multiples, so the
 // whole canvas composites on one orthogonal lattice.
@@ -47,17 +48,19 @@ int NearestRouteLeg(const QPointF& out,
 
 // ---- default (waypoint-free) routing ------------------------------------
 
-// Cubic-bezier sampled to a polyline for crossing checks (the legacy default
-// renders as a bezier, not these samples).
+// Cubic-bezier sampled to a polyline. NEVER rendered: the router feeds these
+// samples to its crossing checks as the stand-in shape of the default
+// corridor when deciding whether a route may keep the compact default.
 QPolygonF SampleCubic(const QPointF& from,
                       const QPointF& ctrl1,
                       const QPointF& ctrl2,
                       const QPointF& to,
                       int segments);
 
-// What the mini-router decided for one connection: legacy = draw today's
-// cubic (line holds its samples for wire-crossing checks); otherwise draw
-// line (an orthogonal polyline in scene coordinates).
+// What the mini-router decided for one connection: legacy = the connection
+// keeps the standard rigid default shape (line holds the sampled smooth
+// stand-in the crossing checks scored against — not a drawable route);
+// otherwise draw line (an orthogonal polyline in scene coordinates).
 struct AutoRouteChoice {
     bool legacy = true;
     QPolygonF line;
@@ -71,12 +74,13 @@ struct AutoRouteContext {
     std::vector<QPolygonF> routed;
 };
 
-// Deterministic mini-router for one connection. Fast path: the legacy cubic
-// with zero node crossings AND zero wire crossings survives verbatim (clean
-// graphs stay bit-identical). Else the first candidate from straight/L/S/
-// wrap corridors that clears every node body wins; ties break on fewer
-// crossings with previously routed wires, then candidate order. Falls back
-// to legacy when nothing clears — never worse than today.
+// Deterministic mini-router for one connection. Fast path: the sampled
+// smooth stand-in with zero node crossings AND zero wire crossings keeps the
+// compact default corridor (clean graphs stay on their compact routes).
+// Else the first candidate from straight/L/S/ wrap corridors that clears
+// every node body wins; ties break on fewer crossings with previously routed
+// wires, then candidate order. Falls back to the default corridor when
+// nothing clears — never worse than today.
 AutoRouteChoice PlanAutoRoute(const QPointF& out,
                               const QPointF& in,
                               const QPolygonF& legacySamples,

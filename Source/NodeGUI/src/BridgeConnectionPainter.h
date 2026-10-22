@@ -9,8 +9,10 @@ namespace NodeGUI {
 
 // Paints Connections and Bridges using the color of the source port's quantity.
 // Bridges keep a dashed line style; regular Connections stay solid.
-// Connections with manual routing waypoints render as a rectilinear polyline
-// through the bends; untouched connections keep the cubic default.
+// One wire shape everywhere: connections with manual routing waypoints render
+// as the rectilinear polyline through the bends; everything else renders the
+// rigid orthogonal default (the mini-router's corridor when it picked one,
+// else the standard stub-elbow-stub route) — no smooth cubic anywhere.
 class BridgeConnectionPainter : public QtNodes::AbstractConnectionPainter {
 public:
     void paint(QPainter* painter, QtNodes::ConnectionGraphicsObject const& cgo) const override;
@@ -20,9 +22,9 @@ public:
     QRectF routeBounds(QtNodes::ConnectionGraphicsObject const& cgo) const override;
 
 private:
-    QPainterPath cubicPath(QtNodes::ConnectionGraphicsObject const& connection) const;
     // The displayed wire path: the rectilinear waypoint route when bends are
-    // stored, else today's cubic.
+    // stored, else the mini-router polyline, else the rigid orthogonal
+    // default route. Always a polyline.
     QPainterPath wirePath(QtNodes::ConnectionGraphicsObject const& connection) const;
     // Full waypoint route polyline in connection-local coordinates; empty
     // polygon when the connection routes automatically.

@@ -257,7 +257,8 @@ AutoRouteChoice PlanAutoRoute(const QPointF& rawOut,
     const QPointF out = SnapToGrid(rawOut);
     const QPointF in = SnapToGrid(rawIn);
 
-    // Fast path: a clean legacy cubic survives verbatim.
+    // Fast path: a clean default corridor survives verbatim (no explicit
+    // polyline emitted; the painter draws the rigid default).
     if (PolylineNodeCrossings(legacySamples, environment.obstacles) == 0 &&
         PolylineWireCrossings(legacySamples, environment.routed) == 0) {
         return {true, legacySamples};

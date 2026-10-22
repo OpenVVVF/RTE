@@ -4,9 +4,12 @@
 // ---- GUI architecture notes (routing + node glyph layer) -----------------
 //
 // Manual wire routing ("waypoints"):
-//   Connections render with the QtNodes cubic default UNTIL the user places
-//   manual bends, so untouched graphs save and render byte-identical. User
-//   bends live ONLY in the GUI layer (NodeGraphModel::connectionWaypoints_,
+//   One wire behavior: every connection renders rectilinear - the rigid
+//   orthogonal default (WireRoute::BuildRoute) for un-routed wires, the
+//   waypoint route once the user places manual bends; the QtNodes smooth
+//   cubic is gone from the painter, so untouched graphs still save
+//   byte-identical. User bends live ONLY in the GUI layer
+//   (NodeGraphModel::connectionWaypoints_,
 //   keyed by QtNodes connection id, scene coordinates); NodeAPI never sees
 //   them. GraphScene merges them into the document on save/snapshot as an
 //   OPTIONAL per-connection key, and re-applies them on load/undo:
@@ -108,6 +111,12 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
         const QString arg = parts.value(1);
         if (kind == "screen") {
             window->SmokeSelectScreen(arg.toInt());
+        } else if (kind == "addnode") {
+            // Instantiates a node type at a scene position through the real
+            // creation seam (AddNodeAt), so the grid-snap pref applies.
+            const QString result =
+                window->SmokeAddNode(arg, parts.value(2).toDouble(), parts.value(3).toDouble());
+            std::cout << "addnode " << arg.toStdString() << "=" << result.toStdString() << "\n";
         } else if (kind == "pick") {
             window->SmokePickNode(arg.toStdString());
         } else if (kind == "pickconn") {

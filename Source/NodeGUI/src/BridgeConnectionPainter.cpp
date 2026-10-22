@@ -98,17 +98,6 @@ void DrawStyleShape(QPainter* painter,
 
 }  // namespace
 
-QPainterPath BridgeConnectionPainter::cubicPath(QtNodes::ConnectionGraphicsObject const& connection) const {
-    QPointF const in = connection.endPoint(QtNodes::PortType::In);
-    QPointF const out = connection.endPoint(QtNodes::PortType::Out);
-
-    auto const c1c2 = connection.pointsC1C2();
-
-    QPainterPath cubic(out);
-    cubic.cubicTo(c1c2.first, c1c2.second, in);
-    return cubic;
-}
-
 QPolygonF BridgeConnectionPainter::routePolygon(QtNodes::ConnectionGraphicsObject const& connection) const {
     const auto* model = TryGetNodeModel(connection);
     if (!model) {
@@ -132,11 +121,10 @@ QPolygonF BridgeConnectionPainter::routePolygon(QtNodes::ConnectionGraphicsObjec
 }
 
 QPainterPath BridgeConnectionPainter::wirePath(QtNodes::ConnectionGraphicsObject const& connection) const {
-    const QPolygonF routed = routePolygon(connection);
-    QPolygonF source = routed;
+    QPolygonF source = routePolygon(connection);
     if (source.isEmpty()) {
         // Waypoint-free: honor the mini-router's polyline when it displaced
-        // the legacy cubic; legacy keeps today's smooth bezier.
+        // the default corridor.
         if (const auto* model = TryGetNodeModel(connection)) {
             if (const auto* choice = model->AutoRoute(connection.connectionId());
                 choice && !choice->legacy && !choice->line.isEmpty()) {
@@ -151,7 +139,14 @@ QPainterPath BridgeConnectionPainter::wirePath(QtNodes::ConnectionGraphicsObject
         }
     }
     if (source.isEmpty()) {
-        return cubicPath(connection);
+        // One wire behavior: the un-routed default is the same rigid
+        // orthogonal route the drag machinery produces (horizontal port
+        // stubs, single elbow per leg). Covers pending drafts too - a draft
+        // has neither waypoints nor a router entry, so it lands here and
+        // tracks the cursor as an orthogonal wire.
+        source = WireRoute::BuildRoute(connection.endPoint(QtNodes::PortType::Out),
+                                       connection.endPoint(QtNodes::PortType::In),
+                                       {});
     }
 
     QPainterPath path(source.constFirst());
@@ -313,35 +308,11 @@ void BridgeConnectionPainter::drawWaypointHandles(QPainter* painter,
 
 QPainterPath BridgeConnectionPainter::getPainterStroke(
     QtNodes::ConnectionGraphicsObject const& cgo) const {
-    if (!routePolygon(cgo).isEmpty()) {
-        QPainterPathStroker stroker;
-        stroker.setWidth(10.0);
-        return stroker.createStroke(wirePath(cgo));
-    }
-    if (const auto* model = TryGetNodeModel(cgo)) {
-        if (const auto* choice = model->AutoRoute(cgo.connectionId());
-            choice && !choice->legacy && !choice->line.isEmpty()) {
-            QPainterPathStroker stroker;
-            stroker.setWidth(10.0);
-            return stroker.createStroke(wirePath(cgo));
-        }
-    }
-
-    auto cubic = cubicPath(cgo);
-
-    QPointF const out = cgo.endPoint(QtNodes::PortType::Out);
-    QPainterPath result(out);
-
-    unsigned int constexpr segments = 20;
-    for (auto i = 0ul; i < segments; ++i) {
-        double ratio = double(i + 1) / segments;
-        result.lineTo(cubic.pointAtPercent(ratio));
-    }
-
+    // The hit shape follows the drawn wire exactly (every route wirePath
+    // emits is already a polyline).
     QPainterPathStroker stroker;
     stroker.setWidth(10.0);
-
-    return stroker.createStroke(result);
+    return stroker.createStroke(wirePath(cgo));
 }
 
 QRectF BridgeConnectionPainter::routeBounds(QtNodes::ConnectionGraphicsObject const& cgo) const {
@@ -371,6 +342,8 @@ QRectF BridgeConnectionPainter::routeBounds(QtNodes::ConnectionGraphicsObject co
         }
         return local.boundingRect().adjusted(-4.0, -4.0, 4.0, 4.0);
     }
+    // The default orthogonal route stays inside the endpoint rect, which the
+    // base item bounding rect already covers.
     return {};
 }
 

@@ -90,6 +90,10 @@ public:
     bool SmokeMouseDragNode(const std::string& nodeId, double dx, double dy);
     // [smoke] node origin + port socket scene positions for grid asserts.
     QString SmokeDumpNodeGeometry(const std::string& nodeId);
+    // [smoke] add a node of typeId at a scene position on the ACTIVE editor
+    // tab through the real creation seam (AddNodeAt, so the grid-snap pref
+    // applies). Returns "ok <createdId>" or "failed <error>".
+    QString SmokeAddNode(const QString& typeId, double x, double y);
     // [smoke] save the ACTIVE editor tab's document to a path (menu-free).
     QString SmokeSaveActiveAs(const QString& path);
     // [smoke] load a sim session file through the Simulate screen's own

@@ -2221,6 +2221,23 @@ QString MainWindow::SmokeDumpNodeGeometry(const std::string& nodeId) {
     return active->DumpNodeGeometry(nodeId);
 }
 
+QString MainWindow::SmokeAddNode(const QString& typeId, double x, double y) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("failed no scene");
+    }
+    const QString error = active->AddNodeAt(typeId.toStdString(), QPointF(x, y));
+    if (!error.isEmpty()) {
+        return QStringLiteral("failed ") + error;
+    }
+    // Graph::AddNode appends on success, so the new instance is the last one.
+    const auto& nodes = active->Graph().GetNodes();
+    if (!nodes.empty()) {
+        return QStringLiteral("ok ") + QString::fromStdString(nodes.back().id);
+    }
+    return QStringLiteral("failed no node after add");
+}
+
 GraphScene* MainWindow::ActiveGraphScene() {
     if (plantScreen_ && PlantTabActive()) {
         return plantScreen_->Scene();
