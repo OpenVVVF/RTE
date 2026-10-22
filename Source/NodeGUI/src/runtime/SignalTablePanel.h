@@ -31,6 +31,11 @@ public:
 
 public slots:
     void SetGraphCount(int count);
+    // Plot-pane reorder fed from TelemetryPanel::panesReordered: moves the
+    // set of slot `from` to slot `to`. Assignments are PER SLOT — after a
+    // pane drag the dropdown labels (G1..Gn) follow the new slot order and
+    // no assignment is lost.
+    void PermuteGraphSignals(int from, int to);
     // Playback-cursor push from TelemetryPanel (wired in RuntimeTab): while
     // set, the Value column reads at the cursor time via
     // TelemetryStore::ValueAt instead of latest; clearing restores latest.

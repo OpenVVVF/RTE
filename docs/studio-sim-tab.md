@@ -130,8 +130,8 @@ the same plot-leaf behavior; each surface keeps its own cursor.
   before. The sim table's header flips "Last" -> "Cursor" as a reminder.
 - **The mouse wheel over a plot pans the window** off the newest tail
   (up = toward newer, step = view/4 per notch); wheeling back onto the newest
-  edge re-engages tail-following automatically. Scrolling the plots column
-  itself uses the scrollbar — the wheel over a plot belongs to the plot.
+  edge re-engages tail-following automatically — the wheel over a plot
+  belongs to the plot.
 - On the **live Runtime tab** a pinned cursor additionally **freezes the
   window**: the stream keeps running behind the hold, forward pans clamp at
   the newest sample without re-following, and double-click is the release
@@ -149,6 +149,45 @@ session's span, so e.g. a 3685 s recording can be widened into one window
 (proven on `twin/out/im_noload_1h_sim.jsonl`). The Runtime tab slider and its
 0.5..60 s range are unchanged, as is the initial view after a load
 (min(duration, 60 s)).
+
+### Plot panes: reorder + resize (shipped)
+
+Both telemetry surfaces (this tab's Telemetry view and the Runtime tab's
+telemetry panel) stack their graphs in a **vertical splitter** whose panes
+are user-arrangeable, scope-style:
+
+- **Drag to reorder.** Grab a pane's **title strip** (the band that paints
+  the "Graph N" title, unit label, and signal legend) and drag it against
+  the other panes; an orange insertion bar previews the slot and dropping
+  commits the move. The strip is disjoint from the plot area, so the
+  playback cursor / double-click / wheel-pan gestures over the plot are
+  untouched.
+- **Assignments are PER SLOT.** A pane carries its signal set with it: slot
+  labels `G1..Gn` in the signal-table dropdowns always number the panes
+  top-to-bottom, so after a move the chooser cells relabel (`vdc_v: G2 ->
+  G1` etc.) and no assignment is ever lost. **Heights are likewise per
+  pane** and travel on a move.
+- **Height handles.** The horizontal splitter seams between panes set
+  per-pane heights (px budget, proportionally squashed when it exceeds the
+  available space); panes are non-collapsible and share width (the
+  container's width), there is no per-pane width setting.
+- **Persistence.** Order + heights ride the existing layout autosaves: the
+  sim session-class entry (`sim/layouts/<stem>/<channelHash>`) and the
+  runtime autosave (`runtime/autosave`) gain `paneOrder` (pane id list in
+  slot order) and `paneHeights` (px per pane), written through the same
+  ~500 ms debounce as combo edits (the runtime autosave now also writes
+  through continuously instead of only on close). The `graph{i}` set keys
+  stay **naturally keyed** (pane-id rank) so a pure reorder rewrites only
+  `paneOrder`. Files from before this wave carry no order keys and restore
+  **natural order + equal heights**, i.e. byte-for-byte the old semantics;
+  older builds reading a new file see the natural arrangement.
+- Offscreen smoke verbs: `moveplot <sim|runtime> <from> <to>`,
+  `setplotsizes <sim|runtime> <px,...>` (the splitter-handle entry),
+  `plotpanes <sim|runtime>` (dumps `order=.. heights=.. titles=..`), and
+  `plotdragtitle <surface> <toIndex>` (synthesized real strip drag for the
+  gesture path). Reorders, heights, and the relabeled table persist across
+  relaunch (machine-checked).
+
 
 ### Recorded-session overlay (shipped, backlog P1-8)
 

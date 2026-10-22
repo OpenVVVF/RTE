@@ -235,6 +235,12 @@ QRect SignalPlotWidget::PlotAreaRect() const
     return QRect(kMarginLeft, kMarginTop, pw, ph);
 }
 
+void SignalPlotWidget::SetTitle(const QString& title)
+{
+    title_ = title;
+    update();
+}
+
 void SignalPlotWidget::mousePressEvent(QMouseEvent* event)
 {
     const bool inPlot = event->position().x() >= kMarginLeft
@@ -247,11 +253,25 @@ void SignalPlotWidget::mousePressEvent(QMouseEvent* event)
         event->accept();
         return;
     }
+    // Title strip (above the plot area): grab starts a pane-reorder drag —
+    // the surface that owns the vertical splitter moves this pane.
+    if (event->button() == Qt::LeftButton
+        && event->position().y() < kMarginTop - 4) {
+        reorderDragging_ = true;
+        emit paneDragStarted();
+        event->accept();
+        return;
+    }
     QOpenGLWidget::mousePressEvent(event);
 }
 
 void SignalPlotWidget::mouseMoveEvent(QMouseEvent* event)
 {
+    if (reorderDragging_) {
+        emit paneDragMoved(static_cast<int>(event->globalPosition().y()));
+        event->accept();
+        return;
+    }
     if (dragging_) {
         emit cursorDragged(TsecAtX(static_cast<int>(event->position().x())));
         event->accept();
@@ -262,6 +282,12 @@ void SignalPlotWidget::mouseMoveEvent(QMouseEvent* event)
 
 void SignalPlotWidget::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (event->button() == Qt::LeftButton && reorderDragging_) {
+        reorderDragging_ = false;
+        emit paneDragEnded(static_cast<int>(event->globalPosition().y()));
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && dragging_) {
         // Release keeps the cursor pinned where the drag ended.
         dragging_ = false;

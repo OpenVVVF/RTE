@@ -397,6 +397,44 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                 std::cout << "resgraphcol " << arg.toStdString() << "="
                           << applied << "\n";
             }
+        } else if (kind == "moveplot" || kind == "setplotsizes" || kind == "plotpanes") {
+            // Plot-pane pokes (sim | runtime): the same surface entries the
+            // title-strip reorder drag / splitter handles land on.
+            // moveplot <surface> <from> <to> reorders a pane;
+            // setplotsizes <surface> <px,px,...> sets per-slot heights;
+            // plotpanes <surface> dumps "order=.. heights=.. titles=..".
+            NodeGUI::sim::SimTelemetryView* simView = nullptr;
+            NodeGUI::runtime::TelemetryPanel* runtimePanel = nullptr;
+            if (arg == "sim") {
+                simView = window->findChild<NodeGUI::sim::SimTelemetryView*>();
+            } else if (arg == "runtime") {
+                runtimePanel = window->findChild<NodeGUI::runtime::TelemetryPanel*>();
+            }
+            if (!simView && !runtimePanel) {
+                std::cerr << "smoke: no telemetry surface for " << kind.toStdString()
+                          << " " << arg.toStdString() << "\n";
+            } else if (kind == "plotpanes") {
+                std::cout << "plotpanes " << arg.toStdString() << "="
+                          << (simView ? simView->DumpPlotPanes()
+                                      : runtimePanel->DumpPlotPanes())
+                                 .toStdString()
+                          << "\n";
+            } else if (kind == "moveplot") {
+                const bool ok = simView
+                    ? simView->MovePane(parts.value(2).toInt(), parts.value(3).toInt())
+                    : runtimePanel->MovePane(parts.value(2).toInt(), parts.value(3).toInt());
+                std::cout << "moveplot " << arg.toStdString() << "="
+                          << (ok ? "ok" : "failed") << "\n";
+            } else {
+                QList<int> px;
+                for (const QString& part : parts.value(2).split(u',')) {
+                    px.push_back(part.toInt());
+                }
+                const bool ok = simView ? simView->SetPlotSizes(px)
+                                        : runtimePanel->SetPlotSizes(px);
+                std::cout << "setplotsizes " << arg.toStdString() << "="
+                          << (ok ? "ok" : "failed") << "\n";
+            }
         } else if (kind == "plotdrag" || kind == "plotdblclick" || kind == "plotwheel") {
             // Synthesized REAL gestures on the surface's first plot, routed
             // through the leaf mouse/wheel handlers (the dragcursor family
@@ -444,6 +482,46 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                     QApplication::sendEvent(plot, &wheel);
                 }
                 std::cout << kind.toStdString() << " " << arg.toStdString() << "=ok\n";
+            }
+        } else if (kind == "plotdragtitle") {
+            // plotdragtitle <surface> <toIndex>: synthesized REAL reorder
+            // drag — press on the first plot's title strip, drag to the
+            // <toIndex>-th plot's vertical center, release. Exercises the
+            // leaf strip hit-test + the surface drag hub the moveplot verb
+            // skips. Plot children come out in QObject child order (not
+            // splitter order after reorders); the smoke only asserts that
+            // exactly one reorder commits and the cursor is untouched.
+            QWidget* surface = nullptr;
+            if (arg == "sim") {
+                surface = window->findChild<NodeGUI::sim::SimTelemetryView*>();
+            } else if (arg == "runtime") {
+                surface = window->findChild<NodeGUI::runtime::TelemetryPanel*>();
+            }
+            const QList<NodeGUI::runtime::SignalPlotWidget*> plots = surface
+                ? surface->findChildren<NodeGUI::runtime::SignalPlotWidget*>()
+                : QList<NodeGUI::runtime::SignalPlotWidget*>{};
+            auto* plot = plots.value(0);
+            auto* target = plots.value(parts.value(2).toInt());
+            if (!plot || !target || plot == target) {
+                std::cerr << "smoke: bad panes for plotdragtitle " << arg.toStdString() << "\n";
+            } else {
+                const QPointF grab(plot->width() / 2.0, 12.0);  // inset in the title strip
+                const QPointF g0 = plot->mapToGlobal(grab.toPoint());
+                const QPoint targetGlobalF = target->mapToGlobal(target->rect().center());
+                const QPointF localAtTarget =
+                    plot->mapFromGlobal(targetGlobalF);
+                QMouseEvent press(QEvent::MouseButtonPress, grab, grab, g0,
+                                  Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                QApplication::sendEvent(plot, &press);
+                QMouseEvent move(QEvent::MouseMove, localAtTarget, localAtTarget,
+                                 targetGlobalF,
+                                 Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                QApplication::sendEvent(plot, &move);
+                QMouseEvent release(QEvent::MouseButtonRelease, localAtTarget,
+                                    localAtTarget, targetGlobalF,
+                                    Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                QApplication::sendEvent(plot, &release);
+                std::cout << "plotdragtitle " << arg.toStdString() << "=ok\n";
             }
         } else if (kind == "dragcursor" || kind == "clearcursor" || kind == "panwindow") {
             // Playback-cursor pokes (sim | runtime): drive the same surface
@@ -518,6 +596,12 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             } else {
                 std::cerr << "smoke: no menu named " << arg.toStdString() << "\n";
             }
+        } else if (kind == "winresize") {
+            // winresize <w> <h> — size the main window (layout-dependent
+            // smoke assertions: persisted pane heights need real estate).
+            window->resize(parts.value(1).toInt(), parts.value(2).toInt());
+            std::cout << "winresize=" << window->width() << "x"
+                      << window->height() << "\n";
         } else if (kind == "open") {
             if (!window->OpenGraph(arg.toStdString())) {
                 std::cerr << "smoke: open failed " << arg.toStdString() << "\n";

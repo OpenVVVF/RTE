@@ -65,6 +65,18 @@ void SignalTablePanel::SetGraphSignalSets(const std::vector<QStringList>& sets) 
     emit graphSignalsChanged(graphSignals_);
 }
 
+void SignalTablePanel::PermuteGraphSignals(int from, int to) {
+    const int n = static_cast<int>(graphSignals_.size());
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) {
+        return;
+    }
+    QStringList set = graphSignals_[static_cast<std::size_t>(from)];
+    graphSignals_.erase(graphSignals_.begin() + from);
+    graphSignals_.insert(graphSignals_.begin() + to, set);
+    RebuildSignalTable();
+    emit graphSignalsChanged(graphSignals_);
+}
+
 void SignalTablePanel::SetGraphCount(int count) {
     count = std::max(1, count);
     while (static_cast<int>(graphSignals_.size()) < count) {

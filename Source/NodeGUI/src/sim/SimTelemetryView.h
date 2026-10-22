@@ -14,14 +14,14 @@
 
 class QComboBox;
 class QDoubleSpinBox;
+class QFrame;
 class QLabel;
 class QLineEdit;
-class QScrollArea;
 class QSlider;
+class QSplitter;
 class QStackedWidget;
 class QTableWidget;
 class QTimer;
-class QVBoxLayout;
 
 namespace NodeGUI::runtime {
 class SignalPlotWidget;
@@ -31,18 +31,24 @@ namespace NodeGUI::sim {
 
 // Telemetry region of the Simulate screen: signal list with a per-signal
 // target-graph dropdown on the left, N runtime plot leaf widgets in a
-// scrolling column center-right (add/remove toolbar; default 3 like the
-// historical layout), and the session summary line underneath.
+// vertical splitter column center-right (reorder by title-strip drag,
+// resize by the per-pane handles; default 3 like the historical layout),
+// and the session summary line underneath.
 //
 // Data path: SimSession (v3 jsonl on disk) -> runtime::TelemetryStore ->
 // runtime::SignalPlotWidget — the same contract the live Runtime tab uses,
 // so sim and recorded sessions render identically. Mirrors the runtime
 // TelemetryPanel + SignalTablePanel machinery.
 //
-// Layout persistence: graph count + per-graph signal sets autosave per
-// session class (file stem + channel-set hash) into QSettings, mirroring
-// RuntimeTab's autosave shape; a loaded session with a stored entry restores
-// it instead of falling back to the first-load favorites.
+// Layout persistence: graph count + per-graph signal sets + pane order +
+// pane heights autosave per session class (file stem + channel-set hash)
+// into QSettings, mirroring RuntimeTab's autosave shape; a loaded session
+// with a stored entry restores it instead of falling back to the first-load
+// favorites. Pane semantics: assignments are PER SLOT — a title-strip drag
+// moves a pane (its set travels with it) and renames slots, the vertical
+// splitter's handle drags set per-slot heights (px, non-collapsible); the
+// stored `paneOrder` member is the permutation, absent legacy keys mean
+// natural order.
 //
 // Playback cursor: the same surface-hub shape as TelemetryPanel — leaf
 // gestures fan out to all plots, and the Value column ("Last" when no
@@ -122,6 +128,13 @@ private slots:
     void AddGraph();
     void RemoveLastGraph();
 
+public:
+    // Pane gestures + dump — the leaf title-strip drag lands on the same
+    // entries the smoke verbs poke (moveplot / setplotsizes).
+    bool MovePane(int from, int to);
+    bool SetPlotSizes(const QList<int>& px);
+    QString DumpPlotPanes() const;
+
 private:
     void RebuildSignalTable();
     void UpdateValueColumn();
@@ -133,12 +146,16 @@ private:
     void UpdateOverlayInfo();
     void ApplyOverlayOffsetFromSlider(int centiseconds);
     NodeGUI::runtime::SignalPlotWidget* MakePlot();
+    void RetitlePlots();
+    void OnPaneDragMoved(NodeGUI::runtime::SignalPlotWidget* pane, int globalY);
+    void OnPaneDragEnded(NodeGUI::runtime::SignalPlotWidget* pane, int globalY);
     void UpdateGraphCount();
     int AssignedGraph(const QString& name) const;
     // Per-session-class layout persistence (see the class comment): restore
     // runs inside LoadSession ahead of the default-assignment fallback;
     // ScheduleLayoutSave debounces every user-side change (combo target
-    // edit, graph add/remove) and SaveLayout writes it through.
+    // edit, graph add/remove, pane reorder, splitter movement) and
+    // SaveLayout writes it through.
     bool TryRestoreLayout();
     void ScheduleLayoutSave();
     void SaveLayout();
@@ -151,15 +168,19 @@ private:
     QLineEdit* filterEdit_ = nullptr;
     QTableWidget* signalTable_ = nullptr;
     QSlider* viewSlider_ = nullptr;
-    QScrollArea* scroll_ = nullptr;
-    QWidget* plotsContainer_ = nullptr;
-    QVBoxLayout* plotsLayout_ = nullptr;
+    QSplitter* plotsSplitter_ = nullptr;
+    QFrame* dropIndicator_ = nullptr;
     QLabel* countLabel_ = nullptr;
     QLabel* statusLabel_ = nullptr;
     QLabel* cursorInfo_ = nullptr;
 
     std::vector<NodeGUI::runtime::SignalPlotWidget*> plots_;
     std::vector<QStringList> graphSignals_{QStringList{}, QStringList{}, QStringList{}};
+    // Pane ids in slot order (the persisted paneOrder member); stable ids
+    // survive add/remove so the stored permutation is total. See
+    // RuntimeTab's autosave for the same rank semantics.
+    std::vector<int> paneOrder_;
+    int nextPaneId_ = 0;
     bool rebuildingTable_ = false;
     bool hasCursor_ = false;
     double cursorTsec_ = 0.0;

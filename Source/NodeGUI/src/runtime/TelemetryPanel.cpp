@@ -7,19 +7,24 @@
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QSettings>
 #include <QSlider>
+#include <QSplitter>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 namespace NodeGUI::runtime {
 
 namespace {
+
+// Lower clamp for persisted pane heights (splitter px sizes).
+constexpr int kMinPaneHeightPx = 60;
 
 QSettings MakeOverlaySettings() {
     return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
@@ -111,23 +116,35 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
     overlayInfo_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     overlayRow->addWidget(overlayInfo_);
 
-    plotsContainer_ = new QWidget(this);
-    plotsLayout_ = new QVBoxLayout(plotsContainer_);
-    plotsLayout_->setContentsMargins(0, 0, 0, 0);
-    scroll_ = new QScrollArea(this);
-    scroll_->setWidgetResizable(true);
-    scroll_->setWidget(plotsContainer_);
+    plotsSplitter_ = new QSplitter(Qt::Vertical, this);
+    plotsSplitter_->setObjectName(QStringLiteral("rtPlotSplitter"));
+    plotsSplitter_->setChildrenCollapsible(false);
+
+    // Drop-position strip for reorder drags: overlaid on this panel at the
+    // insertion boundary (never a splitter child — that would make IT a
+    // pane).
+    dropIndicator_ = new QFrame(this);
+    dropIndicator_->setFixedHeight(3);
+    dropIndicator_->setAutoFillBackground(true);
+    dropIndicator_->setStyleSheet(
+        QStringLiteral("background-color: #e8963c;"));
+    dropIndicator_->hide();
 
     for (int i = 0; i < 3; ++i) {
         plots_.push_back(MakePlot());
     }
+    RetitlePlots();
     countLabel_->setText(QStringLiteral("(%1)").arg(plots_.size()));
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addLayout(topRow);
     layout->addLayout(overlayRow);
-    layout->addWidget(scroll_, 1);
+    layout->addWidget(plotsSplitter_, 1);
+
+    // Splitter-handle drags change the persisted pane heights.
+    connect(plotsSplitter_, &QSplitter::splitterMoved,
+            this, &TelemetryPanel::layoutChanged);
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &TelemetryPanel::OnStoreChanged);
@@ -137,27 +154,42 @@ TelemetryPanel::TelemetryPanel(RuntimeController* controller, QWidget* parent)
 
 SignalPlotWidget* TelemetryPanel::MakePlot() {
     auto* plot = new SignalPlotWidget(
-        QStringLiteral("Graph %1").arg(plots_.size() + 1), plotsContainer_);
+        QStringLiteral("Graph %1").arg(plots_.size() + 1), plotsSplitter_);
     plot->SetStore(&controller_->Store());
-    plot->setMinimumHeight(200);
+    plot->setMinimumHeight(kMinPaneHeightPx);
     connect(plot, &SignalPlotWidget::cursorDragged,
             this, &TelemetryPanel::DragCursorTo);
     connect(plot, &SignalPlotWidget::cursorClearRequested,
             this, &TelemetryPanel::ClearCursor);
     connect(plot, &SignalPlotWidget::panRequested,
             this, &TelemetryPanel::PanWindowBy);
+    connect(plot, &SignalPlotWidget::paneDragStarted, this,
+            [this] { dropIndicator_->raise(); });
+    connect(plot, &SignalPlotWidget::paneDragMoved, this,
+            [this, plot](int globalY) { OnPaneDragMoved(plot, globalY); });
+    connect(plot, &SignalPlotWidget::paneDragEnded, this,
+            [this, plot](int globalY) { OnPaneDragEnded(plot, globalY); });
     // A graph added under a pinned cursor joins the same hold.
     if (hasCursor_) {
         plot->SetCursor(true, cursorTsec_);
     }
-    plotsLayout_->addWidget(plot);
+    paneOrder_.push_back(nextPaneId_++);
+    plotsSplitter_->addWidget(plot);
     return plot;
+}
+
+void TelemetryPanel::RetitlePlots() {
+    for (std::size_t i = 0; i < plots_.size(); ++i) {
+        plots_[i]->SetTitle(QStringLiteral("Graph %1").arg(i + 1));
+    }
 }
 
 void TelemetryPanel::AddGraph() {
     plots_.push_back(MakePlot());
+    RetitlePlots();
     countLabel_->setText(QStringLiteral("(%1)").arg(plots_.size()));
     emit graphCountChanged(GraphCount());
+    emit layoutChanged();
 }
 
 void TelemetryPanel::RemoveLastGraph() {
@@ -166,10 +198,15 @@ void TelemetryPanel::RemoveLastGraph() {
     }
     auto* plot = plots_.back();
     plots_.pop_back();
-    plotsLayout_->removeWidget(plot);
+    paneOrder_.pop_back();
+    // Hiding detaches the pane from the splitter distribution ahead of the
+    // deferred destruction (QSplitter removes destroyed children itself).
+    plot->hide();
     plot->deleteLater();
+    RetitlePlots();
     countLabel_->setText(QStringLiteral("(%1)").arg(plots_.size()));
     emit graphCountChanged(GraphCount());
+    emit layoutChanged();
 }
 
 void TelemetryPanel::SetGraphCount(int count) {
@@ -180,9 +217,11 @@ void TelemetryPanel::SetGraphCount(int count) {
     while (GraphCount() > count) {
         auto* plot = plots_.back();
         plots_.pop_back();
-        plotsLayout_->removeWidget(plot);
+        paneOrder_.pop_back();
+        plot->hide();
         plot->deleteLater();
     }
+    RetitlePlots();
     countLabel_->setText(QStringLiteral("(%1)").arg(plots_.size()));
     emit graphCountChanged(GraphCount());
 }
@@ -198,6 +237,179 @@ void TelemetryPanel::SetViewSeconds(double seconds) {
         plot->SetViewSeconds(seconds);
     }
     UpdateCursorInfo();
+}
+
+bool TelemetryPanel::MovePane(int from, int to) {
+    const int n = GraphCount();
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) {
+        return false;
+    }
+    auto* plot = plots_[static_cast<std::size_t>(from)];
+    plots_.erase(plots_.begin() + from);
+    plots_.insert(plots_.begin() + to, plot);
+    const int id = paneOrder_[static_cast<std::size_t>(from)];
+    paneOrder_.erase(paneOrder_.begin() + from);
+    paneOrder_.insert(paneOrder_.begin() + to, id);
+    plotsSplitter_->insertWidget(to, plot);
+    RetitlePlots();
+    // Assignments are per slot: the table permutes its sets in step
+    // (RuntimeTab forwarding), which answers SetGraphSignals back here.
+    emit panesReordered(from, to);
+    emit layoutChanged();
+    return true;
+}
+
+bool TelemetryPanel::SetPlotSizes(const QList<int>& px) {
+    if (px.size() != GraphCount()) {
+        return false;
+    }
+    QList<int> clamped = px;
+    for (int& size : clamped) {
+        size = std::max(kMinPaneHeightPx, size);
+    }
+    plotsSplitter_->setSizes(clamped);
+    emit layoutChanged();
+    return true;
+}
+
+QList<int> TelemetryPanel::PaneSizes() const {
+    return plotsSplitter_ ? plotsSplitter_->sizes() : QList<int>{};
+}
+
+void TelemetryPanel::RestorePaneState(const std::vector<int>& order,
+                                      const QList<int>& heights) {
+    const int n = GraphCount();
+    // Validate the persisted pane-id list: exact length and all-unique.
+    // Anything legacy/foreign keeps the natural (creation) order.
+    std::vector<int> ids = order;
+    if (static_cast<int>(ids.size()) == n) {
+        std::vector<int> sorted = ids;
+        std::sort(sorted.begin(), sorted.end());
+        if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end()) {
+            ids = paneOrder_;
+        }
+    } else {
+        ids = paneOrder_;
+    }
+    std::vector<int> sorted = ids;
+    std::sort(sorted.begin(), sorted.end());
+    if (ids != paneOrder_) {
+        // Rank semantics: the persisted ids map onto the freshly numbered
+        // panes by their rank in the sorted id list, so slot k takes the
+        // freshly created pane whose rank the stored permutation names.
+        std::vector<SignalPlotWidget*> arranged(plots_.size());
+        std::vector<int> arrangedOrder(paneOrder_.size());
+        for (int slot = 0; slot < n; ++slot) {
+            const int rank = static_cast<int>(
+                std::lower_bound(sorted.begin(), sorted.end(),
+                                 ids[static_cast<std::size_t>(slot)])
+                - sorted.begin());
+            arranged[static_cast<std::size_t>(slot)] =
+                plots_[static_cast<std::size_t>(rank)];
+            arrangedOrder[static_cast<std::size_t>(slot)] =
+                paneOrder_[static_cast<std::size_t>(rank)];
+        }
+        plots_ = std::move(arranged);
+        paneOrder_ = std::move(arrangedOrder);
+        for (auto* plot : plots_) {
+            // addWidget on an existing child moves it; replaying in slot
+            // order lands the restored arrangement.
+            plotsSplitter_->addWidget(plot);
+        }
+        RetitlePlots();
+    }
+    // Heights are per-PANE like the sets (QSplitter sizes travel with the
+    // pane on reorder): heights come in naturally keyed by id rank, so the
+    // size applied to slot k is the stored rank of its pane's id.
+    if (heights.size() == n) {
+        QList<int> applied;
+        for (int slot = 0; slot < n; ++slot) {
+            const auto rankIt =
+                std::lower_bound(sorted.begin(), sorted.end(),
+                                 ids[static_cast<std::size_t>(slot)]);
+            if (rankIt == sorted.end()) {
+                return;
+            }
+            applied.push_back(
+                std::max(kMinPaneHeightPx,
+                         heights[static_cast<int>(rankIt - sorted.begin())]));
+        }
+        plotsSplitter_->setSizes(applied);
+    }
+}
+
+QString TelemetryPanel::DumpPlotPanes() const {
+    QStringList orderParts;
+    for (int id : paneOrder_) {
+        orderParts.push_back(QString::number(id));
+    }
+    QStringList sizeParts;
+    for (int size : PaneSizes()) {
+        sizeParts.push_back(QString::number(size));
+    }
+    QStringList titleParts;
+    for (const auto* plot : plots_) {
+        titleParts.push_back(plot->Title());
+    }
+    return QStringLiteral("order=%1 heights=%2 titles=%3")
+        .arg(orderParts.join(QStringLiteral(",")),
+             sizeParts.join(QStringLiteral(",")),
+             titleParts.join(QStringLiteral(",")));
+}
+
+void TelemetryPanel::OnPaneDragMoved(SignalPlotWidget* pane, int globalY) {
+    const int y = plotsSplitter_->mapFromGlobal(QPoint(0, globalY)).y();
+    // Insertion boundary count among the OTHER panes: the dragged pane
+    // would land before the first other pane whose center is below the
+    // cursor. Positions come from the live layout (heights can differ).
+    QList<QWidget*> others;
+    for (auto* plot : plots_) {
+        if (plot != pane) {
+            others.push_back(plot);
+        }
+    }
+    int boundary = 0;
+    int indicatorY = 0;
+    while (boundary < others.size()
+           && others[boundary]->geometry().center().y() < y) {
+        ++boundary;
+    }
+    indicatorY = boundary < others.size()
+                     ? others[boundary]->geometry().top()
+                     : (others.isEmpty()
+                            ? 0
+                            : others.last()->geometry().bottom() + 1);
+    indicatorY = std::clamp(indicatorY, 0,
+                            std::max(0, plotsSplitter_->height() - 3));
+    dropIndicator_->setGeometry(plotsSplitter_->x(), plotsSplitter_->y() + indicatorY,
+                                plotsSplitter_->width(), 3);
+    dropIndicator_->show();
+    dropIndicator_->raise();
+}
+
+void TelemetryPanel::OnPaneDragEnded(SignalPlotWidget* pane, int globalY) {
+    dropIndicator_->hide();
+    const int from = static_cast<int>(
+        std::find(plots_.begin(), plots_.end(), pane) - plots_.begin());
+    if (from == GraphCount() || pane != plots_[static_cast<std::size_t>(from)]) {
+        return;
+    }
+    const int y = plotsSplitter_->mapFromGlobal(QPoint(0, globalY)).y();
+    QList<QWidget*> others;
+    for (auto* plot : plots_) {
+        if (plot != pane) {
+            others.push_back(plot);
+        }
+    }
+    int boundary = 0;
+    while (boundary < others.size()
+           && others[boundary]->geometry().center().y() < y) {
+        ++boundary;
+    }
+    // Boundary is an index among the others list, which is exactly the full
+    // order with the dragged pane extracted — so it is the index the pane
+    // lands at.
+    MovePane(from, boundary);
 }
 
 void TelemetryPanel::DragCursorTo(double tsec) {

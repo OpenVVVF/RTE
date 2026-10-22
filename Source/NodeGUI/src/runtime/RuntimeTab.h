@@ -6,6 +6,7 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QTimer;
 
 namespace NodeGUI::runtime {
 
@@ -19,6 +20,11 @@ class TelemetryPanel;
 // preset row, and telemetry plots. The signal table and console live in dock
 // widgets on the main window (see GetSignalTable / GetConsole); this widget
 // wires them to the plots.
+//
+// Layout autosave: besides closeEvent's SaveAutosave, a 500 ms debounce
+// timer writes user-side layout edits (combo target, graph add/remove,
+// pane reorder, pane heights) as they happen — same write-through discipline
+// as the sim view's ScheduleLayoutSave.
 class RuntimeTab : public QWidget {
     Q_OBJECT
 
@@ -47,6 +53,7 @@ private slots:
 
 private:
     void RefreshRecentCombo();
+    void ScheduleAutosave();
 
     RuntimeController* controller_;
     FramKeysManager* framKeysManager_ = nullptr;
@@ -65,6 +72,7 @@ private:
     TelemetryPanel* telemetryPanel_ = nullptr;
     SignalTablePanel* signalTablePanel_ = nullptr;
     ConsolePanel* consolePanel_ = nullptr;
+    QTimer* autosaveTimer_ = nullptr;
 };
 
 }  // namespace NodeGUI::runtime

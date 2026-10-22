@@ -36,6 +36,11 @@ namespace NodeGUI::runtime {
 // window to the newest edge. Wheel pans the window off the tail; wheeling
 // back onto the newest edge re-engages following (unless a cursor holds).
 //
+// Pane reorder: grabbing the title strip (the band that paints the "Graph N"
+// title, unit label and legend — above the plot area the cursor drag uses)
+// reports paneDragStarted/Moved/Ended; the owning surface moves the pane in
+// its vertical splitter and renames plots afterward (titles follow slots).
+//
 // Recorded-session overlay: when the store carries an overlay set, Refresh()
 // additionally snapshots the overlay history of each assigned signal (the
 // store returns it offset-mapped into the live time axis), so the reference
@@ -53,6 +58,9 @@ public:
     void SetStore(const TelemetryStore* store);  // call once
     void SetSignals(const QStringList& names);   // signals assigned to this plot
     QStringList Signals() const { return signals_; }
+    // Slot title ("Graph N"): surfaces rename plots as slots are reordered.
+    void SetTitle(const QString& title);
+    QString Title() const { return title_; }
     void SetViewSeconds(double seconds);  // sliding X window, 0.5..cap
     double ViewSeconds() const { return viewSeconds_; }
     // Upper clamp for SetViewSeconds (default 60): the sim surface samples it
@@ -85,6 +93,14 @@ signals:
     void cursorDragged(double tsec);     // left press/move inside the plot area
     void cursorClearRequested();         // left double-click
     void panRequested(double deltaTsec); // wheel notches, + toward newer
+    // Pane-reorder gesture: left press starts INSIDE the title strip
+    // (above kMarginTop, the same area the title/legend paints into) and
+    // reports the drag's global Y as it crosses pane boundaries; the owning
+    // surface moves the whole pane. Nothing else uses the strip (the data
+    // cursor lives in the plot area only).
+    void paneDragStarted();
+    void paneDragMoved(int globalY);
+    void paneDragEnded(int globalY);
 
 protected:
     void initializeGL() override;
@@ -131,6 +147,7 @@ private:
     bool hasCursor_ = false;
     double cursorTsec_ = 0.0;
     bool dragging_ = false;
+    bool reorderDragging_ = false;
     bool followTail_ = true;
     double anchoredEndTsec_ = 0.0;
 

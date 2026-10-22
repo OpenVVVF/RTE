@@ -20,16 +20,71 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QTimer>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace NodeGUI::runtime {
 
 namespace {
 
 constexpr int kMaxRecentPresets = 10;
+// Upper clamp for restored graph counts, same defensive shape as the sim
+// layout restore (the autosave previously trusted the stored int).
+constexpr int kMaxPersistedGraphs = 12;
 
 QSettings MakeSettings() {
     return QSettings(QStringLiteral("RTE"), QStringLiteral("RTEStudio"));
+}
+
+// Pane-order rank semantics: the persisted order member is the pane-id list
+// in SLOT order, and the graph{i} sets are keyed NATURALLY (id rank), so a
+// pane reorder only rewrites the order member and never reshuffles the
+// stored sets. Legacy files carry no order member: natural arrangement.
+QString JoinIntList(const std::vector<int>& values) {
+    QStringList parts;
+    for (int value : values) {
+        parts.push_back(QString::number(value));
+    }
+    return parts.join(QStringLiteral(","));
+}
+
+// Parses the comma-joined order member; returns empty on absent/malformed
+// size (the caller falls back to natural order for anything invalid).
+std::vector<int> ParsePaneOrder(const QString& joined, int count) {
+    std::vector<int> ids;
+    if (joined.isEmpty()) {
+        return ids;
+    }
+    for (const QString& part : joined.split(u',')) {
+        bool ok = false;
+        const int id = part.toInt(&ok);
+        if (!ok) {
+            return {};
+        }
+        ids.push_back(id);
+    }
+    if (static_cast<int>(ids.size()) != count) {
+        return {};
+    }
+    std::vector<int> sorted = ids;
+    std::sort(sorted.begin(), sorted.end());
+    if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end()) {
+        return {};
+    }
+    return ids;
+}
+
+QList<int> ParsePaneHeights(const QString& joined) {
+    QList<int> heights;
+    if (joined.isEmpty()) {
+        return heights;
+    }
+    for (const QString& part : joined.split(u',')) {
+        heights.push_back(part.toInt());
+    }
+    return heights;
 }
 
 }  // namespace
@@ -110,6 +165,25 @@ RuntimeTab::RuntimeTab(RuntimeController* controller, QWidget* parent)
     // Playback cursor: the plots hub pushes it to the live Value column.
     connect(telemetryPanel_, &TelemetryPanel::cursorChanged,
             signalTablePanel_, &SignalTablePanel::SetCursor);
+    // Pane reorder: assignments are per slot — the table permutes its sets
+    // in step with the plots, retitled slot order feeding back via
+    // graphSignalsChanged.
+    connect(telemetryPanel_, &TelemetryPanel::panesReordered,
+            signalTablePanel_, &SignalTablePanel::PermuteGraphSignals);
+
+    // Layout autosave write-through debounce (combo edits, graph add/remove,
+    // pane reorder, splitter movement); closeEvent's SaveAutosave remains
+    // the final flush.
+    autosaveTimer_ = new QTimer(this);
+    autosaveTimer_->setSingleShot(true);
+    autosaveTimer_->setInterval(500);
+    connect(autosaveTimer_, &QTimer::timeout, this, &RuntimeTab::SaveAutosave);
+    connect(signalTablePanel_, &SignalTablePanel::graphSignalsChanged,
+            this, [this] { ScheduleAutosave(); });
+    connect(telemetryPanel_, &TelemetryPanel::graphCountChanged,
+            this, [this] { ScheduleAutosave(); });
+    connect(telemetryPanel_, &TelemetryPanel::layoutChanged,
+            this, [this] { ScheduleAutosave(); });
 
     connect(controller_, &RuntimeController::storeChanged,
             this, &RuntimeTab::OnStoreChanged);
@@ -300,29 +374,99 @@ void RuntimeTab::RefreshRecentCombo() {
     recentCombo_->addItems(recent);
 }
 
+void RuntimeTab::ScheduleAutosave() {
+    if (autosaveTimer_) {
+        autosaveTimer_->start();  // single-shot: restarts the quiet window
+    }
+}
+
 void RuntimeTab::LoadAutosave() {
     auto settings = MakeSettings();
     settings.beginGroup(QStringLiteral("runtime/autosave"));
-    const int count = settings.value(QStringLiteral("graphCount"), 3).toInt();
-    std::vector<QStringList> sets;
-    for (int i = 0; i < std::max(1, count); ++i) {
-        sets.push_back(
+    const int count = std::clamp(
+        settings.value(QStringLiteral("graphCount"), 3).toInt(),
+        1, kMaxPersistedGraphs);
+    // graph{i} are the pane sets in NATURAL pane-id rank order (see
+    // PaneOrderJoined semantics in SaveAutosave); files from before the
+    // pane-order wave read identically because their absent order member
+    // means natural arrangement.
+    std::vector<QStringList> naturalSets;
+    for (int i = 0; i < count; ++i) {
+        naturalSets.push_back(
             settings.value(QStringLiteral("graph%1").arg(i + 1)).toStringList());
     }
+    std::vector<int> order = ParsePaneOrder(
+        settings.value(QStringLiteral("paneOrder")).toString(), count);
+    const QList<int> heights = ParsePaneHeights(
+        settings.value(QStringLiteral("paneHeights")).toString());
     settings.endGroup();
-    telemetryPanel_->SetGraphCount(static_cast<int>(sets.size()));
-    signalTablePanel_->SetGraphSignalSets(sets);
+    if (order.empty()) {
+        for (int i = 0; i < count; ++i) {
+            order.push_back(i);  // legacy/invalid: natural arrangement
+        }
+    }
+
+    telemetryPanel_->SetGraphCount(count);
+    telemetryPanel_->RestorePaneState(order, heights);
+
+    // Per-slot sets: slot k takes the natural set of its pane's id rank.
+    std::vector<int> sorted = order;
+    std::sort(sorted.begin(), sorted.end());
+    std::vector<QStringList> slotSets(naturalSets.size());
+    for (std::size_t k = 0; k < order.size(); ++k) {
+        const std::size_t rank = static_cast<std::size_t>(
+            std::lower_bound(sorted.begin(), sorted.end(), order[k])
+            - sorted.begin());
+        slotSets[k] = naturalSets[rank];
+    }
+    signalTablePanel_->SetGraphSignalSets(slotSets);
 }
 
 void RuntimeTab::SaveAutosave() {
     auto settings = MakeSettings();
-    const auto sets = signalTablePanel_->GraphSignalSets();
+    const auto slotSets = signalTablePanel_->GraphSignalSets();
+    std::vector<int> order = telemetryPanel_->PaneOrder();
+    // Transient skew guard (count changes land on the two panels in two
+    // hops): degrade to the natural arrangement rather than writing a
+    // mismatched order member.
+    if (order.size() != slotSets.size()) {
+        order.clear();
+        for (std::size_t i = 0; i < slotSets.size(); ++i) {
+            order.push_back(static_cast<int>(i));
+        }
+    }
+    std::vector<int> sorted = order;
+    std::sort(sorted.begin(), sorted.end());
     settings.beginGroup(QStringLiteral("runtime/autosave"));
     settings.setValue(QStringLiteral("graphCount"),
-                      static_cast<int>(sets.size()));
-    for (std::size_t i = 0; i < sets.size(); ++i) {
-        settings.setValue(QStringLiteral("graph%1").arg(i + 1), sets[i]);
+                      static_cast<int>(slotSets.size()));
+    for (std::size_t i = 0; i < slotSets.size(); ++i) {
+        // Natural keying: graph{rank+1} so a pane reorder only rewrites
+        // paneOrder, never reshuffles the stored set keys.
+        const std::size_t rank = static_cast<std::size_t>(
+            std::lower_bound(sorted.begin(), sorted.end(), order[i])
+            - sorted.begin());
+        settings.setValue(QStringLiteral("graph%1").arg(rank + 1), slotSets[i]);
     }
+    settings.setValue(QStringLiteral("paneOrder"), JoinIntList(order));
+    // Heights are per-PANE like the sets (splitter sizes travel with the
+    // pane on reorder): write them naturally keyed by id rank, the same
+    // shape RestorePaneState reads back.
+    const QList<int> sizes = telemetryPanel_->PaneSizes();
+    std::vector<int> naturalHeights(slotSets.size(), 0);
+    for (std::size_t i = 0; i < slotSets.size(); ++i) {
+        const std::size_t rank = static_cast<std::size_t>(
+            std::lower_bound(sorted.begin(), sorted.end(), order[i])
+            - sorted.begin());
+        naturalHeights[rank] =
+            i < static_cast<std::size_t>(sizes.size()) ? sizes[static_cast<int>(i)] : 0;
+    }
+    QStringList heightParts;
+    for (int height : naturalHeights) {
+        heightParts.push_back(QString::number(height));
+    }
+    settings.setValue(QStringLiteral("paneHeights"),
+                      heightParts.join(QStringLiteral(",")));
     settings.endGroup();
 }
 

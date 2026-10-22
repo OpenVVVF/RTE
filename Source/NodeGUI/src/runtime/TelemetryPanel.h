@@ -2,13 +2,15 @@
 
 #include <QWidget>
 
+#include <QList>
+#include <QString>
 #include <vector>
 
 class QDoubleSpinBox;
+class QFrame;
 class QLabel;
-class QScrollArea;
 class QSlider;
-class QVBoxLayout;
+class QSplitter;
 
 namespace NodeGUI::runtime {
 
@@ -16,9 +18,18 @@ class RuntimeController;
 class SignalPlotWidget;
 
 // Plot region of the Runtime telemetry view: N SignalPlotWidget leaf
-// widgets in a scrolling column with an add/remove toolbar. The default
+// widgets in a vertical splitter with an add/remove toolbar. The default
 // count of three matches the historical layout; assignments arrive from
 // SignalTablePanel (single-target dropdown per signal).
+//
+// Pane order + heights: the split panes are draggable by their title strips
+// (leaf paneDrag* signals -> MovePane); heights adjust with the splitter
+// handles (children non-collapsible). Assignments are PER SLOT: a move
+// carries both the pane and its signal set to the new slot together
+// (RuntimeTab forwards the reorder to SignalTablePanel::PermuteGraphSignals,
+// so the dropdown labels G1..Gn follow the new slot order and nothing is
+// lost). Splitter px sizes and the pane-order permutation persist through
+// the runtime autosave (RuntimeTab::Pane*Joined plumbing).
 //
 // Also the surface hub for the playback cursor: leaf cursor gestures
 // (cursorDragged / cursorClearRequested / panRequested) land here, get
@@ -46,6 +57,16 @@ public:
     int GraphCount() const { return static_cast<int>(plots_.size()); }
     void SetGraphSignals(const std::vector<QStringList>& sets);
 
+    // Pane persistence plumbing (RuntimeTab autosave owns the QSettings
+    // glue): the order member is the pane-id list in slot order; heights
+    // are splitter px sizes in slot order. A missing/invalid order restores
+    // naturally.
+    std::vector<int> PaneOrder() const { return paneOrder_; }
+    QList<int> PaneSizes() const;
+    void RestorePaneState(const std::vector<int>& order, const QList<int>& heights);
+    // Headless-smoke dump: "order=.. heights=.. titles=..".
+    QString DumpPlotPanes() const;
+
 public slots:
     void SetViewSeconds(double seconds);
     void AddGraph();
@@ -66,24 +87,36 @@ public slots:
     void SetOverlayOffset(double tsec);
     void ClearOverlay();
 
+    // Pane gestures — the leaf drag lands here; the smoke verbs moveplot /
+    // setplotsizes drive the same entries by surface name.
+    bool MovePane(int from, int to);
+    bool SetPlotSizes(const QList<int>& px);
+
 signals:
     void graphCountChanged(int count);
     void cursorChanged(bool hasCursor, double tsec);
+    // A pane moved or the splitter sizes changed (autosave debounce hook).
+    void layoutChanged();
+    // A reorder committed: the signal table must permute its per-slot sets
+    // (RuntimeTab forwards to SignalTablePanel::PermuteGraphSignals).
+    void panesReordered(int from, int to);
 
 private slots:
     void OnStoreChanged();
 
 private:
     SignalPlotWidget* MakePlot();
+    void RetitlePlots();
+    void OnPaneDragMoved(SignalPlotWidget* pane, int globalY);
+    void OnPaneDragEnded(SignalPlotWidget* pane, int globalY);
     void UpdateCursorInfo();
     void UpdateOverlayInfo();
     void ApplyOverlayOffsetFromSlider(int centiseconds);
 
     RuntimeController* controller_;
 
-    QScrollArea* scroll_ = nullptr;
-    QWidget* plotsContainer_ = nullptr;
-    QVBoxLayout* plotsLayout_ = nullptr;
+    QSplitter* plotsSplitter_ = nullptr;
+    QFrame* dropIndicator_ = nullptr;
     QLabel* countLabel_ = nullptr;
     QLabel* cursorInfo_ = nullptr;
 
@@ -95,6 +128,10 @@ private:
     bool overlaySyncGuard_ = false;
 
     std::vector<SignalPlotWidget*> plots_;
+    // Pane ids in slot order (see PaneOrderJoined): stable ids assigned at
+    // creation survive add/remove so the persisted permutation is total.
+    std::vector<int> paneOrder_;
+    int nextPaneId_ = 0;
     bool hasCursor_ = false;
     double cursorTsec_ = 0.0;
 };
