@@ -92,7 +92,21 @@
       "to": {
         "nodeId": "VHzGen",
         "portName": "Hz"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 735.0,
+          "y": 135.0
+        },
+        {
+          "x": 735.0,
+          "y": 30.0
+        },
+        {
+          "x": 1170.0,
+          "y": 30.0
+        }
+      ]
     },
     {
       "from": {
@@ -103,7 +117,17 @@
       "to": {
         "nodeId": "VHzGen",
         "portName": "Theta"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1155.0,
+          "y": 135.0
+        },
+        {
+          "x": 1155.0,
+          "y": 315.0
+        }
+      ]
     },
     {
       "from": {
@@ -136,7 +160,21 @@
       "to": {
         "nodeId": "Svpwm",
         "portName": "V_Dc"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 495.0,
+          "y": 525.0
+        },
+        {
+          "x": 495.0,
+          "y": 0.0
+        },
+        {
+          "x": 1515.0,
+          "y": 0.0
+        }
+      ]
     },
     {
       "from": {
@@ -147,7 +185,13 @@
       "to": {
         "nodeId": "PwmOut",
         "portName": "Duty_A"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1815.0,
+          "y": 285.0
+        }
+      ]
     },
     {
       "from": {
@@ -158,7 +202,13 @@
       "to": {
         "nodeId": "PwmOut",
         "portName": "Duty_B"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1830.0,
+          "y": 315.0
+        }
+      ]
     },
     {
       "from": {
@@ -169,7 +219,13 @@
       "to": {
         "nodeId": "PwmOut",
         "portName": "Duty_C"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1845.0,
+          "y": 345.0
+        }
+      ]
     },
     {
       "from": {
@@ -202,7 +258,17 @@
       "to": {
         "nodeId": "LogFreq",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 795.0,
+          "y": 135.0
+        },
+        {
+          "x": 795.0,
+          "y": 690.0
+        }
+      ]
     },
     {
       "from": {
@@ -213,7 +279,13 @@
       "to": {
         "nodeId": "LogVmag",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1500.0,
+          "y": 285.0
+        }
+      ]
     },
     {
       "from": {
@@ -246,7 +318,13 @@
       "to": {
         "nodeId": "du",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1860.0,
+          "y": 285.0
+        }
+      ]
     },
     {
       "from": {
@@ -257,7 +335,13 @@
       "to": {
         "nodeId": "dv",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1875.0,
+          "y": 315.0
+        }
+      ]
     },
     {
       "from": {
@@ -268,7 +352,13 @@
       "to": {
         "nodeId": "dw",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1890.0,
+          "y": 345.0
+        }
+      ]
     }
   ],
   "name": "induction_vhz",
