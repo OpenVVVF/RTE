@@ -1,0 +1,39 @@
+{
+  "id": "Plant.Inverter.Leg5ph",
+  "displayName": "Inverter (5-leg knee + deadtime)",
+  "defaultName": "Inverter5",
+  "description": "Five-phase averaged power stage (10-switch / 5-leg bridge): converts duties (percent, 50 = half-bus) at the DC link into phase-to-neutral-mid voltages with the IGBT knee, deadtime distortion and Rce drop, exactly the Knee3ph per-leg law extended to five legs. d_avg is the mean of all five duties, so the common-mode is removed per substep and the five phase voltages sum to the distortion residual only. Optional OpenGates floats all legs (every voltage view zeroes, twin convention). Phases A-C of the host seam come from Plant.Io.DutyIn (the 3-phase host duty node); legs D and E are declared OPTIONAL unwired inputs so the host pushes them per control period through the plant-input external (PlantSetInput / rte sim kind=plant-input, all unwired inputs of the name), same seam as InductDq.Omega_Cmd.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "inputPorts": [
+    {"name": "Da", "description": "Phase A duty, percent (0-100, 50 = zero vector contribution).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Db", "description": "Phase B duty, percent.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dc", "description": "Phase C duty, percent.", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}},
+    {"name": "Dd", "description": "Phase D duty, percent. Optional: unwired binds 0 until assigned by the host via the plant-input external (per control period).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "De", "description": "Phase E duty, percent. Optional: unwired binds 0 until assigned by the host via the plant-input external (per control period).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true},
+    {"name": "Vdc", "description": "DC link voltage, V.", "direction": "input", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_A", "description": "Phase A current, A (for sign distortion; from machine output).", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_B", "description": "Phase B current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_C", "description": "Phase C current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_D", "description": "Phase D current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "I_E", "description": "Phase E current, A.", "direction": "input", "type": {"quantity": "current", "frame": "scalar", "dtype": "f32"}},
+    {"name": "OpenGates", "description": ">=0.5: power stage de-energized, all phase voltage outputs go to zero (leg nodes float; the twin's phase-ADC convention).", "direction": "input", "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}, "optional": true}
+  ],
+  "outputPorts": [
+    {"name": "V_A", "description": "Phase A-to-mid winding voltage (post-distortion), V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_B", "description": "Phase B-to-mid winding voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_C", "description": "Phase C-to-mid winding voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_D", "description": "Phase D-to-mid winding voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_E", "description": "Phase E-to-mid winding voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_A_Raw", "description": "Pre-distortion duty-mapped phase A voltage, V (phase-ADC view: knee/deadtime/Rce error is invisible to that sensor).", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_B_Raw", "description": "Phase B pre-distortion voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_C_Raw", "description": "Phase C pre-distortion voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_D_Raw", "description": "Phase D pre-distortion voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}},
+    {"name": "V_E_Raw", "description": "Phase E pre-distortion voltage, V.", "direction": "output", "type": {"quantity": "voltage", "frame": "scalar", "dtype": "f32"}}
+  ],
+  "parameterTypes": {
+    "Vce0_V":     {"description": "IGBT/effective knee forward drop, V.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "Rce_Ohm":    {"description": "Effective series resistance per device path incl. lead, ohm.", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"},
+    "TdOverhead": {"description": "Dimensionless deadtime distortion factor: dt_dead * f_sw (e.g. 1e-6*5000 = 0.005).", "dtype": "f32", "frame": "scalar", "quantity": "dimensionless"}
+  }
+}
