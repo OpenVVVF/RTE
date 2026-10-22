@@ -8,6 +8,8 @@ add_executable(RTEStudio
     src/GraphKind.h
     src/GraphScene.cpp
     src/GraphScene.h
+    src/GraphValuesOverlay.cpp
+    src/GraphValuesOverlay.h
     src/GraphView.cpp
     src/GraphView.h
     src/NodeDataModel.cpp

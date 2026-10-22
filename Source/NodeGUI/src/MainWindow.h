@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphScene.h"
+#include "GraphValuesOverlay.h"
 #include "GraphView.h"
 #include "PreferencesDialog.h"
 
@@ -107,6 +108,13 @@ public:
     // [smoke] load a sim session file through the Simulate screen's own
     // "Load session..." path (returns false on load failure).
     bool SmokeLoadSimSession(const QString& path);
+    // [smoke] "graph values" mode: toggle the View>Graph Signal Values
+    // action (returns the resulting state), and dump the ACTIVE editor
+    // scene's current tag values as "key=val;key=val;..." (empty when the
+    // mode is off or no bindings resolve). The dump recomputes the tag set
+    // synchronously first, so scripted reads are timing-independent.
+    bool SmokeSetGraphValuesEnabled(bool on);
+    QString SmokeDumpGraphValues();
 
 private slots:
     void OnOpen();
@@ -208,6 +216,17 @@ private:
     // Forwards scene selection to the inspector dock.
     void OnSceneSelectionChanged();
 
+    // ---- Graph values mode (sim value tags on the editor canvases) -------
+    // Per-tick refill of each editor scene's GraphValuesOverlay from the
+    // Simulate screen's retained telemetry store: value-at-cursor while the
+    // playback cursor is pinned, the session-tail value otherwise (the same
+    // source SimTelemetryView's Value column reads). The guards decide which
+    // editor surface may bind against the loaded session — a mismatched
+    // document surface would show values from a run it did not produce.
+    void UpdateGraphValueTags();
+    bool NodeGraphValuesBindingOk() const;
+    bool PlantGraphValuesBindingOk() const;
+
     // QtNodes' undo stack and paste/duplicate paths restore nodes straight
     // into its own model, bypassing the NodeAPI graph. Strip those shortcuts
     // rather than offer actions that silently desync a later save.
@@ -306,6 +325,16 @@ private:
     std::unique_ptr<runtime::LocalSessionServer> localSessionServer_;
     QPointer<runtime::RuntimeTab> runtimeTab_;
     QPointer<runtime::FlashPanel> firmwareUpdateTab_;
+
+    // Graph values mode: the two editor canvases' value-tag layers (owned
+    // above: they add/remove items only; declared after the scenes they
+    // attach to, so destruction detaches from still-live scenes). The
+    // toggle action lives in the View menu (per-tab rebuild) and polls at
+    // 4 Hz off graphValuesTimer_.
+    std::unique_ptr<GraphValuesOverlay> graphValuesNode_;
+    std::unique_ptr<GraphValuesOverlay> graphValuesPlant_;
+    QAction* graphValuesAction_ = nullptr;
+    QTimer* graphValuesTimer_ = nullptr;
 
     // Disk-change watch on the currently opened graph (see ShowReloadBanner).
     QFileSystemWatcher* graphWatcher_ = nullptr;

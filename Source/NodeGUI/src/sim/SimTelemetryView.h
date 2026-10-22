@@ -72,6 +72,11 @@ public:
     bool LoadSession(const QString& path, QString& error);
     const SimSession* Session() const { return session_.get(); }
     NodeGUI::runtime::TelemetryStore& Store() { return store_; }
+    // Playback-cursor state for readers that follow the Value column's
+    // source (value-at-cursor while pinned, tail otherwise) — e.g. the
+    // editor-canvas graph-value tags.
+    bool HasCursor() const { return hasCursor_; }
+    double CursorTsec() const { return cursorTsec_; }
 
 public slots:
     // Shared-cursor operations — the leaf gesture signals connect straight

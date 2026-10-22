@@ -7,11 +7,13 @@
 #include "PlantEditorScreen.h"  // [plant]
 #include "ResourcePaths.h"
 #include "sim/SimulateScreen.h"     // [sim]
+#include "sim/SimTelemetryView.h"  // [gvals]
 
 #include "runtime/ConsolePanel.h"
 #include "runtime/FlashPanel.h"
 #include "runtime/RuntimeTab.h"
 #include "runtime/SignalTablePanel.h"
+#include "runtime/TelemetryStore.h"  // [gvals] ValueAt/LatestValue
 
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Platform.h>
@@ -28,6 +30,7 @@
 #include <QPalette>
 #include <QStyleFactory>
 #include <QDockWidget>
+#include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -406,6 +409,13 @@ MainWindow::MainWindow(QWidget* parent)
     screens_->addWidget(simulateScreen_);
     appSwitcher_->addTab(QStringLiteral("Simulate"));
 
+    // [gvals] Sim value tags: one overlay layer per editor canvas. The tag
+    // set refills at 4 Hz (graphValuesTimer_ -> UpdateGraphValueTags) from
+    // the Sim screen's retained store; the layers paint nothing until the
+    // mode toggle AND the per-surface guard both pass.
+    graphValuesNode_ = std::make_unique<GraphValuesOverlay>(graphScene_.get());
+    graphValuesPlant_ = std::make_unique<GraphValuesOverlay>(plantScreen_->Scene());
+
     StripBrokenSceneActions();
 
     // Toast-style warning label, bottom-left of the canvas. Child of the
@@ -631,6 +641,14 @@ MainWindow::MainWindow(QWidget* parent)
     if (!screenStates_[0].isEmpty()) {
         restoreState(screenStates_[0]);
     }
+
+    // [gvals] 4 Hz value-tag refresh (the mode spec caps refresh at 4-8 Hz;
+    // tag paints are dirty-gated, so the idle tick is free).
+    graphValuesTimer_ = new QTimer(this);
+    graphValuesTimer_->setInterval(250);
+    connect(graphValuesTimer_, &QTimer::timeout, this,
+            &MainWindow::UpdateGraphValueTags);
+    graphValuesTimer_->start();
 }
 
 void MainWindow::SaveScreenStates() {
@@ -1395,6 +1413,26 @@ void MainWindow::SetupMenu() {
                      QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     connect(arrangeAction_, &QAction::triggered, this, &MainWindow::OnAutoArrange);
 
+    // [gvals] Sim value tags toggle — persisted with the app preferences
+    // (the same setting as the Preferences dialog's "Show sim signal values
+    // on the editor graphs" checkbox); toolbar-less, menu-only.
+    graphValuesAction_ =
+        new QAction(QStringLiteral("Graph Signal &Values"), this);
+    graphValuesAction_->setObjectName(QStringLiteral("view.graphValues"));  // smoke click seam
+    graphValuesAction_->setCheckable(true);
+    graphValuesAction_->setChecked(preferences_.showGraphValues);
+    graphValuesAction_->setStatusTip(QStringLiteral(
+        "With a sim session loaded, draw each telemetry channel's value at "
+        "the graph ports that publish it (value-at-cursor while the "
+        "playback cursor is pinned)."));
+    connect(graphValuesAction_, &QAction::toggled, this, [this](bool on) {
+        if (preferences_.showGraphValues != on) {
+            preferences_.showGraphValues = on;
+            SaveAppPreferences(preferences_);
+        }
+        UpdateGraphValueTags();
+    });
+
     RebuildViewMenu();
 
     // Runtime menu is only meaningful once SetupRuntime has created runtimeTab_.
@@ -1544,6 +1582,13 @@ void MainWindow::ApplyPreferences(const AppPreferences& preferences) {
         localSessionServer_->SetExternalDeviceWritesEnabled(
             preferences_.allowExternalDeviceWrites);
     }
+    // [gvals] The View-menu toggle is the mode's live surface; the
+    // preferences dialog edits the same setting. (setChecked re-fires the
+    // persisted-save only on a real change.)
+    if (graphValuesAction_
+        && graphValuesAction_->isChecked() != preferences_.showGraphValues) {
+        graphValuesAction_->setChecked(preferences_.showGraphValues);
+    }
 
     const std::size_t limit = static_cast<std::size_t>(preferences_.undoHistoryLimit);
     if (undoHistory_.size() > limit) {
@@ -1577,6 +1622,10 @@ void MainWindow::RebuildViewMenu() {
                 viewMenu_->addAction(dock->toggleViewAction());
             }
         }
+        if (graphValuesAction_) {
+            viewMenu_->addSeparator();
+            viewMenu_->addAction(graphValuesAction_);
+        }
     } else if (plantTab) {
         // [plant] The plant canvas frames content too; Auto Arrange stays a
         // Node-Editor action (plant positions are hand-authored).
@@ -1586,6 +1635,10 @@ void MainWindow::RebuildViewMenu() {
             if (dock) {
                 viewMenu_->addAction(dock->toggleViewAction());
             }
+        }
+        if (graphValuesAction_) {
+            viewMenu_->addSeparator();
+            viewMenu_->addAction(graphValuesAction_);
         }
     } else if (runtimeTab) {
         for (auto* dock : {signalTableDock_.data(), telemetryConsoleDock_.data()}) {
@@ -1649,6 +1702,96 @@ void MainWindow::OnTabChanged(int index) {
 
     RebuildViewMenu();
     UpdateHistoryActions();
+}
+
+namespace {
+
+// [gvals] Loose path identity for the value-tag binding guards: canonical
+// when the file resolves, cleaned absolute otherwise (a stale scenario row
+// must never crash the guard).
+QString GraphValuesCanonPath(const QString& raw) {
+    const QFileInfo info(raw.trimmed());
+    const QString canonical = info.canonicalFilePath();
+    return canonical.isEmpty() ? QDir::cleanPath(info.absoluteFilePath())
+                               : canonical;
+}
+
+}  // namespace
+
+// ---- Graph values mode ----------------------------------------------------
+// Guard policy (bind cautiously — a wrong-document surface would lie):
+//   * Node Editor binds when its open document IS the sim controller graph
+//     (path equality against the scenario row). With no scenario row set —
+//     a standalone "Load session..." — the controller surface alone binds,
+//     since Debug.TelemetryLog channels are controller-side output.
+//   * Plant Editor binds only on exact path equality with the sim plant
+//     row; it is never guess-bound. (Plant graphs today carry no
+//     Debug.TelemetryLog nodes, so a plant surface shows no tags yet — the
+//     binding authority is the log nodes, per the mode contract.)
+bool MainWindow::NodeGraphValuesBindingOk() const {
+    if (!simulateScreen_ || currentPath_.empty()) {
+        return false;
+    }
+    const QString simSw = simulateScreen_->SwGraphPath();
+    if (simSw.isEmpty()) {
+        return true;
+    }
+    return GraphValuesCanonPath(simSw)
+        == GraphValuesCanonPath(QString::fromStdString(currentPath_));
+}
+
+bool MainWindow::PlantGraphValuesBindingOk() const {
+    if (!simulateScreen_ || !plantScreen_ || plantScreen_->CurrentPath().empty()) {
+        return false;
+    }
+    const QString simPlant = simulateScreen_->PlantGraphPath();
+    if (simPlant.isEmpty()) {
+        return false;
+    }
+    return GraphValuesCanonPath(simPlant)
+        == GraphValuesCanonPath(
+            QString::fromStdString(plantScreen_->CurrentPath()));
+}
+
+void MainWindow::UpdateGraphValueTags() {
+    auto refill = [this](GraphScene* scene,
+                         bool bindOk,
+                         GraphValuesOverlay* overlay) {
+        if (!scene || !overlay) {
+            return;
+        }
+        const bool enabled = graphValuesAction_ && graphValuesAction_->isChecked();
+        sim::SimTelemetryView* view =
+            simulateScreen_ ? simulateScreen_->TelemetryView() : nullptr;
+        if (!enabled || !bindOk || !view || !view->Session()) {
+            overlay->Clear();
+            return;
+        }
+        runtime::TelemetryStore& store = view->Store();
+        std::vector<GraphValuesOverlay::Tag> tags;
+        for (const GraphScene::TelemetryTagBinding& binding :
+             scene->TelemetryTagBindings()) {
+            float value = 0.0f;
+            // Same source as the sim Value column: the pinned cursor's
+            // ValueAt while one is held, the session tail otherwise.
+            const bool ok =
+                view->HasCursor()
+                    ? store.ValueAt(binding.key,
+                                    static_cast<float>(view->CursorTsec()),
+                                    value)
+                    : store.LatestValue(binding.key, value);
+            if (!ok) {
+                continue;  // channel absent from this session — no tag
+            }
+            tags.push_back({binding.nodeId, binding.key, binding.scenePos,
+                            binding.anchorIsOutput,
+                            QString::number(value, 'g', 6)});
+        }
+        overlay->ApplyTags(tags);
+    };
+    refill(graphScene_.get(), NodeGraphValuesBindingOk(), graphValuesNode_.get());
+    refill(plantScreen_ ? plantScreen_->Scene() : nullptr,
+           PlantGraphValuesBindingOk(), graphValuesPlant_.get());
 }
 
 bool MainWindow::DoSave(const std::string& path) {
@@ -2162,6 +2305,33 @@ QString MainWindow::SmokeSaveActiveAs(const QString& path) {
 
 bool MainWindow::SmokeLoadSimSession(const QString& path) {
     return simulateScreen_ && simulateScreen_->LoadSessionFile(path);
+}
+
+bool MainWindow::SmokeSetGraphValuesEnabled(bool on) {
+    if (!graphValuesAction_) {
+        return false;
+    }
+    graphValuesAction_->setChecked(on);
+    return graphValuesAction_->isChecked() == on;
+}
+
+QString MainWindow::SmokeDumpGraphValues() {
+    // Synchronous refill first: a scripted read right after a cursor poke
+    // must not hinge on the 4 Hz timer having ticked.
+    UpdateGraphValueTags();
+    GraphScene* active = ActiveGraphScene();
+    GraphValuesOverlay* overlay =
+        (active && plantScreen_ && active == plantScreen_->Scene())
+            ? graphValuesPlant_.get()
+            : graphValuesNode_.get();
+    if (!overlay) {
+        return {};
+    }
+    QStringList pairs;
+    for (const auto& [key, text] : overlay->DumpPairs()) {
+        pairs << QString::fromStdString(key) + QStringLiteral("=") + text;
+    }
+    return pairs.join(QStringLiteral(";"));
 }
 
 void MainWindow::SmokePickNode(const std::string& nodeId) {

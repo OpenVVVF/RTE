@@ -207,6 +207,22 @@ public:
     // Smoke-only: emit a plain-click release for a node (drag-gate check).
     bool PlainClickNode(const std::string& nodeId);
 
+    // ---- Sim value tags ("graph values" view mode) -----------------------
+    // One row per Debug.TelemetryLog node: the telemetry channel it publishes
+    // (its Key parameter) and the scene-space anchor socket the channel value
+    // ties to — the upstream producer's OUTPUT socket when the log input is
+    // wired (the value flows on that wire), else the log node's own INPUT
+    // port. Read-only geometry for the GraphValuesOverlay layer; nodes whose
+    // anchor cannot be resolved (hidden/unknown port) are skipped rather
+    // than guessed.
+    struct TelemetryTagBinding {
+        std::string nodeId;
+        std::string key;
+        QPointF scenePos;
+        bool anchorIsOutput = false;
+    };
+    std::vector<TelemetryTagBinding> TelemetryTagBindings() const;
+
     // "<id>=x,y;<id>.<port>=x,y;..." — node origin and port socket scene
     // positions, rounded to 0.01; serves grid-compliance smoke assertions.
     QString DumpNodeGeometry(const std::string& nodeId) const;

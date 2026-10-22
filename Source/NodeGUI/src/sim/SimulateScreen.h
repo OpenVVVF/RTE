@@ -57,6 +57,9 @@ public:
     // event lands. Returns false (and shows the run log) on failure.
     bool LoadSessionFile(const QString& path);
     bool IsRunning() const;
+    // The hosted telemetry region (session, retained store, cursor
+    // machinery); read-only access for console-side followers.
+    SimTelemetryView* TelemetryView() const { return telemetryView_; }
 
 private slots:
     void OnRun();

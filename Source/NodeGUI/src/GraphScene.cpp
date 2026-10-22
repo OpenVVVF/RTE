@@ -1933,6 +1933,64 @@ QPointF GraphScene::NodeCenterForSmoke(const std::string& nodeId) const {
     return {};
 }
 
+std::vector<GraphScene::TelemetryTagBinding> GraphScene::TelemetryTagBindings() const {
+    std::vector<TelemetryTagBinding> bindings;
+    if (!scene_) {
+        return bindings;
+    }
+    auto anchorFor = [&](const std::string& nodeId,
+                         const std::string& portName,
+                         QtNodes::PortType portType,
+                         QPointF& out) -> bool {
+        const auto qtIt = nodeIdMap_.find(nodeId);
+        if (qtIt == nodeIdMap_.end()) {
+            return false;
+        }
+        auto* ngo = scene_->nodeGraphicsObject(qtIt->second);
+        if (!ngo) {
+            return false;
+        }
+        const QtNodes::PortIndex index = FindPortIndex(nodeId, portName, portType);
+        if (index == QtNodes::InvalidPortIndex) {
+            return false;
+        }
+        out = scene_->nodeGeometry().portScenePosition(
+            qtIt->second, portType, index, ngo->sceneTransform());
+        return true;
+    };
+    for (const auto& node : graph_.GetNodes()) {
+        if (node.type != "Debug.TelemetryLog") {
+            continue;
+        }
+        const auto keyIt = node.parameters.find("Key");
+        if (keyIt == node.parameters.end() || keyIt->second.empty()) {
+            continue;
+        }
+        TelemetryTagBinding binding;
+        binding.nodeId = node.id;
+        binding.key = keyIt->second;
+        const NodeAPI::Connection* feed = nullptr;
+        for (const auto& connection : graph_.GetConnections()) {
+            if (connection.to.nodeId == node.id) {
+                feed = &connection;
+                break;
+            }
+        }
+        if (feed
+            && anchorFor(feed->from.nodeId, feed->from.portName,
+                         QtNodes::PortType::Out, binding.scenePos)) {
+            binding.anchorIsOutput = true;
+        } else if (anchorFor(node.id, "Value", QtNodes::PortType::In,
+                             binding.scenePos)) {
+            binding.anchorIsOutput = false;
+        } else {
+            continue;  // no honest anchor (hidden/unknown port) — skip
+        }
+        bindings.push_back(std::move(binding));
+    }
+    return bindings;
+}
+
 void GraphScene::RegisterNodeTypes() {
     for (const auto& nodeType : graph_.GetNodeTypes()) {
         // Each creator captures a copy of its node type so the model can expose

@@ -58,6 +58,26 @@
 //   transformer, Control.Pi -> PI block, Transforms.Svpwm -> PWM carrier.
 //   Glyph colors come from the node's style (FontColor family), i.e. they
 //   follow MainWindow::ApplyThemeMode instead of hardcoding a light look.
+//
+// Sim value tags ("graph values" mode, Simulink-style):
+//   With a sim session on the Simulate screen (run or "Load session..."),
+//   the editor canvases can draw each telemetry channel's value as a small
+//   pill just off the publishing port's edge (wire side). Binding authority
+//   is the Debug.TelemetryLog nodes: Key param == channel name, value ties
+//   to the node's upstream OUTPUT socket when its input is wired, else to
+//   its own INPUT port (GraphScene::TelemetryTagBindings). Rendering is a
+//   dedicated scene layer (GraphValuesOverlay; one dirty-gated item per
+//   binding, z above nodes/wires) - no per-node style surgery. Values
+//   follow the sim cursor machinery (SimTelemetryView + ValueAt/LatestValue
+//   on the retained store; same source as the Value column) on a 4 Hz
+//   refresh. Guard policy keeps the tags honest: the Node Editor binds only
+//   when its document is the scenario's controller graph (path equality;
+//   the standalone-loaded-session fallback binds the controller surface
+//   alone), the Plant Editor only under an exact plant-path match, and
+//   everything hides when the mode is off or no session is loaded. Toggle:
+//   View > Graph Signal Values (persisted via the showGraphValues app
+//   preference, editable in Preferences); smoke verbs gvals on|off|dump
+//   (dump prints "key=val;..." of the ACTIVE editor scene).
 // ---------------------------------------------------------------------------
 
 #include "MainWindow.h"
@@ -175,6 +195,18 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             // "label=<text|—>;layer=<z>;wp=[x,y;...]" single line for
             // checkers (wp = manual bends, "[]" when auto-routed).
             std::cout << window->SmokeDumpConnection(arg.toStdString()).toStdString();
+        } else if (kind == "gvals") {
+            // gvals on|off|dump — the "graph values" sim value-tag mode.
+            // dump prints the ACTIVE editor scene's tags as "key=val;..."
+            // (empty when the mode is off or nothing binds).
+            if (arg == "on" || arg == "off") {
+                const bool ok = window->SmokeSetGraphValuesEnabled(arg == "on");
+                std::cout << "gvals=" << arg.toStdString() << (ok ? "" : " failed") << "\n";
+            } else if (arg == "dump") {
+                std::cout << window->SmokeDumpGraphValues().toStdString() << "\n";
+            } else {
+                std::cerr << "smoke: gvals wants on|off|dump\n";
+            }
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
                 button->click();

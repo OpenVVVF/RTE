@@ -1,6 +1,7 @@
 #include "PreferencesDialog.h"
 
 #include <QAction>
+#include <QAbstractButton>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -8,6 +9,7 @@
 #include <QHeaderView>
 #include <QKeySequenceEdit>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
@@ -60,6 +62,8 @@ AppPreferences LoadAppPreferences() {
         settings.value(QStringLiteral("allowExternalDeviceWrites"), false).toBool();
     preferences.gridSnap =
         settings.value(QStringLiteral("gridSnap"), true).toBool();
+    preferences.showGraphValues =
+        settings.value(QStringLiteral("showGraphValues"), true).toBool();
     preferences.undoHistoryLimit =
         std::clamp(settings.value(QStringLiteral("undoHistoryLimit"), 100).toInt(),
                    kMinimumHistoryLimit,
@@ -104,6 +108,8 @@ void SaveAppPreferences(const AppPreferences& preferences) {
     settings.setValue(QStringLiteral("allowExternalDeviceWrites"),
                       preferences.allowExternalDeviceWrites);
     settings.setValue(QStringLiteral("gridSnap"), preferences.gridSnap);
+    settings.setValue(QStringLiteral("showGraphValues"),
+                      preferences.showGraphValues);
     settings.setValue(QStringLiteral("undoHistoryLimit"), preferences.undoHistoryLimit);
     settings.setValue(QStringLiteral("buildLogLineLimit"),
                       preferences.buildLogLineLimit);
@@ -144,6 +150,17 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     setMinimumSize(720, 520);
 
     auto* outerLayout = new QVBoxLayout(this);
+
+    // Live filter across all tabs ("searchable in prefs"): narrows rows to
+    // entries whose label text matches (see ApplyFilter).
+    filterEdit_ = new QLineEdit(this);
+    filterEdit_->setObjectName(QStringLiteral("prefSearch"));
+    filterEdit_->setPlaceholderText(QStringLiteral("Filter settings\u2026"));
+    filterEdit_->setClearButtonEnabled(true);
+    connect(filterEdit_, &QLineEdit::textChanged,
+            this, &PreferencesDialog::ApplyFilter);
+    outerLayout->addWidget(filterEdit_);
+
     auto* tabs = new QTabWidget(this);
     tabsWidget_ = tabs;
     outerLayout->addWidget(tabs, 1);
@@ -179,6 +196,18 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
         QStringLiteral("Node origins, port rows and wire bends snap to the "
                        "15-unit scene grid (the background texture pitch); turn off for free-form placement"));
     generalLayout->addRow(QStringLiteral("Editor grid"), gridSnapCheck_);
+
+    showGraphValuesCheck_ = new QCheckBox(
+        QStringLiteral("Show sim signal values on the editor graphs"),
+        generalPage);
+    showGraphValuesCheck_->setObjectName(QStringLiteral("pref.showGraphValues"));
+    showGraphValuesCheck_->setChecked(preferences.showGraphValues);
+    showGraphValuesCheck_->setToolTip(QStringLiteral(
+        "With a sim session on the Simulate screen, each telemetry channel's "
+        "value is drawn at the ports that publish it (value-at-cursor while "
+        "the playback cursor is pinned). The same toggle lives under "
+        "View > Graph Signal Values."));
+    generalLayout->addRow(QStringLiteral("Graph values"), showGraphValuesCheck_);
 
     undoHistoryLimitSpin_ = new QSpinBox(generalPage);
     undoHistoryLimitSpin_->setRange(kMinimumHistoryLimit, kMaximumHistoryLimit);
@@ -258,6 +287,7 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     shortcutsLayout->addWidget(shortcutHint);
 
     auto* table = new QTableWidget(bindings_.size(), 4, shortcutsPage);
+    shortcutTable_ = table;
     table->setHorizontalHeaderLabels({
         QStringLiteral("Category"),
         QStringLiteral("Action"),
@@ -304,6 +334,64 @@ PreferencesDialog::PreferencesDialog(const AppPreferences& preferences,
     tabs->addTab(shortcutsPage, QStringLiteral("Keybindings"));
     shortcutsPage_ = shortcutsPage;
 
+    // ---- Filterable rows (the prefSearch line) ----------------------------
+    // Form pages contribute one entry per label+field row; Automation is one
+    // entry for its checkbox+hint pair; Keybindings contributes the pan row
+    // and one entry per shortcut table row.
+    auto collectFormPage = [this](QWidget* page, QFormLayout* form) {
+        for (int row = 0; row < form->rowCount(); ++row) {
+            QLayoutItem* labelItem = form->itemAt(row, QFormLayout::LabelRole);
+            QLayoutItem* fieldItem = form->itemAt(row, QFormLayout::FieldRole);
+            QWidget* labelWidget = labelItem ? labelItem->widget() : nullptr;
+            QWidget* fieldWidget = fieldItem ? fieldItem->widget() : nullptr;
+            QString haystack;
+            if (auto* label = qobject_cast<QLabel*>(labelWidget)) {
+                haystack += label->text();
+            }
+            if (auto* button = qobject_cast<QAbstractButton*>(fieldWidget)) {
+                haystack += QLatin1Char(' ') + button->text();
+            }
+            FilterEntry entry;
+            entry.page = page;
+            entry.haystack = haystack.trimmed();
+            if (labelWidget) entry.widgets.push_back(labelWidget);
+            if (fieldWidget) entry.widgets.push_back(fieldWidget);
+            if (!entry.widgets.isEmpty()) {
+                filterEntries_.push_back(std::move(entry));
+            }
+        }
+    };
+    collectFormPage(generalPage, generalLayout);
+    collectFormPage(buildPage, buildLayout);
+    {
+        FilterEntry entry;
+        entry.page = automationPage;
+        entry.haystack = allowExternalDeviceWritesCheck_->text()
+            + QLatin1Char(' ') + automationHint->text();
+        entry.widgets = {allowExternalDeviceWritesCheck_, automationHint};
+        filterEntries_.push_back(std::move(entry));
+    }
+    {
+        FilterEntry entry;
+        entry.page = shortcutsPage;
+        entry.haystack = QStringLiteral("Pan canvas mouse button");
+        QWidget* panLabel = nullptr;
+        if (QLayoutItem* item = mouseBindingsLayout->itemAt(0, QFormLayout::LabelRole)) {
+            panLabel = item->widget();
+        }
+        if (panLabel) entry.widgets.push_back(panLabel);
+        entry.widgets.push_back(panMouseButtonCombo_);
+        filterEntries_.push_back(std::move(entry));
+    }
+    for (int row = 0; row < bindings_.size(); ++row) {
+        FilterEntry entry;
+        entry.page = shortcutsPage;
+        entry.haystack = bindings_.at(row).category
+            + QLatin1Char(' ') + bindings_.at(row).label;
+        entry.tableRow = row;
+        filterEntries_.push_back(std::move(entry));
+    }
+
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                          this);
     connect(buttons, &QDialogButtonBox::accepted, this, &PreferencesDialog::accept);
@@ -318,6 +406,7 @@ AppPreferences PreferencesDialog::Preferences() const {
     preferences.rememberWindowGeometry = rememberWindowGeometryCheck_->isChecked();
     preferences.allowExternalDeviceWrites = allowExternalDeviceWritesCheck_->isChecked();
     preferences.gridSnap = gridSnapCheck_->isChecked();
+    preferences.showGraphValues = showGraphValuesCheck_->isChecked();
     preferences.undoHistoryLimit = undoHistoryLimitSpin_->value();
     preferences.buildLogLineLimit = buildLogLineLimitSpin_->value();
     preferences.firmwareBuildType = buildTypeCombo_->currentText();
@@ -374,6 +463,43 @@ void PreferencesDialog::RestoreShortcutDefaults() {
     panMouseButtonCombo_->setCurrentIndex(
         panMouseButtonCombo_->findData(static_cast<int>(Qt::MiddleButton)));
     shortcutErrorLabel_->hide();
+}
+
+void PreferencesDialog::ApplyFilter(const QString& term) {
+    const QString needle = term.trimmed();
+    auto entryMatch = [&needle](const FilterEntry& entry) {
+        return needle.isEmpty()
+            || entry.haystack.contains(needle, Qt::CaseInsensitive);
+    };
+    int visibleCount = 0;
+    QWidget* firstPageWithMatch = nullptr;
+    for (const FilterEntry& entry : filterEntries_) {
+        const bool match = entryMatch(entry);
+        if (match) {
+            ++visibleCount;
+            if (!firstPageWithMatch && entry.page) {
+                firstPageWithMatch = entry.page.data();
+            }
+        }
+    }
+    // A term that matches nothing restores the full dialog instead of
+    // leaving the user on blank tabs.
+    const bool forceAllVisible = visibleCount == 0;
+    for (const FilterEntry& entry : filterEntries_) {
+        const bool visible = forceAllVisible || entryMatch(entry);
+        for (const auto& widget : entry.widgets) {
+            if (widget) {
+                widget->setVisible(visible);
+            }
+        }
+        if (entry.tableRow >= 0 && shortcutTable_) {
+            shortcutTable_->setRowHidden(entry.tableRow, !visible);
+        }
+    }
+    if (!needle.isEmpty() && !forceAllVisible && firstPageWithMatch
+        && tabsWidget_) {
+        tabsWidget_->setCurrentWidget(firstPageWithMatch);
+    }
 }
 
 }  // namespace NodeGUI
