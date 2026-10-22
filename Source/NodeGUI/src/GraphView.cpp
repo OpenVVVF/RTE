@@ -147,6 +147,23 @@ void GraphView::TrackNodeDragAfterPress(QMouseEvent* event) {
     }
 }
 
+void GraphView::QuantizeOngoingNodeDrag() {
+    // Release-side snapping alone corrects by at most half a pitch, which is
+    // invisible mid-gesture - "the nodes never snap". Quantize DURING the
+    // drag so the node glides in grid steps and lands visibly on-grid.
+    if (!gridSnap_ || !scene()) {
+        return;
+    }
+    auto* node = MovableNodeAncestor(scene()->mouseGrabberItem());
+    if (!node || node->nodeState().resizing()) {
+        return;
+    }
+    const QPointF snapped = WireRoute::SnapToGrid(node->pos());
+    if (snapped != node->pos()) {
+        node->setPos(snapped);
+    }
+}
+
 void GraphView::ClearNodeDragCursor() {
     nodeDragPending_ = false;
     if (!nodeDragCursorActive_) {
@@ -393,6 +410,7 @@ void GraphView::mouseMoveEvent(QMouseEvent* event) {
     }
     if (panMouseButton_ == Qt::MiddleButton) {
         QGraphicsView::mouseMoveEvent(event);
+        QuantizeOngoingNodeDrag();
         if ((event->buttons() & Qt::LeftButton) &&
             !rubberBandRect().isNull()) {
             nodeRubberBandSelecting_ = true;
@@ -401,6 +419,7 @@ void GraphView::mouseMoveEvent(QMouseEvent* event) {
         return;
     }
     QtNodes::GraphicsView::mouseMoveEvent(event);
+    QuantizeOngoingNodeDrag();
 }
 
 void GraphView::mouseReleaseEvent(QMouseEvent* event) {

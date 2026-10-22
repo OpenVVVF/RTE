@@ -71,6 +71,7 @@ protected:
 
 private:
     void TrackNodeDragAfterPress(QMouseEvent* event);
+    void QuantizeOngoingNodeDrag();
     void ClearNodeDragCursor();
 
     // Arrow-key move of the selected nodes: one WireRoute grid step per
