@@ -97,7 +97,7 @@ InspectorPanel::InspectorPanel(QWidget* parent)
     scrollArea_->hide();
     layout_->addWidget(scrollArea_, 1);
 
-    placeholder_ = new QLabel(QStringLiteral("Select a node to inspect it."), this);
+    placeholder_ = new QLabel(QStringLiteral("Select a node or a wire to inspect it."), this);
     layout_->addWidget(placeholder_);
 
     Clear();
@@ -108,20 +108,41 @@ void InspectorPanel::Attach(GraphScene* scene) {
 }
 
 void InspectorPanel::Clear() {
+    connectionMode_ = false;
     ShowNode(QtNodes::InvalidNodeId);
 }
 
 void InspectorPanel::ShowNode(QtNodes::NodeId qtId) {
-    if (qtId == qtId_) {
+    if (!connectionMode_ && qtId == qtId_) {
         return;
     }
+    connectionMode_ = false;
     qtId_ = qtId;
     Rebuild();
+}
+
+void InspectorPanel::ShowConnection(QtNodes::ConnectionId connId) {
+    if (connectionMode_ && connId == connId_) {
+        return;
+    }
+    connectionMode_ = true;
+    connId_ = connId;
+    qtId_ = QtNodes::InvalidNodeId;
+    Rebuild();
+}
+
+void InspectorPanel::RefreshNetLabel(QtNodes::ConnectionId connId,
+                                     const QString& text) {
+    if (connectionMode_ && connId == connId_ && netLabelEdit_ &&
+        netLabelEdit_->text() != text) {
+        netLabelEdit_->setText(text);
+    }
 }
 
 void InspectorPanel::Rebuild() {
     paramRows_.clear();
     idEdit_ = nullptr;
+    netLabelEdit_ = nullptr;
     domainCombo_ = nullptr;
 
     // Detach the old form from its scroll area before delete - the area
@@ -133,6 +154,11 @@ void InspectorPanel::Rebuild() {
     delete form_;
     form_ = nullptr;
     placeholder_->hide();
+
+    if (connectionMode_) {
+        RebuildConnectionForm();
+        return;
+    }
 
     if (!scene_ || qtId_ == QtNodes::InvalidNodeId) {
         placeholder_->show();
@@ -301,6 +327,63 @@ void InspectorPanel::Rebuild() {
 
     scrollArea_->setWidget(form_);
     scrollArea_->show();
+}
+
+void InspectorPanel::RebuildConnectionForm() {
+    QString graphId;
+    if (scene_ && scene_->Model() && connId_.outNodeId != QtNodes::InvalidNodeId) {
+        graphId = QString::fromStdString(scene_->Model()->GraphConnectionId(connId_));
+    }
+    if (graphId.isEmpty()) {
+        placeholder_->show();
+        connectionMode_ = false;
+        connId_ = QtNodes::ConnectionId{QtNodes::InvalidNodeId,
+                                        QtNodes::InvalidPortIndex,
+                                        QtNodes::InvalidNodeId,
+                                        QtNodes::InvalidPortIndex};
+        return;
+    }
+
+    form_ = new QWidget(this);
+    auto* formLayout = new QFormLayout(form_);
+    formLayout->setContentsMargins(0, 0, 0, 0);
+
+    // Id (read-only — connection graph ids are engine-assigned).
+    auto* idValue = new QLabel(graphId, form_);
+    formLayout->addRow(QStringLiteral("Connection"), idValue);
+
+    // Net label (editable): KiCad-style — a labeled wire renders as two
+    // short stubs + name tags instead of the long route. Empty clears.
+    netLabelEdit_ = new QLineEdit(scene_->ConnectionLabel(connId_), form_);
+    // smoke-driver seam: netlabel.<connGraphId> for scripted edits
+    netLabelEdit_->setObjectName(QStringLiteral("netlabel.") + graphId);
+    netLabelEdit_->setToolTip(QStringLiteral(
+        "Display-only net label. Two tag chips (one per end) replace the long "
+        "wire. Unique across all connections: a connection IS the net."));
+    formLayout->addRow(QStringLiteral("Net label"), netLabelEdit_);
+    connect(netLabelEdit_,
+            &QLineEdit::editingFinished,
+            this,
+            &InspectorPanel::ApplyNetLabel);
+
+    scrollArea_->setWidget(form_);
+    scrollArea_->show();
+}
+
+void InspectorPanel::ApplyNetLabel() {
+    if (!scene_ || !netLabelEdit_) {
+        return;
+    }
+    const QString text = netLabelEdit_->text().trimmed();
+    if (text == scene_->ConnectionLabel(connId_)) {
+        return;
+    }
+    const QString error = scene_->SetConnectionLabel(connId_, text);
+    if (!error.isEmpty()) {
+        if (onError) onError(error);
+        // Revert the editor to the actual label (refused edits never stick).
+        netLabelEdit_->setText(scene_->ConnectionLabel(connId_));
+    }
 }
 
 void InspectorPanel::ApplyRename() {

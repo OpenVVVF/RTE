@@ -16,6 +16,8 @@
 #include <RTEAutomation/CachePaths.h>
 #include <RTEAutomation/Platform.h>
 
+#include <QtNodes/internal/ConnectionGraphicsObject.hpp>
+
 #include <QAction>
 #include <QApplication>
 #include <QAbstractButton>
@@ -261,6 +263,32 @@ MainWindow::MainWindow(QWidget* parent)
     // Right-click on a node: offer the domain selection menu.
     view_->onNodeContextMenu = [this](const QPointF& globalPos, QtNodes::NodeId qtId) {
         ShowNodeDomainMenu(globalPos, qtId);
+    };
+
+    // Ctrl+double-click on a wire: quick-edit its net label through an
+    // instance-modal dialog. The label pipeline itself lives in GraphScene.
+    view_->onNetLabelRequested = [this](QtNodes::ConnectionId connId) {
+        GraphScene* scene = ActiveGraphScene();
+        if (!scene) {
+            return;
+        }
+        QInputDialog dialog(this);
+        dialog.setInputMode(QInputDialog::TextInput);
+        dialog.setWindowTitle(QStringLiteral("Net label"));
+        dialog.setLabelText(QStringLiteral(
+            "Net label (empty clears; unique across all connections):"));
+        dialog.setTextValue(scene->ConnectionLabel(connId));
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        const QString error = scene->SetConnectionLabel(connId, dialog.textValue());
+        if (!error.isEmpty()) {
+            ShowToast(error);
+        } else if (inspector_ && scene == graphScene_.get()) {
+            // The node editor's inspector only — the plant screen keeps its
+            // own panel and never shows connection rows.
+            inspector_->RefreshNetLabel(connId, scene->ConnectionLabel(connId));
+        }
     };
 
     view_->onDomainDoubleClicked = [this](const QPointF& scenePos) {
@@ -2221,6 +2249,31 @@ QString MainWindow::SmokeDumpNodeGeometry(const std::string& nodeId) {
     return active->DumpNodeGeometry(nodeId);
 }
 
+QString MainWindow::SmokeSetConnectionLabel(const std::string& graphId,
+                                            const QString& label) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("refused no scene");
+    }
+    const QtNodes::ConnectionId connId = active->FindQtConnectionId(graphId);
+    const QString error = active->SetConnectionLabel(connId, label);
+    if (!error.isEmpty()) {
+        return QStringLiteral("refused ") + error;
+    }
+    if (active == graphScene_.get() && inspector_) {
+        inspector_->RefreshNetLabel(connId, active->ConnectionLabel(connId));
+    }
+    return QStringLiteral("ok");
+}
+
+QString MainWindow::SmokeDumpConnection(const std::string& graphId) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("no scene");
+    }
+    return active->DumpConnectionInfo(graphId);
+}
+
 QString MainWindow::SmokeAddNode(const QString& typeId, double x, double y) {
     GraphScene* active = ActiveGraphScene();
     if (!active) {
@@ -2503,6 +2556,13 @@ void MainWindow::OnSceneSelectionChanged() {
     for (QGraphicsItem* item : graphScene_->Scene()->selectedItems()) {
         if (auto* ngo = qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
             inspector_->ShowNode(ngo->nodeId());
+            return;
+        }
+    }
+    for (QGraphicsItem* item : graphScene_->Scene()->selectedItems()) {
+        if (auto* cgo =
+                qgraphicsitem_cast<QtNodes::ConnectionGraphicsObject*>(item)) {
+            inspector_->ShowConnection(cgo->connectionId());
             return;
         }
     }

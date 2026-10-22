@@ -72,6 +72,19 @@ public:
     void SetConnectionWaypoints(QtNodes::ConnectionId const connectionId,
                                 std::vector<QPointF> scenePoints);
 
+    // Optional display-only net label of a connection (nullptr when unset).
+    // A labeled connection renders as two short stubs + name tags instead of
+    // the long wire (KiCad-style net labels); NodeAPI/codegen never see it.
+    const QString* ConnectionLabel(QtNodes::ConnectionId const connectionId) const;
+    // Empty clears the label. Uniqueness of non-empty labels is vetted by
+    // GraphScene::SetConnectionLabel before it reaches this setter.
+    void SetConnectionLabel(QtNodes::ConnectionId const connectionId,
+                            const QString& label);
+    // The connection currently holding the given non-empty label
+    // (QtNodes::InvalidConnectionId equivalent — outNodeId ==
+    // QtNodes::InvalidNodeId — when the label is free).
+    QtNodes::ConnectionId NetLabelOwner(const QString& label) const;
+
     // The mini-router's choice for a waypoint-free connection (scene
     // coordinates for the non-legacy line). nullptr when the cache has no
     // entry for the connection. GraphScene fills it per recompute pass.
@@ -135,6 +148,7 @@ private:
     std::unordered_map<QtNodes::NodeId, std::string> qtIdToNodeId_;
     mutable std::unordered_map<QtNodes::ConnectionId, GraphConnection> connectionMap_;
     std::unordered_map<QtNodes::ConnectionId, std::vector<QPointF>> connectionWaypoints_;
+    std::unordered_map<QtNodes::ConnectionId, QString> connectionLabels_;
     std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> autoRoutes_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;

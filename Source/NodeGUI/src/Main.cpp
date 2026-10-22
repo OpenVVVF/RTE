@@ -27,6 +27,20 @@
 //   bounding rect via a small QtNodes hook (AbstractConnectionPainter::
 //   routeBounds) so routed wires repaint correctly.
 //
+// Display-only net labels ("netLabel"):
+//   Optional per-connection text label — KiCad-style: a labeled wire renders
+//   as a short exit stub per port (3 grid cells, toward the peer) terminated
+//   by a tag chip with the name, instead of the long route; hit selection
+//   covers stubs + chips. Display layer only: the connection stays pairwise
+//   and NodeAPI/codegen/simulation never see labels (storage parallels
+//   connectionWaypoints_ in NodeGraphModel, saved as an optional
+//   "netLabel":"text" key beside "waypoints"). A non-empty label is UNIQUE
+//   across all connections and bridges — a connection IS the net — enforced
+//   at assignment (GraphScene::SetConnectionLabel refuses taken names;
+//   inspector field reverts + toast). Edit seams: Inspector "Net label"
+//   field (select a wire), Ctrl+double-click on a wire (instance-modal
+//   QInputDialog), or the smoke verbs netlabel/dumpconn.
+//
 // Domain node glyphs (painter layer only, no model/geometry changes):
 //   TypedNodePainter::DrawTypeGlyph paints a type-driven icon into the node
 //   center (between the port text columns, above the parameter block).
@@ -141,6 +155,18 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             std::cout << "mousedrag " << arg.toStdString() << "=" << (ok ? "ok" : "failed") << "\n";
         } else if (kind == "dumppos") {
             std::cout << window->SmokeDumpNodeGeometry(arg.toStdString()).toStdString();
+        } else if (kind == "netlabel") {
+            // netlabel <connGraphId> [text...] — set (empty text clears).
+            // Prints "ok" or "refused <reason>" (labels are unique across
+            // connections: a held name cannot be re-assigned elsewhere).
+            const QString text = QStringList(parts.mid(2)).join(' ');
+            std::cout << "netlabel " << arg.toStdString() << "="
+                      << window->SmokeSetConnectionLabel(arg.toStdString(), text)
+                             .toStdString()
+                      << "\n";
+        } else if (kind == "dumpconn") {
+            // "label=<text|—>;layer=<z>" single line for checkers.
+            std::cout << window->SmokeDumpConnection(arg.toStdString()).toStdString();
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
                 button->click();

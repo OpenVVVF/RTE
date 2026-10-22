@@ -19,6 +19,7 @@ class QCheckBox;
 class QScrollArea;
 class QComboBox;
 class QFormLayout;
+class QLabel;
 class QLineEdit;
 class QVBoxLayout;
 
@@ -26,13 +27,16 @@ namespace NodeGUI {
 
 class GraphScene;
 
-// Right-dock panel that inspects the currently selected node: id (rename),
-// type, timing domain, and parameters (value + wire-as-input toggle). Edits
-// apply immediately through the same write paths as the rest of the editor.
-// Parameter commits are validated against the type descriptor when the
-// parameter declares a type (f32 numeric, boolean 0/1; free text otherwise):
-// invalid edits revert to the last stored value with a red outline and a
-// reason tooltip, valid commits flash the field briefly so they are visible.
+// Right-dock panel that inspects the current selection. A selected node
+// shows: id (rename), type, timing domain, and parameters (value +
+// wire-as-input toggle). A selected CONNECTION shows its display-only net
+// label (KiCad-style: the long wire collapses into two named stubs).
+// Edits apply immediately through the same write paths as the rest of the
+// editor. Parameter commits are validated against the type descriptor when
+// the parameter declares a type (f32 numeric, boolean 0/1; free text
+// otherwise): invalid edits revert to the last stored value with a red
+// outline and a reason tooltip, valid commits flash the field briefly so they
+// are visible.
 class InspectorPanel : public QWidget {
     Q_OBJECT
 
@@ -44,6 +48,12 @@ public:
     // Rebuilds the form for the given node. ShowNode with InvalidNodeId (or
     // Clear()) shows the placeholder.
     void ShowNode(QtNodes::NodeId qtId);
+    // Rebuilds the form for the given connection (net label editor).
+    void ShowConnection(QtNodes::ConnectionId connId);
+    // Updates the net-label field when an OUTSIDE path (Ctrl+double-click
+    // dialog, smoke verb) committed a label while this connection is shown,
+    // so the field never displays a stale name.
+    void RefreshNetLabel(QtNodes::ConnectionId connId, const QString& text);
     void Clear();
 
     // Report apply failures (wired to MainWindow's toast).
@@ -61,12 +71,14 @@ private:
     };
 
     void Rebuild();
+    void RebuildConnectionForm();
     void ApplyParameters();
     void ApplyParameterInputs();
     void ApplyDomain();
     void ApplyRename();
     void ApplyExcluded(bool exclude);
     void ApplyExcludedRecursive(bool exclude);
+    void ApplyNetLabel();
 
     // Inline commit feedback on one parameter row: rejected edits get a red
     // outline + reason tooltip (and the text is reverted by the caller);
@@ -77,12 +89,20 @@ private:
 
     GraphScene* scene_ = nullptr;
     QtNodes::NodeId qtId_ = QtNodes::InvalidNodeId;
+    // When connectionMode_ is set the form inspects connId_ (net label),
+    // not qtId_ (which stays InvalidNodeId in that mode).
+    bool connectionMode_ = false;
+    QtNodes::ConnectionId connId_{QtNodes::InvalidNodeId,
+                                  QtNodes::InvalidPortIndex,
+                                  QtNodes::InvalidNodeId,
+                                  QtNodes::InvalidPortIndex};
 
     QVBoxLayout* layout_ = nullptr;
     QWidget* placeholder_ = nullptr;
     QWidget* form_ = nullptr;
     QScrollArea* scrollArea_ = nullptr;
     QLineEdit* idEdit_ = nullptr;
+    QLineEdit* netLabelEdit_ = nullptr;
     QComboBox* domainCombo_ = nullptr;
     QCheckBox* excludeCheck_ = nullptr;
     QCheckBox* excludeChildrenCheck_ = nullptr;

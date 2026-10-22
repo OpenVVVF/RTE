@@ -113,6 +113,26 @@ public:
     QString AddWireBend(QtNodes::ConnectionId qtId);
     QString RemoveLastWireBend(QtNodes::ConnectionId qtId);
 
+    // ---- Display-only net labels (KiCad-style named wire stubs) ----
+
+    // Copy of the connection's net label (empty when unset). The label never
+    // leaves the GUI layer: NodeAPI/codegen/simulation see the plain
+    // pairwise connection; a labeled wire just renders as two stubs + tag
+    // chips instead of the long route.
+    QString ConnectionLabel(QtNodes::ConnectionId qtId) const;
+
+    // Sets/replaces (trimmed; empty clears) the connection's net label and
+    // books the change for undo (same plumbing as waypoints). NON-EMPTY
+    // labels are unique across ALL connections and bridges — a connection IS
+    // the net, so two distinct connections may not claim one name. Refuses
+    // with an error message when the name is taken or the connection is
+    // unknown; empty string on success.
+    QString SetConnectionLabel(QtNodes::ConnectionId qtId, const QString& label);
+
+    // Smoke/checker read-out for one connection:
+    // "label=<text|—>;layer=<z>" (or an error line when unknown).
+    QString DumpConnectionInfo(const std::string& graphId) const;
+
     // Invoked after a user-visible graph mutation has fully reached the
     // NodeAPI model.
     void SetChangeCallback(std::function<void()> callback);
@@ -272,6 +292,10 @@ public:
     // Hands pendingWaypoints_ to the model after a rebuild. Must run after
     // CreateConnections/CreateBridges (the qt ids exist only then).
     void ApplyPendingWaypoints();
+    // Same staged parse/apply for the optional per-connection "netLabel"
+    // string (tolerant: non-string entries are silently skipped).
+    void ParseNetLabelsFromJson(const nlohmann::json& graphJson);
+    void ApplyPendingNetLabels();
     // Repaints a wire after its waypoint list changed.
     void RepaintConnection(QtNodes::ConnectionId qtId);
 
@@ -339,6 +363,10 @@ public:
     // Manual wire bends parsed from the loaded document, keyed by NodeAPI
     // connection id; staged until the scene exists (ApplyPendingWaypoints).
     std::unordered_map<std::string, std::vector<QPointF>> pendingWaypoints_;
+
+    // Net labels parsed from the loaded document (same staging as bends,
+    // ApplyPendingNetLabels).
+    std::unordered_map<std::string, QString> pendingNetLabels_;
 
     bool PointHitsGraphContent(const QPointF& scenePos) const;
     void UpdateDomainSelectionStyle();

@@ -10,6 +10,8 @@
 #include <QtNodes/internal/ConnectionState.hpp>
 
 #include <QApplication>
+#include <QFont>
+#include <QFontMetricsF>
 #include <QPalette>
 #include <QPainter>
 #include <QPainterPath>
@@ -53,6 +55,44 @@ QColor WireSelectionColor() {
     }
     return QtNodes::StyleCollection::connectionStyle().selectedHaloColor();
 }
+
+// Net-label tag geometry: 3-grid-cell exit stub from each port toward the
+// peer, terminated by a small rounded tag chip carrying the label text.
+namespace NetLabel {
+
+constexpr double kStubLength = 3.0 * WireRoute::kGridPitch;  // 45 px
+constexpr double kChipPadX = 6.0;
+constexpr double kChipPadY = 3.0;
+constexpr double kChipGap = 2.0;    // stub tip -> chip distance
+constexpr double kChipRadius = 4.0;
+
+// The two open stub segments of a labeled connection (halo / hit / paint).
+QPainterPath StubPath(QtNodes::ConnectionGraphicsObject const& cgo,
+                      const BridgeConnectionPainter::NetLabelLayout& layout) {
+    QPainterPath path(cgo.endPoint(QtNodes::PortType::Out));
+    path.lineTo(layout.outTip);
+    path.moveTo(cgo.endPoint(QtNodes::PortType::In));
+    path.lineTo(layout.inTip);
+    return path;
+}
+
+// Shared selection/hover/excluded treatment color for the whole tag layer
+// (stubs, chip borders, label text) — same rules as the wire line itself.
+QColor TreatmentColor(QtNodes::ConnectionGraphicsObject const& cgo,
+                      const NodeGraphModel* model) {
+    const bool selected = cgo.isSelected();
+    const bool hovered = cgo.connectionState().hovered();
+    const bool excluded = model && model->IsExcluded(cgo.connectionId());
+    QColor color = excluded ? QColor(110, 112, 118) : ConnectionColor(cgo);
+    if (selected) {
+        color = WireSelectionColor();
+    } else if (hovered) {
+        color = QtNodes::StyleCollection::connectionStyle().hoveredColor();
+    }
+    return color;
+}
+
+}  // namespace NetLabel
 
 // Draws a port-shaped marker (same shapes as the node ports).
 void DrawStyleShape(QPainter* painter,
@@ -162,17 +202,8 @@ void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
     auto const& connectionStyle = QtNodes::StyleCollection::connectionStyle();
 
     const bool selected = cgo.isSelected();
-    const bool hovered = cgo.connectionState().hovered();
-
     const auto* model = TryGetNodeModel(cgo);
-    const bool excluded = model && model->IsExcluded(cgo.connectionId());
-
-    QColor color = excluded ? QColor(110, 112, 118) : ConnectionColor(cgo);
-    if (selected) {
-        color = WireSelectionColor();
-    } else if (hovered) {
-        color = connectionStyle.hoveredColor();
-    }
+    const QColor color = NetLabel::TreatmentColor(cgo, model);
 
     QPen pen;
     pen.setWidthF(connectionStyle.lineWidth() + (selected ? 0.5 : 0.0));
@@ -185,12 +216,104 @@ void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
     painter->drawPath(wirePath(cgo));
 }
 
+std::optional<BridgeConnectionPainter::NetLabelLayout>
+BridgeConnectionPainter::NetLabelGeometry(
+    QtNodes::ConnectionGraphicsObject const& cgo) const {
+    const auto* model = TryGetNodeModel(cgo);
+    if (!model) {
+        return std::nullopt;
+    }
+    const QString* label = model->ConnectionLabel(cgo.connectionId());
+    if (!label || label->isEmpty()) {
+        return std::nullopt;
+    }
+
+    const QPointF out = cgo.endPoint(QtNodes::PortType::Out);
+    const QPointF in = cgo.endPoint(QtNodes::PortType::In);
+    // Horizontal stub direction toward the peer; on exact vertical stacks the
+    // out stub defaults rightward and the in stub leftward (off the node
+    // bodies).
+    const double outDir = in.x() >= out.x() ? 1.0 : -1.0;
+    const double inDir = out.x() <= in.x() ? -1.0 : 1.0;
+
+    NetLabelLayout layout;
+    layout.outTip = QPointF(out.x() + NetLabel::kStubLength * outDir, out.y());
+    layout.inTip = QPointF(in.x() + NetLabel::kStubLength * inDir, in.y());
+
+    const QFontMetricsF metrics(qApp ? qApp->font() : QFont{});
+    const double chipWidth =
+        metrics.horizontalAdvance(*label) + 2.0 * NetLabel::kChipPadX;
+    const double chipHeight = metrics.height() + 2.0 * NetLabel::kChipPadY;
+
+    auto chipAt = [&](const QPointF& tip, double stubY, double dir) {
+        const double x = (dir > 0.0) ? tip.x() + NetLabel::kChipGap
+                                     : tip.x() - NetLabel::kChipGap - chipWidth;
+        return QRectF(x, stubY - chipHeight / 2.0, chipWidth, chipHeight);
+    };
+    layout.outChip = chipAt(layout.outTip, out.y(), outDir);
+    layout.inChip = chipAt(layout.inTip, in.y(), inDir);
+    return layout;
+}
+
+QPainterPath BridgeConnectionPainter::NetLabelStroke(
+    QtNodes::ConnectionGraphicsObject const& cgo,
+    const NetLabelLayout& layout) const {
+    QPainterPathStroker stroker;
+    stroker.setWidth(10.0);
+    QPainterPath stroke = stroker.createStroke(NetLabel::StubPath(cgo, layout));
+    stroke.addRoundedRect(layout.outChip, NetLabel::kChipRadius, NetLabel::kChipRadius);
+    stroke.addRoundedRect(layout.inChip, NetLabel::kChipRadius, NetLabel::kChipRadius);
+    return stroke;
+}
+
+void BridgeConnectionPainter::drawNetLabelTags(
+    QPainter* painter,
+    QtNodes::ConnectionGraphicsObject const& cgo,
+    const NetLabelLayout& layout,
+    bool isBridge) const {
+    auto const& connectionStyle = QtNodes::StyleCollection::connectionStyle();
+    const auto* model = TryGetNodeModel(cgo);
+    const bool selected = cgo.isSelected();
+    const QColor color = NetLabel::TreatmentColor(cgo, model);
+
+    QPen pen;
+    pen.setWidthF(connectionStyle.lineWidth() + (selected ? 0.5 : 0.0));
+    pen.setColor(color);
+    pen.setStyle(isBridge ? Qt::DashLine : Qt::SolidLine);
+    pen.setCapStyle(Qt::RoundCap);
+
+    painter->setPen(pen);
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(NetLabel::StubPath(cgo, layout));
+
+    // Tag chips: canvas-Base fill, wire-colored border (dashed like the stub
+    // on bridges), label text in the treatment color.
+    QPen chipPen;
+    chipPen.setColor(color);
+    chipPen.setStyle(isBridge ? Qt::DashLine : Qt::SolidLine);
+    painter->setPen(chipPen);
+    painter->setBrush(QBrush(qApp ? qApp->palette().color(QPalette::Base)
+                                  : QColor(255, 255, 255)));
+    painter->drawRoundedRect(layout.outChip, NetLabel::kChipRadius, NetLabel::kChipRadius);
+    painter->drawRoundedRect(layout.inChip, NetLabel::kChipRadius, NetLabel::kChipRadius);
+
+    if (const QString* label = model->ConnectionLabel(cgo.connectionId())) {
+        QPen textPen;
+        textPen.setColor(color);
+        painter->setPen(textPen);
+        painter->drawText(layout.outChip, Qt::AlignCenter, *label);
+        painter->drawText(layout.inChip, Qt::AlignCenter, *label);
+    }
+}
+
 void BridgeConnectionPainter::paint(QPainter* painter,
                                     QtNodes::ConnectionGraphicsObject const& cgo) const {
     const auto* model = TryGetNodeModel(cgo);
     const bool isBridge = model && model->IsBridge(cgo.connectionId());
+    const auto labelLayout = NetLabelGeometry(cgo);
 
-    // Draw halo/selection background.
+    // Draw halo/selection background. A labeled connection has no long wire:
+    // the halo wraps the two stubs and their tag chips instead.
     bool const hovered = cgo.connectionState().hovered();
     bool const selected = cgo.isSelected();
     if (hovered || selected) {
@@ -206,10 +329,22 @@ void BridgeConnectionPainter::paint(QPainter* painter,
 
         painter->setPen(pen);
         painter->setBrush(Qt::NoBrush);
-        painter->drawPath(wirePath(cgo));
+        if (labelLayout) {
+            painter->drawPath(NetLabel::StubPath(cgo, *labelLayout));
+            painter->drawRoundedRect(labelLayout->outChip,
+                                     NetLabel::kChipRadius, NetLabel::kChipRadius);
+            painter->drawRoundedRect(labelLayout->inChip,
+                                     NetLabel::kChipRadius, NetLabel::kChipRadius);
+        } else {
+            painter->drawPath(wirePath(cgo));
+        }
     }
 
-    drawConnectionLine(painter, cgo, isBridge);
+    if (labelLayout) {
+        drawNetLabelTags(painter, cgo, *labelLayout, isBridge);
+    } else {
+        drawConnectionLine(painter, cgo, isBridge);
+    }
 
     // Draw construction endpoints. While drafting, the loose end tracks the
     // cursor and gets the dragged wire's style at reduced opacity (matching
@@ -272,7 +407,11 @@ void BridgeConnectionPainter::paint(QPainter* painter,
         } else if (selected) {
             handleColor = WireSelectionColor();
         }
-        drawWaypointHandles(painter, cgo, handleColor);
+        if (!labelLayout) {
+            // Labeled wires ignore their stored bends at render time; the
+            // handles go with the bends (data kept for the un-collapse).
+            drawWaypointHandles(painter, cgo, handleColor);
+        }
     }
 }
 
@@ -309,7 +448,11 @@ void BridgeConnectionPainter::drawWaypointHandles(QPainter* painter,
 QPainterPath BridgeConnectionPainter::getPainterStroke(
     QtNodes::ConnectionGraphicsObject const& cgo) const {
     // The hit shape follows the drawn wire exactly (every route wirePath
-    // emits is already a polyline).
+    // emits is already a polyline). A labeled connection's hit shape covers
+    // the stubs and both tag chips — the wire itself is not drawn.
+    if (const auto labelLayout = NetLabelGeometry(cgo)) {
+        return NetLabelStroke(cgo, *labelLayout);
+    }
     QPainterPathStroker stroker;
     stroker.setWidth(10.0);
     return stroker.createStroke(wirePath(cgo));
@@ -319,6 +462,13 @@ QRectF BridgeConnectionPainter::routeBounds(QtNodes::ConnectionGraphicsObject co
     const auto* model = TryGetNodeModel(cgo);
     if (!model) {
         return {};
+    }
+    // Labeled: stubs + tag chips stick out past the endpoint rect.
+    if (const auto labelLayout = NetLabelGeometry(cgo)) {
+        QRectF bounds = labelLayout->outChip.united(labelLayout->inChip);
+        bounds |= QRectF(cgo.endPoint(QtNodes::PortType::Out), labelLayout->outTip);
+        bounds |= QRectF(cgo.endPoint(QtNodes::PortType::In), labelLayout->inTip);
+        return bounds.normalized().adjusted(-8.0, -8.0, 8.0, 8.0);
     }
     const std::vector<QPointF>* waypoints = model->ConnectionWaypoints(cgo.connectionId());
     if (waypoints && !waypoints->empty()) {

@@ -485,6 +485,16 @@ void GraphView::mouseDoubleClickEvent(QMouseEvent* event) {
     ClearNodeDragCursor();
 
     if (event->button() == Qt::LeftButton &&
+        (event->modifiers() & Qt::ControlModifier) &&
+        onNetLabelRequested) {
+        if (auto* cgo = WireItemAt(this, event->position().toPoint())) {
+            onNetLabelRequested(cgo->connectionId());
+            event->accept();
+            return;
+        }
+    }
+
+    if (event->button() == Qt::LeftButton &&
         onDomainDoubleClicked &&
         onDomainDoubleClicked(
             mapToScene(event->position().toPoint()))) {

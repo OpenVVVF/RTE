@@ -43,6 +43,11 @@ public:
     std::function<void(const QPointF& delta)> onDomainDragged;
     std::function<void()> onDomainDragFinished;
 
+    // Ctrl+double-click on a wire: quick-edit that connection's display-only
+    // net label (host shows the input dialog; the view only routes the id).
+    // Plain double-click keeps its current meaning (domain activation).
+    std::function<void(QtNodes::ConnectionId connId)> onNetLabelRequested;
+
     // Drag-completion evidence: the node's id + scene position captured at
     // left-press; on release, if the captured node moved beyond a scene-unit
     // wiggle, the host calls this BEFORE the base-class release runs - so the

@@ -222,6 +222,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
     }
 
     ParseWaypointsFromJson(graphJson);
+    ParseNetLabelsFromJson(graphJson);
 
     try {
         NodeAPI::LoadIntoGraph(graph_, *graphText);
@@ -248,6 +249,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
 QString GraphScene::NewGraph() {
     graph_ = NodeAPI::Graph{};
     pendingWaypoints_.clear();
+    pendingNetLabels_.clear();
     if (templatesDir_.empty()) {
         return QStringLiteral("No node templates have been loaded yet");
     }
@@ -313,6 +315,7 @@ void GraphScene::RebuildScene() {
     CreateConnections();
     CreateBridges();
     ApplyPendingWaypoints();
+    ApplyPendingNetLabels();
     CreateDomainOutlines();
 
     QObject::connect(scene_.get(),
@@ -1257,26 +1260,35 @@ void GraphScene::EndSelectedDomainDrag() {
 std::string GraphScene::SerializeWithExtras() const {
     const std::string json = NodeAPI::SaveToJson(graph_);
 
-    // Collect live manual bends, keyed by NodeAPI connection id.
+    // Collect live manual bends and net labels, keyed by NodeAPI connection id.
     std::unordered_map<std::string, std::vector<QPointF>> waypointsByGraphId;
+    std::unordered_map<std::string, QString> labelsByGraphId;
     if (model_) {
         for (const auto& connection : graph_.GetConnections()) {
-            if (const auto* wps =
-                    model_->ConnectionWaypoints(FindQtConnectionId(connection.id));
+            const QtNodes::ConnectionId qtId = FindQtConnectionId(connection.id);
+            if (const auto* wps = model_->ConnectionWaypoints(qtId);
                 wps && !wps->empty()) {
                 waypointsByGraphId[connection.id] = *wps;
             }
+            if (const QString* label = model_->ConnectionLabel(qtId);
+                label && !label->isEmpty()) {
+                labelsByGraphId[connection.id] = *label;
+            }
         }
         for (const auto& bridge : graph_.GetBridges()) {
-            if (const auto* wps =
-                    model_->ConnectionWaypoints(FindQtConnectionId(bridge.id));
+            const QtNodes::ConnectionId qtId = FindQtConnectionId(bridge.id);
+            if (const auto* wps = model_->ConnectionWaypoints(qtId);
                 wps && !wps->empty()) {
                 waypointsByGraphId[bridge.id] = *wps;
+            }
+            if (const QString* label = model_->ConnectionLabel(qtId);
+                label && !label->isEmpty()) {
+                labelsByGraphId[bridge.id] = *label;
             }
         }
     }
 
-    if (originalTopKeys_.empty() && waypointsByGraphId.empty()) {
+    if (originalTopKeys_.empty() && waypointsByGraphId.empty() && labelsByGraphId.empty()) {
         return json;
     }
     try {
@@ -1307,6 +1319,20 @@ std::string GraphScene::SerializeWithExtras() const {
         };
         mergeWaypoints("connections");
         mergeWaypoints("bridges");
+        auto mergeLabels = [&](const char* key) {
+            if (!out.contains(key) || !out[key].is_array()) {
+                return;
+            }
+            for (auto& item : out[key]) {
+                const auto it = labelsByGraphId.find(item.value("id", std::string()));
+                if (it == labelsByGraphId.end()) {
+                    continue;
+                }
+                item["netLabel"] = it->second.toStdString();
+            }
+        };
+        mergeLabels("connections");
+        mergeLabels("bridges");
         return out.dump(2) + "\n";
     } catch (const std::exception&) {
         return json;   // merge is best-effort; never lose the save itself
@@ -1351,6 +1377,41 @@ void GraphScene::ApplyPendingWaypoints() {
             continue;   // wire did not materialize (dangling/unknown port)
         }
         model_->SetConnectionWaypoints(qtId, points);
+    }
+}
+
+void GraphScene::ParseNetLabelsFromJson(const nlohmann::json& graphJson) {
+    pendingNetLabels_.clear();
+    auto pull = [&](const char* key) {
+        if (!graphJson.contains(key) || !graphJson[key].is_array()) {
+            return;
+        }
+        for (const auto& item : graphJson[key]) {
+            if (!item.contains("netLabel") || !item["netLabel"].is_string()) {
+                continue;
+            }
+            const QString label =
+                QString::fromStdString(item["netLabel"].get<std::string>()).trimmed();
+            const std::string id = item.value("id", std::string());
+            if (!id.empty() && !label.isEmpty()) {
+                pendingNetLabels_[id] = label;
+            }
+        }
+    };
+    pull("connections");
+    pull("bridges");
+}
+
+void GraphScene::ApplyPendingNetLabels() {
+    if (!model_) {
+        return;
+    }
+    for (const auto& [graphId, label] : pendingNetLabels_) {
+        const QtNodes::ConnectionId qtId = model_->QtConnectionIdForGraphId(graphId);
+        if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+            continue;   // wire did not materialize (dangling/unknown port)
+        }
+        model_->SetConnectionLabel(qtId, label);
     }
 }
 
@@ -1519,6 +1580,63 @@ QString GraphScene::SetConnectionWaypoints(QtNodes::ConnectionId qtId,
     return QString{};
 }
 
+QString GraphScene::ConnectionLabel(QtNodes::ConnectionId qtId) const {
+    if (const QString* label = model_->ConnectionLabel(qtId)) {
+        return *label;
+    }
+    return QString{};
+}
+
+QString GraphScene::SetConnectionLabel(QtNodes::ConnectionId qtId,
+                                       const QString& label) {
+    if (qtId.outNodeId == QtNodes::InvalidNodeId ||
+        model_->GraphConnectionId(qtId).empty()) {
+        return QStringLiteral("Connection not found");
+    }
+
+    const QString trimmed = label.trimmed();
+    if (const QString* current = model_->ConnectionLabel(qtId);
+        (current ? *current : QString{}) == trimmed) {
+        return QString{};   // no-op: leave the document (and its history) alone
+    }
+
+    // A non-empty label names THE net, and a connection is the net — so a
+    // name may be held by exactly one connection (checked across both
+    // regular connections and bridges).
+    if (!trimmed.isEmpty()) {
+        const QtNodes::ConnectionId owner = model_->NetLabelOwner(trimmed);
+        if (owner.outNodeId != QtNodes::InvalidNodeId && owner != qtId) {
+            return QStringLiteral("label '%1' already in use by %2")
+                .arg(trimmed)
+                .arg(QString::fromStdString(model_->GraphConnectionId(owner)));
+        }
+    }
+
+    RepaintConnection(qtId);   // damages the old bounds before the data moves
+    model_->SetConnectionLabel(qtId, trimmed);
+    RepaintConnection(qtId);
+    NotifyChanged();
+    return QString{};
+}
+
+QString GraphScene::DumpConnectionInfo(const std::string& graphId) const {
+    const QtNodes::ConnectionId qtId = FindQtConnectionId(graphId);
+    if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+        return QStringLiteral("no connection %1").arg(QString::fromStdString(graphId));
+    }
+    const QString* label = model_->ConnectionLabel(qtId);
+    const QString text = (label && !label->isEmpty())
+                             ? *label
+                             : QString::fromUtf8("\xe2\x80\x94");  // em dash
+    double layer = 0.0;
+    if (scene_) {
+        if (auto* cgo = scene_->connectionGraphicsObject(qtId)) {
+            layer = cgo->zValue();
+        }
+    }
+    return QStringLiteral("label=%1;layer=%2\n").arg(text).arg(layer);
+}
+
 QString GraphScene::AddWireBend(QtNodes::ConnectionId qtId) {
     auto* cgo = scene_->connectionGraphicsObject(qtId);
     if (!cgo) {
@@ -1595,6 +1713,7 @@ QString GraphScene::RestoreSnapshot(const std::string& json) {
     try {
         const nlohmann::json graphJson = nlohmann::json::parse(json);
         ParseWaypointsFromJson(graphJson);
+        ParseNetLabelsFromJson(graphJson);
         NodeAPI::Graph restored = NodeAPI::LoadFromJson(json);
         graph_ = std::move(restored);
     } catch (const std::exception& e) {

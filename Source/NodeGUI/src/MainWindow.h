@@ -96,6 +96,14 @@ public:
     QString SmokeAddNode(const QString& typeId, double x, double y);
     // [smoke] save the ACTIVE editor tab's document to a path (menu-free).
     QString SmokeSaveActiveAs(const QString& path);
+    // [smoke] set/clear (empty text) the display-only net label of the wire
+    // with the given graph id on the ACTIVE editor tab. Returns "ok" or
+    // "refused <reason>" (uniqueness across all connections is enforced in
+    // GraphScene::SetConnectionLabel).
+    QString SmokeSetConnectionLabel(const std::string& graphId, const QString& label);
+    // [smoke] "label=<text|—>;layer=<z>" for the given wire graph id on the
+    // ACTIVE editor tab (checker line).
+    QString SmokeDumpConnection(const std::string& graphId);
     // [smoke] load a sim session file through the Simulate screen's own
     // "Load session..." path (returns false on load failure).
     bool SmokeLoadSimSession(const QString& path);

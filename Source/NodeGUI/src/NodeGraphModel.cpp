@@ -412,6 +412,7 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
     }
     const bool result = DataFlowGraphModel::deleteConnection(connectionId);
     connectionWaypoints_.erase(connectionId);
+    connectionLabels_.erase(connectionId);
     autoRoutes_.erase(connectionId);
 
     if (consumerRef) {
@@ -475,6 +476,39 @@ void NodeGraphModel::SetConnectionWaypoints(QtNodes::ConnectionId const connecti
     } else {
         connectionWaypoints_[connectionId] = std::move(scenePoints);
     }
+}
+
+const QString* NodeGraphModel::ConnectionLabel(
+    QtNodes::ConnectionId const connectionId) const {
+    const auto it = connectionLabels_.find(connectionId);
+    return it != connectionLabels_.end() ? &it->second : nullptr;
+}
+
+void NodeGraphModel::SetConnectionLabel(QtNodes::ConnectionId const connectionId,
+                                        const QString& label) {
+    if (label.isEmpty()) {
+        connectionLabels_.erase(connectionId);
+    } else {
+        connectionLabels_[connectionId] = label;
+    }
+}
+
+QtNodes::ConnectionId NodeGraphModel::NetLabelOwner(const QString& label) const {
+    if (label.isEmpty()) {
+        return QtNodes::ConnectionId{QtNodes::InvalidNodeId,
+                                     QtNodes::InvalidPortIndex,
+                                     QtNodes::InvalidNodeId,
+                                     QtNodes::InvalidPortIndex};
+    }
+    for (const auto& [qtId, owned] : connectionLabels_) {
+        if (owned == label) {
+            return qtId;
+        }
+    }
+    return QtNodes::ConnectionId{QtNodes::InvalidNodeId,
+                                 QtNodes::InvalidPortIndex,
+                                 QtNodes::InvalidNodeId,
+                                 QtNodes::InvalidPortIndex};
 }
 
 const WireRoute::AutoRouteChoice* NodeGraphModel::AutoRoute(
