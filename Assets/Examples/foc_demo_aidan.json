@@ -14,7 +14,25 @@
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 405.0,
+          "y": 135.0
+        },
+        {
+          "x": 405.0,
+          "y": 45.0
+        },
+        {
+          "x": 105.0,
+          "y": 45.0
+        },
+        {
+          "x": 105.0,
+          "y": 1275.0
+        }
+      ]
     },
     {
       "consumer": {
@@ -30,7 +48,25 @@
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 420.0,
+          "y": 165.0
+        },
+        {
+          "x": 420.0,
+          "y": 30.0
+        },
+        {
+          "x": 90.0,
+          "y": 30.0
+        },
+        {
+          "x": 90.0,
+          "y": 1305.0
+        }
+      ]
     },
     {
       "consumer": {
@@ -46,7 +82,25 @@
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 435.0,
+          "y": 195.0
+        },
+        {
+          "x": 435.0,
+          "y": 15.0
+        },
+        {
+          "x": 75.0,
+          "y": 15.0
+        },
+        {
+          "x": 75.0,
+          "y": 1335.0
+        }
+      ]
     },
     {
       "consumer": {
@@ -62,7 +116,13 @@
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 405.0,
+          "y": 135.0
+        }
+      ]
     },
     {
       "consumer": {
@@ -78,7 +138,13 @@
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 420.0,
+          "y": 165.0
+        }
+      ]
     },
     {
       "consumer": {
@@ -94,7 +160,13 @@
         "dtype": "f32",
         "frame": "scalar",
         "quantity": "current"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 435.0,
+          "y": 195.0
+        }
+      ]
     }
   ],
   "connections": [
@@ -107,7 +179,17 @@
       "to": {
         "nodeId": "ElecAngle",
         "portName": "ThetaMech"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 555.0,
+          "y": 1455.0
+        },
+        {
+          "x": 555.0,
+          "y": 825.0
+        }
+      ]
     },
     {
       "from": {
@@ -129,7 +211,21 @@
       "to": {
         "nodeId": "InvPark",
         "portName": "Theta"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 885.0,
+          "y": 825.0
+        },
+        {
+          "x": 885.0,
+          "y": 720.0
+        },
+        {
+          "x": 1605.0,
+          "y": 720.0
+        }
+      ]
     },
     {
       "from": {
@@ -140,7 +236,17 @@
       "to": {
         "nodeId": "Park",
         "portName": "I_Alpha"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 975.0,
+          "y": 1275.0
+        },
+        {
+          "x": 975.0,
+          "y": 825.0
+        }
+      ]
     },
     {
       "from": {
@@ -162,7 +268,13 @@
       "to": {
         "nodeId": "PiD",
         "portName": "Measurement"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1575.0,
+          "y": 825.0
+        }
+      ]
     },
     {
       "from": {
@@ -184,7 +296,13 @@
       "to": {
         "nodeId": "PiQ",
         "portName": "Measurement"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1605.0,
+          "y": 855.0
+        }
+      ]
     },
     {
       "from": {
@@ -206,7 +324,13 @@
       "to": {
         "nodeId": "InvPark",
         "portName": "V_Q"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1470.0,
+          "y": 1275.0
+        }
+      ]
     },
     {
       "from": {
@@ -228,7 +352,13 @@
       "to": {
         "nodeId": "Svpwm",
         "portName": "V_Dc"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1995.0,
+          "y": 1815.0
+        }
+      ]
     },
     {
       "from": {
@@ -239,7 +369,13 @@
       "to": {
         "nodeId": "PwmOut",
         "portName": "Duty_A"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2190.0,
+          "y": 1065.0
+        }
+      ]
     },
     {
       "from": {
@@ -250,7 +386,13 @@
       "to": {
         "nodeId": "PwmOut",
         "portName": "Duty_B"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2205.0,
+          "y": 1095.0
+        }
+      ]
     },
     {
       "from": {
@@ -261,7 +403,13 @@
       "to": {
         "nodeId": "PwmOut",
         "portName": "Duty_C"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2175.0,
+          "y": 1245.0
+        }
+      ]
     },
     {
       "from": {
@@ -371,7 +519,13 @@
       "to": {
         "nodeId": "VqOutToDim",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1470.0,
+          "y": 1275.0
+        }
+      ]
     },
     {
       "from": {
@@ -415,7 +569,17 @@
       "to": {
         "nodeId": "LogVq",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2205.0,
+          "y": 1350.0
+        },
+        {
+          "x": 2205.0,
+          "y": 945.0
+        }
+      ]
     },
     {
       "from": {
@@ -426,7 +590,13 @@
       "to": {
         "nodeId": "LogDu",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2220.0,
+          "y": 1065.0
+        }
+      ]
     },
     {
       "from": {
@@ -437,7 +607,13 @@
       "to": {
         "nodeId": "LogDv",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2220.0,
+          "y": 1095.0
+        }
+      ]
     },
     {
       "from": {
@@ -448,7 +624,13 @@
       "to": {
         "nodeId": "LogDw",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 2175.0,
+          "y": 1065.0
+        }
+      ]
     },
     {
       "from": {
@@ -459,7 +641,17 @@
       "to": {
         "nodeId": "Park",
         "portName": "I_Beta"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 960.0,
+          "y": 1305.0
+        },
+        {
+          "x": 960.0,
+          "y": 855.0
+        }
+      ]
     },
     {
       "from": {
@@ -481,7 +673,17 @@
       "to": {
         "nodeId": "ElecAngle",
         "portName": "EncoderSign"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 570.0,
+          "y": 975.0
+        },
+        {
+          "x": 570.0,
+          "y": 885.0
+        }
+      ]
     },
     {
       "from": {
@@ -503,7 +705,17 @@
       "to": {
         "nodeId": "ElecAngle",
         "portName": "Poles"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 585.0,
+          "y": 1125.0
+        },
+        {
+          "x": 585.0,
+          "y": 915.0
+        }
+      ]
     }
   ],
   "name": "foc_demo",
