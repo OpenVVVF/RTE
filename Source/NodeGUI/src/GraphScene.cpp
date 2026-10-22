@@ -1654,6 +1654,39 @@ QString GraphScene::DumpConnectionInfo(const std::string& graphId) const {
         .arg(bends);
 }
 
+QString GraphScene::DumpConnectionRoute(const std::string& graphId) const {
+    const QtNodes::ConnectionId qtId = FindQtConnectionId(graphId);
+    if (qtId.outNodeId == QtNodes::InvalidNodeId || !scene_) {
+        return QStringLiteral("no connection %1").arg(QString::fromStdString(graphId));
+    }
+    auto* cgo = scene_->connectionGraphicsObject(qtId);
+    if (!cgo) {
+        return QStringLiteral("no connection %1").arg(QString::fromStdString(graphId));
+    }
+
+    const QPointF out = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::Out));
+    const QPointF in = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::In));
+
+    // Painter precedence (BridgeConnectionPainter::wirePath): user bends ->
+    // BuildRoute; mini-router displacement; rigid orthogonal default.
+    QPolygonF route;
+    if (const std::vector<QPointF>* wps = model_->ConnectionWaypoints(qtId);
+        wps && !wps->empty()) {
+        route = WireRoute::BuildRoute(out, in, *wps);
+    } else if (const auto* choice = model_->AutoRoute(qtId);
+               choice && !choice->legacy && !choice->line.isEmpty()) {
+        route = choice->line;
+    } else {
+        route = WireRoute::BuildRoute(out, in, {});
+    }
+
+    QStringList coords;
+    for (const QPointF& p : route) {
+        coords.push_back(QStringLiteral("%1,%2").arg(p.x(), 0, 'f', 2)
+                             .arg(p.y(), 0, 'f', 2));
+    }
+    return QStringLiteral("route=[%1]\n").arg(coords.join(QStringLiteral(";")));
+}
 QString GraphScene::AddWireBend(QtNodes::ConnectionId qtId) {
     auto* cgo = scene_->connectionGraphicsObject(qtId);
     if (!cgo) {

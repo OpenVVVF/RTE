@@ -135,6 +135,13 @@ public:
     // the wire is auto-routed).
     QString DumpConnectionInfo(const std::string& graphId) const;
 
+    // Smoke/checker read-out of the RENDERED route as the painter resolves
+    // it (user bends -> WireRoute::BuildRoute; else the mini-router's
+    // displaced line; else the rigid orthogonal default), in scene
+    // coordinates: "route=[x,y;...]". The foldback-smoke checker counts
+    // segment-direction reversals on exactly this polyline.
+    QString DumpConnectionRoute(const std::string& graphId) const;
+
     // Invoked after a user-visible graph mutation has fully reached the
     // NodeAPI model.
     void SetChangeCallback(std::function<void()> callback);

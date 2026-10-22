@@ -56,6 +56,14 @@ public:
     // coldboot dossier finding).
     std::function<void(QtNodes::NodeId qtId)> onNodeDragProven;
 
+    // Smoke: drive the REAL bend-drag state machine (press-armed Begin ->
+    // Update -> release commit) for waypoint `index` of `connId` toward a
+    // scene target, without synthesizing mouse events. Same guards, same
+    // axis lock, same foldback clip, same model commit as the mouse path.
+    bool SmokeDragWireBend(QtNodes::ConnectionId connId,
+                           int waypointIndex,
+                           const QPointF& targetScenePos);
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;

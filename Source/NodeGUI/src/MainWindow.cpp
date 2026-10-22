@@ -2444,6 +2444,33 @@ QString MainWindow::SmokeDumpConnection(const std::string& graphId) {
     return active->DumpConnectionInfo(graphId);
 }
 
+QString MainWindow::SmokeDumpConnectionRoute(const std::string& graphId) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("no scene");
+    }
+    return active->DumpConnectionRoute(graphId);
+}
+
+bool MainWindow::SmokeDragWireBend(const std::string& graphId,
+                                   int index,
+                                   double x,
+                                   double y) {
+    GraphScene* active = ActiveGraphScene();
+    GraphView* view = view_;
+    if (plantScreen_ && PlantTabActive()) {
+        view = plantScreen_->View();
+    }
+    if (!active || !view) {
+        return false;
+    }
+    const QtNodes::ConnectionId connId = active->FindQtConnectionId(graphId);
+    if (connId.outNodeId == QtNodes::InvalidNodeId) {
+        return false;
+    }
+    return view->SmokeDragWireBend(connId, index, QPointF(x, y));
+}
+
 QString MainWindow::SmokeAddNode(const QString& typeId, double x, double y) {
     GraphScene* active = ActiveGraphScene();
     if (!active) {

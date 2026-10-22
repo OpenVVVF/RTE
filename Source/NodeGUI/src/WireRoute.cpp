@@ -69,6 +69,58 @@ void DropNearDuplicates(QPolygonF& route) {
     route = clean;
 }
 
+// Foldback cleansing (last-resort render contract: every BuildRoute caller —
+// painter, hit test, mini-router traffic — sees the same spike-free shape).
+// A foldback is three consecutive points A, B, C on ONE axis where the leg
+// B->C turns back along the track A->B just walked (dot(B-A, C-B) < 0) and C
+// lands inside that walked span (|C-B| <= |B-A|): a zero-area U-turn micro
+// segment whose pixels only ever re-tread drawn ones. Excursions the user
+// placed on purpose return LONGER than the track they fold over
+// (|C-B| > |B-A|) and are kept — clean routing is the drag-clip's job first.
+// Dropping the tip vertex collapses the spike; cascades settle in one fixpoint
+// pass, and a follow-up duplicate drop absorbs annihilated pairs (C == A).
+void DropFoldbacks(QPolygonF& route) {
+    constexpr double eps = 0.75;
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        // Foldback eliminations feed duplicate runs (a collapsed spur leaves
+        // its two junction points equal): absorb those first so the triple
+        // scan below always walks real legs.
+        DropNearDuplicates(route);
+        for (int i = 0; i + 2 < route.size(); ++i) {
+            const QPointF a = route[i];
+            const QPointF b = route[i + 1];
+            const QPointF c = route[i + 2];
+            const QPointF d1 = b - a;
+            const QPointF d2 = c - b;
+            const bool horizontal =
+                std::abs(d1.y()) <= eps && std::abs(d2.y()) <= eps;
+            const bool vertical =
+                std::abs(d1.x()) <= eps && std::abs(d2.x()) <= eps;
+            if ((!horizontal && !vertical) ||
+                (std::abs(d1.x()) <= eps && std::abs(d1.y()) <= eps) ||
+                (std::abs(d2.x()) <= eps && std::abs(d2.y()) <= eps)) {
+                continue;
+            }
+            const double dot = d1.x() * d2.x() + d1.y() * d2.y();
+            if (dot >= 0.0) {
+                continue;
+            }
+            const double len1 = std::abs(horizontal ? d1.x() : d1.y());
+            const double len2 = std::abs(horizontal ? d2.x() : d2.y());
+            if (len2 > len1 + eps) {
+                // The return leg OUTRUNS the outgoing one: b's excursion is
+                // apparently intentional geometry, not a dead-end spike.
+                continue;
+            }
+            route.remove(i + 1);
+            changed = true;
+            break;
+        }
+    }
+}
+
 double DistanceToSegment(const QPointF& p, const QPointF& a, const QPointF& b) {
     const QPointF ab = b - a;
     const double len2 = QPointF::dotProduct(ab, ab);
@@ -208,6 +260,7 @@ QPolygonF BuildRoute(const QPointF& out,
     }
 
     DropNearDuplicates(route);
+    DropFoldbacks(route);
     return route;
 }
 

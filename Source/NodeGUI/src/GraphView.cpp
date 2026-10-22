@@ -714,6 +714,37 @@ void GraphView::UpdateWireDrag(const QPointF& scenePos) {
         target.setX(wireDragAnchor_.x());
     }
 
+    // Foldback prevention, first line (the router discipline): on the
+    // corridor-dominant axis the dragged bend may not cross either neighbor
+    // column — the previous bend (or the out port for the first bend) and the
+    // next bend (or the in port for the last one). A bend crossing its
+    // neighbor's track turns a leg back over its own run; clamping the
+    // target keeps the control chain monotone so BuildRoute never produces
+    // overlapping back-tracking segments from a live drag (loaded folds are
+    // still cleansed at render by WireRoute's last-resort pass).
+    {
+        const QPointF out = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::Out));
+        const QPointF in = cgo->mapToScene(cgo->endPoint(QtNodes::PortType::In));
+        const QPointF prev = wireDragWaypointIndex_ == 0
+                                 ? out
+                                 : (*stored)[static_cast<std::size_t>(wireDragWaypointIndex_ - 1)];
+        const QPointF next =
+            static_cast<std::size_t>(wireDragWaypointIndex_) + 1 == stored->size()
+                ? in
+                : (*stored)[static_cast<std::size_t>(wireDragWaypointIndex_ + 1)];
+        const bool xCorridor =
+            std::abs(in.x() - out.x()) >= std::abs(in.y() - out.y());
+        const double lo = xCorridor ? std::min(prev.x(), next.x())
+                                    : std::min(prev.y(), next.y());
+        const double hi = xCorridor ? std::max(prev.x(), next.x())
+                                    : std::max(prev.y(), next.y());
+        if (xCorridor) {
+            target.setX(std::clamp(target.x(), lo, hi));
+        } else {
+            target.setY(std::clamp(target.y(), lo, hi));
+        }
+    }
+
     std::vector<QPointF> points = *stored;
     QPointF& current = points[static_cast<std::size_t>(wireDragWaypointIndex_)];
     if (current == target) {
@@ -744,6 +775,38 @@ void GraphView::FinishWireDrag(bool commit) {
     if (model && model->onGraphChanged) {
         model->onGraphChanged();
     }
+}
+
+bool GraphView::SmokeDragWireBend(QtNodes::ConnectionId connId,
+                                  int waypointIndex,
+                                  const QPointF& targetScenePos) {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene ? basicScene->connectionGraphicsObject(connId)
+                           : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    if (!model || cgo->connectionState().requiresPort()) {
+        return false;
+    }
+    const std::vector<QPointF>* stored = model->ConnectionWaypoints(connId);
+    if (!stored || waypointIndex < 0 ||
+        static_cast<std::size_t>(waypointIndex) >= stored->size()) {
+        return false;
+    }
+
+    // The mouse path's BeginWireDrag records the grabbed bend + anchor into
+    // the drag state; StartWireDrag here is the same state, sourced from the
+    // smoke arguments instead of the cursor position.
+    wireDragPending_ = false;
+    wireDragActive_ = true;
+    wireDragConnection_ = connId;
+    wireDragHandleAtPress_ = waypointIndex;
+    wireDragWaypointIndex_ = waypointIndex;
+    wireDragAnchor_ = (*stored)[static_cast<std::size_t>(waypointIndex)];
+    wireDragPressViewport_ = QPoint();
+    wireDragPressScene_ = wireDragAnchor_;
+    UpdateWireDrag(targetScenePos);
+    FinishWireDrag(true);
+    return true;
 }
 
 bool GraphView::viewportEvent(QEvent* event) {

@@ -105,6 +105,14 @@ public:
     // [smoke] "label=<text|—>;layer=<z>" for the given wire graph id on the
     // ACTIVE editor tab (checker line).
     QString SmokeDumpConnection(const std::string& graphId);
+
+    // [smoke] "route=[x,y;...]" rendered route polyline (scene coords) of the
+    // wire on the ACTIVE editor tab — the foldback checker's read-out.
+    QString SmokeDumpConnectionRoute(const std::string& graphId);
+    // [smoke] drag bend `index` of wire `graphId` to scene (x, y) through
+    // the active view's real bend-drag machinery (same guards/clips/commit
+    // as mouse). Returns false for unknown wire/bend.
+    bool SmokeDragWireBend(const std::string& graphId, int index, double x, double y);
     // [smoke] load a sim session file through the Simulate screen's own
     // "Load session..." path (returns false on load failure).
     bool SmokeLoadSimSession(const QString& path);

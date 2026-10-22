@@ -30,7 +30,15 @@
 //   to insert/move a bend (grid-snapped, dominant-axis lock), Ctrl+click or
 //   right-click a bend handle to delete it. The Edit-menu route.addPoint /
 //   route.removePoint verbs (also smoke-clickable) bend/remove on the single
-//   selected wire. BridgeConnectionPainter::routeBounds extends the item
+//   selected wire. Foldback discipline lives in two places, neither in the
+//   assets: the live bend drag clamps the dragged bend between its two
+//   neighbor columns on the corridor-dominant axis (UpdateWireDrag: first
+//   bend vs the out port, last vs the in port), so a gesture can never fold
+//   the control chain back over its own track; and BuildRoute's
+//   DropFoldbacks fixpoint cleanses produced routes of zero-area U-turn
+//   micro segments (a short return leg landing inside the span just walked)
+//   so loaded/legacy folds cannot paint overlapping back-tracking segments
+//   either. BridgeConnectionPainter::routeBounds extends the item
 //   bounding rect via a small QtNodes hook (AbstractConnectionPainter::
 //   routeBounds) so routed wires repaint correctly.
 //
@@ -195,6 +203,20 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             // "label=<text|—>;layer=<z>;wp=[x,y;...]" single line for
             // checkers (wp = manual bends, "[]" when auto-routed).
             std::cout << window->SmokeDumpConnection(arg.toStdString()).toStdString();
+        } else if (kind == "dumproute") {
+            // "route=[x,y;...]" rendered route polyline (scene coords) —
+            // the foldback checker's read-out for bend-drag cases.
+            std::cout << window->SmokeDumpConnectionRoute(arg.toStdString()).toStdString();
+        } else if (kind == "wirebenddrag") {
+            // Drag bend <index> of wire <id> to scene (x, y) through the
+            // active view's real bend-drag machinery (guards, axis lock,
+            // foldback clip, model commit) — no synthesized mouse events.
+            const bool ok = window->SmokeDragWireBend(arg.toStdString(),
+                                                      parts.value(2).toInt(),
+                                                      parts.value(3).toDouble(),
+                                                      parts.value(4).toDouble());
+            std::cout << "wirebenddrag " << arg.toStdString() << "="
+                      << (ok ? "ok" : "failed") << "\n";
         } else if (kind == "gvals") {
             // gvals on|off|dump — the "graph values" sim value-tag mode.
             // dump prints the ACTIVE editor scene's tags as "key=val;..."
