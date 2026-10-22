@@ -1526,8 +1526,8 @@
       "id": "Clarke",
       "parameters": {},
       "position": {
-        "x": 150.0,
-        "y": 1222.0
+        "x": 150,
+        "y": 1215
       },
       "type": "Transforms.Clarke"
     },
@@ -1541,8 +1541,8 @@
         "OffsetV": "0.0"
       },
       "position": {
-        "x": 150.0,
-        "y": 80.0
+        "x": 150,
+        "y": 75
       },
       "type": "Sensors.PhaseCurrents"
     },
@@ -1556,8 +1556,8 @@
         "Poles": "10.0"
       },
       "position": {
-        "x": 611.0,
-        "y": 760.0
+        "x": 615,
+        "y": 765
       },
       "type": "Transforms.ElecAngle"
     },
@@ -1567,8 +1567,8 @@
       "id": "Encoder",
       "parameters": {},
       "position": {
-        "x": 150.0,
-        "y": 1398.0
+        "x": 150,
+        "y": 1395
       },
       "type": "Sensors.Encoder"
     },
@@ -1578,8 +1578,8 @@
       "id": "EncoderApp",
       "parameters": {},
       "position": {
-        "x": 469.0,
-        "y": 80.0
+        "x": 465,
+        "y": 75
       },
       "type": "Sensors.Encoder"
     },
@@ -1589,8 +1589,8 @@
       "id": "IdMeasToDim",
       "parameters": {},
       "position": {
-        "x": 1233.0,
-        "y": 760.0
+        "x": 1230,
+        "y": 765
       },
       "type": "math.current_to_dimensionless"
     },
@@ -1602,8 +1602,8 @@
         "Amps": "0.0"
       },
       "position": {
-        "x": 150.0,
-        "y": 1518.0
+        "x": 150,
+        "y": 1515
       },
       "type": "Values.Constant"
     },
@@ -1613,8 +1613,8 @@
       "id": "InvPark",
       "parameters": {},
       "position": {
-        "x": 1643.0,
-        "y": 1000.0
+        "x": 1650,
+        "y": 1005
       },
       "type": "Transforms.InversePark"
     },
@@ -1624,8 +1624,8 @@
       "id": "IqMeasToDim",
       "parameters": {},
       "position": {
-        "x": 1233.0,
-        "y": 880.0
+        "x": 1230,
+        "y": 885
       },
       "type": "math.current_to_dimensionless"
     },
@@ -1637,8 +1637,8 @@
         "Amps": "20.0"
       },
       "position": {
-        "x": 150.0,
-        "y": 1638.0
+        "x": 150,
+        "y": 1635
       },
       "type": "Values.Constant"
     },
@@ -1650,8 +1650,8 @@
         "Key": "cg_du"
       },
       "position": {
-        "x": 2251.0,
-        "y": 760.0
+        "x": 2250,
+        "y": 765
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1663,8 +1663,8 @@
         "Key": "cg_dv"
       },
       "position": {
-        "x": 2251.0,
-        "y": 880.0
+        "x": 2250,
+        "y": 885
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1676,8 +1676,8 @@
         "Key": "cg_dw"
       },
       "position": {
-        "x": 2251.0,
-        "y": 1000.0
+        "x": 2250,
+        "y": 1005
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1689,8 +1689,8 @@
         "Key": "cg_id_a"
       },
       "position": {
-        "x": 1643.0,
-        "y": 760.0
+        "x": 1650,
+        "y": 765
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1702,8 +1702,8 @@
         "Key": "cg_iq_a"
       },
       "position": {
-        "x": 1643.0,
-        "y": 880.0
+        "x": 1650,
+        "y": 885
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1715,8 +1715,8 @@
         "Key": "cg_theta_rad"
       },
       "position": {
-        "x": 793.0,
-        "y": 80.0
+        "x": 795,
+        "y": 75
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1728,8 +1728,8 @@
         "Key": "cg_iu_a"
       },
       "position": {
-        "x": 793.0,
-        "y": 200.0
+        "x": 795,
+        "y": 195
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1741,8 +1741,8 @@
         "Key": "cg_iv_a"
       },
       "position": {
-        "x": 793.0,
-        "y": 320.0
+        "x": 795,
+        "y": 315
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1754,8 +1754,8 @@
         "Key": "cg_vd_v"
       },
       "position": {
-        "x": 1968.0,
-        "y": 760.0
+        "x": 1965,
+        "y": 765
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1767,8 +1767,8 @@
         "Key": "cg_vdc_v"
       },
       "position": {
-        "x": 1118.0,
-        "y": 80.0
+        "x": 1125,
+        "y": 75
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1780,8 +1780,8 @@
         "Key": "cg_vq_v"
       },
       "position": {
-        "x": 1968.0,
-        "y": 880.0
+        "x": 1965,
+        "y": 885
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1793,8 +1793,8 @@
         "Key": "cg_iw_a"
       },
       "position": {
-        "x": 793.0,
-        "y": 560.0
+        "x": 795,
+        "y": 555
       },
       "type": "Debug.TelemetryLog"
     },
@@ -1804,8 +1804,8 @@
       "id": "Park",
       "parameters": {},
       "position": {
-        "x": 1028.0,
-        "y": 760.0
+        "x": 1035,
+        "y": 765
       },
       "type": "Transforms.Park"
     },
@@ -1822,8 +1822,8 @@
         "OutputMin": "-50.0"
       },
       "position": {
-        "x": 1233.0,
-        "y": 1000.0
+        "x": 1230,
+        "y": 1005
       },
       "type": "Control.Pi"
     },
@@ -1840,8 +1840,8 @@
         "OutputMin": "-50.0"
       },
       "position": {
-        "x": 1233.0,
-        "y": 1211.0
+        "x": 1230,
+        "y": 1215
       },
       "type": "Control.Pi"
     },
@@ -1851,8 +1851,8 @@
       "id": "PwmOut",
       "parameters": {},
       "position": {
-        "x": 2251.0,
-        "y": 1120.0
+        "x": 2250,
+        "y": 1125
       },
       "type": "Actuators.PwmOut"
     },
@@ -1862,8 +1862,8 @@
       "id": "Svpwm",
       "parameters": {},
       "position": {
-        "x": 1968.0,
-        "y": 1000.0
+        "x": 1965,
+        "y": 1005
       },
       "type": "Transforms.Svpwm"
     },
@@ -1873,8 +1873,8 @@
       "id": "UToDim",
       "parameters": {},
       "position": {
-        "x": 469.0,
-        "y": 200.0
+        "x": 465,
+        "y": 195
       },
       "type": "math.current_to_dimensionless"
     },
@@ -1884,8 +1884,8 @@
       "id": "VToDim",
       "parameters": {},
       "position": {
-        "x": 469.0,
-        "y": 320.0
+        "x": 465,
+        "y": 315
       },
       "type": "math.current_to_dimensionless"
     },
@@ -1895,8 +1895,8 @@
       "id": "VdOutToDim",
       "parameters": {},
       "position": {
-        "x": 1643.0,
-        "y": 1176.0
+        "x": 1650,
+        "y": 1170
       },
       "type": "math.voltage_to_dimensionless"
     },
@@ -1906,8 +1906,8 @@
       "id": "VdcApp",
       "parameters": {},
       "position": {
-        "x": 469.0,
-        "y": 440.0
+        "x": 465,
+        "y": 435
       },
       "type": "Sensors.DcLinkVoltage"
     },
@@ -1917,8 +1917,8 @@
       "id": "VdcSense",
       "parameters": {},
       "position": {
-        "x": 150.0,
-        "y": 1758.0
+        "x": 150,
+        "y": 1755
       },
       "type": "Sensors.DcLinkVoltage"
     },
@@ -1928,8 +1928,8 @@
       "id": "VdcToDim",
       "parameters": {},
       "position": {
-        "x": 793.0,
-        "y": 440.0
+        "x": 795,
+        "y": 435
       },
       "type": "math.voltage_to_dimensionless"
     },
@@ -1939,8 +1939,8 @@
       "id": "VqOutToDim",
       "parameters": {},
       "position": {
-        "x": 1643.0,
-        "y": 1296.0
+        "x": 1650,
+        "y": 1290
       },
       "type": "math.voltage_to_dimensionless"
     },
@@ -1950,8 +1950,8 @@
       "id": "WToDim",
       "parameters": {},
       "position": {
-        "x": 469.0,
-        "y": 560.0
+        "x": 465,
+        "y": 555
       },
       "type": "math.current_to_dimensionless"
     },
@@ -1965,8 +1965,8 @@
         "Key": "Motor.Encoder.SinCos.Sign"
       },
       "position": {
-        "x": 150.0,
-        "y": 914.0
+        "x": 150,
+        "y": 915
       },
       "type": "Values.Config"
     },
@@ -1980,8 +1980,8 @@
         "Key": "Motor.Encoder.SinCos.OffsetDeg"
       },
       "position": {
-        "x": 150.0,
-        "y": 760.0
+        "x": 150,
+        "y": 765
       },
       "type": "Values.Config"
     },
@@ -1995,8 +1995,8 @@
         "Key": "Motor.Poles"
       },
       "position": {
-        "x": 150.0,
-        "y": 1068.0
+        "x": 150,
+        "y": 1065
       },
       "type": "Values.Config"
     }

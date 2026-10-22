@@ -4097,8 +4097,8 @@
       "id": "Clarke",
       "parameters": {},
       "position": {
-        "x": 422.77777777777794,
-        "y": 2389.7777777777783
+        "x": 420,
+        "y": 2385
       },
       "type": "Transforms.Clarke"
     },
@@ -4111,8 +4111,8 @@
         "OffsetV": "0.0"
       },
       "position": {
-        "x": -172.14506172839504,
-        "y": 1277.9166666666667
+        "x": -165,
+        "y": 1275
       },
       "type": "Custom.PhaseCurrentsBurst"
     },
@@ -4126,8 +4126,8 @@
         "Poles": "10.0"
       },
       "position": {
-        "x": 320.0,
-        "y": 2640.222222222222
+        "x": 315,
+        "y": 2640
       },
       "type": "Transforms.ElecAngle"
     },
@@ -4137,8 +4137,8 @@
       "id": "Encoder",
       "parameters": {},
       "position": {
-        "x": 38.888888888888914,
-        "y": 2369.3333333333335
+        "x": 45,
+        "y": 2370
       },
       "type": "Custom.EncoderAngle"
     },
@@ -4148,8 +4148,8 @@
       "id": "EncoderApp",
       "parameters": {},
       "position": {
-        "x": 885.3333333333333,
-        "y": 980.6666666666663
+        "x": 885,
+        "y": 975
       },
       "type": "Custom.EncoderAngle"
     },
@@ -4161,8 +4161,8 @@
         "Amps": "0.0"
       },
       "position": {
-        "x": -225.0,
-        "y": 2086.7777777777783
+        "x": -225,
+        "y": 2085
       },
       "type": "Custom.ConstantCurrent"
     },
@@ -4172,8 +4172,8 @@
       "id": "InvPark",
       "parameters": {},
       "position": {
-        "x": 1815.0548411065377,
-        "y": 2777.6099965706444
+        "x": 1815,
+        "y": 2775
       },
       "type": "Transforms.InversePark"
     },
@@ -4185,8 +4185,8 @@
         "Amps": "0.0"
       },
       "position": {
-        "x": -291.66666666666663,
-        "y": 2273.111111111111
+        "x": -285,
+        "y": 2280
       },
       "type": "Custom.ConstantCurrent"
     },
@@ -4198,8 +4198,8 @@
         "Key": "cg_du"
       },
       "position": {
-        "x": 2668.984567901234,
-        "y": 2235.7746913580245
+        "x": 2670,
+        "y": 2235
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4211,8 +4211,8 @@
         "Key": "cg_dv"
       },
       "position": {
-        "x": 2655.481481481482,
-        "y": 2406.1358024691353
+        "x": 2655,
+        "y": 2400
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4224,8 +4224,8 @@
         "Key": "cg_dw"
       },
       "position": {
-        "x": 2641.9783950617293,
-        "y": 2564.9228395061727
+        "x": 2640,
+        "y": 2565
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4237,8 +4237,8 @@
         "Key": "cg_id_a"
       },
       "position": {
-        "x": 1123.1206123456786,
-        "y": 2676.6925679012343
+        "x": 1125,
+        "y": 2670
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4250,8 +4250,8 @@
         "Key": "cg_iq_a"
       },
       "position": {
-        "x": 1178.0710123456786,
-        "y": 2936.2261193415634
+        "x": 1185,
+        "y": 2940
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4263,8 +4263,8 @@
         "Key": "cg_theta_rad"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 369.33333333333326
+        "x": 1350,
+        "y": 375
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4276,8 +4276,8 @@
         "Key": "cg_iu_a"
       },
       "position": {
-        "x": 1038.6666666666667,
-        "y": 484.33333333333326
+        "x": 1035,
+        "y": 480
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4289,8 +4289,8 @@
         "Key": "cg_iv_a"
       },
       "position": {
-        "x": 1038.6666666666667,
-        "y": 637.3333333333333
+        "x": 1035,
+        "y": 630
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4302,8 +4302,8 @@
         "Key": "cg_vd_v"
       },
       "position": {
-        "x": 1657.472611911111,
-        "y": 3356.732957945678
+        "x": 1650,
+        "y": 3360
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4315,8 +4315,8 @@
         "Key": "cg_vdc_v"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 1440.3333333333333
+        "x": 1350,
+        "y": 1440
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4328,8 +4328,8 @@
         "Key": "cg_vq_v"
       },
       "position": {
-        "x": 1819.9166666666667,
-        "y": 2582.9969135802467
+        "x": 1815,
+        "y": 2580
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4341,8 +4341,8 @@
         "Key": "cg_iw_a"
       },
       "position": {
-        "x": 1038.6666666666667,
-        "y": 790.3333333333333
+        "x": 1035,
+        "y": 795
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4352,8 +4352,8 @@
       "id": "Park",
       "parameters": {},
       "position": {
-        "x": 939.2008888888888,
-        "y": 2820.678577777778
+        "x": 945,
+        "y": 2820
       },
       "type": "Transforms.Park"
     },
@@ -4376,8 +4376,8 @@
         "Feedforward": "0.0"
       },
       "position": {
-        "x": 1333.8134908839509,
-        "y": 3368.450299101236
+        "x": 1335,
+        "y": 3375
       },
       "type": "Custom.PiCurrent"
     },
@@ -4400,8 +4400,8 @@
         "Feedforward": "0.0"
       },
       "position": {
-        "x": 1487.211021399177,
-        "y": 2671.8702954732507
+        "x": 1485,
+        "y": 2670
       },
       "type": "Custom.PiCurrent"
     },
@@ -4411,8 +4411,8 @@
       "id": "PwmOut",
       "parameters": {},
       "position": {
-        "x": 2618.8302469135806,
-        "y": 2721.78086419753
+        "x": 2625,
+        "y": 2715
       },
       "type": "Actuators.PwmOut"
     },
@@ -4422,8 +4422,8 @@
       "id": "Svpwm",
       "parameters": {},
       "position": {
-        "x": 2111.058641975309,
-        "y": 2795.188271604938
+        "x": 2115,
+        "y": 2790
       },
       "type": "Transforms.Svpwm"
     },
@@ -4433,8 +4433,8 @@
       "id": "VdcApp",
       "parameters": {},
       "position": {
-        "x": 872.0,
-        "y": 1522.3333333333333
+        "x": 870,
+        "y": 1515
       },
       "type": "Sensors.DcLinkVoltage"
     },
@@ -4444,8 +4444,8 @@
       "id": "VdcSense",
       "parameters": {},
       "position": {
-        "x": 1839.9140946502052,
-        "y": 2992.877057613169
+        "x": 1845,
+        "y": 3000
       },
       "type": "Sensors.DcLinkVoltage"
     },
@@ -4459,8 +4459,8 @@
         "Key": "Motor.Encoder.SinCos.Sign"
       },
       "position": {
-        "x": -250.0,
-        "y": 2710.2222222222226
+        "x": -255,
+        "y": 2715
       },
       "type": "Values.Config"
     },
@@ -4474,8 +4474,8 @@
         "Key": "Motor.Encoder.SinCos.OffsetDeg"
       },
       "position": {
-        "x": -219.44444444444446,
-        "y": 2477.888888888889
+        "x": -225,
+        "y": 2475
       },
       "type": "Values.Config"
     },
@@ -4489,8 +4489,8 @@
         "Key": "Motor.Poles"
       },
       "position": {
-        "x": -247.22222222222223,
-        "y": 2906.444444444444
+        "x": -240,
+        "y": 2910
       },
       "type": "Values.Config"
     },
@@ -4500,8 +4500,8 @@
       "id": "VoltSense",
       "parameters": {},
       "position": {
-        "x": 3226.8003415040007,
-        "y": 1631.287785472
+        "x": 3225,
+        "y": 1635
       },
       "type": "Sensors.PhaseVoltages"
     },
@@ -4513,8 +4513,8 @@
         "Key": "cg_vu_v"
       },
       "position": {
-        "x": 3517.640561152001,
-        "y": 1626.1280051199997
+        "x": 3525,
+        "y": 1620
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4526,8 +4526,8 @@
         "Key": "cg_vv_v"
       },
       "position": {
-        "x": 3512.480780799999,
-        "y": 1768.8084444160008
+        "x": 3510,
+        "y": 1770
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4539,8 +4539,8 @@
         "Key": "cg_vw_v"
       },
       "position": {
-        "x": 3512.480780799999,
-        "y": 1921.8084444160008
+        "x": 3510,
+        "y": 1920
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4554,8 +4554,8 @@
         "Key": "Ctrl.PiQ.Kp"
       },
       "position": {
-        "x": 1171.764403292181,
-        "y": 2418.699588477367
+        "x": 1170,
+        "y": 2415
       },
       "type": "Values.Config"
     },
@@ -4569,8 +4569,8 @@
         "Key": "Ctrl.ThrottleEnable"
       },
       "position": {
-        "x": 86.11111111111114,
-        "y": 2098.333333333333
+        "x": 90,
+        "y": 2100
       },
       "type": "Values.Config"
     },
@@ -4582,8 +4582,8 @@
         "B": "0.5"
       },
       "position": {
-        "x": 445.0,
-        "y": 2131.2222222222226
+        "x": 450,
+        "y": 2130
       },
       "type": "Logic.Greater"
     },
@@ -4597,8 +4597,8 @@
         "Stored": "1.0"
       },
       "position": {
-        "x": 674.0781893004116,
-        "y": 2132.8940329218112
+        "x": 675,
+        "y": 2130
       },
       "type": "Values.VarBool"
     },
@@ -4608,8 +4608,8 @@
       "id": "IqGate",
       "parameters": {},
       "position": {
-        "x": 1116.4560650205756,
-        "y": 2523.9608781893003
+        "x": 1110,
+        "y": 2520
       },
       "type": "Logic.Gate"
     },
@@ -4623,8 +4623,8 @@
         "Stored": "0.0"
       },
       "position": {
-        "x": 33.33333333333334,
-        "y": 3293.3333333333335
+        "x": 30,
+        "y": 3300
       },
       "type": "Custom.VarCurrent"
     },
@@ -4638,8 +4638,8 @@
         "Stored": "0.0"
       },
       "position": {
-        "x": 985.1156049110195,
-        "y": 3211.844762164242
+        "x": 990,
+        "y": 3210
       },
       "type": "Custom.VarCurrent"
     },
@@ -4651,8 +4651,8 @@
         "Pin": "1.0"
       },
       "position": {
-        "x": 1055.2398933333334,
-        "y": 224.7762133333336
+        "x": 1050,
+        "y": 225
       },
       "type": "Sensors.DigitalIn"
     },
@@ -4664,8 +4664,8 @@
         "Pin": "5.0"
       },
       "position": {
-        "x": 1377.666666666667,
-        "y": 146.33333333333331
+        "x": 1380,
+        "y": 150
       },
       "type": "Actuators.DigitalOut"
     },
@@ -4675,8 +4675,8 @@
       "id": "Temps",
       "parameters": {},
       "position": {
-        "x": 925.3333333333333,
-        "y": 1159.0000000000002
+        "x": 930,
+        "y": 1155
       },
       "type": "Sensors.Temperatures"
     },
@@ -4686,8 +4686,8 @@
       "id": "Throttle",
       "parameters": {},
       "position": {
-        "x": 912.0,
-        "y": 1354.6666666666667
+        "x": 915,
+        "y": 1350
       },
       "type": "Sensors.Throttle"
     },
@@ -4699,8 +4699,8 @@
         "Key": "temp_motor_c"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 981.3333333333333
+        "x": 1350,
+        "y": 975
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4712,8 +4712,8 @@
         "Key": "temp_inv1_c"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 522.3333333333333
+        "x": 1350,
+        "y": 525
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4725,8 +4725,8 @@
         "Key": "temp_inv2_c"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 675.3333333333333
+        "x": 1350,
+        "y": 675
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4738,8 +4738,8 @@
         "Key": "temp_inv3_c"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 828.3333333333333
+        "x": 1350,
+        "y": 825
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4751,8 +4751,8 @@
         "Key": "thr_a_norm"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 1134.3333333333333
+        "x": 1350,
+        "y": 1140
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4764,8 +4764,8 @@
         "Key": "thr_b_norm"
       },
       "position": {
-        "x": 1347.6666666666667,
-        "y": 1287.3333333333333
+        "x": 1350,
+        "y": 1290
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4782,8 +4782,8 @@
         "Value": "0.0"
       },
       "position": {
-        "x": 643.0045438957476,
-        "y": 3658.491626657521
+        "x": 645,
+        "y": 3660
       },
       "type": "Control.Slew"
     },
@@ -4797,8 +4797,8 @@
         "Key": "Ctrl.Iq.SlewAps"
       },
       "position": {
-        "x": 172.71983596250573,
-        "y": 3877.0754601051663
+        "x": 180,
+        "y": 3870
       },
       "type": "Values.Config"
     },
@@ -4812,8 +4812,8 @@
         "Key": "Ctrl.PiD.Kp"
       },
       "position": {
-        "x": 922.8947697777777,
-        "y": 3529.731387338272
+        "x": 930,
+        "y": 3525
       },
       "type": "Values.Config"
     },
@@ -4827,8 +4827,8 @@
         "Key": "Ctrl.PiD.Ki"
       },
       "position": {
-        "x": 934.0058808888884,
-        "y": 3711.3207409777783
+        "x": 930,
+        "y": 3705
       },
       "type": "Values.Config"
     },
@@ -4842,8 +4842,8 @@
         "Key": "Ctrl.PiQ.Ki"
       },
       "position": {
-        "x": 1207.1296296296298,
-        "y": 2206.8395061728397
+        "x": 1200,
+        "y": 2205
       },
       "type": "Values.Config"
     },
@@ -4853,8 +4853,8 @@
       "id": "AdaptiveSampleTrigger1",
       "parameters": {},
       "position": {
-        "x": 2544.2943506134743,
-        "y": 2935.008656740589
+        "x": 2550,
+        "y": 2940
       },
       "type": "hw.adaptive_sample_trigger"
     },
@@ -4866,8 +4866,8 @@
         "Key": "GapTicks"
       },
       "position": {
-        "x": 2967.5681822511824,
-        "y": 2958.265460676726
+        "x": 2970,
+        "y": 2955
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4877,8 +4877,8 @@
       "id": "RPMMechElec1",
       "parameters": {},
       "position": {
-        "x": 220.2884468830971,
-        "y": 3053.5253295991465
+        "x": 225,
+        "y": 3060
       },
       "type": "hw.rpm"
     },
@@ -4890,8 +4890,8 @@
         "Key": "Mech_RPM"
       },
       "position": {
-        "x": 586.757987540009,
-        "y": 2931.972808070416
+        "x": 585,
+        "y": 2925
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4903,8 +4903,8 @@
         "Key": "Elec_RPM"
       },
       "position": {
-        "x": 597.3653120713304,
-        "y": 3054.209790809328
+        "x": 600,
+        "y": 3060
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4914,8 +4914,8 @@
       "id": "EncoderRawSinCos1",
       "parameters": {},
       "position": {
-        "x": 239.78695130315504,
-        "y": 3197.605881344308
+        "x": 240,
+        "y": 3195
       },
       "type": "hw.encoder_raw"
     },
@@ -4927,8 +4927,8 @@
         "Key": "EncoderSin"
       },
       "position": {
-        "x": 575.9935108183458,
-        "y": 3121.063088229692
+        "x": 570,
+        "y": 3120
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4940,8 +4940,8 @@
         "Key": "EncoderCos"
       },
       "position": {
-        "x": 591.498046775771,
-        "y": 3195.484860825332
+        "x": 585,
+        "y": 3195
       },
       "type": "Debug.TelemetryLog"
     },
@@ -4956,8 +4956,8 @@
         "Lq": "0.0001"
       },
       "position": {
-        "x": 276.53374342706894,
-        "y": 3578.9631082342626
+        "x": 270,
+        "y": 3585
       },
       "type": "Control.Mtpa"
     },
@@ -4971,8 +4971,8 @@
         "Stored": "0.0"
       },
       "position": {
-        "x": -4.65136078722756,
-        "y": 3580.7725793673476
+        "x": 0,
+        "y": 3585
       },
       "type": "Custom.VarCurrent"
     },
@@ -4986,8 +4986,8 @@
         "Lq": "0.0001"
       },
       "position": {
-        "x": 1700.0,
-        "y": 2900.0
+        "x": 1695,
+        "y": 2895
       },
       "type": "Control.FocFeedforward"
     }
