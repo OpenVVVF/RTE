@@ -19,8 +19,9 @@ overlay charts with fault injection and diff-vs-recorded one click away.
 
 Two separate tabs carry this today: the **Plant Editor** (its own document
 and a single `plant` domain; interactive validation skips the controller
-cycle rule and rejects bridges) and **Simulate** (two path rows with project
-defaults, a scenario row - duration/dt-sub/dyno-rpm|series/supply/events -
+cycle rule and rejects bridges) and **Simulate** (two graph rows whose
+DEFAULT source is the live editor document — see "Run source policy" below —
+with a scenario row - duration/dt-sub/dyno-rpm|series/supply/events -
 with an openly regex-level live validator, Run/Cancel on a QProcess driving
 `rte --format jsonl sim`, progress stream mirrored in the log pane, artifact
 auto-load into a Telemetry view with G1/G2/G3 assignment and the GL plots
@@ -33,6 +34,42 @@ scout runs from the progress list. On the headless offscreen test platform
 `QOpenGLWidget is not supported` leaves the plot canvases blank; the
 structure and the table still render - see `Source/NodeGUI/src/sim/` for
 the implementation.
+
+### Run source policy (defsim wave — the default compiles what you see)
+
+Each graph row (Controller / Plant) feeds a run from exactly one of three
+sources, and the **row caption under the field names it at all times** —
+a run never compiles an unnamed source:
+
+- **current document** (the DEFAULT): the row binds to the open document of
+  the Node Editor / Plant Editor. At Run time the in-memory graph —
+  **unsaved `*` edits included** — is serialized fresh
+  (`GraphScene::Snapshot`, the same read-only serialization save/undo use;
+  no save dialog, the user's file is never dirtied) into
+  `<out>.work/inputs/current_controller_graph.json` / `..._plant_graph.json`
+  and the run compiles THAT shadow. Re-running after an edit re-serializes,
+  so the dirty path always compiles what is on screen; the run header says
+  `source=current documents` and each row logs an `[inputs]` line with the
+  document name (+"(with unsaved edits)" when dirty). With no edits between
+  two runs the wave-2a content-hash cache engages
+  (`compile_host_skipped_fresh` in the log); a real edit produces a full
+  recompile with the new payload.
+- **placeholder example**: only while the bound editor holds NO document
+  (boot with empty editors, or a relaunch whose restore finds none). The
+  caption says `placeholder example: <name> (no document open in the …)`
+  in warn-amber — the r2/r3 silent-stock-graph placeholder re-arm must not
+  resurface through this default. "current" mode also persists across
+  relaunch, so it re-engages as soon as a document opens again.
+- **explicit file pick**: typing/browsing a path, or "Use example pair",
+  flips the row to an override (`explicit file pick: <name>` caption) that
+  compiles the on-disk file exactly as before this wave; the run header
+  says `source=explicit files` (disk paths, in-memory edits NOT included).
+  "Use current document" reverts a row to the default binding.
+  A saved-but-never-run file pick also persists across relaunch, still
+  labelled as an explicit file.
+
+The complete status line carries `source: <token>` so the provenance of the
+last run survives the log scroll.
 
 ### Live-behavior caveats (dogfood-proven)
 
@@ -158,10 +195,12 @@ showing - another loaded session or the live stream.
   parameters); the only differences are the template palettes and the targets
   shown in the view chrome ("compiles to firmware" vs "compiles to simulator
   step"). No new editor component is designed here.
-- **A run bar** along the top: controller graph selector (default: the open
-  project), plant graph selector (default: the matching one from
-  `Assets/PlantExamples/`), base source (`Images/Gen6FW`), duration, dyno
-  rpm, working-directory/out file, and **Run**. The bar does not build
+- **A run bar** along the top: controller graph row, plant graph row — each
+  defaulting to the live editor document (current-memory serialization at
+  Run, placeholder example named on the caption while no document is open,
+  explicit file as an override; see "Run source policy" above) — plus base
+  source (`Images/Gen6FW`), duration, dyno rpm, working-directory/out file,
+  and **Run**. The bar does not build
   anything itself — it composes the command line
 
   ```bash

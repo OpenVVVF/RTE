@@ -381,25 +381,44 @@ MainWindow::MainWindow(QWidget* parent)
 #ifdef RTE_CLI_DEVELOPMENT_PATH
     simulateScreen_->SetRteBinary(QStringLiteral(RTE_CLI_DEVELOPMENT_PATH));
 #endif
-    // The Sw row's "Use current document" resolves at press time against
-    // whatever the Node Editor has open. The Plant row follows the plant
-    // document only at the moment a path is ASSIGNED to it (open / save-as):
-    // the per-snapshot onDocumentChanged signal must never push — every
-    // canvas edit would otherwise clobber a manually browsed plant path with
-    // the document's stale (or empty) one (clunk audit item 3).
-    simulateScreen_->SetCurrentGraphProvider([this]() -> QString {
-        return currentPath_.empty() ? QString() : QString::fromStdString(currentPath_);
-    });
-    // Plant row parity: "Use current document" pulls the Plant Editor's
-    // document at press time; unsaved (empty-path) documents warn in the log.
-    simulateScreen_->SetCurrentPlantGraphProvider([this]() -> QString {
-        return plantScreen_ && !plantScreen_->CurrentPath().empty()
-                   ? QString::fromStdString(plantScreen_->CurrentPath())
-                   : QString();
-    });
+    // [defsim] Default run source = the OPEN documents: each graph row binds
+    // to its editor's live document. The info read feeds the row caption
+    // ("current document (Node Editor): foc_demo.json * (unsaved edits)" /
+    // placeholder naming when no document is open); the export read
+    // serializes the in-memory document FRESH at every Run (dirty content
+    // included, no save dialog, never dirtying the file) into the session
+    // run dir the run compiles from.
+    simulateScreen_->SetCurrentDocumentInfoProvider(
+        [this]() -> sim::SimulateScreen::CurrentDocumentInfo {
+            sim::SimulateScreen::CurrentDocumentInfo info;
+            info.hasDocument = ControllerDocumentPresent();
+            info.dirty = ControllerDocumentDirty();
+            info.documentPath = ControllerDocumentPath();
+            info.displayName = ControllerDocumentDisplayName();
+            return info;
+        });
+    simulateScreen_->SetCurrentPlantDocumentInfoProvider(
+        [this]() -> sim::SimulateScreen::CurrentDocumentInfo {
+            sim::SimulateScreen::CurrentDocumentInfo info;
+            info.hasDocument = PlantDocumentPresent();
+            info.dirty = PlantDocumentDirty();
+            info.documentPath = PlantDocumentPath();
+            info.displayName = PlantDocumentDisplayName();
+            return info;
+        });
+    simulateScreen_->SetCurrentDocumentExportProvider(
+        [this]() -> std::string { return ExportControllerDocumentJson(); });
+    simulateScreen_->SetCurrentPlantDocumentExportProvider(
+        [this]() -> std::string { return ExportPlantDocumentJson(); });
+    // Assigning the plant document a (new) path re-binds the sim Plant row
+    // to that document: the row compiles the live document by default
+    // instead of clobbering its field with a path that would go stale
+    // against the next unsaved edit (replaces the pre-defsim SetPlantGraphPath
+    // push, keeping its per-assignment-only cadence — never per canvas edit,
+    // clunk audit item 3).
     plantScreen_->onPathAssigned = [this](const std::string& path) {
         if (simulateScreen_ && !path.empty()) {
-            simulateScreen_->SetPlantGraphPath(QString::fromStdString(path));
+            simulateScreen_->BindPlantRowToCurrentDocument();
         }
     };
     // [unsaved] Every plant-open entry (incl. the screen's own "Open an
@@ -972,10 +991,73 @@ void MainWindow::UpdateWindowTitle() {
     if (windowTitleDump_) {
         windowTitleDump_->setText(windowTitle());
     }
+    // [defsim] Every document-affecting change funnels here (open/new/save,
+    // history record, dirty flip); the sim rows' "current document" captions
+    // track the same truth.
+    if (simulateScreen_) {
+        simulateScreen_->RefreshSourceCaptions();
+    }
 }
 
 bool MainWindow::ControllerDocumentDirty() const {
     return currentHistorySnapshot_ != savedSnapshotNode_;
+}
+
+// ---- [defsim] Simulate-screen document getters ----------------------------
+bool MainWindow::ControllerDocumentPresent() const {
+    return graphScene_
+        && (!currentPath_.empty() || !graphScene_->Graph().GetNodes().empty());
+}
+
+QString MainWindow::ControllerDocumentPath() const {
+    return QString::fromStdString(currentPath_);
+}
+
+QString MainWindow::ControllerDocumentDisplayName() const {
+    if (!ControllerDocumentPresent()) {
+        return QString();
+    }
+    return currentPath_.empty()
+               ? QStringLiteral("(untitled)")
+               : QFileInfo(QString::fromStdString(currentPath_)).fileName();
+}
+
+std::string MainWindow::ExportControllerDocumentJson() {
+    if (!ControllerDocumentPresent()) {
+        return {};
+    }
+    return graphScene_->Snapshot();   // in-memory serialization, read-only
+}
+
+bool MainWindow::PlantDocumentPresent() const {
+    return plantScreen_ && plantScreen_->Scene()
+        && (!plantScreen_->CurrentPath().empty()
+            || !plantScreen_->Scene()->Graph().GetNodes().empty());
+}
+
+QString MainWindow::PlantDocumentPath() const {
+    return plantScreen_ ? QString::fromStdString(plantScreen_->CurrentPath())
+                        : QString();
+}
+
+QString MainWindow::PlantDocumentDisplayName() const {
+    if (!PlantDocumentPresent()) {
+        return QString();
+    }
+    return plantScreen_->CurrentPath().empty()
+               ? QStringLiteral("(untitled)")
+               : QFileInfo(PlantDocumentPath()).fileName();
+}
+
+bool MainWindow::PlantDocumentDirty() const {
+    return plantScreen_ && plantScreen_->DocumentDirty();
+}
+
+std::string MainWindow::ExportPlantDocumentJson() {
+    if (!PlantDocumentPresent()) {
+        return {};
+    }
+    return plantScreen_->Scene()->Snapshot();   // in-memory, read-only
 }
 
 void MainWindow::MarkControllerSaved() {

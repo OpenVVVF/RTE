@@ -144,6 +144,35 @@ public:
     bool SmokeSetGraphValuesEnabled(bool on);
     QString SmokeDumpGraphValues();
 
+    // ---- [defsim] Simulate-screen document getters (additive) ------------
+    // The Simulate screen's "current document" default binds each graph row
+    // to the open editor document through these. Presence = a path is
+    // assigned OR the untitled document carries nodes; DisplayName is the
+    // file basename or "(untitled)"; the export is GraphScene::Snapshot()
+    // (the same in-memory serialization save/undo use — read-only: no save
+    // dialog, no dirty flip, dirty '*' content included as-is).
+    bool ControllerDocumentPresent() const;
+    QString ControllerDocumentPath() const;
+    QString ControllerDocumentDisplayName() const;
+    bool ControllerDocumentDirty() const;
+    std::string ExportControllerDocumentJson();
+    bool PlantDocumentPresent() const;
+    QString PlantDocumentPath() const;
+    QString PlantDocumentDisplayName() const;
+    bool PlantDocumentDirty() const;
+    std::string ExportPlantDocumentJson();
+    // [smoke] LTspice-style chip read-out of the ACTIVE editor scene's
+    // GraphValuesOverlay: one "key:npoints,wmin,wmax[,cursor=frac]" line
+    // per tag (sorted by key; the cursor fraction rides only while a
+    // playback cursor is pinned). Refills synchronously first, same
+    // timing-independent contract as the value dump.
+    QString SmokeDumpGraphSpark();
+    // [smoke] single left-click through the real viewport event chain at
+    // the center of the chip for log node `itemId` on the ACTIVE editor
+    // tab (the probe-assign gesture a mouse click drives). Returns false
+    // when no chip with that id is live.
+    bool SmokeClickGraphTag(const std::string& itemId);
+
 private slots:
     void OnOpen();
     void OnNew();
@@ -193,7 +222,6 @@ private:
     // The window title marks each dirty document with a '*' right after its
     // component; UpdateWindowTitle keeps the (hidden) windowTitleDump_ smoke
     // label in step so headless runs can assert the marker.
-    bool ControllerDocumentDirty() const;
     void MarkControllerSaved();
     enum class UnsavedChoice { Save, Discard, Cancel };
     // Save/Discard/Cancel prompt naming one dirty document. context names the

@@ -29,6 +29,7 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QTabWidget>
 #include <QTextCursor>
 #include <QToolButton>
@@ -274,19 +275,40 @@ QString EffectiveFieldText(const QLineEdit* edit) {
     return text.isEmpty() ? edit->placeholderText().trimmed() : text;
 }
 
-// Locked-rotor probe (honesty wave): reads the plant graph's Dyno/shaft node
-// initial-rpm default off disk. Returns true when a node with "Dyno" in its
+// [defsim] The shipped example pair the placeholder fallback compiles when
+// the bound editor holds no document. The row caption names these loudly
+// whenever they are the effective source (the r2/r3 silent-placeholder bug
+// pattern must not come back through this default).
+const QString& ExampleSwGraphPath() {
+    static const QString path = QStringLiteral("Assets/Examples/foc_demo.json");
+    return path;
+}
+const QString& ExamplePlantGraphPath() {
+    static const QString path =
+        QStringLiteral("Assets/PlantExamples/gen7_bench_pmsm.json");
+    return path;
+}
+
+// Directory a run stage-serializes the current-memory input pair into:
+// <out>.work/inputs/ (the runner keeps <out>.work next to the session file;
+// the wave-2a compile-cache fingerprint walks sw/plant/host only, so this
+// subdir never disturbs the cache key).
+QString ShadowInputDirForOut(const QString& outPath) {
+    return outPath + QStringLiteral(".work/inputs");
+}
+
+QJsonDocument ParseGraphJsonText(const QString& text) {
+    return QJsonDocument::fromJson(text.toUtf8());
+}
+
+// Locked-rotor probe (honesty wave): finds the plant graph's Dyno/shaft
+// node initial-rpm default. Returns true when a node with "Dyno" in its
 // type id exists (speed then has a mechanical authority whose default the
 // host honors when no CLI source is given — host F28). *rpm0 out: the Rpm0
 // parameter (missing -> 0.0, matching PlantGenerator's Plant.Shaft.Dyno
-// default). Unparseable files report "no Dyno" and let rte's parse error
-// own the failure at Run time.
-bool PlantDynoRpm0(const QString& plantPath, double* rpm0) {
-    QFile file(plantPath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return false;
-    }
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+// default). Unparseable documents report "no Dyno" and let rte's parse
+// error own the failure at Run time.
+bool PlantDynoRpm0FromDoc(const QJsonDocument& doc, double* rpm0) {
     if (!doc.isObject()) {
         return false;
     }
@@ -315,6 +337,14 @@ bool PlantDynoRpm0(const QString& plantPath, double* rpm0) {
     return false;
 }
 
+bool PlantDynoRpm0(const QString& plantPath, double* rpm0) {
+    QFile file(plantPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    return PlantDynoRpm0FromDoc(QJsonDocument::fromJson(file.readAll()), rpm0);
+}
+
 }  // namespace
 
 SimulateScreen::SimulateScreen(QWidget* parent)
@@ -334,7 +364,6 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     int row = 0;
     grid->addWidget(new QLabel(QStringLiteral("Controller graph"), scenarioBox), row, 0);
     swEdit_ = MakePathEdit(scenarioBox, QStringLiteral("simSwGraph"));
-    swEdit_->setPlaceholderText(QStringLiteral("Assets/Examples/foc_demo.json"));
     grid->addWidget(swEdit_, row, 1, 1, 3);
     auto* swBrowse = MakeBrowseButton(scenarioBox);
     connect(swBrowse, &QToolButton::clicked, this, [this] {
@@ -342,35 +371,45 @@ SimulateScreen::SimulateScreen(QWidget* parent)
             this, QStringLiteral("Controller Graph"), QString(),
             QStringLiteral("JSON (*.json)"));
         if (!path.isEmpty()) {
-            swEdit_->setText(path);
+            SetSwSourceToFile(path);
         }
     });
     grid->addWidget(swBrowse, row, 4);
     swUseCurrentButton_ = new QPushButton(QStringLiteral("Use current document"), scenarioBox);
     swUseCurrentButton_->setToolTip(QStringLiteral(
-        "Pull the Node Editor's open document at press time."));
+        "Bind this row back to the Node Editor's open document: at Run the "
+        "in-memory graph (unsaved edits included) is serialized and compiled "
+        "— no save needed."));
     swUseCurrentButton_->setVisible(false);
     connect(swUseCurrentButton_, &QPushButton::clicked, this, [this] {
-        const QString path =
-            currentGraphProvider_ ? currentGraphProvider_() : QString();
-        if (path.isEmpty()) {
-            AppendLog(QStringLiteral("[warn] the Node Editor has no saved document yet.\n"));
-            return;
-        }
-        swEdit_->setText(path);
+        swSourceIsFile_ = false;
+        swEdit_->clear();
+        RefreshSourceCaptions();
+        RefreshGraphKindBadges();
     });
     grid->addWidget(swUseCurrentButton_, row, 5);
     swKindBadge_ = new QLabel(scenarioBox);
     swKindBadge_->setObjectName(QStringLiteral("simSwKindBadge"));
     grid->addWidget(swKindBadge_, row, 6);
-    connect(swEdit_, &QLineEdit::textChanged, this,
-            [this] { RefreshGraphKindBadges(); });
+    connect(swEdit_, &QLineEdit::textChanged, this, [this] {
+        // Any text (typed, browsed, script-set) is an explicit-file override
+        // of the current-document default.
+        swSourceIsFile_ = true;
+        RefreshSourceCaptions();
+        RefreshGraphKindBadges();
+    });
+    ++row;
+
+    swSourceCaption_ = new QLabel(scenarioBox);
+    swSourceCaption_->setObjectName(QStringLiteral("simSwSourceCaption"));
+    swSourceCaption_->setStyleSheet(
+        QStringLiteral("color: palette(mid); font-size: 11px;"));
+    swSourceCaption_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    grid->addWidget(swSourceCaption_, row, 1, 1, 6);
     ++row;
 
     grid->addWidget(new QLabel(QStringLiteral("Plant graph"), scenarioBox), row, 0);
     plantEdit_ = MakePathEdit(scenarioBox, QStringLiteral("simPlantGraph"));
-    plantEdit_->setPlaceholderText(
-        QStringLiteral("Assets/PlantExamples/gen7_bench_pmsm.json"));
     grid->addWidget(plantEdit_, row, 1, 1, 3);
     auto* plantBrowse = MakeBrowseButton(scenarioBox);
     connect(plantBrowse, &QToolButton::clicked, this, [this] {
@@ -378,32 +417,42 @@ SimulateScreen::SimulateScreen(QWidget* parent)
             this, QStringLiteral("Plant Graph"), QString(),
             QStringLiteral("JSON (*.json)"));
         if (!path.isEmpty()) {
-            plantEdit_->setText(path);
+            SetPlantSourceToFile(path);
         }
     });
     grid->addWidget(plantBrowse, row, 4);
-    // Parity with the Sw row: pull the Plant Editor's document at press
-    // time (the onPathAssigned hook only pushes at open/save-as).
+    // Same contract as the Controller row: rebind to the Plant Editor's live
+    // document (the default), serialized from memory at Run time.
     plantUseCurrentButton_ =
         new QPushButton(QStringLiteral("Use current document"), scenarioBox);
     plantUseCurrentButton_->setToolTip(QStringLiteral(
-        "Pull the Plant Editor's open document at press time."));
+        "Bind this row back to the Plant Editor's open document: at Run the "
+        "in-memory graph (unsaved edits included) is serialized and compiled "
+        "— no save needed."));
     plantUseCurrentButton_->setVisible(false);
     connect(plantUseCurrentButton_, &QPushButton::clicked, this, [this] {
-        const QString path =
-            currentPlantGraphProvider_ ? currentPlantGraphProvider_() : QString();
-        if (path.isEmpty()) {
-            AppendLog(QStringLiteral("[warn] the Plant Editor has no saved document yet.\n"));
-            return;
-        }
-        plantEdit_->setText(path);
+        plantSourceIsFile_ = false;
+        plantEdit_->clear();
+        RefreshSourceCaptions();
+        RefreshGraphKindBadges();
     });
     grid->addWidget(plantUseCurrentButton_, row, 5);
     plantKindBadge_ = new QLabel(scenarioBox);
     plantKindBadge_->setObjectName(QStringLiteral("simPlantKindBadge"));
     grid->addWidget(plantKindBadge_, row, 6);
-    connect(plantEdit_, &QLineEdit::textChanged, this,
-            [this] { RefreshGraphKindBadges(); });
+    connect(plantEdit_, &QLineEdit::textChanged, this, [this] {
+        plantSourceIsFile_ = true;
+        RefreshSourceCaptions();
+        RefreshGraphKindBadges();
+    });
+    ++row;
+
+    plantSourceCaption_ = new QLabel(scenarioBox);
+    plantSourceCaption_->setObjectName(QStringLiteral("simPlantSourceCaption"));
+    plantSourceCaption_->setStyleSheet(
+        QStringLiteral("color: palette(mid); font-size: 11px;"));
+    plantSourceCaption_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    grid->addWidget(plantSourceCaption_, row, 1, 1, 6);
     ++row;
 
     grid->addWidget(new QLabel(QStringLiteral("Base source"), scenarioBox), row, 0);
@@ -595,13 +644,12 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     auto* examplePairButton = new QPushButton(QStringLiteral("Use example pair"), this);
     examplePairButton->setObjectName(QStringLiteral("simUseExamplePair"));
     examplePairButton->setToolTip(QStringLiteral(
-        "Fill both rows with the worked example: foc_demo controller + "
+        "Fill both rows with the worked example as EXPLICIT FILES (an "
+        "override of the current-document default): foc_demo controller + "
         "gen7_bench_pmsm plant (resolved against the project root)."));
     connect(examplePairButton, &QPushButton::clicked, this, [this] {
-        swEdit_->setText(ResolveProjectPath(
-            QStringLiteral("Assets/Examples/foc_demo.json")));
-        plantEdit_->setText(ResolveProjectPath(
-            QStringLiteral("Assets/PlantExamples/gen7_bench_pmsm.json")));
+        SetSwSourceToFile(ResolveProjectPath(ExampleSwGraphPath()));
+        SetPlantSourceToFile(ResolveProjectPath(ExamplePlantGraphPath()));
     });
     actionRow->addWidget(examplePairButton);
     statusLabel_ = new QLabel(this);
@@ -652,6 +700,7 @@ SimulateScreen::SimulateScreen(QWidget* parent)
     RefreshGraphKindBadges();
     RefreshSessionMruCombo();
     RestoreScenarioState();
+    RefreshSourceCaptions();
 }
 
 SimulateScreen::~SimulateScreen() {
@@ -671,6 +720,18 @@ void SimulateScreen::SaveScenarioState() {
     settings.setValue(QStringLiteral("supply"), supplyEdit_->text());
     settings.setValue(QStringLiteral("events"), eventsEdit_->toPlainText());
     settings.setValue(QStringLiteral("name"), nameEdit_->text());
+    // [defsim] Row sourcing intent: current-document (the default) survives
+    // relaunch; an explicit-file pick survives WITH its path, still labelled
+    // "explicit file pick" on restore (never re-armed as "current", and a
+    // missing file falls to the named placeholder at Run).
+    settings.setValue(QStringLiteral("swSource"),
+                      swSourceIsFile_ ? QStringLiteral("file")
+                                      : QStringLiteral("current"));
+    settings.setValue(QStringLiteral("plantSource"),
+                      plantSourceIsFile_ ? QStringLiteral("file")
+                                         : QStringLiteral("current"));
+    settings.setValue(QStringLiteral("swPath"), swEdit_->text());
+    settings.setValue(QStringLiteral("plantPath"), plantEdit_->text());
     settings.endGroup();
 }
 
@@ -688,24 +749,52 @@ void SimulateScreen::RestoreScenarioState() {
     supplyEdit_->setText(settings.value(QStringLiteral("supply")).toString());
     eventsEdit_->setPlainText(settings.value(QStringLiteral("events")).toString());
     nameEdit_->setText(settings.value(QStringLiteral("name")).toString());
+    // Text first (the textChanged hook marks the row file-sourced), then the
+    // persisted source intent re-asserts the mode on top.
+    swEdit_->setText(settings.value(QStringLiteral("swPath")).toString());
+    plantEdit_->setText(settings.value(QStringLiteral("plantPath")).toString());
+    swSourceIsFile_ = settings.value(QStringLiteral("swSource")).toString()
+                      == QStringLiteral("file");
+    plantSourceIsFile_ = settings.value(QStringLiteral("plantSource")).toString()
+                         == QStringLiteral("file");
     settings.endGroup();
+    RefreshSourceCaptions();
+    RefreshGraphKindBadges();
+}
+
+void SimulateScreen::SetSwSourceToFile(const QString& path) {
+    swSourceIsFile_ = true;
+    swEdit_->setText(path);   // textChanged marks the row file-sourced too
+    RefreshSourceCaptions();
+    RefreshGraphKindBadges();
+}
+
+void SimulateScreen::SetPlantSourceToFile(const QString& path) {
+    plantSourceIsFile_ = true;
+    plantEdit_->setText(path);
+    RefreshSourceCaptions();
+    RefreshGraphKindBadges();
 }
 
 void SimulateScreen::SetSwGraphPath(const QString& path) {
-    swPathSetExternally_ = true;
-    swUseCurrentButton_->setVisible(false);
-    swEdit_->setText(path);
+    SetSwSourceToFile(path);
 }
 
 void SimulateScreen::SetPlantGraphPath(const QString& path) {
-    plantEdit_->setText(path);
+    SetPlantSourceToFile(path);
 }
 
 QString SimulateScreen::SwGraphPath() const {
+    if (!swSourceIsFile_ && currentDocInfoProvider_) {
+        return currentDocInfoProvider_().documentPath;
+    }
     return swEdit_->text().trimmed();
 }
 
 QString SimulateScreen::PlantGraphPath() const {
+    if (!plantSourceIsFile_ && currentPlantDocInfoProvider_) {
+        return currentPlantDocInfoProvider_().documentPath;
+    }
     return plantEdit_->text().trimmed();
 }
 
@@ -715,14 +804,120 @@ void SimulateScreen::SetRteBinary(const QString& path) {
     }
 }
 
-void SimulateScreen::SetCurrentGraphProvider(std::function<QString()> provider) {
-    currentGraphProvider_ = std::move(provider);
-    swUseCurrentButton_->setVisible(currentGraphProvider_ && !swPathSetExternally_);
+void SimulateScreen::SetCurrentDocumentInfoProvider(
+    std::function<CurrentDocumentInfo()> provider) {
+    currentDocInfoProvider_ = std::move(provider);
+    swUseCurrentButton_->setVisible(currentDocInfoProvider_ != nullptr);
+    RefreshSourceCaptions();
 }
 
-void SimulateScreen::SetCurrentPlantGraphProvider(std::function<QString()> provider) {
-    currentPlantGraphProvider_ = std::move(provider);
-    plantUseCurrentButton_->setVisible(currentPlantGraphProvider_ != nullptr);
+void SimulateScreen::SetCurrentPlantDocumentInfoProvider(
+    std::function<CurrentDocumentInfo()> provider) {
+    currentPlantDocInfoProvider_ = std::move(provider);
+    plantUseCurrentButton_->setVisible(currentPlantDocInfoProvider_ != nullptr);
+    RefreshSourceCaptions();
+}
+
+void SimulateScreen::SetCurrentDocumentExportProvider(
+    std::function<std::string()> provider) {
+    currentDocExportProvider_ = std::move(provider);
+}
+
+void SimulateScreen::SetCurrentPlantDocumentExportProvider(
+    std::function<std::string()> provider) {
+    currentPlantDocExportProvider_ = std::move(provider);
+}
+
+void SimulateScreen::BindPlantRowToCurrentDocument() {
+    plantSourceIsFile_ = false;
+    {
+        // The clear is not a user file-override; keep the textChanged hook
+        // from flipping the row back to file mode.
+        const QSignalBlocker blocker(plantEdit_);
+        plantEdit_->clear();
+    }
+    RefreshSourceCaptions();
+    RefreshGraphKindBadges();
+}
+
+void SimulateScreen::RefreshSourceCaptions() {
+    // One row's caption + field placeholder, derived from the RESOLVED
+    // source so the wording never drifts from what Run would actually do.
+    // Placeholder fallbacks (no open document / emptied field) stay LOUD:
+    // the daily_flow_r3 misery was a stock graph compiling silently under
+    // the session's name; that pattern must not re-arm here.
+    auto captionForRow = [](bool fileSource,
+                            const std::function<CurrentDocumentInfo()>& infoProvider,
+                            QLineEdit* edit, QLabel* caption,
+                            const QString& editorName,
+                            const QString& examplePath) {
+        const QString exampleName = QFileInfo(examplePath).fileName();
+        if (!fileSource) {
+            CurrentDocumentInfo info;
+            if (infoProvider) {
+                info = infoProvider();
+            }
+            if (info.hasDocument) {
+                caption->setText(QStringLiteral("current document (%1): %2%3")
+                                     .arg(editorName, info.displayName,
+                                          info.dirty ? QStringLiteral(" * (unsaved edits)")
+                                                     : QString()));
+                caption->setToolTip(QStringLiteral(
+                    "Run compiles the in-memory document from the %1 "
+                    "(serialized fresh at Run time, unsaved edits included; "
+                    "no save happens). Type a path or use \"...\" for an "
+                    "explicit file instead.").arg(editorName));
+                caption->setStyleSheet(
+                    QStringLiteral("color: palette(mid); font-size: 11px;"));
+                edit->setPlaceholderText(QStringLiteral(
+                    "current document (%1) — typing switches to an explicit file")
+                        .arg(editorName));
+                return;
+            }
+            caption->setText(QStringLiteral(
+                "placeholder example: %1 (no document open in the %2)")
+                    .arg(exampleName, editorName));
+            caption->setToolTip(QStringLiteral(
+                "The %1 has no document open, so Run falls back to the "
+                "shipped example %2 — named here so it can never compile "
+                "silently under your scenario's name.")
+                    .arg(editorName, examplePath));
+            caption->setStyleSheet(QStringLiteral("%1 font-size: 11px;")
+                                            .arg(QLatin1String(kBadgeWarnStyle)));
+            edit->setPlaceholderText(QStringLiteral(
+                "placeholder example %1 — typing picks an explicit file").arg(examplePath));
+            return;
+        }
+        const QString text = edit->text().trimmed();
+        if (text.isEmpty()) {
+            caption->setText(QStringLiteral(
+                "placeholder example: %1 (row left empty)").arg(exampleName));
+            caption->setToolTip(QStringLiteral(
+                "The row's field is empty, so Run falls back to the shipped "
+                "example %1.").arg(examplePath));
+            caption->setStyleSheet(QStringLiteral("%1 font-size: 11px;")
+                                            .arg(QLatin1String(kBadgeWarnStyle)));
+        } else {
+            caption->setText(QStringLiteral("explicit file pick: %1")
+                                 .arg(QFileInfo(text).fileName()));
+            caption->setToolTip(QStringLiteral(
+                "Run compiles the on-disk file %1 (your override; in-memory "
+                "editor edits do NOT affect the run until saved or "
+                "\"Use current document\" is clicked).").arg(text));
+            caption->setStyleSheet(
+                QStringLiteral("color: palette(mid); font-size: 11px;"));
+        }
+        edit->setPlaceholderText(examplePath);
+    };
+
+    if (swSourceCaption_ && plantSourceCaption_) {
+        captionForRow(swSourceIsFile_, currentDocInfoProvider_, swEdit_,
+                      swSourceCaption_, QStringLiteral("Node Editor"),
+                      ExampleSwGraphPath());
+        captionForRow(plantSourceIsFile_, currentPlantDocInfoProvider_, plantEdit_,
+                      plantSourceCaption_, QStringLiteral("Plant Editor"),
+                      ExamplePlantGraphPath());
+    }
 }
 
 QString SimulateScreen::SessionStartDir() const {
@@ -840,7 +1035,8 @@ void SimulateScreen::RefreshSupplyBadge() {
     }
 }
 
-QString SimulateScreen::LockedRotorWarningText() const {
+QString SimulateScreen::LockedRotorWarningText(const QString& plantJsonText,
+                                               const QString& plantDiskPath) const {
     // Mechanical-source census: any one of these spins or schedules the shaft.
     if (!dynoRpmEdit_->text().trimmed().isEmpty()) {
         return QString();   // --dyno-rpm hold
@@ -853,9 +1049,17 @@ QString SimulateScreen::LockedRotorWarningText() const {
             return QString();   // timeline assigns mechanical speed mid-run
         }
     }
-    // No side-band source: the host stands on the graph's Dyno.Rpm0 (host F28).
+    // No side-band source: the host stands on the graph's Dyno.Rpm0 (host
+    // F28). A current-memory plant row probes the JUST-STAGED serialization
+    // (unsaved edits count), otherwise the resolved disk path.
     double rpm0 = 0.0;
-    if (!PlantDynoRpm0(ResolveProjectPath(EffectiveFieldText(plantEdit_)), &rpm0)) {
+    bool hasDyno;
+    if (!plantJsonText.isEmpty()) {
+        hasDyno = PlantDynoRpm0FromDoc(ParseGraphJsonText(plantJsonText), &rpm0);
+    } else {
+        hasDyno = PlantDynoRpm0(plantDiskPath, &rpm0);
+    }
+    if (!hasDyno) {
         return QString();   // no Dyno/shaft node: speed is plant-physics-driven
     }
     if (std::abs(rpm0) > 1e-12) {
@@ -903,19 +1107,23 @@ void SimulateScreen::RefreshDurationClampBadge() {
 
 void SimulateScreen::RefreshGraphKindBadges() {
     // Same check for both rows, mirrored expectations: the Controller row
-    // must not hold a Plant graph and vice versa. Files that do not exist
-    // (yet) are left to the existence errors in BuildArguments; files that
-    // exist but are not recognizable graph JSON take the rte parse error at
-    // Run — neither is a kind mismatch, so neither draws a badge here.
-    auto checkRow = [](QLineEdit* edit, QLabel* badge, GraphKind wrongKind,
-                       const QString& reason) {
+    // must not hold a Plant graph and vice versa. Current-document rows skip
+    // the badge (the editor kind is right by construction; the Run-time
+    // check in BuildArguments re-validates the staged shadow as a graph).
+    // Files that do not exist (yet) are left to the existence errors in
+    // BuildArguments; files that exist but are not recognizable graph JSON
+    // take the rte parse error at Run — neither draws a badge here.
+    auto checkRow = [](QLineEdit* edit, QLabel* badge, bool fileSource,
+                       GraphKind wrongKind, const QString& reason) {
         bool blocked = false;
-        const QString text = EffectiveFieldText(edit);
-        if (!text.isEmpty()) {
-            const QString resolved = ResolveProjectPath(text);
-            if (QFileInfo(resolved).isFile()
-                && GraphKindOf(resolved.toStdString()) == wrongKind) {
-                blocked = true;
+        if (fileSource) {
+            const QString text = EffectiveFieldText(edit);
+            if (!text.isEmpty()) {
+                const QString resolved = ResolveProjectPath(text);
+                if (QFileInfo(resolved).isFile()
+                    && GraphKindOf(resolved.toStdString()) == wrongKind) {
+                    blocked = true;
+                }
             }
         }
         if (blocked) {
@@ -936,9 +1144,11 @@ void SimulateScreen::RefreshGraphKindBadges() {
         "plant graph in Controller row — swap or pick another file");
     const QString plantReason = QStringLiteral(
         "controller graph in Plant row — swap or pick another file");
-    const bool swBlocked = checkRow(swEdit_, swKindBadge_, GraphKind::Plant, swReason);
+    const bool swBlocked =
+        checkRow(swEdit_, swKindBadge_, swSourceIsFile_, GraphKind::Plant, swReason);
     const bool plantBlocked =
-        checkRow(plantEdit_, plantKindBadge_, GraphKind::Controller, plantReason);
+        checkRow(plantEdit_, plantKindBadge_, plantSourceIsFile_,
+                 GraphKind::Controller, plantReason);
 
     QString reason;
     if (swBlocked && plantBlocked) {
@@ -964,16 +1174,152 @@ void SimulateScreen::RefreshGraphKindBadges() {
     runButton_->setEnabled(!IsRunning() && kindBlockReason_.isEmpty());
 }
 
-bool SimulateScreen::BuildArguments(QStringList& arguments, QString& error) const {
-    const QString sw = ResolveProjectPath(EffectiveFieldText(swEdit_));
-    const QString plant = ResolveProjectPath(EffectiveFieldText(plantEdit_));
+bool SimulateScreen::StageRunInputs(StagedRunInputs& staged, QString& error) {
+    RefreshSourceCaptions();   // the run's wording mirrors the live captions
+    const QString out = outEdit_->text().trimmed();
+
+    struct RowStage {
+        GraphSourceKind kind;
+        QString path;
+        QString exportText;   // only for CurrentDocument rows
+    };
+    auto stageRow = [&](bool fileSource, QLineEdit* edit,
+                        const std::function<CurrentDocumentInfo()>& infoProvider,
+                        const std::function<std::string()>& exportProvider,
+                        const QString& editorName, const QString& rowName,
+                        const QString& examplePath, const QString& shadowFileName,
+                        RowStage& result, QStringList& lines) -> bool {
+        const QString resolvedExample = ResolveProjectPath(examplePath);
+        if (!fileSource) {
+            const QString serialized =
+                exportProvider ? QString::fromStdString(exportProvider())
+                               : QString();
+            if (!serialized.isEmpty()) {
+                // Current-memory source: shadow-serialize FRESH into this
+                // run's dir (every run; last run's export never re-arms).
+                const QString dirPath = ShadowInputDirForOut(out);
+                if (!QDir().mkpath(dirPath)) {
+                    error = QStringLiteral(
+                        "could not create run-input directory %1").arg(dirPath);
+                    return false;
+                }
+                const QString shadowPath =
+                    QStringLiteral("%1/%2").arg(dirPath, shadowFileName);
+                QFile shadow(shadowPath);
+                if (!shadow.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    error = QStringLiteral("could not write the %1 serialization to %2")
+                                .arg(editorName, shadowPath);
+                    return false;
+                }
+                shadow.write(serialized.toUtf8());
+                if (!shadow.flush()) {
+                    error = QStringLiteral("could not flush the %1 serialization to %2")
+                                .arg(editorName, shadowPath);
+                    return false;
+                }
+                shadow.close();
+                result.kind = GraphSourceKind::CurrentDocument;
+                result.path = shadowPath;
+                result.exportText = serialized;
+                QString docNote;
+                if (infoProvider) {
+                    const CurrentDocumentInfo info = infoProvider();
+                    docNote = info.hasDocument
+                        ? QStringLiteral(" '%1'%2")
+                              .arg(info.displayName,
+                                   info.dirty ? QStringLiteral(" (with unsaved edits)")
+                                              : QString())
+                        : QStringLiteral(" (document identity unread)");
+                }
+                lines.push_back(QStringLiteral(
+                    "[inputs] %1 = current document (%2)%3 — serialized from "
+                    "memory (no save) to %4")
+                        .arg(rowName, editorName, docNote, shadowPath));
+                return true;
+            }
+            if (exportProvider && infoProvider && infoProvider().hasDocument) {
+                // A document is open but its serialization came back empty:
+                // NEVER quietly downgrade to the placeholder here.
+                error = QStringLiteral(
+                    "the %1 document could not be serialized from memory — "
+                    "refusing to run (no silent fallback)")
+                        .arg(editorName);
+                return false;
+            }
+            // No document open in the bound editor: NAMED placeholder.
+            result.kind = GraphSourceKind::PlaceholderExample;
+            result.path = resolvedExample;
+            result.exportText.clear();
+            lines.push_back(QStringLiteral(
+                "[inputs] %1 = placeholder example %2 (no document open in "
+                "the %3 — open one, or pick a file to override)")
+                    .arg(rowName, resolvedExample, editorName));
+            return true;
+        }
+        const QString text = edit->text().trimmed();
+        if (text.isEmpty()) {
+            result.kind = GraphSourceKind::PlaceholderExample;
+            result.path = resolvedExample;
+            result.exportText.clear();
+            lines.push_back(QStringLiteral(
+                "[inputs] %1 = placeholder example %2 (row left empty)")
+                    .arg(rowName, resolvedExample));
+            return true;
+        }
+        result.kind = GraphSourceKind::ExplicitFile;
+        result.path = ResolveProjectPath(text);
+        result.exportText.clear();
+        lines.push_back(QStringLiteral(
+            "[inputs] %1 = explicit file %2 (compiled from disk; in-memory "
+            "edits not included)")
+                .arg(rowName, result.path));
+        return true;
+    };
+
+    RowStage sw, plant;
+    QStringList lines;
+    if (!stageRow(swSourceIsFile_, swEdit_, currentDocInfoProvider_,
+                  currentDocExportProvider_, QStringLiteral("Node Editor"),
+                  QStringLiteral("controller graph"), ExampleSwGraphPath(),
+                  QStringLiteral("current_controller_graph.json"), sw, lines)) {
+        return false;
+    }
+    if (!stageRow(plantSourceIsFile_, plantEdit_, currentPlantDocInfoProvider_,
+                  currentPlantDocExportProvider_, QStringLiteral("Plant Editor"),
+                  QStringLiteral("plant graph"), ExamplePlantGraphPath(),
+                  QStringLiteral("current_plant_graph.json"), plant, lines)) {
+        return false;
+    }
+
+    staged.swPath = sw.path;
+    staged.plantPath = plant.path;
+    staged.swKind = sw.kind;
+    staged.plantKind = plant.kind;
+    staged.lines = lines;
+    staged.plantExportText = plant.exportText;
+    if (sw.kind == GraphSourceKind::CurrentDocument
+        && plant.kind == GraphSourceKind::CurrentDocument) {
+        staged.sourceToken = QStringLiteral("current documents");
+    } else if (sw.kind == GraphSourceKind::ExplicitFile
+               && plant.kind == GraphSourceKind::ExplicitFile) {
+        staged.sourceToken = QStringLiteral("explicit files");
+    } else if (sw.kind == GraphSourceKind::PlaceholderExample
+               && plant.kind == GraphSourceKind::PlaceholderExample) {
+        staged.sourceToken = QStringLiteral("placeholder examples");
+    } else {
+        staged.sourceToken = QStringLiteral("mixed (see [inputs] lines)");
+    }
+    error.clear();
+    return true;
+}
+
+bool SimulateScreen::BuildArguments(const QString& swPath, const QString& plantPath,
+                                    QStringList& arguments, QString& error) const {
+    const QString sw = swPath;
+    const QString plant = plantPath;
     const QString base = ResolveProjectPath(EffectiveFieldText(baseEdit_));
     const QString name = nameEdit_->text().trimmed();
     const QString out = outEdit_->text().trimmed();
-    // reflect the resolution back into the fields once composing succeeded
-    if (sw != swEdit_->text().trimmed()) swEdit_->setText(sw);
-    if (plant != plantEdit_->text().trimmed()) plantEdit_->setText(plant);
-    if (base != baseEdit_->text().trimmed()) baseEdit_->setText(base);
     if (sw.isEmpty() || !QFileInfo(sw).isFile()) {
         error = QStringLiteral("controller graph file does not exist: %1").arg(sw);
         return false;
@@ -983,7 +1329,8 @@ bool SimulateScreen::BuildArguments(QStringList& arguments, QString& error) cons
         return false;
     }
     // Kind checks ride on top of the existence checks (same rule the live
-    // row badges use): a swapped pair must name the fix here too.
+    // row badges use): a swapped pair must name the fix here too. Applies
+    // uniformly — a staged current-memory shadow is re-validated as a graph.
     if (GraphKindOf(sw.toStdString()) == GraphKind::Plant) {
         error = QStringLiteral("plant graph in Controller row — swap or pick another file: %1")
                     .arg(sw);
@@ -1086,9 +1433,21 @@ void SimulateScreen::OnRun() {
         return;
     }
 
+    // [defsim] Resolve + stage the input pair FIRST: current-document rows
+    // serialize the in-memory editor content (dirty '*' included) into
+    // <out>.work/inputs/ — fresh every run, never a last-export re-arm.
+    StagedRunInputs staged;
+    QString stageError;
+    if (!StageRunInputs(staged, stageError)) {
+        AppendLog(QStringLiteral("\n[refused] %1\n").arg(stageError));
+        SetStatus(stageError, QLatin1String(kStatusBadStyle));
+        bottomTabs_->setCurrentWidget(logView_);
+        return;
+    }
+
     QStringList arguments;
     QString error;
-    if (!BuildArguments(arguments, error)) {
+    if (!BuildArguments(staged.swPath, staged.plantPath, arguments, error)) {
         AppendLog(QStringLiteral("\n[refused] %1\n").arg(error));
         SetStatus(error, QLatin1String(kStatusBadStyle));
         bottomTabs_->setCurrentWidget(logView_);
@@ -1107,12 +1466,15 @@ void SimulateScreen::OnRun() {
         return;
     }
 
+    lastRunSourceToken_ = staged.sourceToken;
     AppendLog(QStringLiteral(
         "\n============================================================\n"
-        "Run simulation: %1\n"
-        "%2 %3\n"
+        "Run simulation: %1 — source=%2\n"
+        "%3\n"
+        "%4 %5\n"
         "============================================================\n")
-                  .arg(nameEdit_->text().trimmed(), rteBinary_,
+                  .arg(nameEdit_->text().trimmed(), staged.sourceToken,
+                       staged.lines.join(QStringLiteral("\n")), rteBinary_,
                        QuoteForLog(arguments)));
 
     progressList_->clear();
@@ -1134,7 +1496,8 @@ void SimulateScreen::OnRun() {
         RefreshDurationClampBadge();
     }
     lockedRotorWarnedForRun_ = false;
-    const QString lockedRotor = LockedRotorWarningText();
+    const QString lockedRotor =
+        LockedRotorWarningText(staged.plantExportText, staged.plantPath);
     if (!lockedRotor.isEmpty()) {
         lockedRotorWarnedForRun_ = true;
         AppendLog(QStringLiteral("\n[warn] %1\n").arg(lockedRotor));
@@ -1142,9 +1505,10 @@ void SimulateScreen::OnRun() {
     }
 
     SetRunning(true);
-    SetStatus(QStringLiteral("Running %1...").arg(nameEdit_->text().trimmed()),
+    SetStatus(QStringLiteral("Running %1 (source=%2)...")
+                  .arg(nameEdit_->text().trimmed(), staged.sourceToken),
               QLatin1String(kStatusRunStyle));
-    process_->setWorkingDirectory(QFileInfo(swEdit_->text().trimmed()).absolutePath());
+    process_->setWorkingDirectory(QFileInfo(staged.swPath).absolutePath());
     process_->start(rteBinary_, arguments);
 }
 
@@ -1256,13 +1620,16 @@ void SimulateScreen::OnSimFinished(int exitCode, QProcess::ExitStatus exitStatus
         const SimSession* session = telemetryView_->Session();
         AppendLog(QStringLiteral("\n[finished] Run completed: %1\n").arg(artifactPath_));
         QString statusText =
-            QStringLiteral("Complete — %1 (%2 frames, %3 channels, plant: %4)")
+            QStringLiteral("Complete — %1 (%2 frames, %3 channels, plant: %4, source: %5)")
                 .arg(QFileInfo(artifactPath_).fileName())
                 .arg(session ? session->Meta().telemetryFrames : 0)
                 .arg(session ? session->ChannelNames().size() : 0)
                 .arg(session && !session->Meta().plant.isEmpty()
                          ? session->Meta().plant
-                         : QStringLiteral("(no stamp)"));
+                         : QStringLiteral("(no stamp)"))
+                .arg(lastRunSourceToken_.isEmpty()
+                         ? QStringLiteral("unknown")
+                         : lastRunSourceToken_);
         // Honesty wave: the warn row scrolled by with the run; keep its fact
         // visible on the line the green status would otherwise close alone.
         if (lockedRotorWarnedForRun_) {
