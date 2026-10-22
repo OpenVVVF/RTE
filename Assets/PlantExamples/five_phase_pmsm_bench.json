@@ -1,953 +1,953 @@
 {
-  "name": "five_phase_pmsm_bench",
-  "schemaVersion": 1,
-  "description": "Five-phase bench rig (Plant.Inverter.Leg5ph 5-leg bridge + Plant.Machine.Pmsm5ph, Clarke-5 dq + z1/z2 plane integration) on the gen7 'Size 2' bench chain: dyno hold, knee-class distortion per leg, 19.8 mF CV-supplied DC link, loss/thermal/sensor views, fault point. Legs D/E are optional unwired inputs, driven by the host per control period via the plant-input external (arg=Dd=../De=..), same seam as InductDq.Omega_Cmd; phases A-C of the meas chain carry three of the five machine phases (3-phase measurement vocabulary). Model simplifications are documented in Assets/PlantTemplates/Plant.Machine.Pmsm5ph/PROVENANCE.md (z-plane rotor coupling neglected, star point ideal, Lz calibration gap). Registry status: plant node kinds live in the engines' classify tables (C++ PlantGenerator + twin NODE_CLASSES, contract D3); this wave ships assets only, so closed-loop rte sim waits on the one registry line per engine (kind-in-schema, twin ROADMAP M6).",
-  "bridges": [],
-  "nodes": [
-    {
-      "id": "DutyIn",
-      "type": "Plant.Io.DutyIn",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {},
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "id": "Leg5",
-      "type": "Plant.Inverter.Leg5ph",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Vce0_V": "1.15",
-        "Rce_Ohm": "0.0013",
-        "TdOverhead": "0.005"
-      },
-      "position": {
-        "x": 225,
-        "y": 0
-      }
-    },
-    {
-      "id": "Machine5",
-      "type": "Plant.Machine.Pmsm5ph",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Rs": "0.00765",
-        "Ld": "0.000067",
-        "Lq": "0.000125",
-        "Lz": "0.00008",
-        "Lambda": "0.02323",
-        "Poles": "5",
-        "Id0": "0",
-        "Iq0": "0",
-        "Iz10": "0",
-        "Iz20": "0",
-        "Theta0": "0"
-      },
-      "position": {
-        "x": 435,
-        "y": 0
-      }
-    },
-    {
-      "id": "Dyno",
-      "type": "Plant.Shaft.Dyno",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Poles": "5",
-        "Rpm0": "0"
-      },
-      "position": {
-        "x": 435,
-        "y": 225
-      }
-    },
-    {
-      "id": "Loss",
-      "type": "Plant.Loss.FittedLaw",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "K1": "4.12812",
-        "K2": "-0.00375376",
-        "K3": "-6.23468",
-        "K4": "0.0378668",
-        "K5": "-0.000698642",
-        "PlateShare": "0.70",
-        "IdleHeat_W": "120"
-      },
-      "position": {
-        "x": 660,
-        "y": 225
-      }
-    },
-    {
-      "id": "Im",
-      "type": "Plant.Util.Hypot",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {},
-      "position": {
-        "x": 660,
-        "y": 105
-      }
-    },
-    {
-      "id": "AbsOm",
-      "type": "Plant.Util.AbsOmega",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Poles": "5"
-      },
-      "position": {
-        "x": 540,
-        "y": 315
-      }
-    },
-    {
-      "id": "Draw",
-      "type": "Plant.Util.Sum",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {},
-      "position": {
-        "x": 825,
-        "y": 165
-      }
-    },
-    {
-      "id": "DcBus",
-      "type": "Plant.DcBus",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Cap_F": "0.0198",
-        "SeriesR_mOhm": "5",
-        "VSet_V": "144.7",
-        "ILimit_A": "400",
-        "CanSink": "1",
-        "SinkLimit_A": "50",
-        "CvClamp_V": "0",
-        "CvClampSink_A": "0",
-        "V0_V": "144.7"
-      },
-      "position": {
-        "x": 960,
-        "y": 60
-      }
-    },
-    {
-      "id": "Thermal",
-      "type": "Plant.Thermal.TwoNodeCauer",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "R12_KW": "0.012",
-        "C1_JK": "900",
-        "R2_KW": "0.09",
-        "C2_JK": "18000",
-        "TAmb_C": "22.5",
-        "T1_0_C": "22.5",
-        "T2_0_C": "22.5",
-        "Off1": "0.3",
-        "Off2Idle": "3.4",
-        "Off2Slope": "0.268",
-        "Off2Knee_C": "4.9"
-      },
-      "position": {
-        "x": 660,
-        "y": 420
-      }
-    },
-    {
-      "id": "HallU",
-      "type": "Plant.Sensor.Hall",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_A": "0.07",
-        "Range_A": "1200",
-        "Offset_A": "0",
-        "RailVal_A": "1390"
-      },
-      "position": {
-        "x": 975,
-        "y": 255
-      }
-    },
-    {
-      "id": "HallV",
-      "type": "Plant.Sensor.Hall",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_A": "0.07",
-        "Range_A": "1200",
-        "Offset_A": "0",
-        "RailVal_A": "-1250"
-      },
-      "position": {
-        "x": 975,
-        "y": 345
-      }
-    },
-    {
-      "id": "HallW",
-      "type": "Plant.Sensor.Hall",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_A": "0.07",
-        "Range_A": "1200",
-        "Offset_A": "0",
-        "RailVal_A": "1180"
-      },
-      "position": {
-        "x": 975,
-        "y": 420
-      }
-    },
-    {
-      "id": "VSense",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0"
-      },
-      "position": {
-        "x": 1125,
-        "y": 60
-      }
-    },
-    {
-      "id": "Enc",
-      "type": "Plant.Sensor.SinCosEncoder",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "OffsetDeg": "33.034",
-        "Poles": "5",
-        "MidSin": "32643.5",
-        "AmpSin": "21220.5",
-        "MidCos": "32536.5",
-        "AmpCos": "21190.5"
-      },
-      "position": {
-        "x": 660,
-        "y": 525
-      }
-    },
-    {
-      "id": "Fault",
-      "type": "Plant.Fault.Point",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {},
-      "position": {
-        "x": 225,
-        "y": 420
-      }
-    },
-    {
-      "id": "Meas",
-      "type": "Plant.Io.MeasOut",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {},
-      "position": {
-        "x": 1305,
-        "y": 225
-      }
-    },
-    {
-      "id": "VSenseU",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0015"
-      },
-      "position": {
-        "x": 1125,
-        "y": 315
-      }
-    },
-    {
-      "id": "VSenseV",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0015"
-      },
-      "position": {
-        "x": 1125,
-        "y": 405
-      }
-    },
-    {
-      "id": "VSenseW",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
-      "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0015"
-      },
-      "position": {
-        "x": 1125,
-        "y": 480
-      }
-    }
-  ],
-  "connections": [
-    {
-      "id": "c1",
-      "from": {
-        "nodeId": "DutyIn",
-        "portName": "Du"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "Da"
-      }
-    },
-    {
-      "id": "c2",
-      "from": {
-        "nodeId": "DutyIn",
-        "portName": "Dv"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "Db"
-      }
-    },
-    {
-      "id": "c3",
-      "from": {
-        "nodeId": "DutyIn",
-        "portName": "Dw"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "Dc"
-      }
-    },
-    {
-      "id": "c4",
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "Vdc"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "Vdc"
-      }
-    },
-    {
-      "id": "c11",
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Omega_Elec"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "Omega_Elec"
-      }
-    },
-    {
-      "id": "c12",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "Id"
-      },
-      "to": {
-        "nodeId": "Im",
-        "portName": "A"
-      }
-    },
-    {
-      "id": "c13",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "Iq"
-      },
-      "to": {
-        "nodeId": "Im",
-        "portName": "B"
-      }
-    },
-    {
-      "id": "c14",
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Omega_Elec"
-      },
-      "to": {
-        "nodeId": "AbsOm",
-        "portName": "Omega_Elec"
-      }
-    },
-    {
-      "id": "c15",
-      "from": {
-        "nodeId": "Im",
-        "portName": "Out"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Im"
-      }
-    },
-    {
-      "id": "c16",
-      "from": {
-        "nodeId": "AbsOm",
-        "portName": "Om"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Om"
-      }
-    },
-    {
-      "id": "c17",
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "Vdc"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Vdc"
-      }
-    },
-    {
-      "id": "c18",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "OpenGates"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "OpenGates"
-      }
-    },
-    {
-      "id": "c19",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "OpenGates"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Idle"
-      }
-    },
-    {
-      "id": "c20",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "P_Elec"
-      },
-      "to": {
-        "nodeId": "Draw",
-        "portName": "A"
-      }
-    },
-    {
-      "id": "c21",
-      "from": {
-        "nodeId": "Loss",
-        "portName": "P_Loss"
-      },
-      "to": {
-        "nodeId": "Draw",
-        "portName": "B"
-      }
-    },
-    {
-      "id": "c22",
-      "from": {
-        "nodeId": "Draw",
-        "portName": "Out"
-      },
-      "to": {
-        "nodeId": "DcBus",
-        "portName": "P_Draw"
-      }
-    },
-    {
-      "id": "c23",
-      "from": {
-        "nodeId": "Loss",
-        "portName": "P_Plate"
-      },
-      "to": {
-        "nodeId": "Thermal",
-        "portName": "P_Heat"
-      }
-    },
-    {
-      "id": "c24",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_A"
-      },
-      "to": {
-        "nodeId": "HallU",
-        "portName": "I_True"
-      }
-    },
-    {
-      "id": "c25",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_B"
-      },
-      "to": {
-        "nodeId": "HallV",
-        "portName": "I_True"
-      }
-    },
-    {
-      "id": "c26",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_C"
-      },
-      "to": {
-        "nodeId": "HallW",
-        "portName": "I_True"
-      }
-    },
-    {
-      "id": "c27",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "SensorRail"
-      },
-      "to": {
-        "nodeId": "HallU",
-        "portName": "Rail"
-      }
-    },
-    {
-      "id": "c28",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "SensorRail"
-      },
-      "to": {
-        "nodeId": "HallV",
-        "portName": "Rail"
-      }
-    },
-    {
-      "id": "c29",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "SensorRail"
-      },
-      "to": {
-        "nodeId": "HallW",
-        "portName": "Rail"
-      }
-    },
-    {
-      "id": "c30",
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "Vdc"
-      },
-      "to": {
-        "nodeId": "VSense",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c31",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "ThetaE"
-      },
-      "to": {
-        "nodeId": "Enc",
-        "portName": "ThetaE"
-      }
-    },
-    {
-      "id": "c32",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "EncoderDisconnect"
-      },
-      "to": {
-        "nodeId": "Enc",
-        "portName": "Disconnect"
-      }
-    },
-    {
-      "id": "c33",
-      "from": {
-        "nodeId": "HallU",
-        "portName": "I_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Iu_A"
-      }
-    },
-    {
-      "id": "c34",
-      "from": {
-        "nodeId": "HallV",
-        "portName": "I_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Iv_A"
-      }
-    },
-    {
-      "id": "c35",
-      "from": {
-        "nodeId": "HallW",
-        "portName": "I_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Iw_A"
-      }
-    },
-    {
-      "id": "c36",
-      "from": {
-        "nodeId": "VSense",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vdc_V"
-      }
-    },
-    {
-      "id": "c37",
-      "from": {
-        "nodeId": "Enc",
-        "portName": "Sin"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Enc_Sin"
-      }
-    },
-    {
-      "id": "c38",
-      "from": {
-        "nodeId": "Enc",
-        "portName": "Cos"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Enc_Cos"
-      }
-    },
-    {
-      "id": "c39",
-      "from": {
-        "nodeId": "Thermal",
-        "portName": "T_Meas1"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Temp_Inv1_C"
-      }
-    },
-    {
-      "id": "c40",
-      "from": {
-        "nodeId": "Thermal",
-        "portName": "T_Meas2"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Temp_Inv2_C"
-      }
-    },
-    {
-      "id": "c41",
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Rpm"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Mech_Rpm"
-      }
-    },
-    {
-      "id": "c42",
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Elec_Rpm"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Elec_Rpm"
-      }
-    },
-    {
-      "id": "c43",
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "I_Link"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Dclink_I_A"
-      }
-    },
-    {
-      "id": "c44",
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "P_Link"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Dclink_P_W"
-      }
-    },
-    {
-      "id": "c45",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_A_Raw"
-      },
-      "to": {
-        "nodeId": "VSenseU",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c46",
-      "from": {
-        "nodeId": "VSenseU",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vu_V"
-      }
-    },
-    {
-      "id": "c47",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_B_Raw"
-      },
-      "to": {
-        "nodeId": "VSenseV",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c48",
-      "from": {
-        "nodeId": "VSenseV",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vv_V"
-      }
-    },
-    {
-      "id": "c49",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_C_Raw"
-      },
-      "to": {
-        "nodeId": "VSenseW",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c50",
-      "from": {
-        "nodeId": "VSenseW",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vw_V"
-      }
-    },
-    {
-      "id": "c51",
-      "from": {
-        "nodeId": "Loss",
-        "portName": "P_Plate"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "P_Heat_W"
-      }
-    },
-    {
-      "id": "c52",
-      "from": {
-        "nodeId": "Draw",
-        "portName": "Out"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "P_Dc_W"
-      }
-    },
-    {
-      "id": "c53",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "P_Elec"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "P_ShaftEm_W"
-      }
-    },
-    {
-      "id": "c54",
-      "from": {
-        "nodeId": "Fault",
-        "portName": "OpenGates"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "OpenGates"
-      }
-    },
-    {
-      "id": "cm5_v_a",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_A"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "V_A"
-      }
-    },
-    {
-      "id": "cm5_i_a",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_A"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "I_A"
-      }
-    },
-    {
-      "id": "cm5_v_b",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_B"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "V_B"
-      }
-    },
-    {
-      "id": "cm5_i_b",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_B"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "I_B"
-      }
-    },
-    {
-      "id": "cm5_v_c",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_C"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "V_C"
-      }
-    },
-    {
-      "id": "cm5_i_c",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_C"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "I_C"
-      }
-    },
-    {
-      "id": "cm5_v_d",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_D"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "V_D"
-      }
-    },
-    {
-      "id": "cm5_i_d",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_D"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "I_D"
-      }
-    },
-    {
-      "id": "cm5_v_e",
-      "from": {
-        "nodeId": "Leg5",
-        "portName": "V_E"
-      },
-      "to": {
-        "nodeId": "Machine5",
-        "portName": "V_E"
-      }
-    },
-    {
-      "id": "cm5_i_e",
-      "from": {
-        "nodeId": "Machine5",
-        "portName": "I_E"
-      },
-      "to": {
-        "nodeId": "Leg5",
-        "portName": "I_E"
-      }
-    }
-  ]
+ "name": "five_phase_pmsm_bench",
+ "schemaVersion": 1,
+ "description": "Five-phase bench rig (Plant.Inverter.Leg5ph 5-leg bridge + Plant.Machine.Pmsm5ph, Clarke-5 dq + z1/z2 plane integration) on the gen7 'Size 2' bench chain: dyno hold, knee-class distortion per leg, 19.8 mF CV-supplied DC link, loss/thermal/sensor views, fault point. Legs D/E are optional unwired inputs, assignable one-shot per plant-input event (arg=Dd=../De=.., same seam as InductDq.Omega_Cmd) -- no per-period host drive exists for them in this build; phases A-C of the meas chain carry three of the five machine phases (3-phase measurement vocabulary). Model simplifications are documented in Assets/PlantTemplates/Plant.Machine.Pmsm5ph/PROVENANCE.md (z-plane rotor coupling neglected, star point ideal, Lz calibration gap). Registry status: plant node kinds live in the engines' classify tables (C++ PlantGenerator + twin NODE_CLASSES, contract D3); this wave ships assets only, so closed-loop rte sim waits on the one registry line per engine (kind-in-schema, twin ROADMAP M6).",
+ "bridges": [],
+ "nodes": [
+  {
+   "id": "DutyIn",
+   "type": "Plant.Io.DutyIn",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {},
+   "position": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "Leg5",
+   "type": "Plant.Inverter.Leg5ph",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Vce0_V": "1.15",
+    "Rce_Ohm": "0.0013",
+    "TdOverhead": "0.005"
+   },
+   "position": {
+    "x": 225,
+    "y": 0
+   }
+  },
+  {
+   "id": "Machine5",
+   "type": "Plant.Machine.Pmsm5ph",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Rs": "0.00765",
+    "Ld": "0.000067",
+    "Lq": "0.000125",
+    "Lz": "0.00008",
+    "Lambda": "0.02323",
+    "Poles": "5",
+    "Id0": "0",
+    "Iq0": "0",
+    "Iz10": "0",
+    "Iz20": "0",
+    "Theta0": "0"
+   },
+   "position": {
+    "x": 435,
+    "y": 0
+   }
+  },
+  {
+   "id": "Dyno",
+   "type": "Plant.Shaft.Dyno",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Poles": "5",
+    "Rpm0": "0"
+   },
+   "position": {
+    "x": 435,
+    "y": 225
+   }
+  },
+  {
+   "id": "Loss",
+   "type": "Plant.Loss.FittedLaw",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "K1": "4.12812",
+    "K2": "-0.00375376",
+    "K3": "-6.23468",
+    "K4": "0.0378668",
+    "K5": "-0.000698642",
+    "PlateShare": "0.70",
+    "IdleHeat_W": "120"
+   },
+   "position": {
+    "x": 660,
+    "y": 225
+   }
+  },
+  {
+   "id": "Im",
+   "type": "Plant.Util.Hypot",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {},
+   "position": {
+    "x": 660,
+    "y": 105
+   }
+  },
+  {
+   "id": "AbsOm",
+   "type": "Plant.Util.AbsOmega",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Poles": "5"
+   },
+   "position": {
+    "x": 540,
+    "y": 315
+   }
+  },
+  {
+   "id": "Draw",
+   "type": "Plant.Util.Sum",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {},
+   "position": {
+    "x": 825,
+    "y": 165
+   }
+  },
+  {
+   "id": "DcBus",
+   "type": "Plant.DcBus",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Cap_F": "0.0198",
+    "SeriesR_mOhm": "5",
+    "VSet_V": "144.7",
+    "ILimit_A": "400",
+    "CanSink": "1",
+    "SinkLimit_A": "50",
+    "CvClamp_V": "0",
+    "CvClampSink_A": "0",
+    "V0_V": "144.7"
+   },
+   "position": {
+    "x": 960,
+    "y": 60
+   }
+  },
+  {
+   "id": "Thermal",
+   "type": "Plant.Thermal.TwoNodeCauer",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "R12_KW": "0.012",
+    "C1_JK": "900",
+    "R2_KW": "0.09",
+    "C2_JK": "18000",
+    "TAmb_C": "22.5",
+    "T1_0_C": "22.5",
+    "T2_0_C": "22.5",
+    "Off1": "0.3",
+    "Off2Idle": "3.4",
+    "Off2Slope": "0.268",
+    "Off2Knee_C": "4.9"
+   },
+   "position": {
+    "x": 660,
+    "y": 420
+   }
+  },
+  {
+   "id": "HallU",
+   "type": "Plant.Sensor.Hall",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_A": "0.07",
+    "Range_A": "1200",
+    "Offset_A": "0",
+    "RailVal_A": "1390"
+   },
+   "position": {
+    "x": 975,
+    "y": 255
+   }
+  },
+  {
+   "id": "HallV",
+   "type": "Plant.Sensor.Hall",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_A": "0.07",
+    "Range_A": "1200",
+    "Offset_A": "0",
+    "RailVal_A": "-1250"
+   },
+   "position": {
+    "x": 975,
+    "y": 345
+   }
+  },
+  {
+   "id": "HallW",
+   "type": "Plant.Sensor.Hall",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_A": "0.07",
+    "Range_A": "1200",
+    "Offset_A": "0",
+    "RailVal_A": "1180"
+   },
+   "position": {
+    "x": 975,
+    "y": 420
+   }
+  },
+  {
+   "id": "VSense",
+   "type": "Plant.Sensor.VoltageSense",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_V": "0.44",
+    "LagTau_S": "0.0"
+   },
+   "position": {
+    "x": 1125,
+    "y": 60
+   }
+  },
+  {
+   "id": "Enc",
+   "type": "Plant.Sensor.SinCosEncoder",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "OffsetDeg": "33.034",
+    "Poles": "5",
+    "MidSin": "32643.5",
+    "AmpSin": "21220.5",
+    "MidCos": "32536.5",
+    "AmpCos": "21190.5"
+   },
+   "position": {
+    "x": 660,
+    "y": 525
+   }
+  },
+  {
+   "id": "Fault",
+   "type": "Plant.Fault.Point",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {},
+   "position": {
+    "x": 225,
+    "y": 420
+   }
+  },
+  {
+   "id": "Meas",
+   "type": "Plant.Io.MeasOut",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {},
+   "position": {
+    "x": 1305,
+    "y": 225
+   }
+  },
+  {
+   "id": "VSenseU",
+   "type": "Plant.Sensor.VoltageSense",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_V": "0.44",
+    "LagTau_S": "0.0015"
+   },
+   "position": {
+    "x": 1125,
+    "y": 315
+   }
+  },
+  {
+   "id": "VSenseV",
+   "type": "Plant.Sensor.VoltageSense",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_V": "0.44",
+    "LagTau_S": "0.0015"
+   },
+   "position": {
+    "x": 1125,
+    "y": 405
+   }
+  },
+  {
+   "id": "VSenseW",
+   "type": "Plant.Sensor.VoltageSense",
+   "domain": "plant",
+   "displayName": "",
+   "parameters": {
+    "Lsb_V": "0.44",
+    "LagTau_S": "0.0015"
+   },
+   "position": {
+    "x": 1125,
+    "y": 480
+   }
+  }
+ ],
+ "connections": [
+  {
+   "id": "c1",
+   "from": {
+    "nodeId": "DutyIn",
+    "portName": "Du"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "Da"
+   }
+  },
+  {
+   "id": "c2",
+   "from": {
+    "nodeId": "DutyIn",
+    "portName": "Dv"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "Db"
+   }
+  },
+  {
+   "id": "c3",
+   "from": {
+    "nodeId": "DutyIn",
+    "portName": "Dw"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "Dc"
+   }
+  },
+  {
+   "id": "c4",
+   "from": {
+    "nodeId": "DcBus",
+    "portName": "Vdc"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "Vdc"
+   }
+  },
+  {
+   "id": "c11",
+   "from": {
+    "nodeId": "Dyno",
+    "portName": "Omega_Elec"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "Omega_Elec"
+   }
+  },
+  {
+   "id": "c12",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "Id"
+   },
+   "to": {
+    "nodeId": "Im",
+    "portName": "A"
+   }
+  },
+  {
+   "id": "c13",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "Iq"
+   },
+   "to": {
+    "nodeId": "Im",
+    "portName": "B"
+   }
+  },
+  {
+   "id": "c14",
+   "from": {
+    "nodeId": "Dyno",
+    "portName": "Omega_Elec"
+   },
+   "to": {
+    "nodeId": "AbsOm",
+    "portName": "Omega_Elec"
+   }
+  },
+  {
+   "id": "c15",
+   "from": {
+    "nodeId": "Im",
+    "portName": "Out"
+   },
+   "to": {
+    "nodeId": "Loss",
+    "portName": "Im"
+   }
+  },
+  {
+   "id": "c16",
+   "from": {
+    "nodeId": "AbsOm",
+    "portName": "Om"
+   },
+   "to": {
+    "nodeId": "Loss",
+    "portName": "Om"
+   }
+  },
+  {
+   "id": "c17",
+   "from": {
+    "nodeId": "DcBus",
+    "portName": "Vdc"
+   },
+   "to": {
+    "nodeId": "Loss",
+    "portName": "Vdc"
+   }
+  },
+  {
+   "id": "c18",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "OpenGates"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "OpenGates"
+   }
+  },
+  {
+   "id": "c19",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "OpenGates"
+   },
+   "to": {
+    "nodeId": "Loss",
+    "portName": "Idle"
+   }
+  },
+  {
+   "id": "c20",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "P_Elec"
+   },
+   "to": {
+    "nodeId": "Draw",
+    "portName": "A"
+   }
+  },
+  {
+   "id": "c21",
+   "from": {
+    "nodeId": "Loss",
+    "portName": "P_Loss"
+   },
+   "to": {
+    "nodeId": "Draw",
+    "portName": "B"
+   }
+  },
+  {
+   "id": "c22",
+   "from": {
+    "nodeId": "Draw",
+    "portName": "Out"
+   },
+   "to": {
+    "nodeId": "DcBus",
+    "portName": "P_Draw"
+   }
+  },
+  {
+   "id": "c23",
+   "from": {
+    "nodeId": "Loss",
+    "portName": "P_Plate"
+   },
+   "to": {
+    "nodeId": "Thermal",
+    "portName": "P_Heat"
+   }
+  },
+  {
+   "id": "c24",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_A"
+   },
+   "to": {
+    "nodeId": "HallU",
+    "portName": "I_True"
+   }
+  },
+  {
+   "id": "c25",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_B"
+   },
+   "to": {
+    "nodeId": "HallV",
+    "portName": "I_True"
+   }
+  },
+  {
+   "id": "c26",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_C"
+   },
+   "to": {
+    "nodeId": "HallW",
+    "portName": "I_True"
+   }
+  },
+  {
+   "id": "c27",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "SensorRail"
+   },
+   "to": {
+    "nodeId": "HallU",
+    "portName": "Rail"
+   }
+  },
+  {
+   "id": "c28",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "SensorRail"
+   },
+   "to": {
+    "nodeId": "HallV",
+    "portName": "Rail"
+   }
+  },
+  {
+   "id": "c29",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "SensorRail"
+   },
+   "to": {
+    "nodeId": "HallW",
+    "portName": "Rail"
+   }
+  },
+  {
+   "id": "c30",
+   "from": {
+    "nodeId": "DcBus",
+    "portName": "Vdc"
+   },
+   "to": {
+    "nodeId": "VSense",
+    "portName": "V_True"
+   }
+  },
+  {
+   "id": "c31",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "ThetaE"
+   },
+   "to": {
+    "nodeId": "Enc",
+    "portName": "ThetaE"
+   }
+  },
+  {
+   "id": "c32",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "EncoderDisconnect"
+   },
+   "to": {
+    "nodeId": "Enc",
+    "portName": "Disconnect"
+   }
+  },
+  {
+   "id": "c33",
+   "from": {
+    "nodeId": "HallU",
+    "portName": "I_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Iu_A"
+   }
+  },
+  {
+   "id": "c34",
+   "from": {
+    "nodeId": "HallV",
+    "portName": "I_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Iv_A"
+   }
+  },
+  {
+   "id": "c35",
+   "from": {
+    "nodeId": "HallW",
+    "portName": "I_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Iw_A"
+   }
+  },
+  {
+   "id": "c36",
+   "from": {
+    "nodeId": "VSense",
+    "portName": "V_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Vdc_V"
+   }
+  },
+  {
+   "id": "c37",
+   "from": {
+    "nodeId": "Enc",
+    "portName": "Sin"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Enc_Sin"
+   }
+  },
+  {
+   "id": "c38",
+   "from": {
+    "nodeId": "Enc",
+    "portName": "Cos"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Enc_Cos"
+   }
+  },
+  {
+   "id": "c39",
+   "from": {
+    "nodeId": "Thermal",
+    "portName": "T_Meas1"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Temp_Inv1_C"
+   }
+  },
+  {
+   "id": "c40",
+   "from": {
+    "nodeId": "Thermal",
+    "portName": "T_Meas2"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Temp_Inv2_C"
+   }
+  },
+  {
+   "id": "c41",
+   "from": {
+    "nodeId": "Dyno",
+    "portName": "Rpm"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Mech_Rpm"
+   }
+  },
+  {
+   "id": "c42",
+   "from": {
+    "nodeId": "Dyno",
+    "portName": "Elec_Rpm"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Elec_Rpm"
+   }
+  },
+  {
+   "id": "c43",
+   "from": {
+    "nodeId": "DcBus",
+    "portName": "I_Link"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Dclink_I_A"
+   }
+  },
+  {
+   "id": "c44",
+   "from": {
+    "nodeId": "DcBus",
+    "portName": "P_Link"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Dclink_P_W"
+   }
+  },
+  {
+   "id": "c45",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_A_Raw"
+   },
+   "to": {
+    "nodeId": "VSenseU",
+    "portName": "V_True"
+   }
+  },
+  {
+   "id": "c46",
+   "from": {
+    "nodeId": "VSenseU",
+    "portName": "V_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Vu_V"
+   }
+  },
+  {
+   "id": "c47",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_B_Raw"
+   },
+   "to": {
+    "nodeId": "VSenseV",
+    "portName": "V_True"
+   }
+  },
+  {
+   "id": "c48",
+   "from": {
+    "nodeId": "VSenseV",
+    "portName": "V_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Vv_V"
+   }
+  },
+  {
+   "id": "c49",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_C_Raw"
+   },
+   "to": {
+    "nodeId": "VSenseW",
+    "portName": "V_True"
+   }
+  },
+  {
+   "id": "c50",
+   "from": {
+    "nodeId": "VSenseW",
+    "portName": "V_Meas"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "Vw_V"
+   }
+  },
+  {
+   "id": "c51",
+   "from": {
+    "nodeId": "Loss",
+    "portName": "P_Plate"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "P_Heat_W"
+   }
+  },
+  {
+   "id": "c52",
+   "from": {
+    "nodeId": "Draw",
+    "portName": "Out"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "P_Dc_W"
+   }
+  },
+  {
+   "id": "c53",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "P_Elec"
+   },
+   "to": {
+    "nodeId": "Meas",
+    "portName": "P_ShaftEm_W"
+   }
+  },
+  {
+   "id": "c54",
+   "from": {
+    "nodeId": "Fault",
+    "portName": "OpenGates"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "OpenGates"
+   }
+  },
+  {
+   "id": "cm5_v_a",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_A"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "V_A"
+   }
+  },
+  {
+   "id": "cm5_i_a",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_A"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "I_A"
+   }
+  },
+  {
+   "id": "cm5_v_b",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_B"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "V_B"
+   }
+  },
+  {
+   "id": "cm5_i_b",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_B"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "I_B"
+   }
+  },
+  {
+   "id": "cm5_v_c",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_C"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "V_C"
+   }
+  },
+  {
+   "id": "cm5_i_c",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_C"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "I_C"
+   }
+  },
+  {
+   "id": "cm5_v_d",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_D"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "V_D"
+   }
+  },
+  {
+   "id": "cm5_i_d",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_D"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "I_D"
+   }
+  },
+  {
+   "id": "cm5_v_e",
+   "from": {
+    "nodeId": "Leg5",
+    "portName": "V_E"
+   },
+   "to": {
+    "nodeId": "Machine5",
+    "portName": "V_E"
+   }
+  },
+  {
+   "id": "cm5_i_e",
+   "from": {
+    "nodeId": "Machine5",
+    "portName": "I_E"
+   },
+   "to": {
+    "nodeId": "Leg5",
+    "portName": "I_E"
+   }
+  }
+ ]
 }
