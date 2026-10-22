@@ -1727,6 +1727,14 @@ QString GraphScene::DumpNodeGeometry(const std::string& nodeId) const {
     QStringList fields;
     fields << QStringLiteral("%1=%2")
                   .arg(QString::fromStdString(nodeId), fmtP(ngo->pos()));
+    // Scene-space body rect (visual obstacle box for wire-corridor planning).
+    const QRectF body = ngo->mapToScene(ngo->boundingRect()).boundingRect();
+    fields << QStringLiteral("%1.rect=%2,%3,%4,%5")
+                  .arg(QString::fromStdString(nodeId))
+                  .arg(body.x(), 0, 'f', 2)
+                  .arg(body.y(), 0, 'f', 2)
+                  .arg(body.right(), 0, 'f', 2)
+                  .arg(body.bottom(), 0, 'f', 2);
 
     const auto node = graph_.FindNode(nodeId);
     const auto nodeType = node ? graph_.FindNodeType(node->type) : std::nullopt;

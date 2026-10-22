@@ -11,7 +11,7 @@
       "displayName": "",
       "parameters": {},
       "position": {
-        "x": 0,
+        "x": 15,
         "y": 0
       }
     },
@@ -26,7 +26,7 @@
         "TdOverhead": "0.005"
       },
       "position": {
-        "x": 570,
+        "x": 645,
         "y": 0
       }
     },
@@ -46,7 +46,7 @@
         "Theta0": "0"
       },
       "position": {
-        "x": 875,
+        "x": 960,
         "y": 0
       }
     },
@@ -60,7 +60,7 @@
         "Rpm0": "0"
       },
       "position": {
-        "x": 875,
+        "x": 960,
         "y": 705
       }
     },
@@ -78,8 +78,8 @@
         "PlateShare": "0.70"
       },
       "position": {
-        "x": 1475,
-        "y": 360
+        "x": 1680,
+        "y": 330
       }
     },
     {
@@ -89,7 +89,7 @@
       "displayName": "",
       "parameters": {},
       "position": {
-        "x": 1145,
+        "x": 1335,
         "y": 135
       }
     },
@@ -102,7 +102,7 @@
         "Poles": "5"
       },
       "position": {
-        "x": 875,
+        "x": 960,
         "y": 960
       }
     },
@@ -113,7 +113,7 @@
       "displayName": "",
       "parameters": {},
       "position": {
-        "x": 1475,
+        "x": 1680,
         "y": 60
       }
     },
@@ -134,7 +134,7 @@
         "V0_V": "114.4"
       },
       "position": {
-        "x": 270,
+        "x": 300,
         "y": 0
       }
     },
@@ -158,7 +158,7 @@
         "Off3": "2.6"
       },
       "position": {
-        "x": 875,
+        "x": 960,
         "y": 375
       }
     },
@@ -174,8 +174,8 @@
         "RailVal_A": "1390"
       },
       "position": {
-        "x": 1775,
-        "y": 15
+        "x": 1980,
+        "y": 0
       }
     },
     {
@@ -190,7 +190,7 @@
         "RailVal_A": "-1250"
       },
       "position": {
-        "x": 1775,
+        "x": 1980,
         "y": 180
       }
     },
@@ -206,8 +206,8 @@
         "RailVal_A": "1180"
       },
       "position": {
-        "x": 1775,
-        "y": 345
+        "x": 1980,
+        "y": 360
       }
     },
     {
@@ -220,8 +220,8 @@
         "LagTau_S": "0.0"
       },
       "position": {
-        "x": 270,
-        "y": 315
+        "x": 300,
+        "y": 285
       }
     },
     {
@@ -238,7 +238,7 @@
         "AmpCos": "21190.5"
       },
       "position": {
-        "x": 1185,
+        "x": 1335,
         "y": 285
       }
     },
@@ -249,7 +249,7 @@
       "displayName": "",
       "parameters": {},
       "position": {
-        "x": 0,
+        "x": 15,
         "y": 300
       }
     },
@@ -260,7 +260,7 @@
       "displayName": "",
       "parameters": {},
       "position": {
-        "x": 2120,
+        "x": 2340,
         "y": 360
       }
     },
@@ -274,8 +274,8 @@
         "LagTau_S": "0.0015"
       },
       "position": {
-        "x": 1775,
-        "y": 540
+        "x": 1980,
+        "y": 570
       }
     },
     {
@@ -288,8 +288,8 @@
         "LagTau_S": "0.0015"
       },
       "position": {
-        "x": 1775,
-        "y": 705
+        "x": 1980,
+        "y": 690
       }
     },
     {
@@ -302,14 +302,15 @@
         "LagTau_S": "0.0015"
       },
       "position": {
-        "x": 1775,
-        "y": 870
+        "x": 1980,
+        "y": 810
       }
     }
   ],
   "connections": [
     {
       "id": "c1",
+     "waypoints": [{"x": 210, "y": 60}, {"x": 510, "y": -15}],
       "from": {
         "nodeId": "DutyIn",
         "portName": "Du"
@@ -321,6 +322,7 @@
     },
     {
       "id": "c2",
+     "waypoints": [{"x": 210, "y": 90}, {"x": 510, "y": -15}],
       "from": {
         "nodeId": "DutyIn",
         "portName": "Dv"
@@ -332,6 +334,7 @@
     },
     {
       "id": "c3",
+     "waypoints": [{"x": 210, "y": 120}, {"x": 510, "y": -15}],
       "from": {
         "nodeId": "DutyIn",
         "portName": "Dw"
@@ -343,6 +346,7 @@
     },
     {
       "id": "c4",
+     "waypoints": [{"x": 510, "y": 60}],
       "from": {
         "nodeId": "DcBus",
         "portName": "Vdc"
@@ -354,6 +358,7 @@
     },
     {
       "id": "c5",
+     "waypoints": [{"x": 870, "y": 60}],
       "from": {
         "nodeId": "Machine",
         "portName": "I_U"
@@ -365,6 +370,7 @@
     },
     {
       "id": "c6",
+     "waypoints": [{"x": 870, "y": 90}],
       "from": {
         "nodeId": "Machine",
         "portName": "I_V"
@@ -376,6 +382,7 @@
     },
     {
       "id": "c7",
+     "waypoints": [{"x": 870, "y": 120}],
       "from": {
         "nodeId": "Machine",
         "portName": "I_W"
@@ -431,6 +438,7 @@
     },
     {
       "id": "c12",
+     "waypoints": [{"x": 1200, "y": 150}, {"x": 1215, "y": 180}],
       "from": {
         "nodeId": "Machine",
         "portName": "Id"
@@ -442,6 +450,7 @@
     },
     {
       "id": "c13",
+     "waypoints": [{"x": 1200, "y": 180}],
       "from": {
         "nodeId": "Machine",
         "portName": "Iq"
@@ -464,6 +473,7 @@
     },
     {
       "id": "c15",
+     "waypoints": [{"x": 1530, "y": 195}, {"x": 1605, "y": 270}],
       "from": {
         "nodeId": "Im",
         "portName": "Out"
@@ -475,6 +485,7 @@
     },
     {
       "id": "c16",
+     "waypoints": [{"x": 1740, "y": 1020}, {"x": 1785, "y": 630}],
       "from": {
         "nodeId": "AbsOm",
         "portName": "Om"
@@ -486,6 +497,7 @@
     },
     {
       "id": "c17",
+     "waypoints": [{"x": 510, "y": 60}, {"x": 1605, "y": -15}],
       "from": {
         "nodeId": "DcBus",
         "portName": "Vdc"
@@ -497,6 +509,7 @@
     },
     {
       "id": "c18",
+     "waypoints": [{"x": 180, "y": 360}, {"x": 930, "y": 450}],
       "from": {
         "nodeId": "Fault",
         "portName": "OpenGates"
@@ -519,6 +532,7 @@
     },
     {
       "id": "c20",
+     "waypoints": [{"x": 1200, "y": 270}, {"x": 1605, "y": 120}],
       "from": {
         "nodeId": "Machine",
         "portName": "P_Elec"
@@ -530,6 +544,7 @@
     },
     {
       "id": "c21",
+     "waypoints": [{"x": 1965, "y": 390}, {"x": 1605, "y": 270}],
       "from": {
         "nodeId": "Loss",
         "portName": "P_Loss"
@@ -541,6 +556,7 @@
     },
     {
       "id": "c22",
+     "waypoints": [{"x": 1200, "y": 120}, {"x": 315, "y": -15}],
       "from": {
         "nodeId": "Draw",
         "portName": "Out"
@@ -563,6 +579,7 @@
     },
     {
       "id": "c24",
+     "waypoints": [{"x": 1200, "y": 60}, {"x": 1860, "y": -15}],
       "from": {
         "nodeId": "Machine",
         "portName": "I_U"
@@ -574,6 +591,7 @@
     },
     {
       "id": "c25",
+     "waypoints": [{"x": 1200, "y": 90}, {"x": 1605, "y": 120}],
       "from": {
         "nodeId": "Machine",
         "portName": "I_V"
@@ -585,6 +603,7 @@
     },
     {
       "id": "c26",
+     "waypoints": [{"x": 1605, "y": 120}, {"x": 1905, "y": 270}],
       "from": {
         "nodeId": "Machine",
         "portName": "I_W"
@@ -596,6 +615,7 @@
     },
     {
       "id": "c27",
+     "waypoints": [{"x": 210, "y": 420}, {"x": 1860, "y": -15}],
       "from": {
         "nodeId": "Fault",
         "portName": "SensorRail"
@@ -629,6 +649,7 @@
     },
     {
       "id": "c30",
+     "waypoints": [{"x": 390, "y": 60}],
       "from": {
         "nodeId": "DcBus",
         "portName": "Vdc"
@@ -640,6 +661,7 @@
     },
     {
       "id": "c31",
+     "waypoints": [{"x": 1200, "y": 210}, {"x": 1245, "y": 270}],
       "from": {
         "nodeId": "Machine",
         "portName": "ThetaE"
@@ -662,6 +684,7 @@
     },
     {
       "id": "c33",
+     "waypoints": [{"x": 2250, "y": 60}],
       "from": {
         "nodeId": "HallU",
         "portName": "I_Meas"
@@ -673,6 +696,7 @@
     },
     {
       "id": "c34",
+     "waypoints": [{"x": 2250, "y": 240}],
       "from": {
         "nodeId": "HallV",
         "portName": "I_Meas"
@@ -684,6 +708,7 @@
     },
     {
       "id": "c35",
+     "waypoints": [{"x": 2250, "y": 420}],
       "from": {
         "nodeId": "HallW",
         "portName": "I_Meas"
@@ -772,6 +797,7 @@
     },
     {
       "id": "c43",
+     "waypoints": [{"x": 510, "y": 90}, {"x": 2250, "y": -15}],
       "from": {
         "nodeId": "DcBus",
         "portName": "I_Link"
@@ -783,6 +809,7 @@
     },
     {
       "id": "c44",
+     "waypoints": [{"x": 510, "y": 120}, {"x": 2250, "y": -15}],
       "from": {
         "nodeId": "DcBus",
         "portName": "P_Link"
@@ -805,6 +832,7 @@
     },
     {
       "id": "c46",
+     "waypoints": [{"x": 2250, "y": 630}],
       "from": {
         "nodeId": "VSenseU",
         "portName": "V_Meas"
@@ -827,6 +855,7 @@
     },
     {
       "id": "c48",
+     "waypoints": [{"x": 2250, "y": 750}, {"x": 2355, "y": 720}],
       "from": {
         "nodeId": "VSenseV",
         "portName": "V_Meas"
@@ -838,6 +867,7 @@
     },
     {
       "id": "c49",
+     "waypoints": [{"x": 930, "y": 210}, {"x": 1740, "y": 930}],
       "from": {
         "nodeId": "Knee",
         "portName": "V_W_Raw"
@@ -849,6 +879,7 @@
     },
     {
       "id": "c50",
+     "waypoints": [{"x": 2250, "y": 870}, {"x": 2355, "y": 840}],
       "from": {
         "nodeId": "VSenseW",
         "portName": "V_Meas"
@@ -860,6 +891,7 @@
     },
     {
       "id": "c51",
+     "waypoints": [{"x": 1785, "y": 420}, {"x": 2250, "y": 975}],
       "from": {
         "nodeId": "Loss",
         "portName": "P_Plate"
@@ -871,6 +903,7 @@
     },
     {
       "id": "c52",
+     "waypoints": [{"x": 1860, "y": 120}, {"x": 2355, "y": -15}],
       "from": {
         "nodeId": "Draw",
         "portName": "Out"
@@ -882,6 +915,7 @@
     },
     {
       "id": "c53",
+     "waypoints": [{"x": 1245, "y": 270}, {"x": 1740, "y": 660}],
       "from": {
         "nodeId": "Machine",
         "portName": "P_Elec"
@@ -893,6 +927,7 @@
     },
     {
       "id": "c54",
+     "waypoints": [{"x": 180, "y": 360}, {"x": 765, "y": 450}],
       "from": {
         "nodeId": "Fault",
         "portName": "OpenGates"
