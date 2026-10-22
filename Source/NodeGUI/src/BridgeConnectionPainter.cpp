@@ -217,19 +217,14 @@ void BridgeConnectionPainter::drawConnectionLine(QPainter* painter,
 }
 
 std::optional<BridgeConnectionPainter::NetLabelLayout>
-BridgeConnectionPainter::NetLabelGeometry(
-    QtNodes::ConnectionGraphicsObject const& cgo) const {
-    const auto* model = TryGetNodeModel(cgo);
-    if (!model) {
-        return std::nullopt;
-    }
-    const QString* label = model->ConnectionLabel(cgo.connectionId());
-    if (!label || label->isEmpty()) {
+BridgeConnectionPainter::ComputeNetLabelLayout(const QPointF& out,
+                                               const QPointF& in,
+                                               const QString& label,
+                                               const QPointF& offset) {
+    if (label.isEmpty()) {
         return std::nullopt;
     }
 
-    const QPointF out = cgo.endPoint(QtNodes::PortType::Out);
-    const QPointF in = cgo.endPoint(QtNodes::PortType::In);
     // Horizontal stub direction toward the peer; on exact vertical stacks the
     // out stub defaults rightward and the in stub leftward (off the node
     // bodies).
@@ -242,7 +237,7 @@ BridgeConnectionPainter::NetLabelGeometry(
 
     const QFontMetricsF metrics(qApp ? qApp->font() : QFont{});
     const double chipWidth =
-        metrics.horizontalAdvance(*label) + 2.0 * NetLabel::kChipPadX;
+        metrics.horizontalAdvance(label) + 2.0 * NetLabel::kChipPadX;
     const double chipHeight = metrics.height() + 2.0 * NetLabel::kChipPadY;
 
     auto chipAt = [&](const QPointF& tip, double stubY, double dir) {
@@ -250,9 +245,31 @@ BridgeConnectionPainter::NetLabelGeometry(
                                      : tip.x() - NetLabel::kChipGap - chipWidth;
         return QRectF(x, stubY - chipHeight / 2.0, chipWidth, chipHeight);
     };
-    layout.outChip = chipAt(layout.outTip, out.y(), outDir);
-    layout.inChip = chipAt(layout.inTip, in.y(), inDir);
+    // The user's displacement translates both chips of the pair; an on-anchor
+    // chip pair (null offset) sits exactly at the computed stubs.
+    layout.outChip = chipAt(layout.outTip, out.y(), outDir).translated(offset);
+    layout.inChip = chipAt(layout.inTip, in.y(), inDir).translated(offset);
     return layout;
+}
+
+std::optional<BridgeConnectionPainter::NetLabelLayout>
+BridgeConnectionPainter::NetLabelGeometry(
+    QtNodes::ConnectionGraphicsObject const& cgo) const {
+    const auto* model = TryGetNodeModel(cgo);
+    if (!model) {
+        return std::nullopt;
+    }
+    const QString* label = model->ConnectionLabel(cgo.connectionId());
+    if (!label || label->isEmpty()) {
+        return std::nullopt;
+    }
+    const QPointF offset = model->ConnectionLabelOffset(cgo.connectionId())
+                               ? *model->ConnectionLabelOffset(cgo.connectionId())
+                               : QPointF();
+    return ComputeNetLabelLayout(cgo.endPoint(QtNodes::PortType::Out),
+                                 cgo.endPoint(QtNodes::PortType::In),
+                                 *label,
+                                 offset);
 }
 
 QPainterPath BridgeConnectionPainter::NetLabelStroke(

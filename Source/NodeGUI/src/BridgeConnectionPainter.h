@@ -4,6 +4,7 @@
 
 #include <QPainterPath>
 #include <QPolygonF>
+#include <QString>
 
 #include <optional>
 
@@ -32,6 +33,16 @@ public:
     QPainterPath getPainterStroke(QtNodes::ConnectionGraphicsObject const& cgo) const override;
 
     QRectF routeBounds(QtNodes::ConnectionGraphicsObject const& cgo) const override;
+
+    // Pure label layout for arbitrary out/in anchor points (the painter feeds
+    // connection-local endpoints; GraphScene/GraphView feed scene-space ones
+    // for hit tests and smoke dumps). `offset` displaces BOTH chips (the
+    // stubs keep 3 grid cells and stay anchored — no leader line); returns
+    // nothing when the connection carries no label.
+    static std::optional<NetLabelLayout> ComputeNetLabelLayout(const QPointF& out,
+                                                               const QPointF& in,
+                                                               const QString& label,
+                                                               const QPointF& offset);
 
 private:
     // The displayed wire path: the rectilinear waypoint route when bends are

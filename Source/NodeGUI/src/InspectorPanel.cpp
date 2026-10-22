@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QPalette>
 #include <QPointer>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QTimer>
 
@@ -141,10 +142,18 @@ void InspectorPanel::RefreshNetLabel(QtNodes::ConnectionId connId,
     }
 }
 
+void InspectorPanel::RefreshChipReset(QtNodes::ConnectionId connId,
+                                      bool hasOffset) {
+    if (connectionMode_ && connId == connId_ && chipResetButton_) {
+        chipResetButton_->setEnabled(hasOffset);
+    }
+}
+
 void InspectorPanel::Rebuild() {
     paramRows_.clear();
     idEdit_ = nullptr;
     netLabelEdit_ = nullptr;
+    chipResetButton_ = nullptr;
     domainCombo_ = nullptr;
 
     // Detach the old form from its scroll area before delete - the area
@@ -400,6 +409,35 @@ void InspectorPanel::RebuildConnectionForm() {
             &QLineEdit::editingFinished,
             this,
             &InspectorPanel::ApplyNetLabel);
+
+    // Reset for a displaced chip pair: the tag chips ride at stub-end +
+    // offset once dragged; this returns them to the computed stub anchors.
+    // Enabled only while an offset is actually booked.
+    chipResetButton_ =
+        new QPushButton(QStringLiteral("Reset label position"), form_);
+    chipResetButton_->setObjectName(QStringLiteral("chipreset.") + graphId);
+    chipResetButton_->setToolTip(QStringLiteral(
+        "Return this connection's tag chips to their computed stub anchors "
+        "(clears the saved chip offset)."));
+    chipResetButton_->setEnabled(scene_->ConnectionLabelOffset(connId_).has_value());
+    formLayout->addRow(QString(), chipResetButton_);
+    connect(chipResetButton_,
+            &QPushButton::clicked,
+            this,
+            [this] {
+                if (!scene_) {
+                    return;
+                }
+                const QString error = scene_->SetConnectionLabelOffset(
+                    connId_, std::nullopt);
+                if (!error.isEmpty()) {
+                    if (onError) onError(error);
+                    return;
+                }
+                if (chipResetButton_) {
+                    chipResetButton_->setEnabled(false);
+                }
+            });
 
     scrollArea_->setWidget(form_);
     scrollArea_->show();

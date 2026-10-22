@@ -110,6 +110,17 @@ public:
     // QtNodes::InvalidNodeId — when the label is free).
     QtNodes::ConnectionId NetLabelOwner(const QString& label) const;
 
+    // Optional display-only chip displacement of a labeled connection
+    // (nullptr when unset): the tag chips render at stub-end + offset, so the
+    // user can drag the chips out of dense areas (KiCad-style). Both chips of
+    // the pair translate by the same scene-space vector; the stubs stay
+    // anchored. nullptr when the connection rides at the computed anchor.
+    const QPointF* ConnectionLabelOffset(QtNodes::ConnectionId const connectionId) const;
+    // A null offset (0,0) clears the entry — an on-anchor chip has no state.
+    void SetConnectionLabelOffset(QtNodes::ConnectionId const connectionId,
+                                  const QPointF& offset);
+
+
     // The mini-router's choice for a waypoint-free connection (scene
     // coordinates for the non-legacy line). nullptr when the cache has no
     // entry for the connection. GraphScene fills it per recompute pass.
@@ -179,6 +190,7 @@ private:
     // manual bend edits (SetConnectionWaypoints) and teardown clear it.
     std::unordered_map<QtNodes::ConnectionId, NodeTranslation> waypointFollows_;
     std::unordered_map<QtNodes::ConnectionId, QString> connectionLabels_;
+    std::unordered_map<QtNodes::ConnectionId, QPointF> connectionLabelOffsets_;
     std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> autoRoutes_;
     mutable std::size_t nextId_ = 0;
     mutable QString lastRejectionReason_;

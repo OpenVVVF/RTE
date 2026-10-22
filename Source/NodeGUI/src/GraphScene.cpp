@@ -78,6 +78,18 @@ std::optional<std::string> ReadTextFile(const std::string& path) {
                        std::istreambuf_iterator<char>()};
 }
 
+// Net-label chip displacement stays near its own wire: the offset vector is
+// capped at 25 grid cells (~one dense node width) so a chip can move out of
+// traffic but can never wander unboundedly far from its stubs.
+QPointF ClampLabelOffset(const QPointF& offset) {
+    const double cap = 25.0 * WireRoute::kGridPitch;
+    const double length = std::sqrt(QPointF::dotProduct(offset, offset));
+    if (length <= 1e-6 || length <= cap) {
+        return offset;
+    }
+    return offset * (cap / length);
+}
+
 }  // namespace
 
 GraphScene::GraphScene(QString defaultDomain)
@@ -223,6 +235,7 @@ QString GraphScene::LoadGraph(const std::string& graphJsonPath,
 
     ParseWaypointsFromJson(graphJson);
     ParseNetLabelsFromJson(graphJson);
+    ParseNetLabelOffsetsFromJson(graphJson);
 
     try {
         NodeAPI::LoadIntoGraph(graph_, *graphText);
@@ -250,6 +263,7 @@ QString GraphScene::NewGraph() {
     graph_ = NodeAPI::Graph{};
     pendingWaypoints_.clear();
     pendingNetLabels_.clear();
+    pendingLabelOffsets_.clear();
     if (templatesDir_.empty()) {
         return QStringLiteral("No node templates have been loaded yet");
     }
@@ -316,6 +330,7 @@ void GraphScene::RebuildScene() {
     CreateBridges();
     ApplyPendingWaypoints();
     ApplyPendingNetLabels();
+    ApplyPendingNetLabelOffsets();
     CreateDomainOutlines();
 
     QObject::connect(scene_.get(),
@@ -1264,6 +1279,7 @@ std::string GraphScene::SerializeWithExtras() const {
     // Collect live manual bends and net labels, keyed by NodeAPI connection id.
     std::unordered_map<std::string, std::vector<QPointF>> waypointsByGraphId;
     std::unordered_map<std::string, QString> labelsByGraphId;
+    std::unordered_map<std::string, QPointF> labelOffsetsByGraphId;
     if (model_) {
         for (const auto& connection : graph_.GetConnections()) {
             const QtNodes::ConnectionId qtId = FindQtConnectionId(connection.id);
@@ -1274,6 +1290,12 @@ std::string GraphScene::SerializeWithExtras() const {
             if (const QString* label = model_->ConnectionLabel(qtId);
                 label && !label->isEmpty()) {
                 labelsByGraphId[connection.id] = *label;
+                // The chip displacement only means anything beside a label;
+                // it is written exclusively under labeled connections.
+                if (const QPointF* offset = model_->ConnectionLabelOffset(qtId);
+                    offset && !offset->isNull()) {
+                    labelOffsetsByGraphId[connection.id] = *offset;
+                }
             }
         }
         for (const auto& bridge : graph_.GetBridges()) {
@@ -1285,11 +1307,16 @@ std::string GraphScene::SerializeWithExtras() const {
             if (const QString* label = model_->ConnectionLabel(qtId);
                 label && !label->isEmpty()) {
                 labelsByGraphId[bridge.id] = *label;
+                if (const QPointF* offset = model_->ConnectionLabelOffset(qtId);
+                    offset && !offset->isNull()) {
+                    labelOffsetsByGraphId[bridge.id] = *offset;
+                }
             }
         }
     }
 
-    if (originalTopKeys_.empty() && waypointsByGraphId.empty() && labelsByGraphId.empty()) {
+    if (originalTopKeys_.empty() && waypointsByGraphId.empty() &&
+        labelsByGraphId.empty() && labelOffsetsByGraphId.empty()) {
         return json;
     }
     try {
@@ -1334,6 +1361,21 @@ std::string GraphScene::SerializeWithExtras() const {
         };
         mergeLabels("connections");
         mergeLabels("bridges");
+        auto mergeLabelOffsets = [&](const char* key) {
+            if (!out.contains(key) || !out[key].is_array()) {
+                return;
+            }
+            for (auto& item : out[key]) {
+                const auto it = labelOffsetsByGraphId.find(item.value("id", std::string()));
+                if (it == labelOffsetsByGraphId.end()) {
+                    continue;
+                }
+                item["netLabelOffset"] = nlohmann::json::array(
+                    {it->second.x(), it->second.y()});
+            }
+        };
+        mergeLabelOffsets("connections");
+        mergeLabelOffsets("bridges");
         return out.dump(2) + "\n";
     } catch (const std::exception&) {
         return json;   // merge is best-effort; never lose the save itself
@@ -1413,6 +1455,50 @@ void GraphScene::ApplyPendingNetLabels() {
             continue;   // wire did not materialize (dangling/unknown port)
         }
         model_->SetConnectionLabel(qtId, label);
+    }
+}
+
+void GraphScene::ParseNetLabelOffsetsFromJson(const nlohmann::json& graphJson) {
+    pendingLabelOffsets_.clear();
+    auto pull = [&](const char* key) {
+        if (!graphJson.contains(key) || !graphJson[key].is_array()) {
+            return;
+        }
+        for (const auto& item : graphJson[key]) {
+            if (!item.contains("netLabelOffset") ||
+                !item["netLabelOffset"].is_array() ||
+                item["netLabelOffset"].size() != 2) {
+                continue;
+            }
+            const auto& pair = item["netLabelOffset"];
+            if (!pair[0].is_number() || !pair[1].is_number()) {
+                continue;
+            }
+            const std::string id = item.value("id", std::string());
+            const QPointF offset(pair[0].get<double>(), pair[1].get<double>());
+            if (!id.empty() && !offset.isNull()) {
+                pendingLabelOffsets_[id] = ClampLabelOffset(offset);
+            }
+        }
+    };
+    pull("connections");
+    pull("bridges");
+}
+
+void GraphScene::ApplyPendingNetLabelOffsets() {
+    if (!model_) {
+        return;
+    }
+    for (const auto& [graphId, offset] : pendingLabelOffsets_) {
+        const QtNodes::ConnectionId qtId = model_->QtConnectionIdForGraphId(graphId);
+        if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+            continue;   // wire did not materialize (dangling/unknown port)
+        }
+        const QString* label = model_->ConnectionLabel(qtId);
+        if (!label || label->isEmpty()) {
+            continue;   // an offset without its label is dead state
+        }
+        model_->SetConnectionLabelOffset(qtId, offset);
     }
 }
 
@@ -1615,9 +1701,114 @@ QString GraphScene::SetConnectionLabel(QtNodes::ConnectionId qtId,
 
     RepaintConnection(qtId);   // damages the old bounds before the data moves
     model_->SetConnectionLabel(qtId, trimmed);
+    if (trimmed.isEmpty()) {
+        // A cleared label retires its chips; the displacement has no anchor
+        // to hang on (dead state otherwise).
+        model_->SetConnectionLabelOffset(qtId, QPointF());
+    }
     RepaintConnection(qtId);
     NotifyChanged();
     return QString{};
+}
+
+std::optional<QPointF> GraphScene::ConnectionLabelOffset(
+    QtNodes::ConnectionId qtId) const {
+    if (const QPointF* offset = model_->ConnectionLabelOffset(qtId);
+        offset && !offset->isNull()) {
+        return *offset;
+    }
+    return std::nullopt;
+}
+
+QString GraphScene::SetConnectionLabelOffset(QtNodes::ConnectionId qtId,
+                                             const std::optional<QPointF>& offset) {
+    if (qtId.outNodeId == QtNodes::InvalidNodeId ||
+        model_->GraphConnectionId(qtId).empty()) {
+        return QStringLiteral("Connection not found");
+    }
+    const QString* label = model_->ConnectionLabel(qtId);
+    if (!label || label->isEmpty()) {
+        return QStringLiteral("no label");
+    }
+
+    const QPointF applied = offset ? ClampLabelOffset(*offset) : QPointF();
+    const QPointF current = model_->ConnectionLabelOffset(qtId)
+                                ? *model_->ConnectionLabelOffset(qtId)
+                                : QPointF();
+    if (applied == current) {
+        return QString{};   // no-op: leave the document (and its history) alone
+    }
+
+    RepaintConnection(qtId);   // damages the old bounds before the data moves
+    model_->SetConnectionLabelOffset(qtId, applied);
+    RepaintConnection(qtId);
+    NotifyChanged();
+    return QString{};
+}
+
+std::optional<std::pair<QRectF, QRectF>>
+GraphScene::ConnectionChipRects(QtNodes::ConnectionId qtId) const {
+    if (!model_ || !scene_) {
+        return std::nullopt;
+    }
+    const QString* label = model_->ConnectionLabel(qtId);
+    if (!label || label->isEmpty()) {
+        return std::nullopt;
+    }
+    auto* cgo = scene_->connectionGraphicsObject(qtId);
+    if (!cgo) {
+        return std::nullopt;
+    }
+    const QPointF offset = model_->ConnectionLabelOffset(qtId)
+                               ? *model_->ConnectionLabelOffset(qtId)
+                               : QPointF();
+    // Endpoints are connection-local; map through the item transform so the
+    // rects land in scene space exactly where the painter draws them.
+    const QTransform toScene = cgo->sceneTransform();
+    const QPointF out = toScene.map(cgo->endPoint(QtNodes::PortType::Out));
+    const QPointF in = toScene.map(cgo->endPoint(QtNodes::PortType::In));
+    const auto layout =
+        BridgeConnectionPainter::ComputeNetLabelLayout(out, in, *label, offset);
+    if (!layout) {
+        return std::nullopt;
+    }
+    return std::make_pair(layout->outChip, layout->inChip);
+}
+
+QString GraphScene::DumpConnectionChip(const std::string& graphId) const {
+    const QtNodes::ConnectionId qtId = FindQtConnectionId(graphId);
+    if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+        return QStringLiteral("no connection %1\n")
+            .arg(QString::fromStdString(graphId));
+    }
+    const QString* label = model_->ConnectionLabel(qtId);
+    const QString text = (label && !label->isEmpty())
+                             ? *label
+                             : QString::fromUtf8("\xe2\x80\x94");  // em dash
+    QString offsetText = QString::fromUtf8("\xe2\x80\x94");
+    QString outChipText = QString::fromUtf8("\xe2\x80\x94");
+    QString inChipText = QString::fromUtf8("\xe2\x80\x94");
+    if (label && !label->isEmpty()) {
+        if (const QPointF* offset = model_->ConnectionLabelOffset(qtId);
+            offset && !offset->isNull()) {
+            offsetText = QStringLiteral("%1,%2")
+                             .arg(offset->x(), 0, 'f', 2)
+                             .arg(offset->y(), 0, 'f', 2);
+        }
+        if (const auto chips = ConnectionChipRects(qtId)) {
+            auto fmtR = [](const QRectF& r) {
+                return QStringLiteral("[%1,%2,%3,%4]")
+                    .arg(r.x(), 0, 'f', 2)
+                    .arg(r.y(), 0, 'f', 2)
+                    .arg(r.width(), 0, 'f', 2)
+                    .arg(r.height(), 0, 'f', 2);
+            };
+            outChipText = fmtR(chips->first);
+            inChipText = fmtR(chips->second);
+        }
+    }
+    return QStringLiteral("label=%1;offset=%2;outchip=%3;inchip=%4\n")
+        .arg(text, offsetText, outChipText, inChipText);
 }
 
 QString GraphScene::DumpConnectionInfo(const std::string& graphId) const {
@@ -1765,6 +1956,7 @@ QString GraphScene::RestoreSnapshot(const std::string& json) {
         const nlohmann::json graphJson = nlohmann::json::parse(json);
         ParseWaypointsFromJson(graphJson);
         ParseNetLabelsFromJson(graphJson);
+        ParseNetLabelOffsetsFromJson(graphJson);
         NodeAPI::Graph restored = NodeAPI::LoadFromJson(json);
         graph_ = std::move(restored);
     } catch (const std::exception& e) {

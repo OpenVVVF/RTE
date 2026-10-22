@@ -422,6 +422,7 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
     connectionWaypoints_.erase(connectionId);
     waypointFollows_.erase(connectionId);
     connectionLabels_.erase(connectionId);
+    connectionLabelOffsets_.erase(connectionId);
     autoRoutes_.erase(connectionId);
 
     if (consumerRef) {
@@ -564,6 +565,28 @@ void NodeGraphModel::SetConnectionLabel(QtNodes::ConnectionId const connectionId
         connectionLabels_.erase(connectionId);
     } else {
         connectionLabels_[connectionId] = label;
+    }
+}
+
+const QPointF* NodeGraphModel::ConnectionLabelOffset(
+    QtNodes::ConnectionId const connectionId) const {
+    const auto it = connectionLabelOffsets_.find(connectionId);
+    return it != connectionLabelOffsets_.end() ? &it->second : nullptr;
+}
+
+void NodeGraphModel::SetConnectionLabelOffset(QtNodes::ConnectionId const connectionId,
+                                              const QPointF& offset) {
+    // Single clamp site for every write path (gesture, verb, parse): the
+    // displacement may push a chip out of traffic but never unboundedly far
+    // from its own wire (25 grid cells ~ one dense node width; no leader).
+    constexpr double kOffsetCap = 25.0 * WireRoute::kGridPitch;
+    const double length = std::sqrt(QPointF::dotProduct(offset, offset));
+    const QPointF clamped = length > kOffsetCap ? offset * (kOffsetCap / length)
+                                                : offset;
+    if (clamped.isNull()) {
+        connectionLabelOffsets_.erase(connectionId);
+    } else {
+        connectionLabelOffsets_[connectionId] = clamped;
     }
 }
 

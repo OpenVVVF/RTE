@@ -10,14 +10,17 @@
 #include "NodeGraphModel.h"
 
 #include <QString>
+#include <QRectF>
 #include <QSize>
 
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class QColor;
@@ -134,6 +137,34 @@ public:
     // unknown; wp lists the manual bends in scene coordinates, "[]" when
     // the wire is auto-routed).
     QString DumpConnectionInfo(const std::string& graphId) const;
+
+    // ---- Movable net-label chips -------------------------------------------
+
+    // Optional display-only displacement of the connection's tag chips
+    // (std::nullopt = ride at the computed stub anchor). One scene-space
+    // vector per connection, applied to BOTH chips of the pair (the stubs
+    // stay anchored; no leader line); magnitude clamped at every write
+    // (25 grid cells). Persisted as an additive "netLabelOffset":[dx,dy]
+    // sibling of "netLabel"; chips ride along when their endpoint nodes move
+    // because the anchor is the live stub end.
+    std::optional<QPointF> ConnectionLabelOffset(QtNodes::ConnectionId qtId) const;
+    // Books an undo entry (same plumbing as SetConnectionLabel); clearing a
+    // label also clears its offset. Unknown connection / no label → error.
+    QString SetConnectionLabelOffset(QtNodes::ConnectionId qtId,
+                                     const std::optional<QPointF>& offset);
+
+    // Scene-space rects of the connection's two tag chips (out-chip,
+    // in-chip) resolved the same way the painter lays them out this frame —
+    // std::nullopt when the connection is unknown or carries no label. Used
+    // by the GraphView hit dispatch (a chip beats the wire stroke) and the
+    // smoke dump.
+    std::optional<std::pair<QRectF, QRectF>>
+    ConnectionChipRects(QtNodes::ConnectionId qtId) const;
+
+    // Smoke/checker read-out of one connection's label chips, one line:
+    // "label=<text|—>;offset=dx,dy|—;outchip=[x,y,w,h];inchip=[x,y,w,h]"
+    // (offset/chip fields print "—" when the connection is unlabeled).
+    QString DumpConnectionChip(const std::string& graphId) const;
 
     // Smoke/checker read-out of the RENDERED route as the painter resolves
     // it (user bends -> WireRoute::BuildRoute; else the mini-router's
@@ -329,6 +360,12 @@ public:
     // string (tolerant: non-string entries are silently skipped).
     void ParseNetLabelsFromJson(const nlohmann::json& graphJson);
     void ApplyPendingNetLabels();
+    // Same staged parse/apply for the optional per-connection
+    // "netLabelOffset":[dx,dy] chip displacement (tolerant: malformed
+    // entries are silently skipped; offsets on unlabeled connections are
+    // dropped at apply time).
+    void ParseNetLabelOffsetsFromJson(const nlohmann::json& graphJson);
+    void ApplyPendingNetLabelOffsets();
     // Repaints a wire after its waypoint list changed.
     void RepaintConnection(QtNodes::ConnectionId qtId);
 
@@ -409,6 +446,10 @@ public:
     // Net labels parsed from the loaded document (same staging as bends,
     // ApplyPendingNetLabels).
     std::unordered_map<std::string, QString> pendingNetLabels_;
+
+    // Chip displacements parsed from the loaded document (same staging,
+    // ApplyPendingNetLabelOffsets).
+    std::unordered_map<std::string, QPointF> pendingLabelOffsets_;
 
     bool PointHitsGraphContent(const QPointF& scenePos) const;
     void UpdateDomainSelectionStyle();

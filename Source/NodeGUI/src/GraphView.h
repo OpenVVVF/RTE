@@ -4,6 +4,7 @@
 #include <QtNodes/GraphicsView>
 
 #include <QPointF>
+#include <QSize>
 #include <QString>
 #include <Qt>
 
@@ -63,7 +64,6 @@ public:
     bool SmokeDragWireBend(QtNodes::ConnectionId connId,
                            int waypointIndex,
                            const QPointF& targetScenePos);
-
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
@@ -107,6 +107,16 @@ private:
     void UpdateWireDrag(const QPointF& scenePos);
     void FinishWireDrag(bool commit);
 
+    // Net-label chip drag: a left press inside a labeled connection's tag
+    // chip beats the wire stroke and arms this instead of the bend drag
+    // (chip determinism, see ChipItemAt). Moves write the offset into the
+    // model live (snap + 25-grid-cell clamp); release commits via
+    // onGraphChanged (one undo entry); a button-loss cancel restores the
+    // press-time offset.
+    bool BeginChipDrag();
+    void UpdateChipDrag(const QPointF& scenePos);
+    void FinishChipDrag(bool commit);
+
     bool firstShow_ = true;
     Qt::MouseButton panMouseButton_ = Qt::MiddleButton;
     bool mousePanning_ = false;
@@ -129,6 +139,12 @@ private:
     QPoint wireDragPressViewport_;
     QPointF wireDragPressScene_;
     QPointF wireDragAnchor_;
+    bool chipDragPending_ = false;
+    bool chipDragActive_ = false;
+    QtNodes::ConnectionId chipDragConnection_{};
+    QPoint chipDragPressViewport_;
+    QPointF chipDragPressScene_;
+    QPointF chipDragBaseOffset_;
     QPoint panLastPosition_;
     QPointF domainDragLastScenePosition_;
 };

@@ -2779,6 +2779,112 @@ bool MainWindow::SmokeCornerDragNode(const std::string& nodeId,
     return true;
 }
 
+QString MainWindow::SmokeDragChipLabel(const std::string& graphId,
+                                       double dx,
+                                       double dy) {
+    GraphScene* active = ActiveGraphScene();
+    GraphView* view = view_;
+    if (plantScreen_ && PlantTabActive()) {
+        view = plantScreen_->View();
+    }
+    if (!active || !view || !active->Scene()) {
+        return QStringLiteral("failed");
+    }
+    const QtNodes::ConnectionId qtId = active->FindQtConnectionId(graphId);
+    if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+        return QStringLiteral("failed");
+    }
+    const auto chips = active->ConnectionChipRects(qtId);
+    if (!chips) {
+        return QStringLiteral("no label");
+    }
+    // REAL gesture: press inside the chip, drag to chip-center + the
+    // (scene-space) delta, release - the full view dispatch a mouse produces,
+    // so the chip-deterministic hit + state machine + commit all run.
+    // Stacked chips (several labels leaving one port pile their chips onto
+    // the same pixels) resolve topmost-first exactly like a mouse, so when
+    // the out-side press lands on a neighbor's chip we peel gracefully and
+    // retry on the in chip, which sits off the shared stub.
+    auto dragAtChip = [&](const QPointF& chipCenter) {
+        view->centerOn(chipCenter);
+        QCoreApplication::processEvents();
+        const QPoint start = view->mapFromScene(chipCenter);
+        const QPoint target = view->mapFromScene(chipCenter + QPointF(dx, dy));
+        auto postToViewport = [&](QEvent::Type type, const QPoint& pos) {
+            QMouseEvent ev(type, QPointF(pos), view->mapToGlobal(pos),
+                           Qt::LeftButton,
+                           type == QEvent::MouseButtonRelease ? Qt::NoButton
+                                                              : Qt::LeftButton,
+                           Qt::NoModifier);
+            QCoreApplication::sendEvent(view->viewport(), &ev);
+            QCoreApplication::processEvents();
+        };
+        postToViewport(QEvent::MouseButtonPress, start);
+        for (int i = 1; i <= 4; ++i) {
+            postToViewport(QEvent::MouseMove, start + (target - start) * (i / 4.0));
+        }
+        postToViewport(QEvent::MouseButtonRelease, target);
+    };
+    auto offsetText = [&]() -> std::optional<QPointF> {
+        return active->ConnectionLabelOffset(qtId);
+    };
+    const std::optional<QPointF> before = offsetText();
+    dragAtChip(chips->first.center());
+    if (const std::optional<QPointF> after = offsetText(); after != before) {
+        InspectorPanel* panel = active == graphScene_.get()
+                                    ? inspector_.get()
+                                    : plantScreen_->InspectorPanelWidget();
+        if (panel) {
+            panel->RefreshChipReset(qtId, after.has_value());
+        }
+        return QStringLiteral("ok");
+    }
+    if (const auto again = active->ConnectionChipRects(qtId)) {
+        dragAtChip(again->second.center());
+        if (const std::optional<QPointF> after = offsetText(); after != before) {
+            InspectorPanel* panel = active == graphScene_.get()
+                                        ? inspector_.get()
+                                        : plantScreen_->InspectorPanelWidget();
+            if (panel) {
+                panel->RefreshChipReset(qtId, after.has_value());
+            }
+            return QStringLiteral("ok");
+        }
+    }
+    return QStringLiteral("failed");
+}
+
+QString MainWindow::SmokeResetChipLabel(const std::string& graphId) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("failed");
+    }
+    const QtNodes::ConnectionId qtId = active->FindQtConnectionId(graphId);
+    if (qtId.outNodeId == QtNodes::InvalidNodeId) {
+        return QStringLiteral("failed");
+    }
+    const QString error =
+        active->SetConnectionLabelOffset(qtId, std::nullopt);
+    if (error.isEmpty()) {
+        InspectorPanel* panel = active == graphScene_.get()
+                                    ? inspector_.get()
+                                    : plantScreen_->InspectorPanelWidget();
+        if (panel) {
+            panel->RefreshChipReset(qtId, false);
+        }
+        return QStringLiteral("ok");
+    }
+    return error;   // e.g. "no label"
+}
+
+QString MainWindow::SmokeDumpChipInfo(const std::string& graphId) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("no scene\n");
+    }
+    return active->DumpConnectionChip(graphId);
+}
+
 QString MainWindow::SmokeAddNode(const QString& typeId, double x, double y) {
     GraphScene* active = ActiveGraphScene();
     if (!active) {

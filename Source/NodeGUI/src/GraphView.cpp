@@ -1,5 +1,6 @@
 #include "GraphView.h"
 
+#include "BridgeConnectionPainter.h"
 #include "NodeDataModel.h"
 #include "NodeGraphModel.h"
 #include "NodePalette.h"
@@ -85,6 +86,52 @@ QtNodes::ConnectionGraphicsObject* WireItemAt(QGraphicsView* view,
 
 NodeGraphModel* WireModel(QtNodes::ConnectionGraphicsObject& cgo) {
     return dynamic_cast<NodeGraphModel*>(&cgo.graphModel());
+}
+
+// The topmost LABELED connection whose tag chip contains the point, or
+// nullptr. Chip determinism: when the pointer lands inside chip bounds the
+// chip wins over any wire stroke at the same spot (a stub crossing a chip,
+// or two wires sharing a pixel), so the press can arm the chip drag without
+// ambiguity. Nodes still sit above chips (mirrors WireItemAt's node rule).
+QtNodes::ConnectionGraphicsObject* ChipItemAt(QGraphicsView* view,
+                                              const QPoint& viewportPos) {
+    const QPointF scenePos = view->mapToScene(viewportPos);
+    for (QGraphicsItem* item : view->items(viewportPos)) {
+        if (qgraphicsitem_cast<QtNodes::NodeGraphicsObject*>(item)) {
+            return nullptr;
+        }
+        auto* cgo = qgraphicsitem_cast<QtNodes::ConnectionGraphicsObject*>(item);
+        if (!cgo) {
+            continue;
+        }
+        auto* model = WireModel(*cgo);
+        if (!model) {
+            continue;
+        }
+        const QString* label = model->ConnectionLabel(cgo->connectionId());
+        if (!label || label->isEmpty()) {
+            continue;
+        }
+        const QPointF offset =
+            model->ConnectionLabelOffset(cgo->connectionId())
+                ? *model->ConnectionLabelOffset(cgo->connectionId())
+                : QPointF();
+        const auto layout =
+            BridgeConnectionPainter::ComputeNetLabelLayout(
+                cgo->endPoint(QtNodes::PortType::Out),
+                cgo->endPoint(QtNodes::PortType::In),
+                *label,
+                offset);
+        if (!layout) {
+            continue;
+        }
+        const QTransform toScene = cgo->sceneTransform();
+        if (toScene.mapRect(layout->outChip).contains(scenePos) ||
+            toScene.mapRect(layout->inChip).contains(scenePos)) {
+            return cgo;
+        }
+    }
+    return nullptr;
 }
 
 // Half-size of the square a bend accepts grabs in (scene units).
@@ -262,6 +309,35 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event) {
 void GraphView::mousePressEvent(QMouseEvent* event) {
     ClearNodeDragCursor();
 
+    // Left press inside a labeled connection's tag chip (chip determinism:
+    // the chip beats the wire stroke wherever they overlap) arms the chip
+    // drag instead of the bend drag. Selection mirrors the wire press.
+    if (event->button() == Qt::LeftButton && scene() &&
+        !(event->modifiers() & Qt::ControlModifier)) {
+        if (auto* cgo = ChipItemAt(this, event->position().toPoint())) {
+            auto* model = WireModel(*cgo);
+            const auto& cstate = cgo->connectionState();
+            if (model && !cstate.requiresPort() && !cstate.frozen()) {
+                if (event->modifiers() & Qt::ShiftModifier) {
+                    cgo->setSelected(!cgo->isSelected());
+                } else if (!cgo->isSelected()) {
+                    scene()->clearSelection();
+                    cgo->setSelected(true);
+                }
+                chipDragPending_ = true;
+                chipDragConnection_ = cgo->connectionId();
+                chipDragPressViewport_ = event->position().toPoint();
+                chipDragPressScene_ = mapToScene(event->position().toPoint());
+                chipDragBaseOffset_ =
+                    model->ConnectionLabelOffset(cgo->connectionId())
+                        ? *model->ConnectionLabelOffset(cgo->connectionId())
+                        : QPointF();
+                event->accept();
+                return;
+            }
+        }
+    }
+
     if (event->button() == Qt::LeftButton &&
         onDomainDragStarted &&
         onDomainDragStarted(
@@ -335,6 +411,34 @@ void GraphView::mousePressEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseMoveEvent(QMouseEvent* event) {
+    if (chipDragActive_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            FinishChipDrag(false);
+            event->accept();
+            return;
+        }
+        UpdateChipDrag(mapToScene(event->position().toPoint()));
+        event->accept();
+        return;
+    }
+    if (chipDragPending_) {
+        if (!(event->buttons() & Qt::LeftButton)) {
+            FinishChipDrag(false);
+            event->accept();
+            return;
+        }
+        if ((event->position().toPoint() - chipDragPressViewport_).manhattanLength()
+            >= QApplication::startDragDistance()) {
+            if (BeginChipDrag()) {
+                UpdateChipDrag(mapToScene(event->position().toPoint()));
+            }
+            event->accept();
+            return;
+        }
+        event->accept();
+        return;
+    }
+
     if (wireDragActive_) {
         if (!(event->buttons() & Qt::LeftButton)) {
             FinishWireDrag(false);
@@ -423,6 +527,12 @@ void GraphView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GraphView::mouseReleaseEvent(QMouseEvent* event) {
+    if ((chipDragActive_ || chipDragPending_) && event->button() == Qt::LeftButton) {
+        const bool commit = chipDragActive_;
+        FinishChipDrag(commit);
+        event->accept();
+        return;
+    }
     if ((wireDragActive_ || wireDragPending_) && event->button() == Qt::LeftButton) {
         const bool commit = wireDragActive_;
         FinishWireDrag(commit);
@@ -772,6 +882,84 @@ void GraphView::FinishWireDrag(bool commit) {
                     ? basicScene->connectionGraphicsObject(wireDragConnection_)
                     : nullptr;
     auto* model = cgo ? WireModel(*cgo) : nullptr;
+    if (model && model->onGraphChanged) {
+        model->onGraphChanged();
+    }
+}
+
+bool GraphView::BeginChipDrag() {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene
+                    ? basicScene->connectionGraphicsObject(chipDragConnection_)
+                    : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    const QString* label =
+        model ? model->ConnectionLabel(chipDragConnection_) : nullptr;
+    if (!label || label->isEmpty()) {
+        chipDragPending_ = false;
+        return false;
+    }
+    chipDragPending_ = false;
+    chipDragActive_ = true;
+    viewport()->setCursor(Qt::SizeAllCursor);
+    return true;
+}
+
+void GraphView::UpdateChipDrag(const QPointF& scenePos) {
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene
+                    ? basicScene->connectionGraphicsObject(chipDragConnection_)
+                    : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    if (!model) {
+        FinishChipDrag(false);
+        return;
+    }
+    QPointF offset = chipDragBaseOffset_ + (scenePos - chipDragPressScene_);
+    if (gridSnap_) {
+        offset = WireRoute::SnapToGrid(offset);
+    }
+    const QPointF current = model->ConnectionLabelOffset(chipDragConnection_)
+                                ? *model->ConnectionLabelOffset(chipDragConnection_)
+                                : QPointF();
+    if (offset == current) {
+        return;
+    }
+    cgo->move();   // prepareGeometryChange + endpoint refresh
+    // The model setter caps the vector at 25 grid cells; the rendered chips
+    // (and their hit silhouette) follow the stored offset directly.
+    model->SetConnectionLabelOffset(chipDragConnection_, offset);
+    cgo->update();
+}
+
+void GraphView::FinishChipDrag(bool commit) {
+    chipDragActive_ = false;
+    chipDragPending_ = false;
+    viewport()->unsetCursor();
+
+    auto* basicScene = dynamic_cast<QtNodes::BasicGraphicsScene*>(scene());
+    auto* cgo = basicScene
+                    ? basicScene->connectionGraphicsObject(chipDragConnection_)
+                    : nullptr;
+    auto* model = cgo ? WireModel(*cgo) : nullptr;
+    if (!commit) {
+        // Button-loss cancel: the model never keeps an uncommitted
+        // displacement mid-gesture (the bend drag's legacy behavior left the
+        // wire wherever the pointer stopped; the chip restores instead).
+        if (model) {
+            const QPointF current =
+                model->ConnectionLabelOffset(chipDragConnection_)
+                    ? *model->ConnectionLabelOffset(chipDragConnection_)
+                    : QPointF();
+            if (current != chipDragBaseOffset_) {
+                cgo->move();
+                model->SetConnectionLabelOffset(chipDragConnection_,
+                                                chipDragBaseOffset_);
+                cgo->update();
+            }
+        }
+        return;
+    }
     if (model && model->onGraphChanged) {
         model->onGraphChanged();
     }

@@ -133,6 +133,18 @@ public:
     // [smoke] move mouse to (x, y) viewport coords with the button held, then
     // release — completes a SmokeCornerPressNode gesture.
     void SmokeCornerRelease(int x, int y);
+    // [smoke] net-label chip drag on the ACTIVE editor tab: REAL press/drag/
+    // release viewport events starting inside the labeled connection's out
+    // chip (press dispatch -> GraphView's chip-drag state machine); the
+    // delta is scene-space. Returns "ok", "no label" (the connection carries
+    // no net label — the refuse stamp), or "failed" (unknown/unsuitable).
+    QString SmokeDragChipLabel(const std::string& graphId, double dx, double dy);
+    // [smoke] clear the connection's saved chip offset through the scene
+    // write path (the inspector "Reset label position" seam).
+    QString SmokeResetChipLabel(const std::string& graphId);
+    // [smoke] "label=<text|—>;offset=dx,dy|—;outchip=[...];inchip=[...]" for
+    // the given wire graph id on the ACTIVE editor tab (checker line).
+    QString SmokeDumpChipInfo(const std::string& graphId);
     // [smoke] load a sim session file through the Simulate screen's own
     // "Load session..." path (returns false on load failure).
     bool SmokeLoadSimSession(const QString& path);

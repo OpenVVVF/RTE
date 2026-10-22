@@ -21,6 +21,7 @@ class QComboBox;
 class QFormLayout;
 class QLabel;
 class QLineEdit;
+class QPushButton;
 class QVBoxLayout;
 
 namespace NodeGUI {
@@ -54,6 +55,9 @@ public:
     // dialog, smoke verb) committed a label while this connection is shown,
     // so the field never displays a stale name.
     void RefreshNetLabel(QtNodes::ConnectionId connId, const QString& text);
+    // Same outside-path refresh for the "Reset label position" button's
+    // enabled state (an outside chip drag/reset committed while shown).
+    void RefreshChipReset(QtNodes::ConnectionId connId, bool hasOffset);
     void Clear();
 
     // Report apply failures (wired to MainWindow's toast).
@@ -103,6 +107,7 @@ private:
     QScrollArea* scrollArea_ = nullptr;
     QLineEdit* idEdit_ = nullptr;
     QLineEdit* netLabelEdit_ = nullptr;
+    QPushButton* chipResetButton_ = nullptr;
     QComboBox* domainCombo_ = nullptr;
     QCheckBox* excludeCheck_ = nullptr;
     QCheckBox* excludeChildrenCheck_ = nullptr;

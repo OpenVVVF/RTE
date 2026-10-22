@@ -55,6 +55,16 @@
 //   inspector field reverts + toast). Edit seams: Inspector "Net label"
 //   field (select a wire), Ctrl+double-click on a wire (instance-modal
 //   QInputDialog), or the smoke verbs netlabel/dumpconn.
+//   Chips are movable: a left press inside a chip (chip beats the wire
+//   stroke on overlap — ChipItemAt in GraphView) starts the chip drag;
+//   moves displace BOTH chips by one grid-snapped scene vector clamped to
+//   25 grid cells (stubs stay anchored, no leader line), release commits
+//   one undo entry. The displacement drips as an additive
+//   "netLabelOffset":[dx,dy] sibling of "netLabel" (absent at the anchor,
+//   dropped when the label clears); chips ride along when their endpoint
+//   nodes move because the anchor is the live stub end. Reset paths:
+//   Inspector "Reset label position", or `chipdrag <id> reset`. Smoke
+//   verbs: chipdrag/dumpchip.
 //
 // Domain node glyphs (painter layer only, no model/geometry changes):
 //   TypedNodePainter::DrawTypeGlyph paints a type-driven icon into the node
@@ -213,6 +223,32 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
             // "label=<text|—>;layer=<z>;wp=[x,y;...]" single line for
             // checkers (wp = manual bends, "[]" when auto-routed).
             std::cout << window->SmokeDumpConnection(arg.toStdString()).toStdString();
+        } else if (kind == "chipdrag") {
+            // chipdrag <connGraphId> <dx> <dy> | chipdrag <connGraphId> reset —
+            // REAL press/drag/release viewport events starting inside the
+            // labeled connection's out chip (the full hit dispatch: chip
+            // beats wire stroke; chip-drag state machine; snap+clamp;
+            // undo-covered commit). The delta is scene-space. "reset" clears
+            // the saved chip offset (inspector "Reset label position" seam).
+            // Prints ok | no label (unlabeled connection) | failed.
+            if (parts.value(2) == QLatin1String("reset")) {
+                std::cout << "chipdrag " << arg.toStdString() << "="
+                          << window->SmokeResetChipLabel(arg.toStdString())
+                                 .toStdString()
+                          << "\n";
+            } else {
+                std::cout << "chipdrag " << arg.toStdString() << "="
+                          << window->SmokeDragChipLabel(arg.toStdString(),
+                                                        parts.value(2).toDouble(),
+                                                        parts.value(3).toDouble())
+                                 .toStdString()
+                          << "\n";
+            }
+        } else if (kind == "dumpchip") {
+            // "label=<text|—>;offset=dx,dy|—;outchip=[x,y,w,h];
+            // inchip=[x,y,w,h]" single line for checkers (offset/chip fields
+            // print "—" on an unlabeled connection).
+            std::cout << window->SmokeDumpChipInfo(arg.toStdString()).toStdString();
         } else if (kind == "dumproute") {
             // "route=[x,y;...]" rendered route polyline (scene coords) —
             // the foldback checker's read-out for bend-drag cases.
