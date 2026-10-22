@@ -248,8 +248,8 @@
       "type": "Sensors.PhaseCurrents",
       "domain": "adc_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 60
       },
       "parameters": {
         "InvertPolarity": "1.0",
@@ -264,8 +264,8 @@
       "type": "Transforms.Clarke",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 405,
+        "y": 60
       },
       "parameters": {}
     },
@@ -274,8 +274,8 @@
       "type": "Transforms.Park",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 705,
+        "y": 60
       },
       "parameters": {}
     },
@@ -284,8 +284,8 @@
       "type": "constant.dq_current",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 735
       },
       "parameters": {}
     },
@@ -294,8 +294,8 @@
       "type": "Control.Pi",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 1035,
+        "y": 30
       },
       "parameters": {
         "Kp": "0.1",
@@ -310,8 +310,8 @@
       "type": "Control.Pi",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 1185,
+        "y": 360
       },
       "parameters": {
         "Kp": "0.1",
@@ -326,8 +326,8 @@
       "type": "constant.theta",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 510
       },
       "parameters": {
         "Value": "0.0"
@@ -338,8 +338,8 @@
       "type": "Transforms.InversePark",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 1470,
+        "y": 60
       },
       "parameters": {}
     },
@@ -348,8 +348,8 @@
       "type": "Transforms.InverseClarke",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 1800,
+        "y": 60
       },
       "parameters": {}
     },
@@ -358,8 +358,8 @@
       "type": "constant.voltage",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 960
       },
       "parameters": {
         "Value": "24.0"
@@ -370,8 +370,8 @@
       "type": "Transforms.Svpwm",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 2145,
+        "y": 210
       },
       "parameters": {}
     },
@@ -380,8 +380,8 @@
       "type": "Actuators.PwmOut",
       "domain": "tim_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 2445,
+        "y": 210
       },
       "parameters": {}
     }
@@ -407,7 +407,21 @@
       "to": {
         "nodeId": "park",
         "portName": "Theta"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 345.0,
+          "y": 570.0
+        },
+        {
+          "x": 345.0,
+          "y": 255.0
+        },
+        {
+          "x": 675.0,
+          "y": 255.0
+        }
+      ]
     },
     {
       "id": "c10",
@@ -418,7 +432,13 @@
       "to": {
         "nodeId": "inverse_park",
         "portName": "V_D"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1425.0,
+          "y": 90.0
+        }
+      ]
     },
     {
       "id": "c11",
@@ -429,7 +449,13 @@
       "to": {
         "nodeId": "inverse_park",
         "portName": "V_Q"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1440.0,
+          "y": 420.0
+        }
+      ]
     },
     {
       "id": "c13",
@@ -440,7 +466,22 @@
       "to": {
         "nodeId": "inverse_park",
         "portName": "Theta"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 360.0,
+          "y": 570.0
+        },
+        {
+          "x": 360.0,
+          "y": 330.0
+        },
+        {
+          "x": 1290.0,
+          "y": 330.0
+        }
+      ],
+      "netLabel": "THETA"
     },
     {
       "id": "c14",
@@ -462,7 +503,22 @@
       "to": {
         "nodeId": "svpwm",
         "portName": "V_Alpha"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1755.0,
+          "y": 120.0
+        },
+        {
+          "x": 1755.0,
+          "y": 270.0
+        },
+        {
+          "x": 2100.0,
+          "y": 270.0
+        }
+      ],
+      "netLabel": "V_ALPHA"
     },
     {
       "id": "c16",
@@ -473,7 +529,22 @@
       "to": {
         "nodeId": "svpwm",
         "portName": "V_Dc"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 360.0,
+          "y": 1020.0
+        },
+        {
+          "x": 360.0,
+          "y": 1125.0
+        },
+        {
+          "x": 2100.0,
+          "y": 1125.0
+        }
+      ],
+      "netLabel": "VDC_BUS"
     },
     {
       "id": "c17a",
@@ -484,7 +555,8 @@
       "to": {
         "nodeId": "pwm",
         "portName": "Duty_A"
-      }
+      },
+      "netLabel": "DUTY_U"
     },
     {
       "id": "c17b",
@@ -495,7 +567,8 @@
       "to": {
         "nodeId": "pwm",
         "portName": "Duty_B"
-      }
+      },
+      "netLabel": "DUTY_V"
     },
     {
       "id": "c17c",
@@ -506,7 +579,8 @@
       "to": {
         "nodeId": "pwm",
         "portName": "Duty_C"
-      }
+      },
+      "netLabel": "DUTY_W"
     },
     {
       "id": "c18",
@@ -550,7 +624,22 @@
       "to": {
         "nodeId": "pi_d",
         "portName": "Setpoint"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 360.0,
+          "y": 795.0
+        },
+        {
+          "x": 360.0,
+          "y": 270.0
+        },
+        {
+          "x": 1005.0,
+          "y": 270.0
+        }
+      ],
+      "netLabel": "ID_REF"
     },
     {
       "id": "c22",
@@ -561,7 +650,22 @@
       "to": {
         "nodeId": "pi_q",
         "portName": "Setpoint"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 375.0,
+          "y": 825.0
+        },
+        {
+          "x": 375.0,
+          "y": 315.0
+        },
+        {
+          "x": 1140.0,
+          "y": 315.0
+        }
+      ],
+      "netLabel": "IQ_REF"
     },
     {
       "id": "c23",
@@ -583,7 +687,22 @@
       "to": {
         "nodeId": "svpwm",
         "portName": "V_Beta"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 1740.0,
+          "y": 150.0
+        },
+        {
+          "x": 1740.0,
+          "y": 285.0
+        },
+        {
+          "x": 2115.0,
+          "y": 285.0
+        }
+      ],
+      "netLabel": "V_BETA"
     }
   ],
   "bridges": [
@@ -601,7 +720,8 @@
       "consumer": {
         "nodeId": "clarke",
         "portName": "I_A"
-      }
+      },
+      "netLabel": "I_U"
     },
     {
       "id": "i_b_bridge",
@@ -617,7 +737,8 @@
       "consumer": {
         "nodeId": "clarke",
         "portName": "I_B"
-      }
+      },
+      "netLabel": "I_V"
     },
     {
       "id": "i_c_bridge",
@@ -633,7 +754,8 @@
       "consumer": {
         "nodeId": "clarke",
         "portName": "I_C"
-      }
+      },
+      "netLabel": "I_W"
     }
   ]
 }
