@@ -122,8 +122,8 @@
       "type": "Sensors.PhaseCurrents",
       "domain": "adc_isr",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 60
       },
       "parameters": {
         "InvertPolarity": "0.0",
@@ -136,8 +136,8 @@
       "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 450,
+        "y": 60
       },
       "parameters": {
         "Key": "cg_iu_a"
@@ -148,8 +148,8 @@
       "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 450,
+        "y": 285
       },
       "parameters": {
         "Key": "cg_iv_a"
@@ -160,8 +160,8 @@
       "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 450,
+        "y": 510
       },
       "parameters": {
         "Key": "cg_iw_a"
@@ -172,8 +172,8 @@
       "type": "Sensors.DcLinkVoltage",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 720
       },
       "parameters": {}
     },
@@ -182,8 +182,8 @@
       "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 450,
+        "y": 945
       },
       "parameters": {
         "Key": "cg_vdc_v"
@@ -194,8 +194,8 @@
       "type": "Sensors.Encoder",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 45,
+        "y": 480
       },
       "parameters": {}
     },
@@ -204,8 +204,8 @@
       "type": "Debug.TelemetryLog",
       "domain": "app_loop",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 450,
+        "y": 735
       },
       "parameters": {
         "Key": "cg_theta_rad"
@@ -222,7 +222,18 @@
       "to": {
         "nodeId": "LogTheta",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 330.0,
+          "y": 540.0
+        },
+        {
+          "x": 330.0,
+          "y": 795.0
+        }
+      ],
+      "netLabel": "THETA_LOG"
     },
     {
       "id": "c10",
@@ -233,7 +244,14 @@
       "to": {
         "nodeId": "LogVdc",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 315.0,
+          "y": 780.0
+        }
+      ],
+      "netLabel": "VDC_LOG"
     }
   ],
   "bridges": [
@@ -251,7 +269,8 @@
       "consumer": {
         "nodeId": "LogU",
         "portName": "Value"
-      }
+      },
+      "netLabel": "I_U_LOG"
     },
     {
       "id": "i_b_app_bridge",
@@ -267,7 +286,14 @@
       "consumer": {
         "nodeId": "LogV",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 330.0,
+          "y": 150.0
+        }
+      ],
+      "netLabel": "I_V_LOG"
     },
     {
       "id": "i_c_app_bridge",
@@ -283,7 +309,14 @@
       "consumer": {
         "nodeId": "LogW",
         "portName": "Value"
-      }
+      },
+      "waypoints": [
+        {
+          "x": 345.0,
+          "y": 180.0
+        }
+      ],
+      "netLabel": "I_W_LOG"
     }
   ]
 }
