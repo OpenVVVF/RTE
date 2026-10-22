@@ -259,6 +259,18 @@
     },
     {
       "from": {
+        "nodeId": "IdRef",
+        "portName": "Out"
+      },
+      "id": "c6",
+      "to": {
+        "nodeId": "PiD",
+        "portName": "Setpoint"
+      },
+      "netLabel": "ID_REF"
+    },
+    {
+      "from": {
         "nodeId": "Park",
         "portName": "I_D"
       },
@@ -274,6 +286,18 @@
         }
       ],
       "netLabel": "I_D"
+    },
+    {
+      "from": {
+        "nodeId": "IqRef",
+        "portName": "Out"
+      },
+      "id": "c8",
+      "to": {
+        "nodeId": "PiQ",
+        "portName": "Setpoint"
+      },
+      "netLabel": "IQ_REF"
     },
     {
       "from": {
@@ -3878,7 +3902,7 @@
       "domain": "tim_isr",
       "id": "IdRef",
       "parameters": {
-        "Amps": "0.0"
+        "Value": "0.0"
       },
       "position": {
         "x": 150.0,
@@ -3913,7 +3937,7 @@
       "domain": "tim_isr",
       "id": "IqRef",
       "parameters": {
-        "Amps": "20.0"
+        "Value": "20.0"
       },
       "position": {
         "x": 150.0,
@@ -4093,7 +4117,9 @@
       "domain": "tim_isr",
       "id": "PiD",
       "parameters": {
+        "AwGain": "1.0",
         "Dt": "0.0002",
+        "Feedforward": "0.0",
         "Integral": "0.0",
         "Ki": "10.0",
         "Kp": "0.03",
@@ -4111,7 +4137,9 @@
       "domain": "tim_isr",
       "id": "PiQ",
       "parameters": {
+        "AwGain": "1.0",
         "Dt": "0.0002",
+        "Feedforward": "0.0",
         "Integral": "0.0",
         "Ki": "10.0",
         "Kp": "0.03",
