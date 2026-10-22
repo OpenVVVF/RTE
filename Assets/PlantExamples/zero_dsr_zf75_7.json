@@ -1,74 +1,3951 @@
 {
-  "name": "zero_dsr_zf75_7",
-  "schemaVersion": 1,
-  "description": "Plant graph for the 2018 Zero DSR road pack (Zero ZF75-7 PMSM motor; dyno substituted by drive-cycle replay). 2026-10-21: machine constants FITTED from the test-11 ride (joint physics fit over launch/cruise delivered voltages + deep-FW dips + dc-power torque: Rs 8.7 mOhm, Ld 25.7 uH (high-saturation incremental class), Lq 65.7 uH, Lambda 0.0237; poles=5 verified in-data). Pack battery model from the sag anchors; TS3 channel of the three-strip NTC assembly wired; thermal strip constants being identified against the replay (twin/calib/fit_thermal_zf75.py). Encoder count bounds KEEP the bench identity - the bike's wider spread trips the replica EncoderLoss detector (per-card detector-bounds config is a follow-up; see twin/calib/cal_log.md item 10). The controller-side voltage-budget class for this build is Svpwm.MaxFrac 0.425 (fitted per-card; bike build diverges from the template 2/3 default). | Hardware-default caution: this rig models the bike's 900 A class bench (pack i_limit 900 / sink 600 A) with bike-firmware protection sets (oc_sw 1100 A, MaxTorqueCurrentA semantics per the graph); when porting to real hardware check protection/limit params per your board - a zero or stale value here is NOT safe by default.",
   "bridges": [],
+  "connections": [
+    {
+      "from": {
+        "nodeId": "DutyIn",
+        "portName": "Du"
+      },
+      "id": "c1",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "Du"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "DutyIn",
+        "portName": "Dv"
+      },
+      "id": "c2",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "Dv"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "DutyIn",
+        "portName": "Dw"
+      },
+      "id": "c3",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "Dw"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "DcBus",
+        "portName": "Vdc"
+      },
+      "id": "c4",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "Vdc"
+      },
+      "waypoints": [
+        {
+          "x": 690.0,
+          "y": 285.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "I_U"
+      },
+      "id": "c5",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "I_U"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "I_V"
+      },
+      "id": "c6",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "I_V"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "I_W"
+      },
+      "id": "c7",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "I_W"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Knee",
+        "portName": "V_U"
+      },
+      "id": "c8",
+      "to": {
+        "nodeId": "Machine",
+        "portName": "V_U"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Knee",
+        "portName": "V_V"
+      },
+      "id": "c9",
+      "to": {
+        "nodeId": "Machine",
+        "portName": "V_V"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Knee",
+        "portName": "V_W"
+      },
+      "id": "c10",
+      "to": {
+        "nodeId": "Machine",
+        "portName": "V_W"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Dyno",
+        "portName": "Omega_Elec"
+      },
+      "id": "c11",
+      "to": {
+        "nodeId": "Machine",
+        "portName": "Omega_Elec"
+      },
+      "waypoints": [
+        {
+          "x": 1695.0,
+          "y": 825.0
+        },
+        {
+          "x": 1695.0,
+          "y": 1005.0
+        },
+        {
+          "x": 1380.0,
+          "y": 1005.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "Id"
+      },
+      "id": "c12",
+      "to": {
+        "nodeId": "Im",
+        "portName": "A"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "Iq"
+      },
+      "id": "c13",
+      "to": {
+        "nodeId": "Im",
+        "portName": "B"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Dyno",
+        "portName": "Omega_Elec"
+      },
+      "id": "c14",
+      "to": {
+        "nodeId": "AbsOm",
+        "portName": "Omega_Elec"
+      },
+      "waypoints": [
+        {
+          "x": 1785.0,
+          "y": 825.0
+        },
+        {
+          "x": 1785.0,
+          "y": 1110.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Im",
+        "portName": "Out"
+      },
+      "id": "c15",
+      "to": {
+        "nodeId": "Loss",
+        "portName": "Im"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "AbsOm",
+        "portName": "Om"
+      },
+      "id": "c16",
+      "to": {
+        "nodeId": "Loss",
+        "portName": "Om"
+      },
+      "waypoints": [
+        {
+          "x": 2345.0,
+          "y": 1110.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "DcBus",
+        "portName": "Vdc"
+      },
+      "id": "c17",
+      "to": {
+        "nodeId": "Loss",
+        "portName": "Vdc"
+      },
+      "waypoints": [
+        {
+          "x": 705.0,
+          "y": 285.0
+        },
+        {
+          "x": 705.0,
+          "y": -270.0
+        },
+        {
+          "x": 2385.0,
+          "y": -270.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "OpenGates"
+      },
+      "id": "c18",
+      "to": {
+        "nodeId": "Machine",
+        "portName": "OpenGates"
+      },
+      "waypoints": [
+        {
+          "x": 345.0,
+          "y": 390.0
+        },
+        {
+          "x": 345.0,
+          "y": -105.0
+        },
+        {
+          "x": 1380.0,
+          "y": -105.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "OpenGates"
+      },
+      "id": "c19",
+      "to": {
+        "nodeId": "Loss",
+        "portName": "Idle"
+      },
+      "waypoints": [
+        {
+          "x": 360.0,
+          "y": 390.0
+        },
+        {
+          "x": 360.0,
+          "y": -120.0
+        },
+        {
+          "x": 2400.0,
+          "y": -120.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "P_Elec"
+      },
+      "id": "c20",
+      "to": {
+        "nodeId": "Draw",
+        "portName": "A"
+      },
+      "waypoints": [
+        {
+          "x": 1725.0,
+          "y": 270.0
+        },
+        {
+          "x": 1725.0,
+          "y": -375.0
+        },
+        {
+          "x": 2415.0,
+          "y": -375.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Loss",
+        "portName": "P_Loss"
+      },
+      "id": "c21",
+      "to": {
+        "nodeId": "Draw",
+        "portName": "B"
+      },
+      "waypoints": [
+        {
+          "x": 2685.0,
+          "y": 465.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Draw",
+        "portName": "Out"
+      },
+      "id": "c22",
+      "to": {
+        "nodeId": "DcBus",
+        "portName": "P_Draw"
+      },
+      "waypoints": [
+        {
+          "x": 2640.0,
+          "y": 120.0
+        },
+        {
+          "x": 2640.0,
+          "y": -330.0
+        },
+        {
+          "x": 420.0,
+          "y": -330.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Loss",
+        "portName": "P_Plate"
+      },
+      "id": "c23",
+      "to": {
+        "nodeId": "Thermal",
+        "portName": "P_Heat"
+      },
+      "waypoints": [
+        {
+          "x": 2670.0,
+          "y": 495.0
+        },
+        {
+          "x": 2670.0,
+          "y": 1305.0
+        },
+        {
+          "x": 1395.0,
+          "y": 1305.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "I_U"
+      },
+      "id": "c24",
+      "to": {
+        "nodeId": "HallU",
+        "portName": "I_True"
+      },
+      "waypoints": [
+        {
+          "x": 1680.0,
+          "y": 60.0
+        },
+        {
+          "x": 1680.0,
+          "y": -150.0
+        },
+        {
+          "x": 2820.0,
+          "y": -150.0
+        }
+      ],
+      "netLabel": "I_SENS_U"
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "I_V"
+      },
+      "id": "c25",
+      "to": {
+        "nodeId": "HallV",
+        "portName": "I_True"
+      },
+      "waypoints": [
+        {
+          "x": 1695.0,
+          "y": 90.0
+        },
+        {
+          "x": 1695.0,
+          "y": -165.0
+        },
+        {
+          "x": 2805.0,
+          "y": -165.0
+        }
+      ],
+      "netLabel": "I_SENS_V"
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "I_W"
+      },
+      "id": "c26",
+      "to": {
+        "nodeId": "HallW",
+        "portName": "I_True"
+      },
+      "waypoints": [
+        {
+          "x": 1710.0,
+          "y": 120.0
+        },
+        {
+          "x": 1710.0,
+          "y": -180.0
+        },
+        {
+          "x": 2790.0,
+          "y": -180.0
+        }
+      ],
+      "netLabel": "I_SENS_W"
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "SensorRail"
+      },
+      "id": "c27",
+      "to": {
+        "nodeId": "HallU",
+        "portName": "Rail"
+      },
+      "waypoints": [
+        {
+          "x": 270.0,
+          "y": 450.0
+        },
+        {
+          "x": 270.0,
+          "y": -45.0
+        },
+        {
+          "x": 2865.0,
+          "y": -45.0
+        }
+      ],
+      "netLabel": "SENSOR_RAIL_U"
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "SensorRail"
+      },
+      "id": "c28",
+      "to": {
+        "nodeId": "HallV",
+        "portName": "Rail"
+      },
+      "waypoints": [
+        {
+          "x": 285.0,
+          "y": 450.0
+        },
+        {
+          "x": 285.0,
+          "y": -60.0
+        },
+        {
+          "x": 2850.0,
+          "y": -60.0
+        }
+      ],
+      "netLabel": "SENSOR_RAIL_V"
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "SensorRail"
+      },
+      "id": "c29",
+      "to": {
+        "nodeId": "HallW",
+        "portName": "Rail"
+      },
+      "waypoints": [
+        {
+          "x": 300.0,
+          "y": 450.0
+        },
+        {
+          "x": 300.0,
+          "y": -75.0
+        },
+        {
+          "x": 2835.0,
+          "y": -75.0
+        }
+      ],
+      "netLabel": "SENSOR_RAIL_W"
+    },
+    {
+      "from": {
+        "nodeId": "DcBus",
+        "portName": "Vdc"
+      },
+      "id": "c30",
+      "to": {
+        "nodeId": "VSense",
+        "portName": "V_True"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "ThetaE"
+      },
+      "id": "c31",
+      "to": {
+        "nodeId": "Enc",
+        "portName": "ThetaE"
+      }
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "EncoderDisconnect"
+      },
+      "id": "c32",
+      "to": {
+        "nodeId": "Enc",
+        "portName": "Disconnect"
+      },
+      "waypoints": [
+        {
+          "x": 240.0,
+          "y": 420.0
+        },
+        {
+          "x": 240.0,
+          "y": -135.0
+        },
+        {
+          "x": 1905.0,
+          "y": -135.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "HallU",
+        "portName": "I_Meas"
+      },
+      "id": "c33",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Iu_A"
+      },
+      "waypoints": [
+        {
+          "x": 3165.0,
+          "y": 60.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "HallV",
+        "portName": "I_Meas"
+      },
+      "id": "c34",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Iv_A"
+      },
+      "waypoints": [
+        {
+          "x": 3180.0,
+          "y": 270.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "HallW",
+        "portName": "I_Meas"
+      },
+      "id": "c35",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Iw_A"
+      },
+      "waypoints": [
+        {
+          "x": 3195.0,
+          "y": 480.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "VSense",
+        "portName": "V_Meas"
+      },
+      "id": "c36",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Vdc_V"
+      },
+      "waypoints": [
+        {
+          "x": 750.0,
+          "y": 720.0
+        },
+        {
+          "x": 750.0,
+          "y": -360.0
+        },
+        {
+          "x": 3345.0,
+          "y": -360.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Enc",
+        "portName": "Sin"
+      },
+      "id": "c37",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Enc_Sin"
+      },
+      "waypoints": [
+        {
+          "x": 2715.0,
+          "y": 375.0
+        }
+      ],
+      "netLabel": "ENC_SIN"
+    },
+    {
+      "from": {
+        "nodeId": "Enc",
+        "portName": "Cos"
+      },
+      "id": "c38",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Enc_Cos"
+      },
+      "waypoints": [
+        {
+          "x": 2730.0,
+          "y": 405.0
+        }
+      ],
+      "netLabel": "ENC_COS"
+    },
+    {
+      "from": {
+        "nodeId": "Thermal",
+        "portName": "T_Meas1"
+      },
+      "id": "c39",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Temp_Inv1_C"
+      },
+      "waypoints": [
+        {
+          "x": 1740.0,
+          "y": 525.0
+        },
+        {
+          "x": 1740.0,
+          "y": 1260.0
+        },
+        {
+          "x": 3330.0,
+          "y": 1260.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Thermal",
+        "portName": "T_Meas2"
+      },
+      "id": "c40",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Temp_Inv2_C"
+      },
+      "waypoints": [
+        {
+          "x": 1755.0,
+          "y": 555.0
+        },
+        {
+          "x": 1755.0,
+          "y": 1275.0
+        },
+        {
+          "x": 3315.0,
+          "y": 1275.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Dyno",
+        "portName": "Rpm"
+      },
+      "id": "c41",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Mech_Rpm"
+      },
+      "waypoints": [
+        {
+          "x": 1650.0,
+          "y": 855.0
+        },
+        {
+          "x": 1650.0,
+          "y": 1335.0
+        },
+        {
+          "x": 3165.0,
+          "y": 1335.0
+        }
+      ],
+      "netLabel": "MECH_RPM"
+    },
+    {
+      "from": {
+        "nodeId": "Dyno",
+        "portName": "Elec_Rpm"
+      },
+      "id": "c42",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Elec_Rpm"
+      },
+      "waypoints": [
+        {
+          "x": 1665.0,
+          "y": 885.0
+        },
+        {
+          "x": 1665.0,
+          "y": 1350.0
+        },
+        {
+          "x": 3195.0,
+          "y": 1350.0
+        }
+      ],
+      "netLabel": "ELEC_RPM"
+    },
+    {
+      "from": {
+        "nodeId": "DcBus",
+        "portName": "I_Link"
+      },
+      "id": "c43",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Dclink_I_A"
+      },
+      "waypoints": [
+        {
+          "x": 720.0,
+          "y": 315.0
+        },
+        {
+          "x": 720.0,
+          "y": -345.0
+        },
+        {
+          "x": 3330.0,
+          "y": -345.0
+        }
+      ],
+      "netLabel": "DCLINK_I"
+    },
+    {
+      "from": {
+        "nodeId": "DcBus",
+        "portName": "P_Link"
+      },
+      "id": "c44",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Dclink_P_W"
+      },
+      "waypoints": [
+        {
+          "x": 735.0,
+          "y": 345.0
+        },
+        {
+          "x": 735.0,
+          "y": -300.0
+        },
+        {
+          "x": 3315.0,
+          "y": -300.0
+        }
+      ],
+      "netLabel": "DCLINK_P"
+    },
+    {
+      "from": {
+        "nodeId": "Knee",
+        "portName": "V_U_Raw"
+      },
+      "id": "c45",
+      "to": {
+        "nodeId": "VSenseU",
+        "portName": "V_True"
+      },
+      "waypoints": [
+        {
+          "x": 1205.0,
+          "y": 150.0
+        },
+        {
+          "x": 1205.0,
+          "y": -195.0
+        },
+        {
+          "x": 2775.0,
+          "y": -195.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "VSenseU",
+        "portName": "V_Meas"
+      },
+      "id": "c46",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Vu_V"
+      },
+      "waypoints": [
+        {
+          "x": 3240.0,
+          "y": 690.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Knee",
+        "portName": "V_V_Raw"
+      },
+      "id": "c47",
+      "to": {
+        "nodeId": "VSenseV",
+        "portName": "V_True"
+      },
+      "waypoints": [
+        {
+          "x": 1220.0,
+          "y": 180.0
+        },
+        {
+          "x": 1220.0,
+          "y": -210.0
+        },
+        {
+          "x": 2760.0,
+          "y": -210.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "VSenseV",
+        "portName": "V_Meas"
+      },
+      "id": "c48",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Vv_V"
+      },
+      "waypoints": [
+        {
+          "x": 3255.0,
+          "y": 900.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Knee",
+        "portName": "V_W_Raw"
+      },
+      "id": "c49",
+      "to": {
+        "nodeId": "VSenseW",
+        "portName": "V_True"
+      },
+      "waypoints": [
+        {
+          "x": 1235.0,
+          "y": 210.0
+        },
+        {
+          "x": 1235.0,
+          "y": -225.0
+        },
+        {
+          "x": 2745.0,
+          "y": -225.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "VSenseW",
+        "portName": "V_Meas"
+      },
+      "id": "c50",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Vw_V"
+      },
+      "waypoints": [
+        {
+          "x": 3270.0,
+          "y": 1110.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Loss",
+        "portName": "P_Plate"
+      },
+      "id": "c51",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "P_Heat_W"
+      },
+      "waypoints": [
+        {
+          "x": 2670.0,
+          "y": 495.0
+        },
+        {
+          "x": 2670.0,
+          "y": -285.0
+        },
+        {
+          "x": 3300.0,
+          "y": -285.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Draw",
+        "portName": "Out"
+      },
+      "id": "c52",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "P_Dc_W"
+      },
+      "waypoints": [
+        {
+          "x": 2625.0,
+          "y": 120.0
+        },
+        {
+          "x": 2625.0,
+          "y": -315.0
+        },
+        {
+          "x": 3285.0,
+          "y": -315.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Machine",
+        "portName": "P_Elec"
+      },
+      "id": "c53",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "P_ShaftEm_W"
+      },
+      "waypoints": [
+        {
+          "x": 1725.0,
+          "y": 270.0
+        },
+        {
+          "x": 1725.0,
+          "y": 1245.0
+        },
+        {
+          "x": 3345.0,
+          "y": 1245.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Fault",
+        "portName": "OpenGates"
+      },
+      "id": "c54",
+      "to": {
+        "nodeId": "Knee",
+        "portName": "OpenGates"
+      },
+      "waypoints": [
+        {
+          "x": 315.0,
+          "y": 390.0
+        },
+        {
+          "x": 315.0,
+          "y": -90.0
+        },
+        {
+          "x": 915.0,
+          "y": -90.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "nodeId": "Thermal",
+        "portName": "T_Meas3"
+      },
+      "id": "c_t3",
+      "to": {
+        "nodeId": "Meas",
+        "portName": "Temp_Inv3_C"
+      },
+      "waypoints": [
+        {
+          "x": 1770.0,
+          "y": 585.0
+        },
+        {
+          "x": 1770.0,
+          "y": 1290.0
+        },
+        {
+          "x": 3300.0,
+          "y": 1290.0
+        }
+      ]
+    }
+  ],
+  "name": "zero_dsr_zf75_7",
+  "nodeTypes": [
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "CurrentSensor",
+      "description": "Tamura-class hall current measurement: true phase current with offset + quantization to LSB and clamp (saturates to range; post-fault rails behavior lives in Plant.Fault.Point injection). Matches the recorded 0.07 A/LSB quantization at ±1200 A range.",
+      "displayName": "Hall Current Sensor (quantized)",
+      "domain": "",
+      "id": "Plant.Sensor.Hall",
+      "inlineCode": "/* Hall transducer: offset + LSB quantization + range clamp; on Rail >= 0.5\n * the recorded isolated-rail-collapse artifact (RailVal_A) is emitted\n * verbatim, bypassing quantization AND the range clamp (recorded artifact\n * values sit outside the healthy range, twin/plant _rail_val). */\nif (Rail >= 0.5) {\n    I_Meas = (double)RailVal_A;\n} else {\n    const double x = I_True + Offset_A;\n    /* nearest-even ties (rint): matches python round() at exact half-LSB */\n    I_Meas = fmin((double)Range_A, fmax(-(double)Range_A, rint(x / (double)Lsb_A) * (double)Lsb_A));\n}\n",
+      "inputPorts": [
+        {
+          "description": "True phase current, A.",
+          "direction": "input",
+          "name": "I_True",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": ">=0.5 emits the recorded isolated-rail-collapse artifact value (RailVal_A) verbatim, bypassing quantization and the range clamp.",
+          "direction": "input",
+          "name": "Rail",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Measured phase current, A.",
+          "direction": "output",
+          "name": "I_Meas",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Lsb_A": {
+          "description": "Quantization step, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Offset_A": {
+          "description": "DC offset, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "RailVal_A": {
+          "description": "Post rail-collapse artifact readout, A (recorded per-channel: U=+1390, V=-1250, W=+1180); emitted verbatim when Rail >= 0.5.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Range_A": {
+          "description": "Sensor range, ±A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "MeasOut",
+      "description": "Reserved external node collecting the platform-facing measurement view (the same names the generated controller code reads via the platform_api shim): raw phase currents, DC link + phase voltages, sin/cos encoder counts, temperatures, speeds, dclink instantaneous power/current, plus optional truth-side power diagnostics (twin harness tw_p_heat_w / tw_p_dc_w / tw_p_shaft_em_w). Port names mirror the twin's measurement keys verbatim and must not be renamed without a twin-side schema rev. Unwired channels collect NaN (unpopulated -> null in JSONL).",
+      "displayName": "Measurements (plant->controller)",
+      "domain": "",
+      "id": "Plant.Io.MeasOut",
+      "inlineCode": "",
+      "inputPorts": [
+        {
+          "description": "Measured phase current U, A.",
+          "direction": "input",
+          "name": "Iu_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Measured phase current V, A.",
+          "direction": "input",
+          "name": "Iv_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Measured phase current W, A.",
+          "direction": "input",
+          "name": "Iw_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Measured DC link voltage, V.",
+          "direction": "input",
+          "name": "Vdc_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured phase voltage U, V (MAX22530 view).",
+          "direction": "input",
+          "name": "Vu_V",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured phase voltage V.",
+          "direction": "input",
+          "name": "Vv_V",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Measured phase voltage W.",
+          "direction": "input",
+          "name": "Vw_V",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Encoder sin raw counts (optional: unpopulated rigs collect NaN->null).",
+          "direction": "input",
+          "name": "Enc_Sin",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Encoder cos raw counts (optional: unpopulated rigs collect NaN->null).",
+          "direction": "input",
+          "name": "Enc_Cos",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "NTC baseplate reading TS1, C. (optional: bare-rail rigs have no NTC strip; unwired -> NaN/null).",
+          "direction": "input",
+          "name": "Temp_Inv1_C",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        },
+        {
+          "description": "NTC baseplate reading TS2, C. (optional: bare-rail rigs have no NTC strip; unwired -> NaN/null).",
+          "direction": "input",
+          "name": "Temp_Inv2_C",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        },
+        {
+          "description": "NTC baseplate reading TS3, C (often null/unpopulated).",
+          "direction": "input",
+          "name": "Temp_Inv3_C",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Motor thermistor reading, C (often null).",
+          "direction": "input",
+          "name": "Temp_Motor_C",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Mechanical speed, RPM. (optional: no-shaft rigs; unwired -> NaN/null).",
+          "direction": "input",
+          "name": "Mech_Rpm",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical speed, RPM (mech*pp). (optional: no-shaft rigs; unwired -> NaN/null).",
+          "direction": "input",
+          "name": "Elec_Rpm",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "DC-link current (regen-feed sign), A.",
+          "direction": "input",
+          "name": "Dclink_I_A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "DC-link power (regen-feed sign), W.",
+          "direction": "input",
+          "name": "Dclink_P_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Truth: heat into the baseplate NTC chain (Loss.P_Plate), W.",
+          "direction": "input",
+          "name": "P_Heat_W",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Truth: power drawn from the link (machine air-gap + total losses), W.",
+          "direction": "input",
+          "name": "P_Dc_W",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Truth: machine air-gap electromechanical power (P_Elec), W.",
+          "direction": "input",
+          "name": "P_ShaftEm_W",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": []
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* Dyno constructor: seed the mechanical speed the host will later reassign. */\nRpm = Rpm0;\n",
+      "defaultName": "Dyno",
+      "description": "External dynamometer state: the host assigns the mechanical speed each step (from a scenario RPM series or a scripted command), this node converts it to electrical speed for the machine and to RPM views for telemetry.",
+      "displayName": "Shaft Dyno (external speed)",
+      "domain": "",
+      "id": "Plant.Shaft.Dyno",
+      "inlineCode": "/* Dyno: the host assigns state Rpm (or the default stands); convert. */\nOmega_Elec = Rpm * (2.0 * M_PI / 60.0) * Poles;\nElec_Rpm = Rpm * Poles;\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Electrical rotor speed, rad/s.",
+          "direction": "output",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Mechanical speed, RPM (assigned value).",
+          "direction": "output",
+          "name": "Rpm",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical speed, RPM (mech * poles).",
+          "direction": "output",
+          "name": "Elec_Rpm",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Poles": {
+          "description": "Pole PAIRS for elec conversion.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rpm0": {
+          "description": "Initial mechanical RPM until the host assigns otherwise (canonical initial-RPM name, shared with FreeInertia).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "AbsOmega",
+      "description": "Utility: emits |Omega_Elec / Poles|, the absolute mechanical speed the loss law expects.",
+      "displayName": "|omega_mech| (rad/s)",
+      "domain": "",
+      "id": "Plant.Util.AbsOmega",
+      "inlineCode": "Om = fabs(Omega_Elec / Poles);\n",
+      "inputPorts": [
+        {
+          "description": "Electrical rotor speed, rad/s.",
+          "direction": "input",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Absolute mechanical speed, rad/s.",
+          "direction": "output",
+          "name": "Om",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Poles": {
+          "description": "Pole PAIRS.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* PMSM constructor: seed the integrator state from parameters. */\nId = Id0;\nIq = Iq0;\nThetaE = Theta0;\n",
+      "defaultName": "Machine",
+      "description": "PM-assisted synchronous reluctance machine (PMa-SyRM, the Energica bike class): the complete hybrid form of the PMSM dq Euler - PM flux Lambda with strong saliency (Ld != Lq, the reluctance product (Ld-Lq)*Id*Iq is often the dominant share of torque). Physics is byte-equivalent to Plant.Machine.PmsmDq; the separate template keeps library users from mistaking the family for a non-salient PMSM. Defaults pack: PMa-SyRM tendencies (Lambda small, saliency ratio Lq/Ld > 1 in bike class or Ld/Lq > 1 reluctance-dominant - instance params decide).",
+      "displayName": "PM-SynRel machine (PMa-SyRM)",
+      "domain": "",
+      "id": "Plant.Machine.SynRelPmsm",
+      "inlineCode": "/* PMa-SyRM (hybrid PM-assisted synchronous reluctance) dq-Euler integration.\n * Physics is byte-equivalent to Plant.Machine.PmsmDq (twin/plant/plant.py\n * semantics): the hybrid is the standard PM-in-a-salient-frame form; the\n * reluctance product (Ld-Lq)*Id*Iq carries most of the torque in SyRM class\n * machines. This header comment only is different - never edit the equations\n * away from PmsmDq's.\n * Runtime symbols: only parameters/substituted ports and `DtPlant` (the host\n * substep). `OpenGates` is an optional input port (default 0).\n *\n * Ordering rules (validated by twin/plantgraph/proof_bench_parity.py):\n *   - ALL derivatives are computed from the PRE-update state, then assigned\n *     (assigning Id before computing dIq breaks bit-comparability), and\n *   - abc/torque outputs are rebuilt from the FINAL (id, iq, theta) of the\n *     substep (the plant measurement view is instantaneous with the\n *     reported state), and\n *   - P_Elec is zero when the gates are open (the collapse returns energy\n *     via the machine state decay itself, not the air-gap power term).\n */\n\ndouble ct = cos((double)ThetaE);\ndouble st = sin((double)ThetaE);\n\ndouble valpha = (2.0 / 3.0) * (V_U - 0.5 * (V_V + V_W));\ndouble vbeta  = (2.0 / 3.0) * (M_SQRT3 / 2.0) * (V_V - V_W);\ndouble vd = ct * valpha + st * vbeta;\ndouble vq = -st * valpha + ct * vbeta;\n\nif (OpenGates >= 0.5) {\n    /* six-switch-open: antiparallel diodes only conduct toward the link and\n     * only when EMF overcomes it; the twin models the whole open state as an\n     * exponential freewheel collapse (~1-2 ms), matching recorded telemetry\n     * windows of the gate-kill tests (20/21). */\n    double tau_open = 2.0e-3;\n    Id -= Id * DtPlant / tau_open;\n    Iq -= Iq * DtPlant / tau_open;\n} else {\n    double did = (vd - Rs * Id + Omega_Elec * Lq * Iq) / Ld;\n    double diq = (vq - Rs * Iq - Omega_Elec * (Ld * Id + Lambda)) / Lq;\n    Id += did * DtPlant;\n    Iq += diq * DtPlant;\n}\nThetaE = fmod((double)ThetaE + Omega_Elec * DtPlant, 2.0 * M_PI);\nif (ThetaE < 0.0) ThetaE += 2.0 * M_PI;\n\n// physical state rails (matches twin/plant.py)\nId = fmin(2000.0, fmax(-2000.0, Id));\nIq = fmin(2000.0, fmax(-2000.0, Iq));\n\nTorque = 1.5 * Poles * (Lambda * Iq + (Ld - Lq) * Id * Iq);\nP_Elec = (OpenGates >= 0.5) ? 0.0 : Torque * Omega_Elec / Poles;\n\n// abc outputs from the FINAL (id, iq, theta) this step (sensor instant)\ndouble ct2 = cos((double)ThetaE);\ndouble st2 = sin((double)ThetaE);\nI_U = ct2 * Id - st2 * Iq;\nI_V = cos((double)ThetaE - 2.0 * M_PI / 3.0) * Id - sin((double)ThetaE - 2.0 * M_PI / 3.0) * Iq;\nI_W = -I_U - I_V;\n",
+      "inputPorts": [
+        {
+          "description": "Phase U winding voltage (post-distortion), V.",
+          "direction": "input",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase V winding voltage, V.",
+          "direction": "input",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase W winding voltage, V.",
+          "direction": "input",
+          "name": "V_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Electrical rotor speed, rad/s, from Plant.Shaft.* nodes.",
+          "direction": "input",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": ">=0.5 routes the machine into the six-switch-open freewheel collapse (gate-reset / power-cut / PWM gate-off); <0.5 = live. Defaults to 0 when unconnected.",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Phase U current, A (peak convention).",
+          "direction": "output",
+          "name": "I_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase V current, A.",
+          "direction": "output",
+          "name": "I_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase W current, A.",
+          "direction": "output",
+          "name": "I_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "d-axis current, A.",
+          "direction": "output",
+          "name": "Id",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "q-axis current, A.",
+          "direction": "output",
+          "name": "Iq",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Electrical rotor angle, rad.",
+          "direction": "output",
+          "name": "ThetaE",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electromechanical torque, N m.",
+          "direction": "output",
+          "name": "Torque",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical air-gap power drawn from/into the winding, W (positive = absorbed).",
+          "direction": "output",
+          "name": "P_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Id0": {
+          "description": "Initial d current, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Iq0": {
+          "description": "Initial q current, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lambda": {
+          "description": "PM flux linkage, Wb (small vs classic IPM - SyRM characteristics are saliency-driven).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ld": {
+          "description": "d-axis inductance, H (PMa-SyRM saliency: differs strongly from Lq).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lq": {
+          "description": "q-axis inductance, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Pole PAIRS.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rs": {
+          "description": "Winding resistance per phase, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Theta0": {
+          "description": "Initial electrical angle, rad.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* PMSM constructor: seed the integrator state from parameters. */\nId = Id0;\nIq = Iq0;\nThetaE = Theta0;\n",
+      "defaultName": "Machine",
+      "description": "Permanent-magnet synchronous machine in the rotor dq frame: integrates (vd, vq) winding voltages into (id, iq) currents, emits electromechanical torque and abc phase currents, plus the electrical rotor angle the encoder sensor consumes. When the OpenGates input is driven >= 0.5 (by a Plant.Fault.Point node) the machine enters the six-switch-open freewheel collapse.",
+      "displayName": "PMSM (dq Euler)",
+      "domain": "",
+      "id": "Plant.Machine.PmsmDq",
+      "inlineCode": "/* PMSM dq-Euler integration (exactly twin/plant/plant.py semantics).\n * Runtime symbols: only parameters/substituted ports and `DtPlant` (the host\n * substep). `OpenGates` is an optional input port (default 0).\n *\n * Ordering rules (validated by twin/plantgraph/proof_bench_parity.py):\n *   - ALL derivatives are computed from the PRE-update state, then assigned\n *     (assigning Id before computing dIq breaks bit-comparability), and\n *   - abc/torque outputs are rebuilt from the FINAL (id, iq, theta) of the\n *     substep (the plant measurement view is instantaneous with the\n *     reported state), and\n *   - P_Elec is zero when the gates are open (the collapse returns energy\n *     via the machine state decay itself, not the air-gap power term).\n */\n\ndouble ct = cos((double)ThetaE);\ndouble st = sin((double)ThetaE);\n\ndouble valpha = (2.0 / 3.0) * (V_U - 0.5 * (V_V + V_W));\ndouble vbeta  = (2.0 / 3.0) * (M_SQRT3 / 2.0) * (V_V - V_W);\ndouble vd = ct * valpha + st * vbeta;\ndouble vq = -st * valpha + ct * vbeta;\n\nif (OpenGates >= 0.5) {\n    /* six-switch-open: antiparallel diodes only conduct toward the link and\n     * only when EMF overcomes it; the twin models the whole open state as an\n     * exponential freewheel collapse (~1-2 ms), matching recorded telemetry\n     * windows of the gate-kill tests (20/21). */\n    double tau_open = 2.0e-3;\n    Id -= Id * DtPlant / tau_open;\n    Iq -= Iq * DtPlant / tau_open;\n} else {\n    double did = (vd - Rs * Id + Omega_Elec * Lq * Iq) / Ld;\n    double diq = (vq - Rs * Iq - Omega_Elec * (Ld * Id + Lambda)) / Lq;\n    Id += did * DtPlant;\n    Iq += diq * DtPlant;\n}\nThetaE = fmod((double)ThetaE + Omega_Elec * DtPlant, 2.0 * M_PI);\nif (ThetaE < 0.0) ThetaE += 2.0 * M_PI;\n\n// physical state rails (matches twin/plant.py)\nId = fmin(2000.0, fmax(-2000.0, Id));\nIq = fmin(2000.0, fmax(-2000.0, Iq));\n\nTorque = 1.5 * Poles * (Lambda * Iq + (Ld - Lq) * Id * Iq);\nP_Elec = (OpenGates >= 0.5) ? 0.0 : Torque * Omega_Elec / Poles;\n\n// abc outputs from the FINAL (id, iq, theta) this step (sensor instant)\ndouble ct2 = cos((double)ThetaE);\ndouble st2 = sin((double)ThetaE);\nI_U = ct2 * Id - st2 * Iq;\nI_V = cos((double)ThetaE - 2.0 * M_PI / 3.0) * Id - sin((double)ThetaE - 2.0 * M_PI / 3.0) * Iq;\nI_W = -I_U - I_V;\n",
+      "inputPorts": [
+        {
+          "description": "Phase U winding voltage (post-distortion), V.",
+          "direction": "input",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase V winding voltage, V.",
+          "direction": "input",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase W winding voltage, V.",
+          "direction": "input",
+          "name": "V_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Electrical rotor speed, rad/s, from Plant.Shaft.* nodes.",
+          "direction": "input",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": ">=0.5 routes the machine into the six-switch-open freewheel collapse (gate-reset / power-cut / PWM gate-off); <0.5 = live. Defaults to 0 when unconnected.",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Phase U current, A (peak convention).",
+          "direction": "output",
+          "name": "I_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase V current, A.",
+          "direction": "output",
+          "name": "I_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase W current, A.",
+          "direction": "output",
+          "name": "I_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "d-axis current, A.",
+          "direction": "output",
+          "name": "Id",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "q-axis current, A.",
+          "direction": "output",
+          "name": "Iq",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Electrical rotor angle, rad.",
+          "direction": "output",
+          "name": "ThetaE",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electromechanical torque, N m.",
+          "direction": "output",
+          "name": "Torque",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical air-gap power drawn from/into the winding, W (positive = absorbed).",
+          "direction": "output",
+          "name": "P_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Id0": {
+          "description": "Initial d current, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Iq0": {
+          "description": "Initial q current, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lambda": {
+          "description": "PM flux linkage, Wb.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ld": {
+          "description": "d-axis inductance, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lq": {
+          "description": "q-axis inductance, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Pole PAIRS.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rs": {
+          "description": "Winding resistance per phase, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Theta0": {
+          "description": "Initial electrical angle, rad.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Fault",
+      "description": "Host-injected named fault flag. The scenario/event timeline raises this node's named state ('OpenGates', 'EncoderDisconnect', 'SensorRail', ...) and downstream plant nodes read it. Optional multiple outputs for common fault classes. Fault flags are addressed by OUTPUT PORT name, broadcast to all Fault.Point nodes.",
+      "displayName": "Fault Injection Point",
+      "domain": "",
+      "id": "Plant.Fault.Point",
+      "inlineCode": "/* Host: assigns this node's states pre-step per the scenario timeline\n * (RaiseFault(name, active)). Nothing here - emitter wires the state as\n * extern-writable. */\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "1 = six-switch open (gate reset / power cut / PWM gate-off).",
+          "direction": "output",
+          "name": "OpenGates",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "1 = sin/cos encoder disconnected (counts rail).",
+          "direction": "output",
+          "name": "EncoderDisconnect",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "1 = isolated current-sensor rail collapse (phantom ±range).",
+          "direction": "output",
+          "name": "SensorRail",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Hypot",
+      "description": "Utility: emits the dq-current magnitude the loss law needs.",
+      "displayName": "hypot(id, iq)",
+      "domain": "",
+      "id": "Plant.Util.Hypot",
+      "inlineCode": "Out = sqrt(A * A + B * B);\n",
+      "inputPorts": [
+        {
+          "description": "",
+          "direction": "input",
+          "name": "A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "",
+          "direction": "input",
+          "name": "B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Inverter",
+      "description": "Three-phase averaged power stage: converts duties (du/dv/dw percent, SVPWM convention) at the DC link into phase-to-neutral-mid voltages with the IGBT knee, deadtime distortion and Rce drop. Sign error convention sign(i)*(v_ce0 + td*f_sw*vdc + r_ce*|i_p|).",
+      "displayName": "Inverter (knee + deadtime)",
+      "domain": "",
+      "id": "Plant.Inverter.Knee3ph",
+      "inlineCode": "/* Duty + vdc -> phase-to-neutral-mid voltages with IGBT knee + deadtime +\n * Rce drop (exactly twin/plant/plant.py convention):\n *   leg switching node -> phase-to-mid: (d - d_avg)/50 * vdc\n *   error sign(i) * (v_ce0 + TdOverhead*vdc + r_ce*|i|) subtracted per phase.\n */\n\ndouble d_avg = (Du + Dv + Dw) / 3.0;\ndouble vu_raw = (Du - d_avg) / 50.0 * Vdc;\ndouble vv_raw = (Dv - d_avg) / 50.0 * Vdc;\ndouble vw_raw = (Dw - d_avg) / 50.0 * Vdc;\n\n/* de-energized stage: legs float, all voltage views go to zero (the\n * twin's convention on gate kill) */\nif (OpenGates >= 0.5) {\n    vu_raw = vv_raw = vw_raw = 0.0;\n}\n\n/* pre-distortion command volts: the phase-ADC-visible view (the sensor\n * never sees the knee/deadtime/Rce error applied below) */\nV_U_Raw = vu_raw;\nV_V_Raw = vv_raw;\nV_W_Raw = vw_raw;\n\nauto phase = [&](double v_cmd, double i_p) -> double {\n    if (fabs(i_p) < 1e-3) return v_cmd;\n    double s_i = i_p > 0.0 ? 1.0 : -1.0;\n    return v_cmd - s_i * (Vce0_V + TdOverhead * Vdc + Rce_Ohm * fabs(i_p));\n};\n\nif (OpenGates >= 0.5) {\n    V_U = V_V = V_W = 0.0;\n} else {\n    V_U = phase(vu_raw, I_U);\n    V_V = phase(vv_raw, I_V);\n    V_W = phase(vw_raw, I_W);\n}\n",
+      "inputPorts": [
+        {
+          "description": "Phase U duty, percent (0-100, 50 = zero vector).",
+          "direction": "input",
+          "name": "Du",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase V duty, percent.",
+          "direction": "input",
+          "name": "Dv",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase W duty, percent.",
+          "direction": "input",
+          "name": "Dw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "DC link voltage, V.",
+          "direction": "input",
+          "name": "Vdc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase current, A (for sign distortion; from machine output).",
+          "direction": "input",
+          "name": "I_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase current, A.",
+          "direction": "input",
+          "name": "I_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase current, A.",
+          "direction": "input",
+          "name": "I_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": ">=0.5: power stage de-energized, all phase voltage outputs go to zero (leg nodes float; the twin's phase-ADC convention).",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Phase-to-mid winding voltage, V.",
+          "direction": "output",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "V_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Pre-distortion duty-mapped phase voltage, V (the MAX22530 phase-sense view; knee/deadtime/Rce error is invisible to that ADC).",
+          "direction": "output",
+          "name": "V_U_Raw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "V_V_Raw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "V_W_Raw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Rce_Ohm": {
+          "description": "Effective series resistance per device path incl. lead, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "TdOverhead": {
+          "description": "Dimensionless deadtime distortion factor: dt_dead * f_sw (e.g. 1e-6*5000 = 0.005).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Vce0_V": {
+          "description": "IGBT/effective knee forward drop, V.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Converter",
+      "description": "Synchronous two-quadrant DC/DC buck/boost cell: average model at the plant timescale (switching ripple below our dt resolution, ignored). The inductor integrates from the duty-windowed effective leg voltage with the inverter-class knee + deadtime + Rce distortion on the winding side; the average draw from the high bus is duty * i_L and handles buck and boost directions by current sign. OpenGates freewheel-collapses with the family 2 ms evidence time constant. Duty is a controller-side external (host-assigned per control period; unwired zero-binds for open-loop scripts via set_input / PlantSetInput / rte sim 'plant-input').",
+      "displayName": "Buck/Boost DC/DC (2-quadrant sync)",
+      "domain": "",
+      "id": "Plant.DcDc.BuckBoost2Q",
+      "inlineCode": "/* Two-quadrant buck/boost cell (average model, mirrors the python\n * reference): effective leg voltage = duty * V_High with the knee-class\n * distortion, inductor integrates toward the low side minus winding Rs.\n * Outputs publish from the decaying inductor state even while gates are\n * open. `DtPlant` + ports + parameters are the only runtime symbols. */\n\ndouble duty = fmin(100.0, fmax(0.0, (double)Duty)) / 100.0;\n\nif (OpenGates >= 0.5) {\n    double tau_open = 2.0e-3;\n    I_L -= I_L * DtPlant / tau_open;\n} else {\n    double v_sw = duty * (double)V_High;\n    double i = I_L;\n    if (fabs(i) >= 1e-3) {\n        double s_i = (i > 0.0) ? 1.0 : -1.0;\n        v_sw -= s_i * ((double)Vce0_V + (double)TdOverhead * (double)V_High\n                       + (double)Rce_Ohm * fabs(i));\n    }\n    I_L += (v_sw - (double)V_Low - (double)Rs_Winding * i) / (double)L_H * DtPlant;\n    I_L = fmin(2000.0, fmax(-2000.0, I_L));\n}\n\nI_High = duty * I_L;\nP_High = (double)V_High * I_High;\nP_Draw = P_High;\nI_Low = I_L;\nP_Low = (double)V_Low * I_Low;\nP_DrawLow = -P_Low;\n",
+      "inputPorts": [
+        {
+          "description": "High-side switch on-time fraction, percent (0-100). Controller-side external (unwired zero-binds; script per period via set_input).",
+          "direction": "input",
+          "name": "Duty",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "High-side bus voltage, V.",
+          "direction": "input",
+          "name": "V_High",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Low-side bus/battery voltage, V.",
+          "direction": "input",
+          "name": "V_Low",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": ">=0.5 freewheel-collapses the inductor; <0.5 = live.",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Inductor current, A (signed: positive = high -> low).",
+          "direction": "output",
+          "name": "I_L",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Average draw from the high bus, A (= duty * i_L).",
+          "direction": "output",
+          "name": "I_High",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Current into the low side, A (= i_L).",
+          "direction": "output",
+          "name": "I_Low",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Power leaving the high bus, W (= V_High * I_High; DEcBus P_Draw sink for the high side).",
+          "direction": "output",
+          "name": "P_High",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Power into the low side, W (= V_Low * I_Low).",
+          "direction": "output",
+          "name": "P_Low",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Alias of P_High for DcBus wiring.",
+          "direction": "output",
+          "name": "P_Draw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Alias of -P_Low for direct-wiring an LV-side DcBus P_Draw.",
+          "direction": "output",
+          "name": "P_DrawLow",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "L_H": {
+          "description": "Phase inductor, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rce_Ohm": {
+          "description": "Effective switch-path resistance, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rs_Winding": {
+          "description": "Winding+trace series resistance, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "TdOverhead": {
+          "description": "Deadtime distortion overhead (td_dead * f_sw), dimensionless.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Vce0_V": {
+          "description": "Effective switch knee forward drop, V.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* SPMSM constructor: seed the integrator state from parameters. */\nId = Id0;\nIq = Iq0;\nThetaE = Theta0;\n",
+      "defaultName": "Machine",
+      "description": "Surface permanent-magnet synchronous machine: non-salient dq Euler with a single per-phase inductance L_H (Ld == Lq by construction, so no reluctance term can creep in - torque is strictly 1.5*pp*Lambda*iq). This is the template to reach for when the motor is a SPMSM/SMPM; for salient machines use PmsmDq (IPM) or SynRelPmsm (PMa-SyRM). Physics mirrors the SPMSM subtree of twin/plant/plant.py with Ld == Lq.",
+      "displayName": "SPMSM (surface, non-salient)",
+      "domain": "",
+      "id": "Plant.Machine.SpmsmDq",
+      "inlineCode": "/* SPMSM dq-Euler (non-salient): identical form to Plant.Machine.PmsmDq with\n * Ld == Lq == L_H, torque strictly 1.5*pp*Lambda*iq. Only `DtPlant` + ports\n * + parameters are runtime symbols; ordering rules per the README ground\n * rules (derivatives pre-update; abc rebuilt from the final state). */\n\ndouble ct = cos((double)ThetaE);\ndouble st = sin((double)ThetaE);\n\ndouble valpha = (2.0 / 3.0) * (V_U - 0.5 * (V_V + V_W));\ndouble vbeta  = (2.0 / 3.0) * (M_SQRT3 / 2.0) * (V_V - V_W);\ndouble vd = ct * valpha + st * vbeta;\ndouble vq = -st * valpha + ct * vbeta;\n\nif (OpenGates >= 0.5) {\n    /* six-switch-open freewheel collapse (~1-2 ms evidence window) */\n    double tau_open = 2.0e-3;\n    Id -= Id * DtPlant / tau_open;\n    Iq -= Iq * DtPlant / tau_open;\n} else {\n    double did = (vd - Rs * Id + Omega_Elec * L_H * Iq) / L_H;\n    double diq = (vq - Rs * Iq - Omega_Elec * (L_H * Id + Lambda)) / L_H;\n    Id += did * DtPlant;\n    Iq += diq * DtPlant;\n}\nThetaE = fmod((double)ThetaE + Omega_Elec * DtPlant, 2.0 * M_PI);\nif (ThetaE < 0.0) ThetaE += 2.0 * M_PI;\n\nId = fmin(2000.0, fmax(-2000.0, Id));\nIq = fmin(2000.0, fmax(-2000.0, Iq));\n\nTorque = 1.5 * Poles * Lambda * Iq;    // SPMSM: no reluctance term exists\nP_Elec = (OpenGates >= 0.5) ? 0.0 : Torque * Omega_Elec / Poles;\n\ndouble ct2 = cos((double)ThetaE);\ndouble st2 = sin((double)ThetaE);\nI_U = ct2 * Id - st2 * Iq;\nI_V = cos((double)ThetaE - 2.0 * M_PI / 3.0) * Id - sin((double)ThetaE - 2.0 * M_PI / 3.0) * Iq;\nI_W = -I_U - I_V;\n",
+      "inputPorts": [
+        {
+          "description": "Phase U winding voltage (post-distortion), V.",
+          "direction": "input",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase V winding voltage, V.",
+          "direction": "input",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase W winding voltage, V.",
+          "direction": "input",
+          "name": "V_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Electrical rotor speed, rad/s, from Plant.Shaft.* nodes.",
+          "direction": "input",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": ">=0.5 routes the machine into the six-switch-open freewheel collapse; <0.5 = live. Defaults to 0 when unconnected.",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Phase U current, A (peak convention).",
+          "direction": "output",
+          "name": "I_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase V current, A.",
+          "direction": "output",
+          "name": "I_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase W current, A.",
+          "direction": "output",
+          "name": "I_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "d-axis current, A.",
+          "direction": "output",
+          "name": "Id",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "q-axis current, A.",
+          "direction": "output",
+          "name": "Iq",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Electrical rotor angle, rad.",
+          "direction": "output",
+          "name": "ThetaE",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electromechanical torque, N m.",
+          "direction": "output",
+          "name": "Torque",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical air-gap power drawn from/into the winding, W (positive = absorbed; zero while gates are open).",
+          "direction": "output",
+          "name": "P_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Id0": {
+          "description": "Initial d current, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Iq0": {
+          "description": "Initial q current, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "L_H": {
+          "description": "Per-phase inductance, H (identical in d and q axes for surface machines).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lambda": {
+          "description": "PM flux linkage, Wb.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Pole PAIRS.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rs": {
+          "description": "Winding resistance per phase, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Theta0": {
+          "description": "Initial electrical angle, rad.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* DC bus constructor. */\nVdc = V0_V;\nI_Link = 0.0;\nP_Link = 0.0;\n",
+      "defaultName": "DcBus",
+      "description": "DC-link voltage state: electrolytic+film link capacitor with a bench supply model (CV with series resistance, source/sink current limits, optional CV clamp. Bus integrates C dv/dt = i_supply - i_inverter.",
+      "displayName": "DC Bus + Bench Supply",
+      "domain": "",
+      "id": "Plant.DcBus",
+      "inlineCode": "/* DC bus integrator (exactly twin/plant/plant.py bench-supply semantics):\n *   i_sup = (v_set - v)/r_s, clamped to [sink, i_limit]; optional CV clamp\n *   branch sinks above cv_clamp_v.\n *   C dv/dt = i_sup - i_inv;  i_inv = P_Draw / max(vdc, 1).\n *   physical rails clamp keeps solver sane at supply-collapse boundaries.\n */\n\ndouble r_s = fmax((double)SeriesR_mOhm / 1e3, 1e-9);\ndouble i_sup = ((double)VSet_V - Vdc) / r_s;\ndouble lo = (CanSink >= 0.5) ? -SinkLimit_A : 0.0;\ndouble hi = ILimit_A;\nif (CvClamp_V > 0.0 && Vdc > CvClamp_V) {\n    i_sup = -fmin((Vdc - (double)CvClamp_V) / r_s, (double)CvClampSink_A);\n} else {\n    i_sup = fmax(lo, fmin(i_sup, hi));\n}\ndouble i_inv = P_Draw / fmax((double)Vdc, 1.0);\nVdc += (i_sup - i_inv) / (double)Cap_F * DtPlant;\nVdc = fmin(fmax((double)Vdc, 0.5), 2000.0);\n\n// regen-feed convention: positive = into the link (matches recorded dclink_*;\n// twin/plant.py emits -p_dc / -p_dc/max(vdc,1) against the updated bus)\nP_Link = -P_Draw;\nI_Link = -P_Draw / fmax((double)Vdc, 1.0);\n",
+      "inputPorts": [
+        {
+          "description": "Total electrical power drawn from the link, W (machine air-gap + losses, positive = leaves the link).",
+          "direction": "input",
+          "name": "P_Draw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Bus voltage, V.",
+          "direction": "output",
+          "name": "Vdc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Current INTO the link, A (regen-feed convention, matches recordings).",
+          "direction": "output",
+          "name": "I_Link",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Power INTO the link, W (regen-feed convention).",
+          "direction": "output",
+          "name": "P_Link",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "CanSink": {
+          "description": "1 = sink path enabled.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Cap_F": {
+          "description": "Link capacitance, F.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "CvClampSink_A": {
+          "description": "CV clamp sink limit, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "CvClamp_V": {
+          "description": "Optional CV clamp setpoint, V (Chroma). 0 = disabled.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "ILimit_A": {
+          "description": "Source current limit, A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "SeriesR_mOhm": {
+          "description": "Bench supply effective series resistance, milliohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "SinkLimit_A": {
+          "description": "Sink current limit (down-programmer / Sorensen class), A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "V0_V": {
+          "description": "Initial bus voltage, V.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "VSet_V": {
+          "description": "Bench CV setpoint, V.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Sum",
+      "description": "Utility summer: Out = A + B + C (C optional, zero-bound default). Generic math node for energy-balance joins (e.g. machine air-gap power + total loss -> DcBus draw).",
+      "displayName": "Sum (any-arity by convention of 3)",
+      "domain": "",
+      "id": "Plant.Util.Sum",
+      "inlineCode": "Out = A + B + C;\n",
+      "inputPorts": [
+        {
+          "description": "",
+          "direction": "input",
+          "name": "A",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "",
+          "direction": "input",
+          "name": "B",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "",
+          "direction": "input",
+          "name": "C",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "",
+          "direction": "output",
+          "name": "Out",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* Two-node thermal constructor. */\nT1 = T1_0_C;\nT2 = T2_0_C;\n",
+      "defaultName": "Thermal",
+      "description": "Baseplate thermal plant as a two-node Cauer chain (plate+NTC -> heatsink mass -> ambient) plus the twin's NTC spot-offset view: physically the two NTC channels sit at different gasket/neighborhood spots; each channel's reported temperature is the plate node plus its own offset.",
+      "displayName": "Thermal (two-node Cauer)",
+      "domain": "",
+      "id": "Plant.Thermal.TwoNodeCauer",
+      "inlineCode": "/* Two-node Cauer chain + NTC spot-offset view (twin/plant semantics):\n *   dT1 = (P - (T1-T2)/R12) / C1\n *   dT2 = ((T1-T2)/R12 - (T2-TAmb)/R2) / C2\n */\nT1 += (P_Heat - (T1 - T2) / (double)R12_KW) / (double)C1_JK * DtPlant;\nT2 += ((T1 - T2) / (double)R12_KW - (T2 - (double)TAmb_C) / (double)R2_KW)\n      / (double)C2_JK * DtPlant;\n\nT_Plate = T1;\nT_Sink = T2;\nT_Meas1 = T1 + Off1;\n/* ch2 NTC law (twin/plant/plant.py idle-warm artifact):\n *   t_plate + Off2Idle - Off2Slope * max(0, t_plate - (t_amb + Off2Knee)) */\nT_Meas2 = T1 + Off2Idle\n        - (double)Off2Slope * fmax(0.0, T1 - ((double)TAmb_C + (double)Off2Knee_C));\n/* ch3: constant third spot (three-strip assemblies like the DSR bike rig) */\nT_Meas3 = T1 + Off3;\n",
+      "inputPorts": [
+        {
+          "description": "Heat power into the plate node, W.",
+          "direction": "input",
+          "name": "P_Heat",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Plate/sensor-node temperature, C.",
+          "direction": "output",
+          "name": "T_Plate",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Heatsink mass temperature, C.",
+          "direction": "output",
+          "name": "T_Sink",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "NTC channel 1 readout (plate + off1), C.",
+          "direction": "output",
+          "name": "T_Meas1",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "NTC channel 2 readout (plate + off2), C.",
+          "direction": "output",
+          "name": "T_Meas2",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "NTC channel 3 readout (plate + Off3), C - populate for assemblies with three NTC strips (e.g. the DSR bike rig).",
+          "direction": "output",
+          "name": "T_Meas3",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "temperature"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "C1_JK": {
+          "description": "Plate thermal capacitance, J/K.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "C2_JK": {
+          "description": "Sink thermal capacitance, J/K.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Off1": {
+          "description": "NTC ch1 spot offset, C.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Off2Idle": {
+          "description": "NTC ch2 idle spot offset, C (recorded +3.4 at idle).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Off2Knee_C": {
+          "description": "offset knee above ambient, C (4.9 anchor).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Off2Slope": {
+          "description": "ch2 load-relief slope, K per K of plate rise above the knee (recorded 0.268); 0 = constant offset.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Off3": {
+          "description": "NTC ch3 spot offset, C (constant; assemblies with a third sensor strip).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "R12_KW": {
+          "description": "Plate->sink thermal resistance, K/W.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "R2_KW": {
+          "description": "Sink->ambient thermal resistance, K/W.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "T1_0_C": {
+          "description": "Initial plate temperature, C.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "T2_0_C": {
+          "description": "Initial sink temperature, C.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "TAmb_C": {
+          "description": "Ambient temperature, C.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* Free shaft constructor. */\nRpm = Rpm0;\n",
+      "defaultName": "FreeShaft",
+      "description": "Free-spinning shaft: J d(omega)/dt = Te - B*omega. Used when no dyno holds the shaft (V/Hz bringup / no-load runs, free runaway after faults).",
+      "displayName": "Shaft Free Inertia (J/B)",
+      "domain": "",
+      "id": "Plant.Shaft.FreeInertia",
+      "inlineCode": "/* Free shaft inertia: J dot(omega_mech)/dt = Torque - B*omega_mech\n * (state in RPM for readability; the table-lookup math: d(Rpm)/dt =\n * (Te - B*(K*Rpm)) / (J*K)+. */\nconst double K = 2.0 * M_PI / 60.0;\nRpm += ((double)Torque - (double)B * (K * Rpm)) / ((double)J) * (DtPlant / K);\nOmega_Elec = Rpm * K * Poles;\nElec_Rpm = Rpm * Poles;\n",
+      "inputPorts": [
+        {
+          "description": "Electromechanical torque, N m.",
+          "direction": "input",
+          "name": "Torque",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Electrical speed, rad/s.",
+          "direction": "output",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Mechanical speed, RPM.",
+          "direction": "output",
+          "name": "Rpm",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Electrical speed, RPM (mech*pp).",
+          "direction": "output",
+          "name": "Elec_Rpm",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "B": {
+          "description": "Viscous friction, N m s.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "J": {
+          "description": "Inertia, kg m2.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Pole PAIRS for elec conversion.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rpm0": {
+          "description": "Initial mechanical RPM.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* Induction constructor: all four dq states seed at zero. */\nIsd = 0.0;\nIsq = 0.0;\nIrd = 0.0;\nIrq = 0.0;\n",
+      "defaultName": "Induction",
+      "description": "Three-phase induction machine (5th-order coupled-L) solved in the stationary frame (wf=0) for numerical robustness at line frequency - control-agnostic model that serves both scalar (V/Hz) and vector/FOC drive; slip enters via machine speed; air-gap power returns at the command (synchronous) speed on the Omega_Cmd input. Matches twin/plant/induction.py.",
+      "displayName": "Induction Machine (stationary frame)",
+      "domain": "",
+      "id": "Plant.Machine.InductDq",
+      "inlineCode": "/* Induction machine in the STATIONARY frame (wf = 0): exactly\n * twin/plant/induction.py. Coupled-L solve per substep:\n *   psi_sd = lsg*isd + Lm*ird ; psi_rd = Lm*isd + lrg*ird  (same in q)\n *   [lsg Lm; Lm lrg][did dir] = [vs - Rs*is + wf*psi_other ...]\n *   w_slip = wf - Omega_M  (frame - machine elec speed)\n *   Te   = 1.5 * pp * (psi_rq*Isd - psi_rd*Isq)\n * With a 0-frame, the dq state IS stationary abc: I_U/alpha = Isd directly.\n */\n\ndouble lsg = (double)Lls + (double)Lm;\ndouble lrg = (double)Llr + (double)Lm;\ndouble det = lsg * lrg - (double)Lm * (double)Lm;\n\ndouble valpha = (2.0 / 3.0) * (V_U - 0.5 * (V_V + V_W));\ndouble vbeta  = (2.0 / 3.0) * ((M_SQRT3 / 2.0) * (V_V - V_W));\ndouble vd = valpha;\ndouble vq = vbeta;\n\ndouble wf = 0.0;                              // stationary frame\ndouble w_slip = wf - (double)Omega_Elec;      // frame - machine elec speed\n\ndouble psi_sd = lsg * Isd + (double)Lm * Ird;\ndouble psi_sq = lsg * Isq + (double)Lm * Irq;\ndouble psi_rd = (double)Lm * Isd + lrg * Ird;\ndouble psi_rq = (double)Lm * Isq + lrg * Irq;\n\ndouble bd0 = vd - (double)Rs * Isd + wf * psi_sq;\ndouble bd1 = -(double)Rr * Ird + w_slip * psi_rq;\ndouble bq0 = vq - (double)Rs * Isq - wf * psi_sd;\ndouble bq1 = -(double)Rr * Irq - w_slip * psi_rd;\n\ndouble did  = (bd0 * lrg - (double)Lm * bd1) / det;\ndouble didr = (lsg * bd1 - (double)Lm * bd0) / det;\ndouble diq  = (bq0 * lrg - (double)Lm * bq1) / det;\ndouble diqr = (lsg * bq1 - (double)Lm * bq0) / det;\n\nif (OpenGates >= 0.5) {\n    /* six-switch-open freewheel collapse (twin/plant) */\n    double tau_open = 2.0e-3;\n    Isd -= Isd * DtPlant / tau_open;\n    Isq -= Isq * DtPlant / tau_open;\n    Ird -= Ird * DtPlant / tau_open;\n    Irq -= Irq * DtPlant / tau_open;\n} else {\n    Isd += did * DtPlant;\n    Ird += didr * DtPlant;\n    Isq += diq * DtPlant;\n    Irq += diqr * DtPlant;\n}\n\n// physical rails\nIsd = fmin(2000.0, fmax(-2000.0, Isd));\nIsq = fmin(2000.0, fmax(-2000.0, Isq));\nIrd = fmin(2000.0, fmax(-2000.0, Ird));\nIrq = fmin(2000.0, fmax(-2000.0, Irq));\n\nTorque = 1.5 * Poles * (psi_rd * Isq - psi_rq * Isd);\n// air-gap (link-side) power = Te * syn speed: nomenclature plant.py; the\n// synchronous speed is a controller-side external (unwired = 0, matching\n// the python zero-binding), gated to zero while gates are open\nP_Elec = (OpenGates >= 0.5) ? 0.0 : Torque * Omega_Cmd / Poles;\n\n// abc stator currents at the stationary frame: alpha := U directly\nI_U = Isd;\nI_V = -0.5 * Isd + (M_SQRT3 / 2.0) * Isq;\nI_W = -I_U - I_V;\n",
+      "inputPorts": [
+        {
+          "description": "",
+          "direction": "input",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "",
+          "direction": "input",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "",
+          "direction": "input",
+          "name": "V_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Electrical shaft speed, rad/s (mech*pp from the dyno / free shaft).",
+          "direction": "input",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Command (synchronous) electrical speed, rad/s, from the V/Hz controller: drives the link-side air-gap power P_Elec = Torque * Omega_Cmd / Poles. Controller-side external: push per control period via set_input / PlantSetInput / rte sim 'plant-input'; unwired zero-binds (loss-only link draw).",
+          "direction": "input",
+          "name": "Omega_Cmd",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "",
+          "direction": "output",
+          "name": "I_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "I_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "I_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "Isd",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "Isq",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "Torque",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "",
+          "direction": "output",
+          "name": "P_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Llr": {
+          "description": "Rotor leakage inductance (referred), H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lls": {
+          "description": "Stator leakage inductance, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lm": {
+          "description": "Magnetizing inductance, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Pole PAIRS.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rr": {
+          "description": "Rotor resistance (referred), ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rs": {
+          "description": "Stator resistance / phase, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Loss",
+      "description": "Total inverter loss from the phenomenological fitted law L = k1|i| + k2 i^2 + k3|w| + k4|i w| + k5*vdc*|i| (v2 coefficients, calibrated against 7 recorded campaigns 2026-10-20). Splits into plate share for the thermal plant; carries the energy-balance term p_link_drawn the DcBus needs. Domain-guarded at zero (data-law span guard).",
+      "displayName": "Inverter Loss (fitted law)",
+      "domain": "",
+      "id": "Plant.Loss.FittedLaw",
+      "inlineCode": "/* Fitted total-loss law (twin/plant/plant.py v2; calibrated 2026-10-20).\n * `Idle` is zero-bound by default when unconnected = 'live' (losses on).\n * Domain guard: floor at 0 - the polynomial is a data-law over the fitted\n * campaign span and extrapolates negative at induction-idle points; the\n * floor prevents energy-creation artifacts. */\ndouble idle = Idle;   // optional-wired; 0 = live (default), >=0.5 = gates off\ndouble lt = (K1 * fabs(Im) + K2 * Im * Im + K3 * fabs(Om)\n             + K4 * fabs(Im) * fabs(Om) + K5 * Vdc * fabs(Im));\nif (idle >= 0.5) lt = 0.0;\nif (lt < 0.0) {\n    /* guard engagement is observability, not silence (python floor_hits) */\n    FloorHits = FloorHits + 1.0;\n    lt = 0.0;\n}\nP_Loss = lt;\n// plate heat = share of the law + the idle heat floor while gates are live\n// (bench aux residual, cal_log idle-warm anchor); zero when gates off\nP_Plate = lt * PlateShare + (idle >= 0.5 ? 0.0 : (double)IdleHeat_W);\n",
+      "inputPorts": [
+        {
+          "description": "dq-current magnitude, A.",
+          "direction": "input",
+          "name": "Im",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Mechanical speed, rad/s (abs).",
+          "direction": "input",
+          "name": "Om",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "DC link voltage, V.",
+          "direction": "input",
+          "name": "Vdc",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": ">= 0.5 disables losses (gates off); 0 = live (zero-bound default when unconnected).",
+          "direction": "input",
+          "name": "Idle",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Total inverter loss (machine winding + devices + speed/friction + bench residual), W.",
+          "direction": "output",
+          "name": "P_Loss",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Plate share of the loss heating the baseplate NTC, W.",
+          "direction": "output",
+          "name": "P_Plate",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Count of domain-guard zero-floor engagements (persistent state; extrapolation guard fired = fitted-data span left).",
+          "direction": "output",
+          "name": "FloorHits",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "IdleHeat_W": {
+          "description": "Heat floor into the plate while gates are live (bench aux/idle residual, cal_log idle-warm +4.9K anchor = 120 W); 0 when Idle >= 0.5.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "K1": {
+          "description": "coefficient W/A.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "K2": {
+          "description": "coefficient W/A^2.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "K3": {
+          "description": "coefficient W/(rad/s).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "K4": {
+          "description": "coefficient W/(A rad/s).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "K5": {
+          "description": "coefficient W/(V*A).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "PlateShare": {
+          "description": "Fraction of total loss heating the baseplate (rest: machine winding/friction/bench).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Encoder",
+      "description": "Analog sin/cos encoder emitting integer counts with the recorded healthy bounds and mid-scale offsets; counts rail low on disconnect (encoder-loss artifact). One electrical cycle per mechanical rev.",
+      "displayName": "Sin/Cos Encoder Counts",
+      "domain": "",
+      "id": "Plant.Sensor.SinCosEncoder",
+      "inlineCode": "/* Sin/cos encode from true rotor angle (twin/plant semantics):\n *   phi_mech = (ThetaE - OffsetDeg_rad) / Poles\n *   sin_c = Mid + Amp*sin(phi), cos_c = Mid + Amp*cos(phi)\n * Disconnect rails both counts to 0 (hard pull). */\nif (Disconnect >= 0.5) {\n    Sin = 0.0;\n    Cos = 0.0;\n} else {\n    double phi = ((double)ThetaE - (double)OffsetDeg * (double)(M_PI / 180.0)) / (double)Poles;\n    /* python reference uses int() truncation (toward zero), not rounding;\n     * keep all three engines bit-identical */\n    Sin = (double)(int)((double)MidSin + (double)AmpSin * sin(phi));\n    Cos = (double)(int)((double)MidCos + (double)AmpCos * cos(phi));\n}\n",
+      "inputPorts": [
+        {
+          "description": "Electrical rotor angle, rad.",
+          "direction": "input",
+          "name": "ThetaE",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": ">=0.5 rails the counts (encoder-loss injection).",
+          "direction": "input",
+          "name": "Disconnect",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Sin raw counts.",
+          "direction": "output",
+          "name": "Sin",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Cos raw counts.",
+          "direction": "output",
+          "name": "Cos",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "AmpCos": {
+          "description": "Cos amplitude.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "AmpSin": {
+          "description": "Sin amplitude, counts.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "MidCos": {
+          "description": "Cos mid-scale.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "MidSin": {
+          "description": "Sin mid-scale, counts.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "OffsetDeg": {
+          "description": "Physical zero-alignment offset (electrical degrees) subtracted from ThetaE.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Poles": {
+          "description": "Pole PAIRS (per-rev electrical cycles = pp).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* SRM constructor: winding currents seed at zero; rotor position from Theta0. */\nI_U = 0.0;\nI_V = 0.0;\nI_W = 0.0;\nThetaE = (double)Theta0;\n",
+      "defaultName": "Machine",
+      "description": "Analytic macroscopic switched reluctance machine: algebraic flux map psi(i, theta) from aligned/unaligned curves with a (1+cos(Nr*theta))/2 tooth profile (Asgar/Ellis form); currents integrate per-phase from the winding voltages with the position-varying incremental inductance and motion back-EMF; torque is the exact analytic coenergy derivative (validated finite-difference to 1e-4 relative). Unipolar per-phase drive family: each phase winding takes one voltage input directly (no dq frame, no pole-pair map). OpenGates freewheel-collapses with the same 2 ms time constant as the other machines. Omega_Elec carries MECHANICAL rad/s here (no synchronous frame exists in an SRM; shaft nodes must use Poles=1 to express mechanical speed). Teeth-phases stagger 2*pi/(phases*Nr); 3-phase default in v1.",
+      "displayName": "Switched Reluctance (SRM)",
+      "domain": "",
+      "id": "Plant.Machine.SwitchedReluctance",
+      "inlineCode": "/* Switched reluctance machine: analytic macroscopic model (twin/plantgraph\n * class mirror). psi(i, theta) from aligned/unaligned curves with a\n * (1+cos(Nr*theta))/2 tooth profile; per-phase Kirchhoff integration with\n * the position-dependent incremental inductance and motion back-EMF; torque\n * is the analytic coenergy derivative (finite-difference validated to 1e-4).\n * Omega_Elec carries MECHANICAL rad/s in this template. */\n\n/* aligned-phase flux map and its inductance:\n *   lambda_a(i) = LambdaSat * (1 - e^{-Ka*i}) ;\n *   d lambda_a/di = LambdaSat*Ka * e^{-Ka*i}        (L_unsat at i=0)     */\ndouble la = 0.0, dla = 0.0;\n\nfor (int j = 0; j < 3; ++j) {\n    double i = (j == 0) ? I_U : (j == 1) ? I_V : I_W;\n    double v = (j == 0) ? V_U : (j == 1) ? V_V : V_W;\n    double phi = j * (2.0 * M_PI) / (3.0 * RotorTeeth);\n    double x = RotorTeeth * (ThetaE - phi);\n    double f  = (1.0 + cos(x)) / 2.0;\n    double fp = -RotorTeeth * sin(x) / 2.0;\n    la  = LambdaSat * (1.0 - exp(-Ka * i));\n    dla = LambdaSat * Ka * exp(-Ka * i);\n    if (OpenGates >= 0.5) {\n        double tau_open = 2.0e-3;\n        i -= i * DtPlant / tau_open;\n    } else {\n        double l_inc = LU_H + (dla - LU_H) * f;\n        double bemf  = (la - LU_H * i) * fp * Omega_Elec;\n        double di    = (v - Rs * i - bemf) / fmax(l_inc, 1e-6);\n        i += di * DtPlant;\n    }\n    i = fmin(2000.0, fmax(-2000.0, i));\n    if (j == 0) I_U = i; else if (j == 1) I_V = i; else I_W = i;\n}\n\nThetaE = fmod((double)ThetaE + Omega_Elec * DtPlant, 2.0 * M_PI);\nif (ThetaE < 0.0) ThetaE += 2.0 * M_PI;\n\n/* analytic coenergy torque over the phases */\nTorque = 0.0;\nPsiAligned = 0.0;\n{\n    double i_max = 0.0;\n    for (int j = 0; j < 3; ++j) {\n        double i = (j == 0) ? I_U : (j == 1) ? I_V : I_W;\n        double phi = j * (2.0 * M_PI) / (3.0 * RotorTeeth);\n        double x = RotorTeeth * (ThetaE - phi);\n        double fp = -RotorTeeth * sin(x) / 2.0;\n        double integ = LambdaSat * (i - (1.0 - exp(-Ka * i)) / Ka)\n                     - LU_H * i * i / 2.0;\n        Torque += fp * integ;\n        i_max = fmax(i_max, i);\n    }\n    PsiAligned = LambdaSat * (1.0 - exp(-Ka * i_max));\n\n    /* instantaneous winding input power; zero while gates open */\n    P_Elec = (OpenGates >= 0.5) ? 0.0\n                                : V_U * I_U + V_V * I_V + V_W * I_W;\n}\n",
+      "inputPorts": [
+        {
+          "description": "Phase U winding voltage, V.",
+          "direction": "input",
+          "name": "V_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase V winding voltage, V.",
+          "direction": "input",
+          "name": "V_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Phase W winding voltage, V (optional - leave unwired for 2-phase setups).",
+          "direction": "input",
+          "name": "V_W",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "MECHANICAL shaft speed, rad/s (port-name compatibility with the machine family; an SRM has no synchronous frame).",
+          "direction": "input",
+          "name": "Omega_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": ">=0.5 freewheel-collapses all windings; <0.5 = live.",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Phase U current, A.",
+          "direction": "output",
+          "name": "I_U",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase V current, A.",
+          "direction": "output",
+          "name": "I_V",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Phase W current, A.",
+          "direction": "output",
+          "name": "I_W",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Total electromechanical torque over the phases, N m.",
+          "direction": "output",
+          "name": "Torque",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Flux linkage of the most-energized phase's aligned curve at its current, Wb (truth tap for the saturation map).",
+          "direction": "output",
+          "name": "PsiAligned",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Instantaneous electrical winding input power (sum v*i over active phases), W; zero while gates are open.",
+          "direction": "output",
+          "name": "P_Elec",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Ka": {
+          "description": "Aligned saturation constant, 1/A (aligned unsaturated slope = LambdaSat*Ka = L_unsat).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "LU_H": {
+          "description": "Unaligned inductance, H (lambda_u(i) = L_u * i - the unaligned tooth position is nearly linear).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "LambdaSat": {
+          "description": "Aligned saturated flux linkage level, Wb (lambda_a(i) = LambdaSat * (1 - e^{-Ka*i})).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "RotorTeeth": {
+          "description": "Rotor pole count (teeth); the tooth period is 2*pi/Nr mechanical.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Rs": {
+          "description": "Winding resistance per phase, ohm.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Theta0": {
+          "description": "Initial mechanical angle, rad.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "Converter",
+      "description": "Dual Active Bridge DC/DC: two full bridges through an HF transformer with the standard square-wave average power law  P = V_HV * (V_LV * Ratio) * phi * (pi - |phi|) / (2 * pi^2 * f_sw * L_k) , phase phi in radians between bridge switching midpoints (controller-side external via set_input; unwired zero-binds). Power flows from the leading bridge; zero at phi=0, clamped at |phi|=pi. Gate kill stops both bridges (no freewheel integrator - the transfer dies with the bridges). No internal dynamic state: I_High/I_Low are the algebraic side currents consistent with P (Ratio is the HV:LV turns ratio, Lk_H the primary-referred leakage inductance). Ripple and winding resistance are excluded from this average model; efficiency evidence lands in the loss layer when calibrated.",
+      "displayName": "Dual Active Bridge (DAB)",
+      "domain": "",
+      "id": "Plant.DcDc.DualActiveBridge",
+      "inlineCode": "/* Dual Active Bridge (average square-wave power law; combinational, mirrors\n * the python reference): P = V1 * V2' * phi * (pi - |phi|) / (2 pi^2 f L).\n * V2' is the LV voltage referred to the HV side (V_Low * Ratio_HL). */\n\nif (OpenGates >= 0.5) {\n    P_Transfer = 0.0;\n    I_High = 0.0;\n    I_Low = 0.0;\n    P_DrawHigh = 0.0;\n    P_DrawLow = 0.0;\n} else {\n    double phi = fmin(M_PI, fmax(-M_PI, (double)PhaseShift));\n    double v1 = (double)V_High;\n    double v2 = (double)V_Low * (double)Ratio_HL;   // LV side seen on HV swing\n    if ((double)Lk_H <= 0.0 || (double)Fsw_Hz <= 0.0 || v1 <= 0.0 || v2 <= 0.0) {\n        P_Transfer = 0.0;\n        I_High = 0.0;\n        I_Low = 0.0;\n        P_DrawHigh = 0.0;\n        P_DrawLow = 0.0;\n    } else {\n        P_Transfer = v1 * v2 * phi * (M_PI - fabs(phi))\n                   / (2.0 * M_PI * M_PI * (double)Fsw_Hz * (double)Lk_H);\n        I_High = P_Transfer / v1;\n        /* receiver convention: the LV-side current flowing INTO the bridge;\n         * while the HV side delivers (phi>0) the LV bus receives, and its\n         * outflow is negative */\n        I_Low = -P_Transfer / (double)V_Low;\n    }\n}\nP_DrawHigh = P_Transfer;\nP_DrawLow = -P_Transfer;\n",
+      "inputPorts": [
+        {
+          "description": "HV-side bus voltage, V.",
+          "direction": "input",
+          "name": "V_High",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "LV-side bus voltage, V.",
+          "direction": "input",
+          "name": "V_Low",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        },
+        {
+          "description": "Bridge phase shift, radians (lead-sign = HV leads LV); controller-side external (unwired zero-binds).",
+          "direction": "input",
+          "name": "PhaseShift",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": ">=0.5 stops both bridges (transfer killed).",
+          "direction": "input",
+          "name": "OpenGates",
+          "optional": true,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Transferred power (signed: positive = HV -> LV), W.",
+          "direction": "output",
+          "name": "P_Transfer",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Current out of the HV side into the bridge, A.",
+          "direction": "output",
+          "name": "I_High",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Current out of the LV bus into the bridge, A (signed: NEGATIVE while the HV side delivers, i.e. the LV pack receives).",
+          "direction": "output",
+          "name": "I_Low",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "current"
+          }
+        },
+        {
+          "description": "Alias of P_Transfer: direct-wire draw for the HV-side DcBus.",
+          "direction": "output",
+          "name": "P_DrawHigh",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Alias of -P_Transfer: direct-wire draw for the LV-side DcBus.",
+          "direction": "output",
+          "name": "P_DrawLow",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "Fsw_Hz": {
+          "description": "Switching frequency, Hz.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lk_H": {
+          "description": "Leakage inductance seen at the HV (primary) side, H.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Ratio_HL": {
+          "description": "HV:LV turns ratio (transformer).",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "/* Sense constructor. */\nLag = 0.0;\n",
+      "defaultName": "VoltageSense",
+      "description": "Isolated voltage measurement on bus/phase channels: first-order sensor lag then 0.44 V/LSB quantization (matches the recorded 1001:1 divider + MAX22530 behavior incl. its quantization floor).",
+      "displayName": "Voltage Sense (MAX22530-style)",
+      "domain": "",
+      "id": "Plant.Sensor.VoltageSense",
+      "inlineCode": "/* Isolated voltage sense: first-order lag then LSB quantization\n * (matches twin/plant's MAX22530 path). LagTau_S <= 0 = no lag (bus channel\n * on the 8 kHz AA filter is effectively lag-free at control rates). */\nif (LagTau_S > 0.0) {\n    Lag += ((double)V_True - Lag) * fmin(1.0, (double)DtPlant / (double)LagTau_S);\n} else {\n    Lag = (double)V_True;\n}\nV_Meas = rint(Lag / (double)Lsb_V) * (double)Lsb_V;   // nearest-even ties == python round()\n",
+      "inputPorts": [
+        {
+          "description": "True channel voltage, V.",
+          "direction": "input",
+          "name": "V_True",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ],
+      "isEntryPoint": false,
+      "maxInstances": 0,
+      "outputPorts": [
+        {
+          "description": "Measured voltage, V.",
+          "direction": "output",
+          "name": "V_Meas",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "voltage"
+          }
+        }
+      ],
+      "parameterTypes": {
+        "LagTau_S": {
+          "description": "First-order lag time constant, s.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        },
+        "Lsb_V": {
+          "description": "Quantization step, V.",
+          "dtype": "f32",
+          "frame": "scalar",
+          "quantity": "dimensionless"
+        }
+      }
+    },
+    {
+      "classDefinition": "",
+      "classHeader": "",
+      "constructorCode": "",
+      "defaultName": "DutyIn",
+      "description": "Reserved external node for the three duty commands from the controller build. The host sim assigns these fields once per control period before stepping the plant graph (SVPWM-convention duties, percent, 50 = zero vector).",
+      "displayName": "Duty Inputs (controller->plant)",
+      "domain": "",
+      "id": "Plant.Io.DutyIn",
+      "inlineCode": "/* DutyIn is a host-shimmed external: the emitter declares\n * state.<NodeId>_Du/Dv/Dw as real externals the host assigns per control\n * period; this body just passes them through so downstream references are\n * consistent. (Nothing here - emitter wires the extern directly.) */\n",
+      "inputPorts": [],
+      "isEntryPoint": false,
+      "maxInstances": 1,
+      "outputPorts": [
+        {
+          "description": "Phase U duty, percent.",
+          "direction": "output",
+          "name": "Du",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase V duty, percent.",
+          "direction": "output",
+          "name": "Dv",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        },
+        {
+          "description": "Phase W duty, percent.",
+          "direction": "output",
+          "name": "Dw",
+          "optional": false,
+          "type": {
+            "dtype": "f32",
+            "frame": "scalar",
+            "quantity": "dimensionless"
+          }
+        }
+      ]
+    }
+  ],
   "nodes": [
     {
-      "id": "DutyIn",
-      "type": "Plant.Io.DutyIn",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "DutyIn",
       "parameters": {},
       "position": {
-        "x": 15,
-        "y": 0
-      }
+        "x": 15.0,
+        "y": 0.0
+      },
+      "type": "Plant.Io.DutyIn"
     },
     {
-      "id": "Knee",
-      "type": "Plant.Inverter.Knee3ph",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Knee",
       "parameters": {
-        "Vce0_V": "1.15",
         "Rce_Ohm": "0.0013",
-        "TdOverhead": "0.005"
+        "TdOverhead": "0.005",
+        "Vce0_V": "1.15"
       },
       "position": {
-        "x": 945,
-        "y": 0
-      }
+        "x": 945.0,
+        "y": 0.0
+      },
+      "type": "Plant.Inverter.Knee3ph"
     },
     {
-      "id": "Machine",
-      "type": "Plant.Machine.PmsmDq",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Machine",
       "parameters": {
-        "Rs": "0.0087",
-        "Ld": "0.0000257",
-        "Lq": "0.0000657",
-        "Lambda": "0.0237",
-        "Poles": "5",
         "Id0": "0",
         "Iq0": "0",
+        "Lambda": "0.0237",
+        "Ld": "0.0000257",
+        "Lq": "0.0000657",
+        "Poles": "5",
+        "Rs": "0.0087",
         "Theta0": "0"
       },
       "position": {
-        "x": 1410,
-        "y": 0
-      }
+        "x": 1410.0,
+        "y": 0.0
+      },
+      "type": "Plant.Machine.PmsmDq"
     },
     {
-      "id": "Dyno",
-      "type": "Plant.Shaft.Dyno",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Dyno",
       "parameters": {
         "Poles": "5",
         "Rpm0": "0"
       },
       "position": {
-        "x": 1410,
-        "y": 765
-      }
+        "x": 1410.0,
+        "y": 765.0
+      },
+      "type": "Plant.Shaft.Dyno"
     },
     {
-      "id": "Loss",
-      "type": "Plant.Loss.FittedLaw",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Loss",
       "parameters": {
         "K1": "4.12812",
         "K2": "-0.00375376",
@@ -78,881 +3955,236 @@
         "PlateShare": "0.70"
       },
       "position": {
-        "x": 2430,
-        "y": 405
-      }
+        "x": 2430.0,
+        "y": 405.0
+      },
+      "type": "Plant.Loss.FittedLaw"
     },
     {
-      "id": "Im",
-      "type": "Plant.Util.Hypot",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Im",
       "parameters": {},
       "position": {
-        "x": 1935,
-        "y": 150
-      }
+        "x": 1935.0,
+        "y": 150.0
+      },
+      "type": "Plant.Util.Hypot"
     },
     {
-      "id": "AbsOm",
-      "type": "Plant.Util.AbsOmega",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "AbsOm",
       "parameters": {
         "Poles": "5"
       },
       "position": {
-        "x": 1410,
-        "y": 1050
-      }
+        "x": 1410.0,
+        "y": 1050.0
+      },
+      "type": "Plant.Util.AbsOmega"
     },
     {
-      "id": "Draw",
-      "type": "Plant.Util.Sum",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Draw",
       "parameters": {},
       "position": {
-        "x": 2430,
-        "y": 60
-      }
+        "x": 2430.0,
+        "y": 60.0
+      },
+      "type": "Plant.Util.Sum"
     },
     {
-      "id": "DcBus",
-      "type": "Plant.DcBus",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "DcBus",
       "parameters": {
-        "Cap_F": "0.00408",
-        "SeriesR_mOhm": "35",
-        "VSet_V": "114.7",
-        "ILimit_A": "900",
         "CanSink": "1",
-        "SinkLimit_A": "600",
-        "CvClamp_V": "0",
+        "Cap_F": "0.00408",
         "CvClampSink_A": "0",
-        "V0_V": "114.4"
+        "CvClamp_V": "0",
+        "ILimit_A": "900",
+        "SeriesR_mOhm": "35",
+        "SinkLimit_A": "600",
+        "V0_V": "114.4",
+        "VSet_V": "114.7"
       },
       "position": {
-        "x": 450,
-        "y": 225
-      }
+        "x": 450.0,
+        "y": 225.0
+      },
+      "type": "Plant.DcBus"
     },
     {
-      "id": "Thermal",
-      "type": "Plant.Thermal.TwoNodeCauer",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Thermal",
       "parameters": {
-        "R12_KW": "0.012",
         "C1_JK": "900",
-        "R2_KW": "0.09",
         "C2_JK": "18000",
-        "TAmb_C": "24.0",
-        "T1_0_C": "24.6",
-        "T2_0_C": "24.0",
         "Off1": "0.3",
         "Off2Idle": "0.55",
-        "Off2Slope": "0",
         "Off2Knee_C": "4.9",
-        "Off3": "2.6"
+        "Off2Slope": "0",
+        "Off3": "2.6",
+        "R12_KW": "0.012",
+        "R2_KW": "0.09",
+        "T1_0_C": "24.6",
+        "T2_0_C": "24.0",
+        "TAmb_C": "24.0"
       },
       "position": {
-        "x": 1410,
-        "y": 405
-      }
+        "x": 1410.0,
+        "y": 405.0
+      },
+      "type": "Plant.Thermal.TwoNodeCauer"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "HallU",
-      "type": "Plant.Sensor.Hall",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {
         "Lsb_A": "0.07",
-        "Range_A": "1200",
         "Offset_A": "0",
-        "RailVal_A": "1390"
+        "RailVal_A": "1390",
+        "Range_A": "1200"
       },
       "position": {
-        "x": 2880,
-        "y": 0
-      }
+        "x": 2880.0,
+        "y": 0.0
+      },
+      "type": "Plant.Sensor.Hall"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "HallV",
-      "type": "Plant.Sensor.Hall",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {
         "Lsb_A": "0.07",
-        "Range_A": "1200",
         "Offset_A": "0",
-        "RailVal_A": "-1250"
+        "RailVal_A": "-1250",
+        "Range_A": "1200"
       },
       "position": {
-        "x": 2880,
-        "y": 210
-      }
+        "x": 2880.0,
+        "y": 210.0
+      },
+      "type": "Plant.Sensor.Hall"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "HallW",
-      "type": "Plant.Sensor.Hall",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {
         "Lsb_A": "0.07",
-        "Range_A": "1200",
         "Offset_A": "0",
-        "RailVal_A": "1180"
+        "RailVal_A": "1180",
+        "Range_A": "1200"
       },
       "position": {
-        "x": 2880,
-        "y": 420
-      }
+        "x": 2880.0,
+        "y": 420.0
+      },
+      "type": "Plant.Sensor.Hall"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "VSense",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0"
+        "LagTau_S": "0.0",
+        "Lsb_V": "0.44"
       },
       "position": {
-        "x": 450,
-        "y": 660
-      }
+        "x": 450.0,
+        "y": 660.0
+      },
+      "type": "Plant.Sensor.VoltageSense"
     },
     {
-      "id": "Enc",
-      "type": "Plant.Sensor.SinCosEncoder",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "Enc",
       "parameters": {
-        "OffsetDeg": "33.034",
-        "Poles": "5",
-        "MidSin": "32643.5",
+        "AmpCos": "21190.5",
         "AmpSin": "21220.5",
         "MidCos": "32536.5",
-        "AmpCos": "21190.5"
+        "MidSin": "32643.5",
+        "OffsetDeg": "33.034",
+        "Poles": "5"
       },
       "position": {
-        "x": 1935,
-        "y": 315
-      }
+        "x": 1935.0,
+        "y": 315.0
+      },
+      "type": "Plant.Sensor.SinCosEncoder"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "Fault",
-      "type": "Plant.Fault.Point",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {},
       "position": {
-        "x": 15,
-        "y": 330
-      }
+        "x": 15.0,
+        "y": 330.0
+      },
+      "type": "Plant.Fault.Point"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "Meas",
-      "type": "Plant.Io.MeasOut",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {},
       "position": {
-        "x": 3390,
-        "y": 420
-      }
+        "x": 3390.0,
+        "y": 420.0
+      },
+      "type": "Plant.Io.MeasOut"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "VSenseU",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0015"
+        "LagTau_S": "0.0015",
+        "Lsb_V": "0.44"
       },
       "position": {
-        "x": 2880,
-        "y": 630
-      }
+        "x": 2880.0,
+        "y": 630.0
+      },
+      "type": "Plant.Sensor.VoltageSense"
     },
     {
+      "displayName": "",
+      "domain": "plant",
       "id": "VSenseV",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
-      "displayName": "",
       "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0015"
+        "LagTau_S": "0.0015",
+        "Lsb_V": "0.44"
       },
       "position": {
-        "x": 2880,
-        "y": 840
-      }
+        "x": 2880.0,
+        "y": 840.0
+      },
+      "type": "Plant.Sensor.VoltageSense"
     },
     {
-      "id": "VSenseW",
-      "type": "Plant.Sensor.VoltageSense",
-      "domain": "plant",
       "displayName": "",
+      "domain": "plant",
+      "id": "VSenseW",
       "parameters": {
-        "Lsb_V": "0.44",
-        "LagTau_S": "0.0015"
+        "LagTau_S": "0.0015",
+        "Lsb_V": "0.44"
       },
       "position": {
-        "x": 2880,
-        "y": 1050
-      }
+        "x": 2880.0,
+        "y": 1050.0
+      },
+      "type": "Plant.Sensor.VoltageSense"
     }
   ],
-  "connections": [
-    {
-      "id": "c1",
-      "from": {
-        "nodeId": "DutyIn",
-        "portName": "Du"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "Du"
-      }
-    },
-    {
-      "id": "c2",
-      "from": {
-        "nodeId": "DutyIn",
-        "portName": "Dv"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "Dv"
-      }
-    },
-    {
-      "id": "c3",
-      "from": {
-        "nodeId": "DutyIn",
-        "portName": "Dw"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "Dw"
-      }
-    },
-    {
-      "id": "c4",
-     "waypoints": [{"x": 690, "y": 285}],
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "Vdc"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "Vdc"
-      }
-    },
-    {
-      "id": "c5",
-      "from": {
-        "nodeId": "Machine",
-        "portName": "I_U"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "I_U"
-      }
-    },
-    {
-      "id": "c6",
-      "from": {
-        "nodeId": "Machine",
-        "portName": "I_V"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "I_V"
-      }
-    },
-    {
-      "id": "c7",
-      "from": {
-        "nodeId": "Machine",
-        "portName": "I_W"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "I_W"
-      }
-    },
-    {
-      "id": "c8",
-      "from": {
-        "nodeId": "Knee",
-        "portName": "V_U"
-      },
-      "to": {
-        "nodeId": "Machine",
-        "portName": "V_U"
-      }
-    },
-    {
-      "id": "c9",
-      "from": {
-        "nodeId": "Knee",
-        "portName": "V_V"
-      },
-      "to": {
-        "nodeId": "Machine",
-        "portName": "V_V"
-      }
-    },
-    {
-      "id": "c10",
-      "from": {
-        "nodeId": "Knee",
-        "portName": "V_W"
-      },
-      "to": {
-        "nodeId": "Machine",
-        "portName": "V_W"
-      }
-    },
-    {
-      "id": "c11",
-     "waypoints": [{"x": 1695, "y": 825}, {"x": 1695, "y": 1005}, {"x": 1380, "y": 1005}],
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Omega_Elec"
-      },
-      "to": {
-        "nodeId": "Machine",
-        "portName": "Omega_Elec"
-      }
-    },
-    {
-      "id": "c12",
-      "from": {
-        "nodeId": "Machine",
-        "portName": "Id"
-      },
-      "to": {
-        "nodeId": "Im",
-        "portName": "A"
-      }
-    },
-    {
-      "id": "c13",
-      "from": {
-        "nodeId": "Machine",
-        "portName": "Iq"
-      },
-      "to": {
-        "nodeId": "Im",
-        "portName": "B"
-      }
-    },
-    {
-      "id": "c14",
-     "waypoints": [{"x": 1785, "y": 825}, {"x": 1785, "y": 1110}],
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Omega_Elec"
-      },
-      "to": {
-        "nodeId": "AbsOm",
-        "portName": "Omega_Elec"
-      }
-    },
-    {
-      "id": "c15",
-      "from": {
-        "nodeId": "Im",
-        "portName": "Out"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Im"
-      }
-    },
-    {
-      "id": "c16",
-     "waypoints": [{"x": 2345, "y": 1110}],
-      "from": {
-        "nodeId": "AbsOm",
-        "portName": "Om"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Om"
-      }
-    },
-    {
-      "id": "c17",
-     "waypoints": [{"x": 705, "y": 285}, {"x": 705, "y": -270}, {"x": 2385, "y": -270}],
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "Vdc"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Vdc"
-      }
-    },
-    {
-      "id": "c18",
-     "waypoints": [{"x": 345, "y": 390}, {"x": 345, "y": -105}, {"x": 1380, "y": -105}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "OpenGates"
-      },
-      "to": {
-        "nodeId": "Machine",
-        "portName": "OpenGates"
-      }
-    },
-    {
-      "id": "c19",
-     "waypoints": [{"x": 360, "y": 390}, {"x": 360, "y": -120}, {"x": 2400, "y": -120}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "OpenGates"
-      },
-      "to": {
-        "nodeId": "Loss",
-        "portName": "Idle"
-      }
-    },
-    {
-      "id": "c20",
-     "waypoints": [{"x": 1725, "y": 270}, {"x": 1725, "y": -375}, {"x": 2415, "y": -375}],
-      "from": {
-        "nodeId": "Machine",
-        "portName": "P_Elec"
-      },
-      "to": {
-        "nodeId": "Draw",
-        "portName": "A"
-      }
-    },
-    {
-      "id": "c21",
-     "waypoints": [{"x": 2685, "y": 465}],
-      "from": {
-        "nodeId": "Loss",
-        "portName": "P_Loss"
-      },
-      "to": {
-        "nodeId": "Draw",
-        "portName": "B"
-      }
-    },
-    {
-      "id": "c22",
-     "waypoints": [{"x": 2640, "y": 120}, {"x": 2640, "y": -330}, {"x": 420, "y": -330}],
-      "from": {
-        "nodeId": "Draw",
-        "portName": "Out"
-      },
-      "to": {
-        "nodeId": "DcBus",
-        "portName": "P_Draw"
-      }
-    },
-    {
-      "id": "c23",
-     "waypoints": [{"x": 2670, "y": 495}, {"x": 2670, "y": 1305}, {"x": 1395, "y": 1305}],
-      "from": {
-        "nodeId": "Loss",
-        "portName": "P_Plate"
-      },
-      "to": {
-        "nodeId": "Thermal",
-        "portName": "P_Heat"
-      }
-    },
-    {
-      "id": "c24",
-     "waypoints": [{"x": 1680, "y": 60}, {"x": 1680, "y": -150}, {"x": 2820, "y": -150}],
-      "from": {
-        "nodeId": "Machine",
-        "portName": "I_U"
-      },
-      "to": {
-        "nodeId": "HallU",
-        "portName": "I_True"
-      }
-    },
-    {
-      "id": "c25",
-     "waypoints": [{"x": 1695, "y": 90}, {"x": 1695, "y": -165}, {"x": 2805, "y": -165}],
-      "from": {
-        "nodeId": "Machine",
-        "portName": "I_V"
-      },
-      "to": {
-        "nodeId": "HallV",
-        "portName": "I_True"
-      }
-    },
-    {
-      "id": "c26",
-     "waypoints": [{"x": 1710, "y": 120}, {"x": 1710, "y": -180}, {"x": 2790, "y": -180}],
-      "from": {
-        "nodeId": "Machine",
-        "portName": "I_W"
-      },
-      "to": {
-        "nodeId": "HallW",
-        "portName": "I_True"
-      }
-    },
-    {
-      "id": "c27",
-     "waypoints": [{"x": 270, "y": 450}, {"x": 270, "y": -45}, {"x": 2865, "y": -45}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "SensorRail"
-      },
-      "to": {
-        "nodeId": "HallU",
-        "portName": "Rail"
-      }
-    },
-    {
-      "id": "c28",
-     "waypoints": [{"x": 285, "y": 450}, {"x": 285, "y": -60}, {"x": 2850, "y": -60}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "SensorRail"
-      },
-      "to": {
-        "nodeId": "HallV",
-        "portName": "Rail"
-      }
-    },
-    {
-      "id": "c29",
-     "waypoints": [{"x": 300, "y": 450}, {"x": 300, "y": -75}, {"x": 2835, "y": -75}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "SensorRail"
-      },
-      "to": {
-        "nodeId": "HallW",
-        "portName": "Rail"
-      }
-    },
-    {
-      "id": "c30",
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "Vdc"
-      },
-      "to": {
-        "nodeId": "VSense",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c31",
-      "from": {
-        "nodeId": "Machine",
-        "portName": "ThetaE"
-      },
-      "to": {
-        "nodeId": "Enc",
-        "portName": "ThetaE"
-      }
-    },
-    {
-      "id": "c32",
-     "waypoints": [{"x": 240, "y": 420}, {"x": 240, "y": -135}, {"x": 1905, "y": -135}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "EncoderDisconnect"
-      },
-      "to": {
-        "nodeId": "Enc",
-        "portName": "Disconnect"
-      }
-    },
-    {
-      "id": "c33",
-     "waypoints": [{"x": 3165, "y": 60}],
-      "from": {
-        "nodeId": "HallU",
-        "portName": "I_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Iu_A"
-      }
-    },
-    {
-      "id": "c34",
-     "waypoints": [{"x": 3180, "y": 270}],
-      "from": {
-        "nodeId": "HallV",
-        "portName": "I_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Iv_A"
-      }
-    },
-    {
-      "id": "c35",
-     "waypoints": [{"x": 3195, "y": 480}],
-      "from": {
-        "nodeId": "HallW",
-        "portName": "I_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Iw_A"
-      }
-    },
-    {
-      "id": "c36",
-     "waypoints": [{"x": 750, "y": 720}, {"x": 750, "y": -360}, {"x": 3345, "y": -360}],
-      "from": {
-        "nodeId": "VSense",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vdc_V"
-      }
-    },
-    {
-      "id": "c37",
-     "waypoints": [{"x": 2715, "y": 375}],
-      "from": {
-        "nodeId": "Enc",
-        "portName": "Sin"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Enc_Sin"
-      }
-    },
-    {
-      "id": "c38",
-     "waypoints": [{"x": 2730, "y": 405}],
-      "from": {
-        "nodeId": "Enc",
-        "portName": "Cos"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Enc_Cos"
-      }
-    },
-    {
-      "id": "c39",
-     "waypoints": [{"x": 1740, "y": 525}, {"x": 1740, "y": 1260}, {"x": 3330, "y": 1260}],
-      "from": {
-        "nodeId": "Thermal",
-        "portName": "T_Meas1"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Temp_Inv1_C"
-      }
-    },
-    {
-      "id": "c40",
-     "waypoints": [{"x": 1755, "y": 555}, {"x": 1755, "y": 1275}, {"x": 3315, "y": 1275}],
-      "from": {
-        "nodeId": "Thermal",
-        "portName": "T_Meas2"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Temp_Inv2_C"
-      }
-    },
-    {
-      "id": "c41",
-     "waypoints": [{"x": 1650, "y": 855}, {"x": 1650, "y": 1335}, {"x": 3165, "y": 1335}],
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Rpm"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Mech_Rpm"
-      }
-    },
-    {
-      "id": "c42",
-     "waypoints": [{"x": 1665, "y": 885}, {"x": 1665, "y": 1350}, {"x": 3195, "y": 1350}],
-      "from": {
-        "nodeId": "Dyno",
-        "portName": "Elec_Rpm"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Elec_Rpm"
-      }
-    },
-    {
-      "id": "c43",
-     "waypoints": [{"x": 720, "y": 315}, {"x": 720, "y": -345}, {"x": 3330, "y": -345}],
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "I_Link"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Dclink_I_A"
-      }
-    },
-    {
-      "id": "c44",
-     "waypoints": [{"x": 735, "y": 345}, {"x": 735, "y": -300}, {"x": 3315, "y": -300}],
-      "from": {
-        "nodeId": "DcBus",
-        "portName": "P_Link"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Dclink_P_W"
-      }
-    },
-    {
-      "id": "c45",
-     "waypoints": [{"x": 1205, "y": 150}, {"x": 1205, "y": -195}, {"x": 2775, "y": -195}],
-      "from": {
-        "nodeId": "Knee",
-        "portName": "V_U_Raw"
-      },
-      "to": {
-        "nodeId": "VSenseU",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c46",
-     "waypoints": [{"x": 3240, "y": 690}],
-      "from": {
-        "nodeId": "VSenseU",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vu_V"
-      }
-    },
-    {
-      "id": "c47",
-     "waypoints": [{"x": 1220, "y": 180}, {"x": 1220, "y": -210}, {"x": 2760, "y": -210}],
-      "from": {
-        "nodeId": "Knee",
-        "portName": "V_V_Raw"
-      },
-      "to": {
-        "nodeId": "VSenseV",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c48",
-     "waypoints": [{"x": 3255, "y": 900}],
-      "from": {
-        "nodeId": "VSenseV",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vv_V"
-      }
-    },
-    {
-      "id": "c49",
-     "waypoints": [{"x": 1235, "y": 210}, {"x": 1235, "y": -225}, {"x": 2745, "y": -225}],
-      "from": {
-        "nodeId": "Knee",
-        "portName": "V_W_Raw"
-      },
-      "to": {
-        "nodeId": "VSenseW",
-        "portName": "V_True"
-      }
-    },
-    {
-      "id": "c50",
-     "waypoints": [{"x": 3270, "y": 1110}],
-      "from": {
-        "nodeId": "VSenseW",
-        "portName": "V_Meas"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Vw_V"
-      }
-    },
-    {
-      "id": "c51",
-     "waypoints": [{"x": 2670, "y": 495}, {"x": 2670, "y": -285}, {"x": 3300, "y": -285}],
-      "from": {
-        "nodeId": "Loss",
-        "portName": "P_Plate"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "P_Heat_W"
-      }
-    },
-    {
-      "id": "c52",
-     "waypoints": [{"x": 2625, "y": 120}, {"x": 2625, "y": -315}, {"x": 3285, "y": -315}],
-      "from": {
-        "nodeId": "Draw",
-        "portName": "Out"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "P_Dc_W"
-      }
-    },
-    {
-      "id": "c53",
-     "waypoints": [{"x": 1725, "y": 270}, {"x": 1725, "y": 1245}, {"x": 3345, "y": 1245}],
-      "from": {
-        "nodeId": "Machine",
-        "portName": "P_Elec"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "P_ShaftEm_W"
-      }
-    },
-    {
-      "id": "c54",
-     "waypoints": [{"x": 315, "y": 390}, {"x": 315, "y": -90}, {"x": 915, "y": -90}],
-      "from": {
-        "nodeId": "Fault",
-        "portName": "OpenGates"
-      },
-      "to": {
-        "nodeId": "Knee",
-        "portName": "OpenGates"
-      }
-    },
-    {
-      "id": "c_t3",
-     "waypoints": [{"x": 1770, "y": 585}, {"x": 1770, "y": 1290}, {"x": 3300, "y": 1290}],
-      "from": {
-        "nodeId": "Thermal",
-        "portName": "T_Meas3"
-      },
-      "to": {
-        "nodeId": "Meas",
-        "portName": "Temp_Inv3_C"
-      }
-    }
-  ]
+  "schemaVersion": 1,
+  "description": "Plant graph for the 2018 Zero DSR road pack (Zero ZF75-7 PMSM motor; dyno substituted by drive-cycle replay). 2026-10-21: machine constants FITTED from the test-11 ride (joint physics fit over launch/cruise delivered voltages + deep-FW dips + dc-power torque: Rs 8.7 mOhm, Ld 25.7 uH (high-saturation incremental class), Lq 65.7 uH, Lambda 0.0237; poles=5 verified in-data). Pack battery model from the sag anchors; TS3 channel of the three-strip NTC assembly wired; thermal strip constants being identified against the replay (twin/calib/fit_thermal_zf75.py). Encoder count bounds KEEP the bench identity - the bike's wider spread trips the replica EncoderLoss detector (per-card detector-bounds config is a follow-up; see twin/calib/cal_log.md item 10). The controller-side voltage-budget class for this build is Svpwm.MaxFrac 0.425 (fitted per-card; bike build diverges from the template 2/3 default). | Hardware-default caution: this rig models the bike's 900 A class bench (pack i_limit 900 / sink 600 A) with bike-firmware protection sets (oc_sw 1100 A, MaxTorqueCurrentA semantics per the graph); when porting to real hardware check protection/limit params per your board - a zero or stale value here is NOT safe by default."
 }
