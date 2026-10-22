@@ -157,6 +157,10 @@ public:
     // Maps a QtNodes id back to the NodeAPI node id (empty when unknown).
     std::string NodeApiId(QtNodes::NodeId qtId) const;
 
+    // Maps a NodeAPI node id forward to its QtNodes id (InvalidNodeId when
+    // unknown) — the reverse of NodeApiId for id-first smoke seams.
+    QtNodes::NodeId FindQtNodeId(const std::string& nodeId) const;
+
     // Replaces a node's parameter map (same write path as the parameter
     // editor dialog). Returns an empty string on success.
     QString SetNodeParameters(QtNodes::NodeId qtId,

@@ -19,6 +19,8 @@
 #include <RTEAutomation/Platform.h>
 
 #include <QtNodes/internal/ConnectionGraphicsObject.hpp>
+#include <QtNodes/internal/BasicGraphicsScene.hpp>
+#include <QtNodes/internal/NodeGraphicsObject.hpp>
 
 #include <QAction>
 #include <QApplication>
@@ -2469,6 +2471,142 @@ bool MainWindow::SmokeDragWireBend(const std::string& graphId,
         return false;
     }
     return view->SmokeDragWireBend(connId, index, QPointF(x, y));
+}
+
+
+QString MainWindow::SmokeSetNodeParameterInputs(const std::string& nodeId,
+                                                const QString& csv) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("failed no scene");
+    }
+    // Same seam the inspector's per-parameter "wire" checkboxes commit
+    // through: GraphScene applies the NodeAPI write + the port/geometry
+    // reset that re-sizes the node. The full replacement list is passed
+    // verbatim as comma-separated parameter names.
+    std::vector<std::string> inputs;
+    const QStringList names = csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    inputs.reserve(names.size());
+    for (const QString& name : names) {
+        inputs.push_back(name.trimmed().toStdString());
+    }
+    const QtNodes::NodeId qtId = active->FindQtNodeId(nodeId);
+    if (qtId == QtNodes::InvalidNodeId) {
+        return QStringLiteral("failed unknown node");
+    }
+    const QString error = active->SetNodeParameterInputs(qtId, inputs);
+    return error.isEmpty() ? QStringLiteral("ok")
+                           : QStringLiteral("failed ") + error;
+}
+
+QString MainWindow::SmokeSetNodeParameter(const std::string& nodeId,
+                                          const std::string& name,
+                                          const QString& value) {
+    GraphScene* active = ActiveGraphScene();
+    if (!active) {
+        return QStringLiteral("failed no scene");
+    }
+    // Same scene write the inspector's value commit reaches (GraphScene::
+    // SetNodeParameters re-lays the painted block and resets geometry).
+    const auto node = active->Graph().FindNode(nodeId);
+    if (!node) {
+        return QStringLiteral("failed unknown node");
+    }
+    std::map<std::string, std::string> parameters = node->parameters;
+    parameters[name] = value.toStdString();
+    const QtNodes::NodeId qtId = active->FindQtNodeId(nodeId);
+    if (qtId == QtNodes::InvalidNodeId) {
+        return QStringLiteral("failed unknown node");
+    }
+    const QString error = active->SetNodeParameters(qtId, parameters);
+    return error.isEmpty() ? QStringLiteral("ok")
+                           : QStringLiteral("failed ") + error;
+}
+
+bool MainWindow::SmokeCornerPressNode(const std::string& nodeId) {
+    GraphScene* active = ActiveGraphScene();
+    GraphView* view = view_;
+    if (plantScreen_ && PlantTabActive()) {
+        view = plantScreen_->View();
+    }
+    if (!active || !view || !active->Scene()) {
+        return false;
+    }
+    const QtNodes::NodeId qtId = active->FindQtNodeId(nodeId);
+    auto* ngo = qtId == QtNodes::InvalidNodeId
+                    ? nullptr
+                    : active->Scene()->nodeGraphicsObject(qtId);
+    if (!ngo) {
+        return false;
+    }
+    const QSize size = active->Scene()->nodeGeometry().size(qtId);
+    const QPointF sceneStart = ngo->pos() + QPointF(size.width(), size.height())
+                               - QPointF(2.0, 2.0);
+    const QPoint start = view->mapFromScene(sceneStart);
+    smokeCornerView_ = view;
+    smokeCornerStart_ = start;
+
+    QMouseEvent hover(QEvent::MouseMove, QPointF(start),
+                      QPointF(view->viewport()->mapToGlobal(start)),
+                      Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(view->viewport(), &hover);
+    QMouseEvent press(QEvent::MouseButtonPress, QPointF(start),
+                      QPointF(view->viewport()->mapToGlobal(start)),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(view->viewport(), &press);
+    return true;
+}
+
+void MainWindow::SmokeCornerRelease(int x, int y) {
+    if (!smokeCornerView_) {
+        return;
+    }
+    GraphView* view = smokeCornerView_;
+    const QPoint start = smokeCornerStart_;
+    const QPoint target(x, y);
+    for (int step = 1; step <= 2; ++step) {
+        QMouseEvent move(QEvent::MouseMove,
+                         QPointF(start + (target - start) * step / 2),
+                         QPointF(view->viewport()->mapToGlobal(
+                             start + (target - start) * step / 2)),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(view->viewport(), &move);
+    }
+    QMouseEvent release(QEvent::MouseButtonRelease, QPointF(target),
+                        QPointF(view->viewport()->mapToGlobal(target)),
+                        Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(view->viewport(), &release);
+    smokeCornerView_ = nullptr;
+    QApplication::processEvents();
+}
+
+bool MainWindow::SmokeCornerDragNode(const std::string& nodeId,
+                                     double dx,
+                                     double dy) {
+    GraphScene* active = ActiveGraphScene();
+    GraphView* view = view_;
+    if (plantScreen_ && PlantTabActive()) {
+        view = plantScreen_->View();
+    }
+    if (!active || !view || !active->Scene()) {
+        return false;
+    }
+    const QtNodes::NodeId qtId = active->FindQtNodeId(nodeId);
+    auto* ngo = qtId == QtNodes::InvalidNodeId
+                    ? nullptr
+                    : active->Scene()->nodeGraphicsObject(qtId);
+    if (!ngo) {
+        return false;
+    }
+    const QSize size = active->Scene()->nodeGeometry().size(qtId);
+    const QPointF sceneStart = ngo->pos() + QPointF(size.width(), size.height())
+                               - QPointF(2.0, 2.0);
+    if (!SmokeCornerPressNode(nodeId)) {
+        return false;
+    }
+    const QPoint start = smokeCornerStart_;
+    SmokeCornerRelease(start.x() + qRound(dx), start.y() + qRound(dy));
+    return true;
 }
 
 QString MainWindow::SmokeAddNode(const QString& typeId, double x, double y) {

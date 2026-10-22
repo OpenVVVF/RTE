@@ -1687,6 +1687,7 @@ QString GraphScene::DumpConnectionRoute(const std::string& graphId) const {
     }
     return QStringLiteral("route=[%1]\n").arg(coords.join(QStringLiteral(";")));
 }
+
 QString GraphScene::AddWireBend(QtNodes::ConnectionId qtId) {
     auto* cgo = scene_->connectionGraphicsObject(qtId);
     if (!cgo) {
@@ -2105,6 +2106,11 @@ std::string GraphScene::NodeApiId(QtNodes::NodeId qtId) const {
         }
     }
     return {};
+}
+
+QtNodes::NodeId GraphScene::FindQtNodeId(const std::string& nodeId) const {
+    const auto it = nodeIdMap_.find(nodeId);
+    return it != nodeIdMap_.end() ? it->second : QtNodes::InvalidNodeId;
 }
 
 QString GraphScene::SetNodeParameters(

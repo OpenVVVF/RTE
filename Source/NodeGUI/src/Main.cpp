@@ -217,6 +217,41 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                                                       parts.value(4).toDouble());
             std::cout << "wirebenddrag " << arg.toStdString() << "="
                       << (ok ? "ok" : "failed") << "\n";
+        } else if (kind == "wireparams") {
+            // Replace node <id>'s wired-parameter-input list (rest of the
+            // step = comma-separated names) — the inspector "wire" commit
+            // path whose port-set change re-sizes the node.
+            const QString csv = QStringList(parts.mid(2)).join(' ');
+            std::cout << "wireparams " << arg.toStdString() << "="
+                      << window->SmokeSetNodeParameterInputs(arg.toStdString(), csv)
+                             .toStdString()
+                      << "\n";
+        } else if (kind == "setparam") {
+            // setparam <node> <name> [value...] — one parameter write through
+            // the same scene seam the inspector's value commit reaches
+            // (graph value; node re-sizes with the painted block).
+            const QString value = QStringList(parts.mid(3)).join(' ');
+            std::cout << "setparam " << arg.toStdString() << "="
+                      << window->SmokeSetNodeParameter(arg.toStdString(),
+                                                       parts.value(2).toStdString(),
+                                                       value)
+                             .toStdString()
+                      << "\n";
+        } else if (kind == "cornerdrag") {
+            // REAL corner-grab drag (resize-handle pocket) as synthesized
+            // viewport mouse events, through the full event dispatch.
+            const bool ok = window->SmokeCornerDragNode(arg.toStdString(),
+                                                        parts.value(2).toDouble(),
+                                                        parts.value(3).toDouble());
+            std::cout << "cornerdrag " << arg.toStdString() << "="
+                      << (ok ? "ok" : "failed") << "\n";
+        } else if (kind == "cornerpress") {
+            const bool ok = window->SmokeCornerPressNode(arg.toStdString());
+            std::cout << "cornerpress " << arg.toStdString() << "="
+                      << (ok ? "ok" : "failed") << "\n";
+        } else if (kind == "cornerrelease") {
+            window->SmokeCornerRelease(parts.value(1).toInt(), parts.value(2).toInt());
+            std::cout << "cornerrelease=ok\n";
         } else if (kind == "gvals") {
             // gvals on|off|dump — the "graph values" sim value-tag mode.
             // dump prints the ACTIVE editor scene's tags as "key=val;..."

@@ -105,7 +105,6 @@ public:
     // [smoke] "label=<text|—>;layer=<z>" for the given wire graph id on the
     // ACTIVE editor tab (checker line).
     QString SmokeDumpConnection(const std::string& graphId);
-
     // [smoke] "route=[x,y;...]" rendered route polyline (scene coords) of the
     // wire on the ACTIVE editor tab — the foldback checker's read-out.
     QString SmokeDumpConnectionRoute(const std::string& graphId);
@@ -113,6 +112,27 @@ public:
     // the active view's real bend-drag machinery (same guards/clips/commit
     // as mouse). Returns false for unknown wire/bend.
     bool SmokeDragWireBend(const std::string& graphId, int index, double x, double y);
+    // [smoke] replace the node's wired-parameter-input list (csv names) —
+    // the inspector "wire" checkbox commit path (port set change => node
+    // re-size). "ok" or "failed <reason>".
+    QString SmokeSetNodeParameterInputs(const std::string& nodeId, const QString& csv);
+    // [smoke] set ONE parameter's value text — the inspector value-commit
+    // path (parameter block grows => node re-size). "ok" or "failed <reason>".
+    QString SmokeSetNodeParameter(const std::string& nodeId,
+                                  const std::string& name,
+                                  const QString& value);
+    // [smoke] REAL mouse press/drag/release at the node's bottom-right pixel
+    // corner (the resize-handle pocket), synthesized as viewport events into
+    // the active editor's view — the user's "grab the corner and resize"
+    // gesture through the full QtNodes/GraphView event dispatch.
+    bool SmokeCornerDragNode(const std::string& nodeId, double dx, double dy);
+    // [smoke] press/hold at the node's corner pocket (no release): arms the
+    // same gesture SmokeCornerDragNode completes, so scripted runs can fire
+    // mid-gesture actions (undo, reload) before SmokeCornerRelease ends it.
+    bool SmokeCornerPressNode(const std::string& nodeId);
+    // [smoke] move mouse to (x, y) viewport coords with the button held, then
+    // release — completes a SmokeCornerPressNode gesture.
+    void SmokeCornerRelease(int x, int y);
     // [smoke] load a sim session file through the Simulate screen's own
     // "Load session..." path (returns false on load failure).
     bool SmokeLoadSimSession(const QString& path);
@@ -254,6 +274,11 @@ private:
 
     std::unique_ptr<GraphScene> graphScene_;
     QPointer<GraphView> view_;
+    // [smoke] armed corner-press gesture state (SmokeCornerPressNode /
+    // SmokeCornerRelease): the view the press was delivered to + its
+    // viewport start point.
+    QPointer<GraphView> smokeCornerView_;
+    QPoint smokeCornerStart_;
     QPointer<NodePalette> palette_;
     QPointer<InspectorPanel> inspector_;
     QPointer<QLabel> toast_;
