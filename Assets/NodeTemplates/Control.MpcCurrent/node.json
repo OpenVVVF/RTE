@@ -1,0 +1,123 @@
+{
+  "id": "Control.MpcCurrent",
+  "displayName": "FCS-MPC Current (finite control set)",
+  "defaultName": "MpcCurrent",
+  "description": "Finite-control-set model-predictive dq current control: at every control period the node evaluates all 8 two-level inverter switching vectors against a one-step Euler prediction of the PMSM dq current model (Ld, Lq, Rs, Lambda) and applies the minimum-cost vector directly as leg duties (100/0 percent, no SVPWM stage). PI loops and the modulator stay unused. Cost = (IdRef-id)^2 + (IqRef-iq)^2 + SwitchPenalty*(legs changed). A continuous-set MPC is out of scope on purpose: the graph/node model has no interior QP solver foot-print and no way to express a continuous voltage output through the duty percent seam without a modulator, which would silently reintroduce exactly the averaged modulator the method is defined against; the finite set is what the platform's duty interface expresses natively.",
+  "maxInstances": 0,
+  "isEntryPoint": false,
+  "domain": "",
+  "inputPorts": [
+    {
+      "name": "IdRef",
+      "description": "d-axis current reference, A.",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "IqRef",
+      "description": "q-axis current reference, A.",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "Id",
+      "description": "Measured d-axis current, A.",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "Iq",
+      "description": "Measured q-axis current, A.",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "Theta",
+      "description": "Electrical rotor angle used to rotate the switching vectors into the dq frame, rad.",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "RpmElec",
+      "description": "Electrical rotor speed, RPM (hw.rpm convention; converted to rad/s internally).",
+      "direction": "input",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    }
+  ],
+  "outputPorts": [
+    {
+      "name": "Duty_A",
+      "description": "Phase A leg duty, percent: 100 or 0 (direct switching, 50 = zero-vector convention upstream does not apply here).",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "Duty_B",
+      "description": "Phase B leg duty, percent.",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "Duty_C",
+      "description": "Phase C leg duty, percent.",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "V_D",
+      "description": "d-axis voltage of the selected vector this period, V (diagnostics).",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "V_Q",
+      "description": "q-axis voltage of the selected vector this period, V (diagnostics).",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    },
+    {
+      "name": "SwitchCode",
+      "description": "Selected switch state as 3-bit code (Sa*4 + Sb*2 + Sc), 0-7.",
+      "direction": "output",
+      "type": {"quantity": "dimensionless", "frame": "scalar", "dtype": "f32"}
+    }
+  ],
+  "parameterTypes": {
+    "Dt": {
+      "description": "Prediction horizon = control period, seconds (the period this node executes at; e.g. 400 us at tim_isr 2.5 kHz).",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "Rs": {
+      "description": "Stator winding resistance per phase, ohm.",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "Ld": {
+      "description": "d-axis inductance, H.",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "Lq": {
+      "description": "q-axis inductance, H.",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "Lambda": {
+      "description": "PM flux linkage, Wb.",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "SwitchPenalty": {
+      "description": "Cost added per leg state change vs the previously applied vector (A^2 units on the J scale); 0 disables switching-cost weighting.",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "PrevSa": {
+      "description": "Persistent state: previously applied phase A switch state (0/1).",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "PrevSb": {
+      "description": "Persistent state: previously applied phase B switch state (0/1).",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    },
+    "PrevSc": {
+      "description": "Persistent state: previously applied phase C switch state (0/1).",
+      "quantity": "dimensionless", "frame": "scalar", "dtype": "f32"
+    }
+  }
+}
