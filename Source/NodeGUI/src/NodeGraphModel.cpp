@@ -6,12 +6,20 @@
 
 #include <QPointF>
 
+#include <algorithm>
+#include <cmath>
 #include <sstream>
+#include <tuple>
 #include <vector>
 
 namespace NodeGUI {
 
 namespace {
+
+// Two endpoint deltas count as "the same move" (the wire-follow pair
+// consume) below a clearly sub-pixel distance; scene coordinates are
+// doubles whose drag artifacts sit orders of magnitude under this.
+constexpr double kFollowDeltaEpsilon = 0.25;
 
 bool ConsumerHasConnection(const NodeAPI::Graph& graph,
                            const NodeAPI::PortRef& consumer) {
@@ -412,6 +420,7 @@ bool NodeGraphModel::deleteConnection(QtNodes::ConnectionId const connectionId) 
     }
     const bool result = DataFlowGraphModel::deleteConnection(connectionId);
     connectionWaypoints_.erase(connectionId);
+    waypointFollows_.erase(connectionId);
     connectionLabels_.erase(connectionId);
     autoRoutes_.erase(connectionId);
 
@@ -471,11 +480,76 @@ const std::vector<QPointF>* NodeGraphModel::ConnectionWaypoints(
 
 void NodeGraphModel::SetConnectionWaypoints(QtNodes::ConnectionId const connectionId,
                                             std::vector<QPointF> scenePoints) {
+    // A manual bend edit re-anchors the routed shape; any pending
+    // wire-follow pair for this connection is void afterwards.
+    waypointFollows_.erase(connectionId);
     if (scenePoints.empty()) {
         connectionWaypoints_.erase(connectionId);
     } else {
         connectionWaypoints_[connectionId] = std::move(scenePoints);
     }
+}
+
+std::vector<QtNodes::ConnectionId> NodeGraphModel::FollowMovedNodes(
+    const std::vector<NodeTranslation>& moved) {
+    std::vector<NodeTranslation> ordered;
+    for (const NodeTranslation& entry : moved) {
+        if (!entry.delta.isNull()) {
+            ordered.push_back(entry);
+        }
+    }
+    std::sort(ordered.begin(), ordered.end(),
+              [](const NodeTranslation& a, const NodeTranslation& b) {
+                  return a.node < b.node;
+              });
+
+    std::vector<QtNodes::ConnectionId> translated;
+    for (const NodeTranslation& entry : ordered) {
+        std::vector<QtNodes::ConnectionId> attached;
+        for (const auto& [connectionId, points] : connectionWaypoints_) {
+            if (!points.empty() &&
+                (connectionId.outNodeId == entry.node ||
+                 connectionId.inNodeId == entry.node)) {
+                attached.push_back(connectionId);
+            }
+        }
+        std::sort(attached.begin(), attached.end(),
+                  [](const QtNodes::ConnectionId& a, const QtNodes::ConnectionId& b) {
+                      return std::tie(a.outNodeId, a.outPortIndex,
+                                      a.inNodeId, a.inPortIndex) <
+                             std::tie(b.outNodeId, b.outPortIndex,
+                                      b.inNodeId, b.inPortIndex);
+                  });
+        for (const QtNodes::ConnectionId& connectionId : attached) {
+            const auto labelIt = connectionLabels_.find(connectionId);
+            if (labelIt != connectionLabels_.end() && !labelIt->second.isEmpty()) {
+                continue;   // net-label stubs render the bends away; keep data
+            }
+            const QtNodes::NodeId other =
+                connectionId.outNodeId == entry.node ? connectionId.inNodeId
+                                                     : connectionId.outNodeId;
+            const auto followIt = waypointFollows_.find(connectionId);
+            if (followIt != waypointFollows_.end() &&
+                followIt->second.node == other &&
+                std::abs(followIt->second.delta.x() - entry.delta.x()) <
+                    kFollowDeltaEpsilon &&
+                std::abs(followIt->second.delta.y() - entry.delta.y()) <
+                    kFollowDeltaEpsilon) {
+                // The first endpoint already shifted the shape by this delta
+                // (area drag: both anchors move together); consume the
+                // counterpart move so the whole route translates exactly ONCE.
+                waypointFollows_.erase(followIt);
+                continue;
+            }
+            auto& points = connectionWaypoints_[connectionId];
+            for (QPointF& p : points) {
+                p += entry.delta;
+            }
+            waypointFollows_[connectionId] = entry;
+            translated.push_back(connectionId);
+        }
+    }
+    return translated;
 }
 
 const QString* NodeGraphModel::ConnectionLabel(

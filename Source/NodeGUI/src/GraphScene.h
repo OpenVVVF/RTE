@@ -130,7 +130,9 @@ public:
     QString SetConnectionLabel(QtNodes::ConnectionId qtId, const QString& label);
 
     // Smoke/checker read-out for one connection:
-    // "label=<text|—>;layer=<z>" (or an error line when unknown).
+    // "label=<text|—>;layer=<z>;wp=[x,y;...]" (or an error line when
+    // unknown; wp lists the manual bends in scene coordinates, "[]" when
+    // the wire is auto-routed).
     QString DumpConnectionInfo(const std::string& graphId) const;
 
     // Invoked after a user-visible graph mutation has fully reached the
@@ -302,6 +304,15 @@ public:
     // The drag-complete path (shared by the QtNodes nodeMoved signal and the
     // programmatic smoke move): snap, outlines, sync, notifications.
     void OnNodeMoved(QtNodes::NodeId qtId);
+    // Wire-follow settle: collects every node whose scene origin ran ahead
+    // of the graph position (drags move graphics objects only; a selection
+    // drag surfaces all its members even though just the grabbed node emits
+    // the release signal) and translates the manual bends of the touched
+    // connections through NodeGraphModel::FollowMovedNodes, repainting each
+    // affected wire. Must run BEFORE SyncPositionsFromScene, which re-anchors
+    // the graph positions to the scene. Drains no notification of its own —
+    // the caller's single per-batch NotifyChanged covers positions + bends.
+    void FollowWiresAfterMoves();
     void SnapNodeToGrid(QtNodes::NodeId qtId);
     void SnapAllNodesToGrid();
     // Refills the mini-router's per-connection route table (obstacle mask

@@ -1252,6 +1252,7 @@ void GraphScene::EndSelectedDomainDrag() {
     if (gridSnap_) {
         SnapAllNodesToGrid();
     }
+    FollowWiresAfterMoves();
     UpdateDomainOutlines();
     SyncPositionsFromScene();
     NotifyChanged();
@@ -1634,7 +1635,23 @@ QString GraphScene::DumpConnectionInfo(const std::string& graphId) const {
             layer = cgo->zValue();
         }
     }
-    return QStringLiteral("label=%1;layer=%2\n").arg(text).arg(layer);
+    // Manual bends in scene coordinates ("[x,y;...]"), for the wire-follow
+    // checkers; appended so the long-standing label/layer fields stay put.
+    QString bends = QStringLiteral("[]");
+    if (const auto* wps = model_->ConnectionWaypoints(qtId)) {
+        QStringList coords;
+        for (const QPointF& p : *wps) {
+            coords.push_back(QStringLiteral("%1,%2")
+                                 .arg(p.x(), 0, 'f', 2)
+                                 .arg(p.y(), 0, 'f', 2));
+        }
+        bends = QStringLiteral("[") + coords.join(QStringLiteral(";"))
+                + QStringLiteral("]");
+    }
+    return QStringLiteral("label=%1;layer=%2;wp=%3\n")
+        .arg(text)
+        .arg(layer)
+        .arg(bends);
 }
 
 QString GraphScene::AddWireBend(QtNodes::ConnectionId qtId) {
@@ -1768,10 +1785,36 @@ void GraphScene::SnapAllNodesToGrid() {
     }
 }
 
+void GraphScene::FollowWiresAfterMoves() {
+    if (!model_ || !scene_) {
+        return;
+    }
+    std::vector<NodeGraphModel::NodeTranslation> moved;
+    for (const auto& [nodeId, qtId] : nodeIdMap_) {
+        auto* graphicsObject = scene_->nodeGraphicsObject(qtId);
+        const auto node = graph_.FindNode(nodeId);
+        if (!graphicsObject || !node) {
+            continue;
+        }
+        const QPointF delta =
+            graphicsObject->pos() - QPointF(node->position.x, node->position.y);
+        if (!delta.isNull()) {
+            moved.push_back({qtId, delta});
+        }
+    }
+    if (moved.empty()) {
+        return;
+    }
+    for (const QtNodes::ConnectionId qtId : model_->FollowMovedNodes(moved)) {
+        RepaintConnection(qtId);
+    }
+}
+
 void GraphScene::OnNodeMoved(QtNodes::NodeId qtId) {
     if (gridSnap_) {
         SnapNodeToGrid(qtId);
     }
+    FollowWiresAfterMoves();
     UpdateDomainOutlines();
     SyncPositionsFromScene();
     NotifyChanged();

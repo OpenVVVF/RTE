@@ -72,6 +72,31 @@ public:
     void SetConnectionWaypoints(QtNodes::ConnectionId const connectionId,
                                 std::vector<QPointF> scenePoints);
 
+    // One node's committed scene translation for the wire-follow rule.
+    struct NodeTranslation {
+        QtNodes::NodeId node;
+        QPointF delta;
+    };
+
+    // Wire-follow on node-move settles (GraphScene calls this ONCE per
+    // settle, covering every node whose scene origin ran ahead of the graph
+    // position): every connection holding manual bends that touches a moved
+    // node translates all its bends by that node's delta, so bends ride
+    // along instead of spiking across the freed row. Labeled connections
+    // skip (the renderer shows net-label stubs and ignores their bends;
+    // data stays intact); connections without bends stay untouched (no
+    // phantom entries are created). A connection shared by two moved nodes
+    // translates ONCE: the first attached moved node (deterministic order:
+    // ascending node id) shifts it and records the follow; the counterpart
+    // endpoint moving by the SAME delta is consumed instead, so a selection
+    // drag (or sequential same-delta moves of both anchors) rigidly moves
+    // the whole routed shape — never double-shifted. Consumed pairs are
+    // forgotten, so the next gesture follows again. Returns the ids of the
+    // connections actually translated (for repaints); the caller drains the
+    // single per-batch change notification as usual.
+    std::vector<QtNodes::ConnectionId> FollowMovedNodes(
+        const std::vector<NodeTranslation>& moved);
+
     // Optional display-only net label of a connection (nullptr when unset).
     // A labeled connection renders as two short stubs + name tags instead of
     // the long wire (KiCad-style net labels); NodeAPI/codegen never see it.
@@ -148,6 +173,11 @@ private:
     std::unordered_map<QtNodes::NodeId, std::string> qtIdToNodeId_;
     mutable std::unordered_map<QtNodes::ConnectionId, GraphConnection> connectionMap_;
     std::unordered_map<QtNodes::ConnectionId, std::vector<QPointF>> connectionWaypoints_;
+    // Pending wire-follow pairs: which endpoint translation already shifted
+    // the connection's bends (set by FollowMovedNodes). A same-delta move of
+    // the OTHER endpoint consumes the entry instead of double-shifting;
+    // manual bend edits (SetConnectionWaypoints) and teardown clear it.
+    std::unordered_map<QtNodes::ConnectionId, NodeTranslation> waypointFollows_;
     std::unordered_map<QtNodes::ConnectionId, QString> connectionLabels_;
     std::unordered_map<QtNodes::ConnectionId, WireRoute::AutoRouteChoice> autoRoutes_;
     mutable std::size_t nextId_ = 0;

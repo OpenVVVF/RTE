@@ -19,7 +19,14 @@
 //   read named fields only, and both code generators consume the parsed
 //   Graph object. Wires with bends render rectilinear (WireRoute::BuildRoute:
 //   horizontal port stubs, single elbows per leg); the auto-elbow only exists
-//   at paint time and is never serialized. Gestures (GraphView): drag a wire
+//   at paint time and is never serialized. Wire-follow keeps bends riding
+//   with their nodes (NodeGraphModel::FollowMovedNodes, fed at every
+//   drag-settle by GraphScene): bends of every bend-carrying connection
+//   attached to a moved node translate by that node's delta, labeled
+//   connections skipped; a connection whose two anchors move by the same
+//   delta (selection/area drag) translates exactly once — the routed shape
+//   moves rigidly with the selection instead of spiking across freed rows.
+//   Gestures (GraphView): drag a wire
 //   to insert/move a bend (grid-snapped, dominant-axis lock), Ctrl+click or
 //   right-click a bend handle to delete it. The Edit-menu route.addPoint /
 //   route.removePoint verbs (also smoke-clickable) bend/remove on the single
@@ -165,7 +172,8 @@ void RunSmokeActions(NodeGUI::MainWindow* window,
                              .toStdString()
                       << "\n";
         } else if (kind == "dumpconn") {
-            // "label=<text|—>;layer=<z>" single line for checkers.
+            // "label=<text|—>;layer=<z>;wp=[x,y;...]" single line for
+            // checkers (wp = manual bends, "[]" when auto-routed).
             std::cout << window->SmokeDumpConnection(arg.toStdString()).toStdString();
         } else if (kind == "click") {
             if (QAbstractButton* button = window->findChild<QAbstractButton*>(arg)) {
